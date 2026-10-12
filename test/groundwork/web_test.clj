@@ -172,9 +172,14 @@
                                                   :body    body})))
           "an upload route takes more"))
     (let [[content-type body] (multipart "huge.bin" "application/octet-stream" (byte-array 3500000))]
-      (is (= 413 (:status (request "/api/upload" {:method  "POST"
-                                                  :headers (assoc own-origin "Content-Type" content-type)
-                                                  :body    body}))))))
+      ;; over the largest limit any route has, the server refuses before
+      ;; reading on: a 413, or, when it closes while the client still
+      ;; sends, a connection the client sees closed
+      (is (contains? #{413 :closed}
+                     (try (:status (request "/api/upload" {:method  "POST"
+                                                           :headers (assoc own-origin "Content-Type" content-type)
+                                                           :body    body}))
+                          (catch java.io.IOException _ :closed))))))
   (testing "a server-to-server route gets its body untouched"
     (is (= ["a=1&b=2" nil]
            (read-string (:body (request "/hooks/raw" {:method  "POST"

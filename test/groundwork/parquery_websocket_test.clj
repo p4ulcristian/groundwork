@@ -240,6 +240,12 @@
           line   (open-line cookie)]
       (try
         (watch! line ["notes/of-shop" {:shop/id (str acme)}])
+        ;; the server takes the watch on its own thread: wait until it holds it
+        (let [lines (get-in (gw/part *app* :groundwork/parquery) [:bells :lines])]
+          (loop [n 0]
+            (when (and (< n 100) (not-any? (comp seq :watches) (vals @lines)))
+              (Thread/sleep 50)
+              (recur (inc n)))))
         (websocket/recheck! (get-in (gw/part *app* :groundwork/parquery) [:bells]))
         (as-system! "INSERT INTO notes VALUES (?, ?, 'six')" (UUID/randomUUID) acme)
         (is (= [["notes/of-shop" {:shop/id (str acme)}]] (next-bell line 3000)))
