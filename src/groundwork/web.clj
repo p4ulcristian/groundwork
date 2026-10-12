@@ -30,6 +30,21 @@
                            not allowed answers 404, like a record that isn't there
      :server-to-server true    instead of :access: the handler checks the call
 
+   Hooks, for logs and metrics (nil for none):
+
+     :on-request (fn [{:keys [method route status ms person flags request-id client-ip]}] …)
+         after every answer; route is the matched template, like \"/orders/:order-id\"
+     :on-error   (fn [{:keys [error method route person request-id client-ip …]}] …)
+         an exception no handler caught; the browser gets a plain 500
+
+   Every answer carries X-Request-Id. Behind a proxy, :proxies says which
+   addresses are trusted, and only a request from one of them is believed
+   about the visitor's address and its request id:
+
+     :proxies {:trusted           [\"10.0.0.0/8\" \"::1\"]
+               :client-ip-header  \"cf-connecting-ip\"   ; or nil
+               :request-id-header \"x-request-id\"}      ; or nil
+
    Request bodies: none may be larger than :max-body-bytes, or a route's own
    [\"/uploads\" {:post upload :max-body-bytes 104857600}]; a larger one is
    refused with 413. A browser route's form body is parsed into :form-params,
@@ -61,7 +76,10 @@
    [ring.middleware.params :refer [wrap-params]])
   (:import
    (java.io File FileInputStream InputStream)
-   (java.nio.charset StandardCharsets)))
+   (java.lang System$Logger System$Logger$Level)
+   (java.net InetAddress)
+   (java.nio.charset StandardCharsets)
+   (java.util UUID)))
 
 ;; =============================================================================
 ;; Security headers and frames
@@ -195,6 +213,113 @@
                 #(sessions/wrap-sessions % sessions (some? embeddable))))})
 
 ;; =============================================================================
+;; Request ids, the client's address, hooks
+;; =============================================================================
+
+(def ^:private ^System$Logger logger (System/getLogger "groundwork.web"))
+
+(defn- plain [status body]
+  {:status status :headers {"Content-Type" "text/plain; charset=utf-8"} :body body})
+
+(defn- address-bytes ^bytes [s]
+  (when (and (string? s) (re-matches #"[0-9A-Fa-f:.]+" s))
+    (try (.getAddress (InetAddress/getByName s)) (catch Exception _ nil))))
+
+(defn- address-matcher
+  "A predicate for an address or a range, like \"10.0.0.0/8\" or \"::1\"."
+  [entry]
+  (let [[address bits] (str/split entry #"/" 2)
+        ^bytes prefix  (address-bytes address)
+        bits           (if bits (parse-long bits) (some-> prefix alength (* 8)))]
+    (when (or (nil? prefix) (nil? bits) (neg? bits) (> bits (* 8 (alength prefix))))
+      (throw (ex-info (str "Not an address or range: " entry)
+                      {:type ::bad-setting :setting :proxies :value entry})))
+    (fn [s]
+      (let [^bytes b (address-bytes s)]
+        (and b (= (alength b) (alength prefix))
+             (every? (fn [i]
+                       (let [mask (unchecked-byte (bit-and 0xFF (bit-shift-left 0xFF (- 8 (min 8 (- bits (* 8 i)))))))]
+                         (= (bit-and (aget b i) mask) (bit-and (aget prefix i) mask))))
+                     (range (quot (+ bits 7) 8))))))))
+
+(defn- check-proxies [proxies]
+  (when-not (and (map? proxies) (= #{:trusted :client-ip-header :request-id-header} (set (keys proxies)))
+                 (sequential? (:trusted proxies)) (every? string? (:trusted proxies))
+                 (every? #(or (nil? %) (string? %)) [(:client-ip-header proxies) (:request-id-header proxies)]))
+    (throw (ex-info ":proxies must be {:trusted [addresses or ranges] :client-ip-header name-or-nil :request-id-header name-or-nil}"
+                    {:type ::bad-setting :setting :proxies :value proxies})))
+  (doseq [entry (:trusted proxies)] (address-matcher entry)))
+
+(defn request-id
+  "This request's id, also sent back as X-Request-Id."
+  [request]
+  (::request-id request))
+
+(defn client-ip
+  "The visitor's address: the proxy's header when the request came through a
+   trusted proxy, else the connection's."
+  [request]
+  (::client-ip request))
+
+(defn- call-hook [hook name m]
+  (when hook
+    (try (hook m)
+         (catch Throwable e
+           (.log logger System$Logger$Level/WARNING (str "The " name " hook threw") e)))))
+
+(defn- wrap-context
+  "The outermost layer: the request id and client address, the hooks, and a
+   plain 500 for an exception no handler caught."
+  [handler {:keys [on-request on-error proxies]}]
+  (let [trusted?  (let [matchers (mapv address-matcher (:trusted proxies))]
+                    (fn [addr] (some #(% addr) matchers)))
+        id-header (some-> (:request-id-header proxies) str/lower-case)
+        ip-header (some-> (:client-ip-header proxies) str/lower-case)]
+    (fn [request]
+      (let [started  (System/nanoTime)
+            from-proxy? (trusted? (:remote-addr request))
+            client-ip   (or (when (and from-proxy? ip-header)
+                              (some-> (get-in request [:headers ip-header]) (str/split #",") first str/trim not-empty))
+                            (:remote-addr request))
+            request-id  (or (when (and from-proxy? id-header)
+                              (some->> (get-in request [:headers id-header]) (re-matches #"[A-Za-z0-9._:\-]{1,128}")))
+                            (str (UUID/randomUUID)))
+            context     (volatile! {})
+            request     (assoc request ::request-id request-id ::client-ip client-ip ::context context)
+            about       (fn [] (merge {:method     (:request-method request)
+                                       :request-id request-id
+                                       :client-ip  client-ip
+                                       :person     nil
+                                       :flags      #{}
+                                       :route      nil}
+                                      @context))
+            response    (try
+                          (handler request)
+                          (catch Throwable e
+                            (call-hook on-error "on-error" (assoc (about) :error e))
+                            (when-not on-error
+                              (.log logger System$Logger$Level/ERROR "A request failed" e))
+                            (assoc (plain 500 "Something went wrong") ::failed true)))
+            response    (some-> response (assoc-in [:headers "X-Request-Id"] request-id))]
+        (call-hook on-request "on-request"
+                   (assoc (about)
+                          :status (:status response 404)
+                          :ms     (/ (- (System/nanoTime) started) 1e6)))
+        (some-> response (dissoc ::failed))))))
+
+(def ^:private context-middleware
+  "Tells the outer layer which route answered and who asked."
+  {:name ::context
+   :wrap (fn [handler]
+           (fn [request]
+             (when-let [context (::context request)]
+               (vswap! context assoc
+                       :route  (:template (ring/get-match request))
+                       :person (sessions/person request)
+                       :flags  (sessions/flags request)))
+             (handler request)))})
+
+;; =============================================================================
 ;; Access
 ;; =============================================================================
 
@@ -203,9 +328,6 @@
   [{:keys [request-method headers]}]
   (and (#{:get :head} request-method)
        (str/includes? (get headers "accept" "") "text/html")))
-
-(defn- plain [status body]
-  {:status status :headers {"Content-Type" "text/plain; charset=utf-8"} :body body})
 
 (defn- signed-out
   "No one is signed in: a browser asking for a page goes to the login page,
@@ -406,7 +528,8 @@
   []
   [])
 
-(def ^:private settings [:routes :max-body-bytes :content-security-policy :login-path])
+(def ^:private settings
+  [:routes :max-body-bytes :content-security-policy :login-path :on-request :on-error :proxies])
 
 (defn- check-settings [opts]
   (when-not (map? opts)
@@ -424,11 +547,17 @@
     (check-csp (:content-security-policy opts))
     (when-not (and (string? (:login-path opts)) (str/starts-with? (:login-path opts) "/"))
       (throw (ex-info ":login-path must be a path like \"/login\""
-                      {:type ::bad-setting :setting :login-path :value (:login-path opts)})))))
+                      {:type ::bad-setting :setting :login-path :value (:login-path opts)})))
+    (doseq [k [:on-request :on-error]
+            :let [v (get opts k)]]
+      (when-not (or (nil? v) (ifn? v))
+        (throw (ex-info (str k " must be a function or nil") {:type ::bad-setting :setting k :value v}))))
+    (check-proxies (:proxies opts))))
 
 (defn handler
   "The app's Ring handler, for settings already checked."
-  [{:keys [routes max-body-bytes content-security-policy login-path page sessions permissions environment]}]
+  [{:keys [routes max-body-bytes content-security-policy login-path page sessions permissions environment]
+    :as   settings}]
   (let [files  (-> (ring/create-resource-handler {:path "/" :root "public"})
                    wrap-file-caching
                    wrap-not-modified)
@@ -437,6 +566,7 @@
                                                     embeddable-middleware
                                                     (body-middleware max-body-bytes)
                                                     (sessions-middleware sessions)
+                                                    context-middleware
                                                     (access-middleware permissions login-path)]}
                              ;; the path, for errors in a route's data
                              :compile (fn [[path data] opts]
@@ -447,7 +577,8 @@
                              (fn [request] (when (wants-page? request) (page request)))
                              not-found))]
     (-> (fn [request] (app (assoc request ::page page)))
-        (wrap-security-headers environment content-security-policy))))
+        (wrap-security-headers environment content-security-policy)
+        (wrap-context settings))))
 
 (defn start
   "The router part: {:handler … :max-body-bytes …}, the most any route

@@ -40,7 +40,12 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
                     :web         {:routes                  [["/orders" {:get web/page :access :signed-in}]]
                                   :max-body-bytes          1048576
                                   :content-security-policy {}
-                                  :login-path              "/login"}  ; see Server, routes and the page
+                                  :login-path              "/login"
+                                  :on-request              log-request   ; or nil
+                                  :on-error                report-error  ; or nil
+                                  :proxies                 {:trusted ["10.0.0.0/8"]
+                                                            :client-ip-header "cf-connecting-ip"
+                                                            :request-id-header "x-request-id"}}
                     :server      {:ip "0.0.0.0" :port 8080}
                     :sessions    {:cookie-name "acme_session" :max-age-days 30 :visitor-hours 24
                                   :secure? true :origin "https://app.acme.example"}
@@ -258,6 +263,16 @@ resources/migrations/
   parameter (or form or query parameter); it's checked like an endpoint's,
   through the record's own scope. A record that isn't the person's answers
   404, the same as one that isn't there.
+- **Hooks** for logs and metrics: `:on-request` hears every answer
+  (`{:method :route :status :ms :person :flags :request-id :client-ip}`,
+  route as its template, like `"/orders/:order-id"`); `:on-error` hears an
+  exception no handler caught, with the same context, while the browser
+  gets a plain 500. A hook that throws is logged and never breaks an answer.
+- **Request ids and the visitor's address:** every answer carries
+  `X-Request-Id` (`web/request-id`). Only a request from a `:proxies
+  :trusted` address or range is believed about the visitor's address
+  (`:client-ip-header`, its first entry) and its id; otherwise the
+  connection's address and a new id (`web/client-ip`).
 - **Request bodies:** none larger than `:max-body-bytes`, or a route's own
   (`["/uploads" {:post upload :access :signed-in :max-body-bytes 104857600}]`); larger is 413,
   and the server never reads more than the largest any route accepts. A

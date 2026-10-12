@@ -49,7 +49,10 @@
    :web         {:routes         []
                  :max-body-bytes 1048576
                  :content-security-policy {:connect-src ["https://api.example"]}
-                 :login-path     "/login"}
+                 :login-path     "/login"
+                 :on-request     nil
+                 :on-error       nil
+                 :proxies        {:trusted [] :client-ip-header nil :request-id-header nil}}
    :server      {:ip "127.0.0.1" :port port}
    :sessions    {:cookie-name "gw_session" :max-age-days 30 :visitor-hours 24 :secure? false
                  :origin (str "http://127.0.0.1:" port)}
