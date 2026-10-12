@@ -16,7 +16,7 @@ keywords → postgres → parquery → re-frame → reagent
 | db                | `groundwork.postgres` | built on next.jdbc + PgJDBC + HikariCP |
 | endpoints         | `groundwork.endpoints` | built |
 | parquery          | `groundwork.parquery.*` | built: HTTP and the bells |
-| parquery, browser | `groundwork.parquery.*`, `groundwork.store` (cljs) | built on re-frame |
+| parquery, browser | `groundwork.parquery.*`, `groundwork.parquery-store` (cljs) | built on re-frame |
 | server            | `groundwork.server`   | built on http-kit |
 | router            | `groundwork.web`      | built on reitit |
 | migrations        | `groundwork.migrations` | built |
@@ -769,7 +769,7 @@ Then the store, under the screens:
 - `parquery/websocket` (cljs): one line for the visit; it sends what's on
   screen and hears what changed; a dropped line comes back by itself and
   asks everything on screen again.
-- `groundwork.store`: answers kept by question in re-frame's db. A screen
+- `groundwork.parquery-store`: answers kept by question in re-frame's db. A screen
   says what it needs when it opens and lets go when it closes; showing
   never fetches. Old data stays while a fresh answer loads; only the newest
   answer counts; bells are gathered for 200 ms and only what's on screen is

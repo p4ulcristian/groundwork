@@ -24,7 +24,7 @@
      @(rf/subscribe [::route])     ; reitit's match: :data (:name, :view…), :path-params…
      (gb/navigate! :order {:order-id id})"
   (:require
-   [groundwork.store :as store]
+   [groundwork.parquery-store :as store]
    [re-frame.core :as rf]
    [reagent.dom.client :as rdc]
    [reitit.frontend :as rfr]

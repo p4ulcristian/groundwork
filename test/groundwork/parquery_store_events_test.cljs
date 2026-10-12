@@ -1,4 +1,4 @@
-(ns groundwork.store-events-test
+(ns groundwork.parquery-store-events-test
   "The store's re-frame wiring, with only the network faked: ensure asks once
    per question, release and five minutes later the entry goes, bells are
    gathered and only what's on screen is asked again, the newest answer
@@ -8,7 +8,7 @@
    [groundwork.parquery.http :as http]
    [groundwork.parquery.websocket :as websocket]
    [groundwork.parquery.wire :as wire]
-   [groundwork.store :as store]
+   [groundwork.parquery-store :as store]
    [re-frame.core :as rf]
    [re-frame.db :as rf-db]))
 
@@ -60,7 +60,7 @@
     (set! (.-readyState s) 1)
     ((.-onopen s) #js {})))
 
-(defn- entry [k] (get-in @rf-db/app-db [:groundwork/store :entries k]))
+(defn- entry [k] (get-in @rf-db/app-db [:groundwork/parquery-store :entries k]))
 (defn- answer [ask] @(rf/subscribe [::store/answer ask]))
 (defn- asked [] (mapv #(mapv :endpoint %) @requests))
 (defn- watched [] (some-> ^js (last @sockets) .-sent last wire/read-json :watch))

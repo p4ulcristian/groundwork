@@ -1,7 +1,8 @@
-(ns groundwork.store
-  "The browser's answers, kept by question: an endpoint and its params. It
-   lives in re-frame's db under :groundwork/store; the app's own state is
-   beside it.
+(ns groundwork.parquery-store
+  "The browser's answers from parquery, kept by question: an endpoint and its
+   params. It isn't transport, so it sits beside groundwork.parquery, named
+   for whose answers it keeps. It lives in re-frame's db under
+   :groundwork/parquery-store; the app's own state is beside it.
 
      (rf/dispatch [::store/start {:shapes {…}}])                  ; once, at boot
      (rf/dispatch [::store/ensure :jobs-page [{:endpoint :jobs/list :params {:shop/id id}}]])
@@ -144,7 +145,7 @@
 ;; Events
 ;; =============================================================================
 
-(defn- store-of [db] (get db :groundwork/store empty-store))
+(defn- store-of [db] (get db :groundwork/parquery-store empty-store))
 
 (defn- fetching
   "Start asking these keys: [store fetches], for the ::fetch effect."
@@ -180,7 +181,7 @@
                  (fn [{:keys [db]} [_ {:keys [shapes max-asks line]}]]
                    (http/set-shapes! shapes)
                    (when max-asks (http/set-max-asks! max-asks))
-                   {:db          (assoc db :groundwork/store empty-store)
+                   {:db          (assoc db :groundwork/parquery-store empty-store)
                     ::start-line (or line {})}))
 
 (rf/reg-event-fx ::ensure
@@ -188,7 +189,7 @@
                  (fn [{:keys [db now]} [_ owner asks]]
                    (let [[store ks]      (ensure-asks (collect (store-of db) now) owner asks)
                          [store fetches] (fetching store ks)]
-                     {:db     (assoc db :groundwork/store store)
+                     {:db     (assoc db :groundwork/parquery-store store)
                       ::fetch fetches
                       ::watch (watched store)})))
 
@@ -196,30 +197,30 @@
                  [(rf/inject-cofx ::now)]
                  (fn [{:keys [db now]} [_ owner]]
                    (let [store (collect (release-owner (store-of db) owner now) now)]
-                     {:db (assoc db :groundwork/store store) ::watch (watched store)})))
+                     {:db (assoc db :groundwork/parquery-store store) ::watch (watched store)})))
 
 (rf/reg-event-db ::-answered
                  (fn [db [_ k n answer]]
-                   (assoc db :groundwork/store (answered (store-of db) k n answer))))
+                   (assoc db :groundwork/parquery-store (answered (store-of db) k n answer))))
 
 (rf/reg-event-fx ::-changed
                  (fn [{:keys [db]} [_ forms]]
                    (let [store (changed (store-of db) forms)]
                      (if (:refresh-pending? store)
-                       {:db (assoc db :groundwork/store store)}
-                       {:db             (assoc db :groundwork/store (assoc store :refresh-pending? true))
+                       {:db (assoc db :groundwork/parquery-store store)}
+                       {:db             (assoc db :groundwork/parquery-store (assoc store :refresh-pending? true))
                         :dispatch-later [{:ms gather-ms :dispatch [::-refresh]}]}))))
 
 (rf/reg-event-fx ::-reconnected
                  (fn [{:keys [db]} _]
-                   {:db       (assoc db :groundwork/store (mark-all-stale (store-of db)))
+                   {:db       (assoc db :groundwork/parquery-store (mark-all-stale (store-of db)))
                     :dispatch [::-refresh]}))
 
 (rf/reg-event-fx ::-refresh
                  (fn [{:keys [db]} _]
                    (let [store           (assoc (store-of db) :refresh-pending? false)
                          [store fetches] (fetching store (stale-on-screen store))]
-                     {:db (assoc db :groundwork/store store) ::fetch fetches})))
+                     {:db (assoc db :groundwork/parquery-store store) ::fetch fetches})))
 
 (rf/reg-event-fx ::write
                  (fn [_ [_ ask on-answer]]
