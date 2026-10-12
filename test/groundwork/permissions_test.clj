@@ -148,7 +148,9 @@
 
 (deftest a-shared-record-belongs-to-both-scopes
   (is (may? pia :agreements/see [:agreement acme-agreement]) "through the partner's side")
-  (is (= #{acme partner} (perm/scopes-of *perms* [:agreement acme-agreement]))))
+  (is (= #{acme partner} (perm/scopes-of *perms* [:agreement acme-agreement])))
+  (testing "an id that arrives as text is the same record"
+    (is (= #{acme partner} (perm/scopes-of *perms* [:agreement (str acme-agreement)])))))
 
 (deftest a-person-on-the-record
   (is (may? kati :orders/see [:order acme-order]) "Kati's own order")

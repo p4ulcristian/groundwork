@@ -125,10 +125,17 @@
   (or (get-in description [:records kind])
       (throw (ex-info (str "No record kind " kind) {:type ::unknown-kind :kind kind}))))
 
+(defn- as-id
+  "An id as the database compares it: text that is a uuid becomes one (an id
+   out of JSON, or from an open part of a request), anything else stays."
+  [v]
+  (or (when (string? v) (parse-uuid v)) v))
+
 (defn allowed?
   "Whether a person may do an action on one record: [kind id]."
   [perms {:keys [person flags action] [kind id] :record}]
-  (let [{t :table id-col :id} (record-spec perms kind)
+  (let [id                    (as-id id)
+        {t :table id-col :id} (record-spec perms kind)
         {:keys [sql params]}  (rule perms action kind)]
     (and (some? person)
          (some? sql)
@@ -142,7 +149,8 @@
 (defn scopes-of
   "The scope ids a record belongs to, through its own columns."
   [perms [kind id]]
-  (let [{t :table id-col :id :as spec} (record-spec perms kind)
+  (let [id                             (as-id id)
+        {t :table id-col :id :as spec} (record-spec perms kind)
         arrows                         (let [in (:in spec)] (if (keyword? (first in)) [in] in))]
     (as-system perms
                (fn [tx]
