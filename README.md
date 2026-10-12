@@ -27,6 +27,8 @@ keywords → postgres → parquery → re-frame → reagent
 | background jobs   |                       | later ([#1](https://github.com/p4ulcristian/groundwork/issues/1)) |
 
 Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
+Every push runs the tests on GitHub ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)):
+the JVM tests against Postgres 18, clj-kondo, the browser half's tests on node.
 
 ---
 
@@ -634,6 +636,7 @@ and not saved to a file is gone on the next start.
   printed also in `.groundwork/dev.log` (the last run's kept as
   `dev.log.1`). The port goes to `.nrepl-port`. It needs `nrepl/nrepl` and
   `thheller/shadow-cljs` on the classpath, as an app's `:dev` alias has them.
+  An app's `.gitignore` lists `.groundwork/` and `.nrepl-port`.
 - **ask** goes through every check a browser's ask does; a write runs too,
   with a fresh one-time key.
 - **why** says it in plain words: the record's scope, the person's
