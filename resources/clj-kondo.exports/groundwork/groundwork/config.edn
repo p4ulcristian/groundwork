@@ -1,0 +1,2 @@
+{:lint-as {groundwork.postgres/defsql           clojure.core/declare
+           groundwork.postgres/with-transaction next.jdbc/with-transaction}}
