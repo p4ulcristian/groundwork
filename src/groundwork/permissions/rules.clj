@@ -36,7 +36,9 @@
    record's own columns.
 
    One rule becomes one SQL condition over the record's table (alias r): the
-   same text checks one record and filters a list."
+   same text checks one record and filters a list. The database wall uses the
+   same rules (see policy-sql): a transaction that runs for an action sees a
+   table's rows only as that action's rule allows."
   (:require
    [clojure.string :as str]
    [groundwork.names :as names]))
@@ -233,58 +235,100 @@
   [base [_ col]]
   (str base "." (quote-id (column col))))
 
+(defn sql-literal
+  "A value from the description as an SQL literal, for SQL Groundwork
+   installs (functions, policies) where nothing can be bound."
+  [v]
+  (cond
+    (string? v)                     (str "'" (str/replace v "'" "''") "'")
+    (boolean? v)                    (if v "TRUE" "FALSE")
+    (or (int? v) (decimal? v))      (str v)
+    (instance? java.util.UUID v)    (str "'" v "'::uuid")
+    :else (problem (str "A condition's value " (pr-str v) " must be a string, number, boolean or UUID")
+                   {:value v})))
+
+(defn- fill
+  "SQL with each ? replaced, in order, by the text for its param. Split
+   first, so a ? inside a value written in isn't taken for the next one."
+  [sql params text-of]
+  (let [parts (str/split sql #"\?" -1)]
+    (when-not (= (count parts) (inc (count params)))
+      (throw (ex-info "Params don't match the SQL's placeholders" {:sql sql :params params})))
+    (apply str (first parts) (mapcat (fn [p part] [(text-of p) part]) params (rest parts)))))
+
+(defn link-function
+  "The name of the database function a link is read through:
+   (person, action) → the scopes it reaches. Read inside it, the link's own
+   table isn't walled, and a policy that calls it stays free of the tables
+   behind it."
+  [{t :table :keys [from to] condition :when}]
+  (str "groundwork." (quote-id (str "link_scopes__" (table t) "__"
+                                    (format "%08x" (hash [(table t) from to condition]))))))
+
+(defn link-sql
+  "The statement that installs a link's function. Safe to run again."
+  [{:keys [from to] t :table condition :when :as link}]
+  (let [[when-sql when-params] (condition-sql "gwl" condition)
+        when-sql               (fill when-sql when-params sql-literal)]
+    ;; The bypass is on only while the link's own rows are read, then back
+    ;; to what it was; an error ends the transaction, and the setting with it.
+    (str "CREATE OR REPLACE FUNCTION " (link-function link) "(person uuid, action text)\n"
+         "RETURNS SETOF uuid LANGUAGE plpgsql AS $$\n"
+         "DECLARE before text := coalesce(current_setting('groundwork.bypass', true), '');\n"
+         "BEGIN\n"
+         "  PERFORM set_config('groundwork.bypass', 'on', true);\n"
+         "  RETURN QUERY SELECT gwl." (quote-id (column (second to))) " FROM " (quote-id (table t)) " gwl\n"
+         "    WHERE " when-sql "\n"
+         "      AND gwl." (quote-id (column (second from))) " IN (SELECT groundwork.scopes_holding(person, action));\n"
+         "  PERFORM set_config('groundwork.bypass', before, true);\n"
+         "END $$")))
+
 (defn compile-rule
   "The rule for an action on a kind of record, as {:sql … :params […]}: a
-   condition over the record's table under alias r. Params name the person
-   as :person, everything else is a value. nil when nothing can grant it."
-  [{:keys [records links] :as description} action kind]
-  (let [{:keys [people only-when] :as record} (records kind)
-        kinds                                 (action-kinds description)
-        action-kind                           (kinds action)
-        holding                               "IN (SELECT groundwork.scopes_holding(CAST(? AS uuid), ?))"
-        clauses
-        (concat
-         ;; the record's own scope, or one below the action's kind
-         (for [arrow (arrows record)
-               :let  [end (end-kind description kind arrow)]
-               :when (under? description end action-kind)]
-           [(str (scope-sql "r" arrow) " " holding) [:person (action-name action)]])
-         ;; a scope linked to the record's scope
-         (for [arrow                                      (arrows record)
-               :let                                       [end (end-kind description kind arrow)]
-               {:keys [from to grants] t :table condition :when} links
-               :let                                       [needed (grants action)]
-               :when                                      (and needed (= end (first to)))]
-           (let [[when-sql when-params] (condition-sql "gwl" condition)]
-             [(str (scope-sql "r" arrow)
-                   " IN (SELECT gwl." (quote-id (column (second to)))
-                   " FROM " (quote-id (table t)) " gwl WHERE " when-sql
-                   " AND gwl." (quote-id (column (second from))) " " holding ")")
-              (into when-params [:person (action-name needed)])]))
-         ;; a person on the record
-         (when-let [col (get people action)]
-           [[(str "r." (quote-id (column col)) " = CAST(? AS uuid)") [:person]]]))]
-    (when (seq clauses)
-      (let [granted        [(str "(" (str/join " OR " (map first clauses)) ")") (vec (mapcat second clauses))]
-            [sql params]   (if-let [condition (get only-when action)]
-                             (let [[c ps] (condition-sql "r" condition)]
-                               [(str (first granted) " AND " c) (into (second granted) ps)])
-                             granted)]
-        {:sql sql :params params}))))
+   condition over the record's table under `alias` (r unless given). Params
+   name the person as :person, everything else is a value. nil when nothing
+   can grant it."
+  ([description action kind] (compile-rule description action kind "r"))
+  ([{:keys [records links] :as description} action kind alias]
+   (let [{:keys [people only-when] :as record} (records kind)
+         kinds                                 (action-kinds description)
+         action-kind                           (kinds action)
+         holding                               "IN (SELECT groundwork.scopes_holding(CAST(? AS uuid), ?))"
+         clauses
+         (concat
+          ;; the record's own scope, or one below the action's kind
+          (for [arrow (arrows record)
+                :let  [end (end-kind description kind arrow)]
+                :when (under? description end action-kind)]
+            [(str (scope-sql alias arrow) " " holding) [:person (action-name action)]])
+          ;; a scope linked to the record's scope
+          (for [arrow                     (arrows record)
+                :let                      [end (end-kind description kind arrow)]
+                {:keys [to grants] :as link} links
+                :let                      [needed (grants action)]
+                :when                     (and needed (= end (first to)))]
+            [(str (scope-sql alias arrow) " IN (SELECT " (link-function link) "(CAST(? AS uuid), ?))")
+             [:person (action-name needed)]])
+          ;; a person on the record
+          (when-let [col (get people action)]
+            [[(str alias "." (quote-id (column col)) " = CAST(? AS uuid)") [:person]]]))]
+     (when (seq clauses)
+       (let [granted        [(str "(" (str/join " OR " (map first clauses)) ")") (vec (mapcat second clauses))]
+             [sql params]   (if-let [condition (get only-when action)]
+                              (let [[c ps] (condition-sql alias condition)]
+                                [(str (first granted) " AND " c) (into (second granted) ps)])
+                              granted)]
+         {:sql sql :params params})))))
 
 (defn linked-scope-clauses
   "Conditions on a scope id (the SQL `scope`) that hold when a link gives the
    action there: [[sql params] …], params naming the person as :person."
   [{:keys [links]} action scope]
-  (for [{:keys [from to grants] t :table condition :when} links
+  (for [{:keys [grants] :as link} links
         :let [needed (grants action)]
         :when needed]
-    (let [[when-sql when-params] (condition-sql "gwl" condition)]
-      [(str scope " IN (SELECT gwl." (quote-id (column (second to)))
-            " FROM " (quote-id (table t)) " gwl WHERE " when-sql
-            " AND gwl." (quote-id (column (second from)))
-            " IN (SELECT groundwork.scopes_holding(CAST(? AS uuid), ?)))")
-       (into when-params [:person (action-name needed)])])))
+    [(str scope " IN (SELECT " (link-function link) "(CAST(? AS uuid), ?))")
+     [:person (action-name needed)]]))
 
 (defn rules-of
   "Every rule a description can grant: {[action kind] {:sql :params}}. An
@@ -311,6 +355,71 @@
                         (str "groundwork.wall_allows(" (scope-sql base arrow) ")"))
                       (for [col (distinct (vals people))]
                         (str base "." (quote-id (column col)) " = groundwork.wall_person()"))))))
+
+(defn- member-wall-sql
+  "A row of a kind's table is visible to a member: its scope was verified
+   and the person belongs there (or above), or the row is the person's."
+  [{:keys [records]} kind]
+  (let [{t :table :keys [people] :as record} (records kind)
+        base                                 (quote-id (table t))]
+    (str/join " OR "
+              (concat (for [arrow (arrows record)]
+                        (str "groundwork.wall_member(" (scope-sql base arrow) ")"))
+                      (for [col (distinct (vals people))]
+                        (str base "." (quote-id (column col)) " = groundwork.wall_person()"))))))
+
+(defn- inline
+  "A compiled rule's SQL with its params written in: the person as the
+   transaction's own, values as literals."
+  [{:keys [sql params]}]
+  (fill sql params #(if (= :person %) "groundwork.wall_person()" (sql-literal %))))
+
+(defn policy-sql
+  "The database wall's policy for a record kind's table, {:using … :check …}.
+
+   A row is visible when one of its scopes was verified for the transaction
+   (or it's the person's own), and then: when the transaction runs for an
+   action with a rule on this kind, and is about this kind (or names no
+   kind, as a scope's endpoint), only as that rule allows: a link and its
+   condition, an only-when, a person column. Otherwise only to a member of
+   its scope (there or above), so what a link gives is the linked action on
+   the endpoint's own kind and nothing else there.
+
+   A writing transaction leaves only-when out: its own record was checked
+   with it before the write, and the changed row (which Postgres checks
+   against this too when the write returns it) needn't fit it any more. A
+   new or changed row must be in a verified scope, and of the kind the
+   action is about or one the person is a member for. The system sees and
+   writes everything."
+  [{:keys [records] :as description} rules kind]
+  (let [{t :table} (records kind)
+        base       (quote-id (table t))
+        actions    (sort (for [[[action k]] rules :when (= k kind)] action))
+        bypass     "coalesce(current_setting('groundwork.bypass', true), '') = 'on'"
+        writing    "coalesce(current_setting('groundwork.writing', true), '') = 'on'"
+        action-now "coalesce(current_setting('groundwork.action', true), '')"
+        about-this (str "coalesce(current_setting('groundwork.kind', true), '') IN ('', "
+                        (sql-literal (action-name kind)) ")")
+        member     (str "(" (member-wall-sql description kind) ")")
+        rule-sql   (fn [d a] (str "(" (inline (compile-rule d a kind base)) ")"))
+        without-ow (update-in description [:records kind] dissoc :only-when)
+        by-action  (fn [branch]
+                     (if (empty? actions)
+                       member
+                       (str "(CASE " action-now
+                            (apply str (for [a actions]
+                                         (str " WHEN " (sql-literal (action-name a))
+                                              " THEN (CASE WHEN " about-this " THEN " (branch a)
+                                              " ELSE " member " END)")))
+                            " ELSE " member " END)")))]
+    {:using (str "CASE WHEN " bypass " THEN TRUE ELSE (" (wall-sql description kind) ") AND "
+                 (by-action (fn [a]
+                              (if (get-in records [kind :only-when a])
+                                (str "(CASE WHEN " writing " THEN " (rule-sql without-ow a)
+                                     " ELSE " (rule-sql description a) " END)")
+                                (rule-sql description a))))
+                 " END")
+     :check (str "(" (wall-sql description kind) ") AND " (by-action (constantly "TRUE")))}))
 
 (defn scope-columns
   "Every record table's scope columns, as plain names: each must be NOT NULL."

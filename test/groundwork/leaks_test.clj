@@ -104,8 +104,8 @@
 (deftest sealed-endpoints-pass
   (let [report (leaks/check (part sealed) {:person peter :foreign foreign})]
     (is (= [] (:leaked report)))
-    (is (= [:notes/move :notes/of-shop :notes/one] (:checked report)))
-    (is (= #{:notes/mine :site/hello :groundwork/grants} (set (keys (:skipped report)))))
+    (is (= [:notes/mine :notes/move :notes/of-shop :notes/one] (:checked report)))
+    (is (= #{:site/hello :groundwork/grants} (set (keys (:skipped report)))))
     (testing "the partner's member, through an ended link: nothing"
       (is (= [] (:leaked (leaks/check (part sealed) {:person pia :foreign foreign})))))))
 

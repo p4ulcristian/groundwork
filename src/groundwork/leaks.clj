@@ -21,6 +21,9 @@
    and signed-in endpoints carry no ids and are skipped too. Writes are
    called like reads: they're refused before they run, or they leak.
 
+   A list carries no ids: it's called as it is, and its answer must hold
+   none of the foreign ids, anywhere in it.
+
    Generating needs org.clojure/test.check on the test classpath."
   (:require
    [clojure.walk :as walk]
@@ -50,6 +53,13 @@
                            x))
                        params)))))
 
+(defn- holds-any?
+  "Whether data holds any of the ids, at any depth."
+  [data ids]
+  (let [found (volatile! false)]
+    (walk/postwalk (fn [x] (when (contains? ids x) (vreset! found true)) x) data)
+    @found))
+
 (defn check
   "Call every endpoint with another scope's ids. Returns {:checked [names]
    :skipped {name reason} :leaked [{:endpoint :params :answer}]}."
@@ -61,7 +71,14 @@
                 (assoc-in report [:skipped k] "carries no ids")
 
                 (and (:list permission) (empty? (:ids entry)))
-                (assoc-in report [:skipped k] "lists what the person may see; carries no ids")
+                (let [generated (try (generate (:input entry)) (catch Exception e e))]
+                  (if (instance? Exception generated)
+                    (assoc-in report [:skipped k] (str "its input can't be generated: " (ex-message generated)))
+                    (let [answer (endpoints/call part {:endpoint k :params generated :person person
+                                                       :flags (or flags #{}) :request-id "leak-test"})]
+                      (if (and (= :ok (:status answer)) (holds-any? (:data answer) (set (vals foreign))))
+                        (update report :leaked conj {:endpoint k :params generated :answer answer})
+                        (update report :checked conj k)))))
 
                 :else
                 (let [generated (try (generate (:input entry)) (catch Exception e e))]

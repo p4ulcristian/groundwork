@@ -429,7 +429,7 @@ The app describes its places, actions, roles and records once:
 (perm/allowed? perms {:person p :flags #{} :action :jobs/move :record [:job id]})
 (perm/check! perms {… :also {:machine [machine-id]}})   ; every id; else not-found
 (perm/list-filter perms {:person p :flags #{} :action :orders/see :kind :order})
-(perm/in-wall perms {:person p :scopes #{shop-id}} (fn [tx] …))
+(perm/in-wall perms {:person p :scopes #{shop-id} :action :orders/see :kind :order} (fn [tx] …))
 (perm/as-system perms (fn [tx] …))
 ```
 
@@ -456,6 +456,16 @@ The app describes its places, actions, roles and records once:
 - **The wall:** every record table gets forced row-level security at start.
   A transaction sees only its verified scopes and the person's own records,
   or everything as the system. Both last one transaction and can't nest.
+- **The wall knows the action.** An endpoint's transaction carries its
+  action and the kind of record it's about, so a list's SQL needs no
+  permission `WHERE`: that kind's rows show only as the action's rule allows
+  (a link and its condition, an only-when, a person column), and every
+  other kind only where the person is a member. What a link gives is the
+  linked action on the endpoint's own kind, nothing else of that scope; a
+  customer asking for their order sees no other. A write leaves only-when
+  out for the rows it changes: its own record was checked before it ran.
+  Links are read through functions Groundwork installs at start, so the
+  database's rules never loop through the tables behind them.
 - **Team:** `create-scope!`, `invite!`, `accept-invitation!`,
   `change-role!`, `create-role!`, `set-role-actions!`, `remove-member!`,
   `grant-extra!`, `revoke-extra!`. Managing needs `:groundwork/team`, and
@@ -580,6 +590,8 @@ POST /parquery
   from its input shape and every id set to the foreign one of its kind; it
   must answer not-found. It catches a permission description that grants
   too much, like a link whose condition forgot the status.
-- Public, signed-in and id-less list endpoints are skipped, and so is one
-  that needs a foreign id nobody gave; the report says which and why.
+- A list that carries no ids is called as it is; its answer must hold none
+  of the foreign ids, anywhere in it.
+- Public and signed-in endpoints are skipped, and so is one that needs a
+  foreign id nobody gave; the report says which and why.
 - Generating needs `org.clojure/test.check` on the test classpath.

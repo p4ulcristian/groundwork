@@ -75,14 +75,21 @@
 
 (defn in-wall
   "Run (f tx) in its own transaction that sees only rows of `scopes` (the
-   ones verified for this request) and the person's own records. With
-   :read-only? true, the transaction can't change anything."
-  [perms {:keys [person scopes read-only?]} f]
+   ones verified for this request) and the person's own records. With an
+   :action and the :kind of record it's about, that kind shows only the rows
+   the action's rule allows (without a kind, every kind the action has a
+   rule for); every other kind only rows of the scopes the person is a
+   member of. See rules/policy-sql. With :read-only? true, the transaction
+   can't change anything."
+  [perms {:keys [person scopes action kind read-only?]} f]
   (own-transaction perms
                    {:read-only? (boolean read-only?)}
                    (fn [tx]
-                     (pg/execute! tx set-wall {:scopes (str "{" (str/join "," scopes) "}")
-                                               :person (if person (str person) "")})
+                     (pg/execute! tx set-wall {:scopes  (str "{" (str/join "," scopes) "}")
+                                               :person  (if person (str person) "")
+                                               :action  (if action (rules/action-name action) "")
+                                               :kind    (if kind (rules/action-name kind) "")
+                                               :writing (if read-only? "" "on")})
                      (f tx))))
 
 (defn- query
@@ -489,18 +496,22 @@
 
 (defn install-wall!
   "Row-level security on every record kind's table: its own rows are
-   visible only through the wall. Forced, so the tables' owner is held to it
-   too. Run at start; safe to run again."
-  [{:keys [db description]}]
+   visible only through the wall, by the transaction's scopes and action
+   (rules/policy-sql). Forced, so the tables' owner is held to it too. The
+   links' functions first, which the rules call. Run at start; safe to run
+   again."
+  [{:keys [db description rules]}]
   (pg/with-transaction [tx db]
+    (doseq [link (:links description)]
+      (jdbc/execute! (::pg/conn tx) [(rules/link-sql link)]))
     (doseq [[kind {t :table}] (:records description)
-            :let [table (rules/quote-table t)
-                  wall  (rules/wall-sql description kind)]]
+            :let [table                 (rules/quote-table t)
+                  {:keys [using check]} (rules/policy-sql description rules kind)]]
       (jdbc/execute! (::pg/conn tx) [(str "ALTER TABLE " table " ENABLE ROW LEVEL SECURITY")])
       (jdbc/execute! (::pg/conn tx) [(str "ALTER TABLE " table " FORCE ROW LEVEL SECURITY")])
       (jdbc/execute! (::pg/conn tx) [(str "DROP POLICY IF EXISTS groundwork_wall ON " table)])
       (jdbc/execute! (::pg/conn tx) [(str "CREATE POLICY groundwork_wall ON " table
-                                          " USING (" wall ") WITH CHECK (" wall ")")]))))
+                                          " USING (" using ") WITH CHECK (" check ")")]))))
 
 (defn install-fill!
   "On every record table under another record, a rule that fills a row's

@@ -387,7 +387,9 @@
                 (answer :too-many :retry-after-seconds retry-after-seconds)
                 (let [files (atom #{})
                       data  (permissions/in-wall
-                            perms {:person person :scopes scopes :read-only? (:read? entry)}
+                            perms (let [{:keys [action record list]} (when (map? (:permission entry)) (:permission entry))]
+                                    {:person person :scopes scopes :read-only? (:read? entry)
+                                     :action action :kind (or (first record) list)})
                             (fn [tx]
                               (let [tx  (cond-> tx (:read? entry) (assoc ::pg/on-query (collecting files (::pg/on-query tx))))
                                     ctx (assoc ask :db tx :scopes scopes :flags flags :params decoded)
