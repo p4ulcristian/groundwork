@@ -16,7 +16,7 @@ keywords → postgres → parquery → re-frame → reagent
 | db                | `groundwork.postgres` | built on next.jdbc + PgJDBC + HikariCP |
 | endpoints         | `groundwork.endpoints` | built |
 | parquery          | `groundwork.parquery.*` | built: HTTP and the bells |
-| parquery, browser |                       |        |
+| parquery, browser | `groundwork.parquery.*`, `groundwork.store` (cljs) | built on re-frame |
 | server            | `groundwork.server`   | built on http-kit |
 | router            | `groundwork.web`      | built on reitit |
 | migrations        | `groundwork.migrations` | built |
@@ -537,3 +537,31 @@ POST /parquery
  {"endpoint": "jobs/move", "params": {…}, "key": "…"}]
 → [{"status": "ok", "data": […]}, {"status": "not-found"}]
 ```
+
+### In the browser
+
+```clojure
+(rf/dispatch [::store/start {:shapes app.shapes/endpoints}])   ; the same shapes as the server's (.cljc)
+(rf/dispatch [::store/ensure :jobs-page [{:endpoint :jobs/list :params {:shop/id id}}]])
+@(rf/subscribe [::store/answer {:endpoint :jobs/list :params {:shop/id id}}])   ;=> {:status :ready :data […]}
+(rf/dispatch [::store/release :jobs-page])
+(rf/dispatch [::store/write {:endpoint :jobs/move :params {…}} [:jobs/moved]])
+@(rf/subscribe [::store/can? :jobs/move shop-id])
+```
+
+- `parquery/http` (cljs): the asks of one moment travel in one POST; each
+  answer comes back typed by its shape.
+- `parquery/websocket` (cljs): one line for the visit; it sends what's on
+  screen and hears what changed; a dropped line comes back by itself and
+  asks everything on screen again.
+- `groundwork.store`: answers kept by question in re-frame's db. A screen
+  says what it needs when it opens and lets go when it closes; showing
+  never fetches. Old data stays while a fresh answer loads; only the newest
+  answer counts; bells are gathered for 200 ms and only what's on screen is
+  asked again; an entry nothing needs goes after five minutes. Writes are
+  sent once, with a one-time key.
+- "Can I?" reads `:groundwork/grants`.
+- Dates come back as js-joda values, decimals as big.js (exact; trailing
+  zeros aren't kept). An app's build needs the npm packages in
+  `src/deps.cljs`.
+- Tests: `npm install && npx shadow-cljs compile test` (headless, on node).

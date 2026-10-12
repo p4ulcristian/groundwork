@@ -29,7 +29,8 @@
    [malli.registry :as mr]
    [malli.transform :as mt]
    #?(:clj [jsonista.core :as json])
-   #?(:cljs ["big.js" :as Big])))
+   #?(:cljs ["big.js" :default Big])
+   #?(:cljs ["@js-joda/core" :as js-joda])))
 
 ;; =============================================================================
 ;; Shapes
@@ -103,6 +104,27 @@
   "Why a value doesn't fit its shape, readable."
   [s value]
   (me/humanize (m/explain (schema s) value)))
+
+(defn parse-date
+  "A day from its ISO text, \"2026-11-15\": a LocalDate on both sides."
+  [s]
+  #?(:clj (java.time.LocalDate/parse s) :cljs (.parse (.-LocalDate js-joda) s)))
+
+(defn parse-instant
+  "A moment from its ISO text, \"2026-10-12T10:00:00Z\"."
+  [s]
+  #?(:clj (java.time.Instant/parse s) :cljs (.parse (.-Instant js-joda) s)))
+
+(defn decimal
+  "An exact decimal from its text, \"12.30\". In the browser (big.js) the
+   value stays exact, but trailing zeros aren't kept: it reads 12.3."
+  [s]
+  #?(:clj (BigDecimal. ^String s) :cljs (Big. s)))
+
+(defn decimal-text
+  "An exact decimal as text."
+  [d]
+  #?(:clj (.toPlainString ^BigDecimal d) :cljs (.toString d)))
 
 ;; =============================================================================
 ;; JSON text

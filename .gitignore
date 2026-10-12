@@ -2,3 +2,6 @@
 .nrepl-port
 .clj-kondo/.cache/
 .lsp/
+node_modules/
+out/
+.shadow-cljs/

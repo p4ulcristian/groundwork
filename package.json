@@ -1,0 +1,17 @@
+{
+  "name": "groundwork",
+  "private": true,
+  "description": "Groundwork's browser half: its npm dependencies and the ClojureScript test build",
+  "scripts": {
+    "test": "shadow-cljs compile test"
+  },
+  "dependencies": {
+    "@js-joda/core": "6.3.0",
+    "big.js": "7.0.1",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "shadow-cljs": "3.5.5"
+  }
+}
