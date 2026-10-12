@@ -11,7 +11,7 @@
      :db           the database, see groundwork.postgres/start
      :migrations   see groundwork.migrations/start
      :page         see groundwork.page
-     :routes       the app's routes, as reitit data; see groundwork.web
+     :web          the app's routes and how requests are handled; see groundwork.web
      :server       see groundwork.server
      :sessions     see groundwork.sessions
      :permissions  the app's permission description, see groundwork.permissions.rules
@@ -59,7 +59,7 @@
    :groundwork/page       {:settings :page
                            :needs    []
                            :start    page/start}
-   :groundwork/router     {:settings :routes
+   :groundwork/router     {:settings :web
                            :needs    [:groundwork/migrations :groundwork/sessions :groundwork/permissions
                                       :groundwork/page]
                            :start    web/start}

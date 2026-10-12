@@ -14,7 +14,7 @@
 
 (deftest settings-are-checked
   (testing "a missing setting throws, naming every one that is missing"
-    (is (= {:type ::gw/missing-settings :missing [:environment :db :migrations :sessions :permissions :page :routes :server]}
+    (is (= {:type ::gw/missing-settings :missing [:environment :db :migrations :sessions :permissions :page :web :server]}
            (error #(gw/start {})))))
   (testing "an unknown setting throws, so a typo can't go unnoticed"
     (is (= {:type ::gw/unknown-settings :unknown [:dbb]}

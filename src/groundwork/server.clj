@@ -23,14 +23,16 @@
                     {:type ::bad-setting :setting :port :value port}))))
 
 (defn start
-  "The server part: serves the router's handler. Returns the running server."
+  "The server part: serves the router's handler, reading no body larger than
+   the largest any route accepts. Returns the running server."
   [{:keys [settings router]}]
   (check-settings settings)
   (let [workers (Executors/newVirtualThreadPerTaskExecutor)]
-    {::server  (http/run-server router {:ip                   (:ip settings)
-                                        :port                 (:port settings)
-                                        :worker-pool          workers
-                                        :legacy-return-value? false})
+    {::server  (http/run-server (:handler router) {:ip                   (:ip settings)
+                                                   :port                 (:port settings)
+                                                   :max-body             (:max-body-bytes router)
+                                                   :worker-pool          workers
+                                                   :legacy-return-value? false})
      ::workers workers}))
 
 (defn port

@@ -35,7 +35,7 @@
 
 (use-fixtures :once
   (fn [t]
-    (let [app (gw/start (assoc app-settings :routes routes))]
+    (let [app (gw/start (assoc-in app-settings [:web :routes] routes))]
       (try (binding [*app* app] (t))
            (finally (gw/stop app))))))
 

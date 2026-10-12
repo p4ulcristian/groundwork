@@ -24,12 +24,22 @@
                                              {:status 200
                                               :body   (pr-str [(sessions/person request)
                                                                (contains? request ::sessions/sessions)])})
-                         :server-to-server true}]])
+                         :server-to-server true}]
+   ["/api/form" {:post (fn [request] {:status 200 :body (pr-str (:form-params request))})}]
+   ["/api/upload" {:post           (fn [request]
+                                     {:status 200
+                                      :body   (pr-str (-> (get-in request [:multipart-params "file"])
+                                                          (select-keys [:filename :content-type :real-type :size])))})
+                   :max-body-bytes 3000000}]
+   ["/hooks/raw" {:post             (fn [request]
+                                      {:status 200
+                                       :body   (pr-str [(slurp (:body request)) (:form-params request)])})
+                  :server-to-server true}]])
 
 (use-fixtures :once
   (fn [t]
     (let [app (gw/start (-> app-settings
-                            (assoc :routes routes)
+                            (assoc-in [:web :routes] routes)
                             (assoc-in [:page :title] "Acme <Coating> & Co")))]
       (try (binding [*app* app] (t))
            (finally (gw/stop app))))))
@@ -38,9 +48,12 @@
 
 (defn- request
   ([path] (request path {}))
-  ([path {:keys [method headers] :or {method "GET"}}]
-   (let [builder (-> (HttpRequest/newBuilder (URI. (str "http://127.0.0.1:" (gw/port *app*) path)))
-                     (.method method (HttpRequest$BodyPublishers/noBody)))]
+  ([path {:keys [method headers body] :or {method "GET"}}]
+   (let [publisher (cond (nil? body)    (HttpRequest$BodyPublishers/noBody)
+                         (string? body) (HttpRequest$BodyPublishers/ofString body)
+                         :else          (HttpRequest$BodyPublishers/ofByteArray body))
+         builder   (-> (HttpRequest/newBuilder (URI. (str "http://127.0.0.1:" (gw/port *app*) path)))
+                       (.method method publisher))]
      (doseq [[k v] headers] (.header builder k v))
      (let [response (.send client (.build builder) (HttpResponse$BodyHandlers/ofString))]
        {:status  (.statusCode response)
@@ -83,7 +96,7 @@
 
 (deftest a-route-declares-embeddable-properly
   (is (= ::web/bad-route
-         (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :embeddable ["shop.example"]}]]
+         (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :embeddable ["shop.example"]}]] :max-body-bytes 1000
                                             :page (fn [_]) :sessions {} :environment :test})
                               (catch Exception e e)))))))
 
@@ -96,6 +109,62 @@
     (is (= 403 (:status (request "/api/echo" {:method "POST"}))))
     (is (= 200 (:status (request "/api/echo" {:method  "POST"
                                               :headers {"Origin" (:origin (:sessions app-settings))}}))))))
+
+(def ^:private own-origin {"Origin" (:origin (:sessions app-settings))})
+
+(defn- multipart
+  "A multipart body with one file: [content-type bytes]."
+  [filename claimed-type ^bytes content]
+  (let [boundary "gwboundary7MA4YWxkTrZu0gW"
+        out      (java.io.ByteArrayOutputStream.)
+        write    #(.write out (.getBytes ^String % "UTF-8"))]
+    (write (str "--" boundary "\r\n"
+                "Content-Disposition: form-data; name=\"file\"; filename=\"" filename "\"\r\n"
+                "Content-Type: " claimed-type "\r\n\r\n"))
+    (.write out content)
+    (write (str "\r\n--" boundary "--\r\n"))
+    [(str "multipart/form-data; boundary=" boundary) (.toByteArray out)]))
+
+(def ^:private png (byte-array (concat [0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A] (repeat 100 0))))
+
+(deftest request-bodies
+  (testing "a form is parsed"
+    (is (= "{\"color\" \"RAL 9005\"}"
+           (:body (request "/api/form" {:method  "POST"
+                                        :headers (assoc own-origin "Content-Type" "application/x-www-form-urlencoded")
+                                        :body    "color=RAL+9005"})))))
+  (testing "a file is kept with the type its bytes are, whatever the browser said"
+    (let [[content-type body] (multipart "drawing.pdf" "application/pdf" png)]
+      (is (= {:filename "drawing.pdf" :content-type "application/pdf" :real-type "image/png" :size 108}
+             (read-string (:body (request "/api/upload" {:method  "POST"
+                                                         :headers (assoc own-origin "Content-Type" content-type)
+                                                         :body    body})))))))
+  (testing "no body over the route's limit"
+    (is (= 413 (:status (request "/api/form" {:method  "POST"
+                                              :headers (assoc own-origin "Content-Type" "application/x-www-form-urlencoded")
+                                              :body    (apply str "a=" (repeat 1100000 "x"))}))))
+    (let [[content-type body] (multipart "big.bin" "application/octet-stream" (byte-array 2000000))]
+      (is (= 200 (:status (request "/api/upload" {:method  "POST"
+                                                  :headers (assoc own-origin "Content-Type" content-type)
+                                                  :body    body})))
+          "an upload route takes more"))
+    (let [[content-type body] (multipart "huge.bin" "application/octet-stream" (byte-array 3500000))]
+      (is (= 413 (:status (request "/api/upload" {:method  "POST"
+                                                  :headers (assoc own-origin "Content-Type" content-type)
+                                                  :body    body}))))))
+  (testing "a server-to-server route gets its body untouched"
+    (is (= ["a=1&b=2" nil]
+           (read-string (:body (request "/hooks/raw" {:method  "POST"
+                                                      :headers {"Content-Type" "application/x-www-form-urlencoded"}
+                                                      :body    "a=1&b=2"})))))))
+
+(deftest file-types-come-from-their-bytes
+  (is (= "image/png" (web/sniff-type png)))
+  (is (= "image/jpeg" (web/sniff-type (byte-array [0xFF 0xD8 0xFF 0xE0 0 0]))))
+  (is (= "application/pdf" (web/sniff-type (.getBytes "%PDF-1.7 …"))))
+  (is (= "image/heic" (web/sniff-type (.getBytes "\u0000\u0000\u0000\u0018ftypheic\u0000\u0000"))))
+  (is (= "model/step" (web/sniff-type (.getBytes "ISO-10303-21;\nHEADER;"))))
+  (is (nil? (web/sniff-type (.getBytes "just text")))))
 
 (deftest a-browser-gets-the-page-for-any-other-path
   (doseq [path ["/" "/shops/7/orders"]]

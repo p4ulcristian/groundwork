@@ -16,15 +16,31 @@
    Every other route is a browser route: it gets the session, and a request
    that changes something must come from the app's own pages.
 
+   Request bodies: none may be larger than :max-body-bytes, or a route's own
+   [\"/uploads\" {:post upload :max-body-bytes 104857600}]; a larger one is
+   refused with 413. A browser route's form body is parsed into :form-params,
+   a multipart one into :multipart-params, its files kept as temporary files
+   (deleted after an hour) with the type their bytes really are under
+   :real-type (see sniff-type), whatever the browser claimed. Other bodies,
+   like JSON, and every server-to-server route's body stay untouched, so a
+   webhook can check a signature over the exact bytes.
+
    Every answer carries the standard security headers, and no page may be
    framed by another site unless its route is :embeddable. In production also
    Strict-Transport-Security. Files are revalidated on every load (a 304 when
    unchanged), so a deploy is never hidden behind a stale cache."
   (:require
    [clojure.string :as str]
+   [clojure.walk :as walk]
    [groundwork.sessions :as sessions]
    [reitit.ring :as ring]
-   [ring.middleware.not-modified :refer [wrap-not-modified]]))
+   [ring.middleware.multipart-params :refer [wrap-multipart-params]]
+   [ring.middleware.multipart-params.temp-file :refer [temp-file-store]]
+   [ring.middleware.not-modified :refer [wrap-not-modified]]
+   [ring.middleware.params :refer [wrap-params]])
+  (:import
+   (java.io File FileInputStream InputStream)
+   (java.nio.charset StandardCharsets)))
 
 ;; =============================================================================
 ;; Security headers and frames
@@ -100,6 +116,102 @@
                 #(sessions/wrap-sessions % sessions (some? embeddable))))})
 
 ;; =============================================================================
+;; Request bodies
+;; =============================================================================
+
+(defn- ascii [^bytes b from to]
+  (when (<= to (alength b))
+    (String. b (int from) (int (- to from)) StandardCharsets/ISO_8859_1)))
+
+(defn- starts-with-bytes? [^bytes b & xs]
+  (and (<= (count xs) (alength b))
+       (every? true? (map-indexed (fn [i x] (= (unchecked-byte x) (aget b i))) xs))))
+
+(defn sniff-type
+  "The type a file's first bytes say it is, or nil when they say nothing we
+   know. Trust this, not the name or the type the browser sent."
+  [^bytes head]
+  (let [brand (when (= "ftyp" (ascii head 4 8)) (ascii head 8 12))
+        text  (ascii head 0 (min 512 (alength head)))]
+    (cond
+      (starts-with-bytes? head 0x89 0x50 0x4E 0x47)           "image/png"
+      (starts-with-bytes? head 0xFF 0xD8 0xFF)                "image/jpeg"
+      (= "GIF8" (ascii head 0 4))                             "image/gif"
+      (and (= "RIFF" (ascii head 0 4)) (= "WEBP" (ascii head 8 12))) "image/webp"
+      (= "%PDF" (ascii head 0 4))                             "application/pdf"
+      (starts-with-bytes? head 0x50 0x4B 0x03 0x04)           "application/zip"
+      (= "glTF" (ascii head 0 4))                             "model/gltf-binary"
+      (#{"heic" "heix" "hevc" "hevx" "heim" "heis"} brand)    "image/heic"
+      (#{"mif1" "msf1"} brand)                                "image/heif"
+      (#{"avif" "avis"} brand)                                "image/avif"
+      (= "qt  " brand)                                        "video/quicktime"
+      (some? brand)                                           "video/mp4"
+      (some-> text (str/starts-with? "ISO-10303-21"))         "model/step"
+      (some-> text (str/starts-with? "solid "))               "model/stl"
+      (some-> text str/triml (str/starts-with? "<svg"))       "image/svg+xml"
+      (and text (str/starts-with? (str/triml text) "<?xml") (str/includes? text "<svg")) "image/svg+xml"
+      :else                                                   nil)))
+
+(defn- file-head ^bytes [^File file]
+  (with-open [in (FileInputStream. file)]
+    (let [buf (byte-array 512)
+          n   (.read in buf)]
+      (if (pos? n) (java.util.Arrays/copyOf buf n) (byte-array 0)))))
+
+(defn- with-real-types [params]
+  (walk/postwalk (fn [x]
+                   (if (and (map? x) (instance? File (:tempfile x)))
+                     (assoc x :real-type (sniff-type (file-head (:tempfile x))))
+                     x))
+                 params))
+
+(defn- too-large [_request]
+  {:status 413 :headers {"Content-Type" "text/plain; charset=utf-8"} :body "Too large"})
+
+(defn- body-size
+  "How many bytes the body has: Content-Length, or what the server read."
+  [{:keys [headers body]}]
+  (or (some-> (get headers "content-length") parse-long)
+      (when (instance? InputStream body) (.available ^InputStream body))
+      0))
+
+(defn- body-middleware
+  "Every route: no body over its limit. Browser routes: forms and multipart
+   parsed, files typed by their bytes."
+  [default-limit]
+  {:name    ::body
+   :compile (fn [{:keys [max-body-bytes server-to-server]} {::keys [path]}]
+              (when-not (or (nil? max-body-bytes) (pos-int? max-body-bytes))
+                (throw (ex-info (str "Route " path ": :max-body-bytes must be a positive integer")
+                                {:type ::bad-route :path path :max-body-bytes max-body-bytes})))
+              (let [limit (or max-body-bytes default-limit)]
+                (fn [handler]
+                  (let [parsed (if server-to-server
+                                 handler
+                                 (-> (fn [request]
+                                       (handler (cond-> request
+                                                  (:multipart-params request)
+                                                  (update :multipart-params with-real-types))))
+                                     (wrap-multipart-params {:store         (temp-file-store {:expires-in 3600})
+                                                             :max-file-size limit})
+                                     wrap-params))]
+                    (fn [request]
+                      (if (> (body-size request) limit)
+                        (too-large request)
+                        (parsed request)))))))})
+
+(defn- largest-body
+  "The largest body any route accepts: the server reads no more than this."
+  [routes default-limit]
+  (let [limits (atom [default-limit])]
+    (walk/postwalk (fn [x]
+                     (when (and (map? x) (pos-int? (:max-body-bytes x)))
+                       (swap! limits conj (:max-body-bytes x)))
+                     x)
+                   routes)
+    (apply max @limits)))
+
+;; =============================================================================
 ;; Files, the page, the rest
 ;; =============================================================================
 
@@ -128,17 +240,32 @@
   []
   [])
 
+(def ^:private settings [:routes :max-body-bytes])
+
+(defn- check-settings [opts]
+  (when-not (map? opts)
+    (throw (ex-info ":web must be a map" {:type ::bad-setting :setting :web :value opts})))
+  (when-let [missing (seq (remove #(contains? opts %) settings))]
+    (throw (ex-info (str ":web needs " (str/join " " missing))
+                    {:type ::missing-settings :missing (vec missing)})))
+  (let [{:keys [routes max-body-bytes]} opts]
+    (when-not (vector? routes)
+      (throw (ex-info ":routes must be a vector of reitit routes"
+                      {:type ::bad-setting :setting :routes :value routes})))
+    (when-not (pos-int? max-body-bytes)
+      (throw (ex-info ":max-body-bytes must be a positive integer"
+                      {:type ::bad-setting :setting :max-body-bytes :value max-body-bytes})))))
+
 (defn handler
-  "The app's Ring handler."
-  [{:keys [routes page sessions environment]}]
-  (when-not (vector? routes)
-    (throw (ex-info ":routes must be a vector of reitit routes"
-                    {:type ::bad-setting :setting :routes :value routes})))
+  "The app's Ring handler, for settings already checked."
+  [{:keys [routes max-body-bytes page sessions environment]}]
   (let [files  (-> (ring/create-resource-handler {:path "/" :root "public"})
                    wrap-file-caching
                    wrap-not-modified)
         router (ring/router (into (groundwork-routes) routes)
-                            {:data    {:middleware [embeddable-middleware (sessions-middleware sessions)]}
+                            {:data    {:middleware [embeddable-middleware
+                                                    (body-middleware max-body-bytes)
+                                                    (sessions-middleware sessions)]}
                              ;; the path, for errors in a route's data
                              :compile (fn [[path data] opts]
                                         (ring/compile-result [path data] (assoc opts ::path path)))})
@@ -151,6 +278,9 @@
         (wrap-security-headers environment))))
 
 (defn start
-  "The router part."
+  "The router part: {:handler … :max-body-bytes …}, the most any route
+   accepts, which the server reads at most."
   [{:keys [settings environment page sessions]}]
-  (handler {:routes settings :page page :sessions sessions :environment environment}))
+  (check-settings settings)
+  {:handler        (handler (assoc settings :page page :sessions sessions :environment environment))
+   :max-body-bytes (largest-body (:routes settings) (:max-body-bytes settings))})

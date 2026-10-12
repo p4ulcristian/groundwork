@@ -36,10 +36,11 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
                     :migrations  {:schema-snapshot "schema.sql"}
                     :page        {:lang "en" :title "Acme Coating" :icon "/icon.svg"
                                   :stylesheets ["/app.css"] :script "/js/main.js" :head []}
-                    :routes      [["/health" {:get (fn [_] {:status 200 :body "ok"})}]]
+                    :web         {:routes         [["/orders" {:get web/page}]]
+                                  :max-body-bytes 1048576}     ; see Server, routes and the page
                     :server      {:ip "0.0.0.0" :port 8080}
-                    :sessions    {:cookie-name "acme_session" :max-age-days 30 :secure? true
-                                  :origin "https://app.acme.example"}
+                    :sessions    {:cookie-name "acme_session" :max-age-days 30 :visitor-hours 24
+                                  :secure? true :origin "https://app.acme.example"}
                     :permissions {…}}))   ; see Permissions
 (gw/stop app)
 ```
@@ -238,7 +239,16 @@ resources/migrations/
 ## 4. Server, routes and the page
 
 - **Server:** http-kit; every request runs on its own virtual thread.
-- **Routes:** the app's `:routes` are reitit data, next to Groundwork's own.
+- **Routes:** the app's `:web :routes` are reitit data, next to Groundwork's own.
+- **Request bodies:** none larger than `:max-body-bytes`, or a route's own
+  (`["/uploads" {:post upload :max-body-bytes 104857600}]`); larger is 413,
+  and the server never reads more than the largest any route accepts. A
+  browser route's form is parsed into `:form-params`, multipart into
+  `:multipart-params`: each file a temporary file (deleted after an hour)
+  with `:real-type`, what its bytes really are (`web/sniff-type`), whatever
+  name or type the browser gave. JSON and every server-to-server route's
+  body stay untouched, so a webhook can check its signature. Storing files is
+  the app's.
 - **Files:** from `resources/public`, revalidated on every load (304 when
   unchanged), so a deploy is never hidden behind a stale cache.
 - **The page:** any other page a browser asks for gets the page shell, and

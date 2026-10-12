@@ -46,7 +46,8 @@
    :migrations  {:schema-snapshot nil}
    :page        {:lang "en" :title "Test" :icon "/icon.svg" :stylesheets ["/app.css"]
                  :script "/js/main.js" :head []}
-   :routes      []
+   :web         {:routes         []
+                 :max-body-bytes 1048576}
    :server      {:ip "127.0.0.1" :port port}
    :sessions    {:cookie-name "gw_session" :max-age-days 30 :visitor-hours 24 :secure? false
                  :origin (str "http://127.0.0.1:" port)}
