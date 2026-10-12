@@ -150,7 +150,9 @@
   (is (may? pia :agreements/see [:agreement acme-agreement]) "through the partner's side")
   (is (= #{acme partner} (perm/scopes-of *perms* [:agreement acme-agreement])))
   (testing "an id that arrives as text is the same record"
-    (is (= #{acme partner} (perm/scopes-of *perms* [:agreement (str acme-agreement)])))))
+    (is (= #{acme partner} (perm/scopes-of *perms* [:agreement (str acme-agreement)]))))
+  (testing "text that is no id is no record, not an error"
+    (is (= #{} (perm/scopes-of *perms* [:agreement "new-1"])))))
 
 (deftest a-person-on-the-record
   (is (may? kati :orders/see [:order acme-order]) "Kati's own order")

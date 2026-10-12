@@ -131,6 +131,13 @@
   [v]
   (or (when (string? v) (parse-uuid v)) v))
 
+(defn- id-is
+  "The SQL for \"this record's id column is ?\". Text that isn't a uuid (an
+   id a client made up) is compared as text, so on a uuid column it matches
+   nothing instead of failing the statement."
+  [id-col id]
+  (str "r." (rules/quote-column id-col) (if (string? id) "::text = ?" " = ?")))
+
 (defn allowed?
   "Whether a person may do an action on one record: [kind id]."
   [perms {:keys [person flags action] [kind id] :record}]
@@ -142,8 +149,8 @@
          (not (rules/blocked? (:description perms) action flags))
          (as-system perms
                     (fn [tx]
-                      (boolean (seq (query tx (str "SELECT 1 FROM " (rules/quote-table t) " r WHERE r."
-                                                   (rules/quote-column id-col) " = ? AND " sql)
+                      (boolean (seq (query tx (str "SELECT 1 FROM " (rules/quote-table t) " r WHERE "
+                                                   (id-is id-col id) " AND " sql)
                                            (into [id] (rules/bind params person))))))))))
 
 (defn scopes-of
@@ -161,7 +168,7 @@
                                                                     (str (rules/scope-sql "r" arrow)
                                                                          " AS s" i))
                                                                   arrows))
-                                      " FROM " (rules/quote-table t) " r WHERE r." (rules/quote-column id-col) " = ?")
+                                      " FROM " (rules/quote-table t) " r WHERE " (id-is id-col id))
                               [id]))))))
 
 (defn check!
