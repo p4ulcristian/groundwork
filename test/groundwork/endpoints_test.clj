@@ -64,6 +64,12 @@
                   :input      [:map [:job/id :uuid] [:job/note :string]
                                [:machine/id {:groundwork/record :machine} :uuid]]
                   :answer     [:map [:job/id :uuid] [:job/note :string]]}
+   ;; an app whose shapes take ids as text
+   :jobs/as-text {:read       (fn [_ params] {:job/id (:job/id params)})
+                  :permission {:action :jobs/move :record [:job :job/id]}
+                  :input      [:map [:job/id :string]
+                               [:machine/id {:groundwork/record :machine} :string]]
+                  :answer     [:map [:job/id :string]]}
    :jobs/later   {:write      (fn [{:keys [db after-commit]} params]
                                 (pg/row db ep-note-job params)
                                 (after-commit (fn [_db]
@@ -199,6 +205,12 @@
   (is (= {:status :not-found} (call peter :jobs/note {:job/id acme-job :job/note "x" :machine/id acme-machine}
                                     :flags #{:impersonated}))
       "a session flag blocks the action"))
+
+(deftest an-id-sent-as-text-is-checked-like-an-id
+  (is (= {:status :ok :data {:job/id (str acme-job)}}
+         (call peter :jobs/as-text {:job/id (str acme-job) :machine/id (str acme-machine)})))
+  (is (= {:status :not-found} (call peter :jobs/as-text {:job/id (str zinc-job) :machine/id (str acme-machine)})))
+  (is (= {:status :not-found} (call peter :jobs/as-text {:job/id (str acme-job) :machine/id (str zinc-machine)}))))
 
 (deftest a-write-runs-once-per-key
   (reset! runs 0)

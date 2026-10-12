@@ -403,13 +403,17 @@
         member     (str "(" (member-wall-sql description kind) ")")
         rule-sql   (fn [d a] (str "(" (inline (compile-rule d a kind base)) ")"))
         without-ow (update-in description [:records kind] dissoc :only-when)
+        ;; actions whose rule comes out the same share one branch: an app
+        ;; with dozens of actions on a kind would otherwise carry dozens of
+        ;; identical branches in every query's plan
         by-action  (fn [branch]
                      (if (empty? actions)
                        member
-                       (str "(CASE " action-now
-                            (apply str (for [a actions]
-                                         (str " WHEN " (sql-literal (action-name a))
-                                              " THEN (CASE WHEN " about-this " THEN " (branch a)
+                       (str "(CASE"
+                            (apply str (for [[rule same] (sort-by (comp first val) (group-by branch actions))]
+                                         (str " WHEN " action-now " IN ("
+                                              (str/join ", " (map (comp sql-literal action-name) same))
+                                              ") THEN (CASE WHEN " about-this " THEN " rule
                                               " ELSE " member " END)")))
                             " ELSE " member " END)")))]
     {:using (str "CASE WHEN " bypass " THEN TRUE ELSE (" (wall-sql description kind) ") AND "

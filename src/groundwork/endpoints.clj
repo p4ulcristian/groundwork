@@ -134,9 +134,15 @@
   (let [p (second (or record scope))]
     (when (keyword? p) p)))
 
+(defn- as-id
+  "An id as the database compares it: text that is a uuid becomes one (an
+   input shape may take an id as a string), anything else stays as it is."
+  [v]
+  (or (when (string? v) (parse-uuid v)) v))
+
 (defn- scope-of [{:keys [scope]} params]
   (let [[_ p] scope]
-    (if (uuid? p) p (get params p))))
+    (if (uuid? p) p (as-id (get params p)))))
 
 (defn- check-permission [perms k permission input]
   (let [kinds   (set (keys (get-in perms [:description :records])))
@@ -270,7 +276,7 @@
                        (doseq [[key kind] fields
                                :let [v (get x key)]
                                :when (some? v)]
-                         (vswap! found update kind (fnil into []) (if (coll? v) v [v]))))
+                         (vswap! found update kind (fnil into []) (map as-id (if (coll? v) v [v])))))
                      x)
                    params)
     @found))
@@ -292,7 +298,7 @@
       (let [{:keys [action record scope list]} permission]
         (cond
           record (permissions/check! perms {:person person :flags flags :action action
-                                            :record [(first record) (get params (second record))]
+                                            :record [(first record) (as-id (get params (second record)))]
                                             :also   also})
           scope  (let [scopes (permissions/scopes-under perms {:person person :flags flags :action action
                                                                :scope  (scope-of permission params)})]
