@@ -33,6 +33,7 @@
    [groundwork.postgres :as pg]
    [groundwork.sessions :as sessions]
    [groundwork.settings :as settings]
+   [jsonista.core :as json]
    [next.jdbc :as jdbc]
    [next.jdbc.result-set :as rs])
   (:import
@@ -102,6 +103,23 @@
     (spit (io/file dir ".nrepl-port") (str port))
     server))
 
+(defn write-mcp-json!
+  "Point a clojure-mcp server at the nREPL in the app's .mcp.json (Claude
+   Code's project MCP servers), keeping every other server there. Written
+   only when it changes. Returns the file."
+  [dir port]
+  (let [file    (io/file dir ".mcp.json")
+        current (when (.exists file)
+                  (try (json/read-value file) (catch Exception _ nil)))
+        server  {"type"    "stdio"
+                 "command" "clojure"
+                 "args"    ["-Tmcp" "start" ":config-profile" ":repl" ":port" (str port)]
+                 "env"     {}}
+        wanted  (assoc-in (if (map? current) current {}) ["mcpServers" "clojure-mcp"] server)]
+    (when-not (= current wanted)
+      (spit file (str (json/write-value-as-string wanted (json/object-mapper {:pretty true})) "\n")))
+    file))
+
 (defn start!
   "Start everything for development, from one place: the app, an nREPL for
    both sides, the browser build's watcher (when the :browser settings say
@@ -109,18 +127,26 @@
    .groundwork/dev.log (the last run's kept as dev.log.1). Only for
    :environment :development.
 
-     options  :dir           where the log and .nrepl-port go, \".\" by default
-              :nrepl-port    0 for any free port (default)
+     options  :dir           where the log, .nrepl-port and .mcp.json go, \".\" by default
+              :nrepl-port    0 for any free port (default); a fixed one keeps
+                             .mcp.json the same from start to start
+              :mcp-json?     whether to point clojure-mcp at the nREPL in
+                             .mcp.json (default true), so Claude Code
+                             evaluates in the running app
+
+   clojure-mcp itself is installed once per machine, as a Clojure tool
+   named mcp (see its README); the user's own Claude config isn't touched.
 
    Needs nrepl/nrepl (and thheller/shadow-cljs for the watcher) on the
    classpath, as an app's :dev alias has them."
-  [settings {:keys [dir nrepl-port] :or {dir "." nrepl-port 0}}]
+  [settings {:keys [dir nrepl-port mcp-json?] :or {dir "." nrepl-port 0 mcp-json? true}}]
   (when-not (= :development (:environment settings))
     (throw (ex-info "The development start is for :environment :development only"
                     {:type ::not-development :environment (:environment settings)})))
   (let [{:keys [log undo]} (log-to! dir)]
     (try
       (let [nrepl  (start-nrepl! dir nrepl-port)
+            _      (when mcp-json? (write-mcp-json! dir (:port nrepl)))
             shadow (when (get-in settings [:browser :watch?])
                      (needs 'shadow.cljs.devtools.server/start! "thheller/shadow-cljs")
                      (build/watch! (:browser settings)))

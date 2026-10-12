@@ -7,3 +7,4 @@ out/
 .shadow-cljs/
 .groundwork/
 test/public/example-hello/
+.mcp.json

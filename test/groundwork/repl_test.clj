@@ -9,6 +9,7 @@
    [groundwork.permissions :as perm]
    [groundwork.postgres :as pg]
    [groundwork.repl :as repl]
+   [jsonista.core :as json]
    [groundwork.sessions :as sessions]
    [groundwork.test-support :refer [app-settings sql!]]
    [next.jdbc :as jdbc])
@@ -160,6 +161,9 @@
         (is (pos-int? (gw/port (:app dev))))
         (is (.exists (io/file dir ".nrepl-port")))
         (is (= (str (:port (:nrepl dev))) (slurp (io/file dir ".nrepl-port"))))
+        (testing "clojure-mcp is pointed at the nREPL in .mcp.json"
+          (is (= ["-Tmcp" "start" ":config-profile" ":repl" ":port" (str (:port (:nrepl dev)))]
+                 (get-in (json/read-value (io/file dir ".mcp.json")) ["mcpServers" "clojure-mcp" "args"]))))
         (println "a line for the log")
         (finally (repl/stop! dev)))
       (is (not (.exists (io/file dir ".nrepl-port"))) "stopped: the port file is gone")
@@ -171,3 +175,16 @@
                                {:dir dir})]
           (repl/stop! dev)
           (is (str/includes? (slurp (io/file dir ".groundwork" "dev.log.1")) "a line for the log")))))))
+
+(deftest the-mcp-json-keeps-other-servers
+  (let [dir (str (Files/createTempDirectory "groundwork-mcp" (make-array FileAttribute 0)))
+        f   (io/file dir ".mcp.json")]
+    (spit f "{\"mcpServers\": {\"other\": {\"type\": \"stdio\", \"command\": \"x\"}}}")
+    (repl/write-mcp-json! dir 7888)
+    (let [servers (get (json/read-value f) "mcpServers")]
+      (is (= #{"other" "clojure-mcp"} (set (keys servers))))
+      (is (= "7888" (last (get-in servers ["clojure-mcp" "args"])))))
+    (let [modified (.lastModified f)]
+      (Thread/sleep 20)
+      (repl/write-mcp-json! dir 7888)
+      (is (= modified (.lastModified f)) "unchanged: not written again"))))

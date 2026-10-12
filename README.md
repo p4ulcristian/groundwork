@@ -945,7 +945,13 @@ and not saved to a file is gone on the next start.
   printed also in `.groundwork/dev.log` (the last run's kept as
   `dev.log.1`). The port goes to `.nrepl-port`. It needs `nrepl/nrepl` and
   `thheller/shadow-cljs` on the classpath, as an app's `:dev` alias has them.
-  An app's `.gitignore` lists `.groundwork/` and `.nrepl-port`.
+  An app's `.gitignore` lists `.groundwork/`, `.nrepl-port` and `.mcp.json`.
+- **clojure-mcp by default:** the start points a `clojure-mcp` server at its
+  nREPL in the app's `.mcp.json` (Claude Code's project MCP servers),
+  keeping any other servers there, so Claude Code evaluates in the running
+  app. A fixed `:nrepl-port` keeps the file the same from start to start;
+  `{:mcp-json? false}` leaves it alone. clojure-mcp is installed once per
+  machine as the Clojure tool `mcp`.
 - **ask** goes through every check a browser's ask does; a write runs too,
   with a fresh one-time key.
 - **why** says it in plain words: the record's scope, the person's
