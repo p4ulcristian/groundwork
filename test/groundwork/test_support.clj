@@ -45,7 +45,9 @@
    :db          db-settings
    :migrations  {:schema-snapshot nil}
    :page        {:lang "en" :title "Test" :description nil :icon "/icon.svg" :stylesheets ["/app.css"]
-                 :script "/js/main.js" :head []}
+                 :head []}
+   :browser     {:build :test-app :entry 'groundwork.test-app/start :output-dir "test/public/js"
+                 :asset-path "/js" :watch? false}
    :web         {:routes         []
                  :max-body-bytes 1048576
                  :content-security-policy {:connect-src ["https://api.example"]}

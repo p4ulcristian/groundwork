@@ -304,8 +304,20 @@
            "Powder coating, ordered online" text-or-nil)
     (entry :icon "The tab's icon" "/icon.svg" text)
     (entry :stylesheets "The CSS files every page loads" ["/app.css"] texts)
-    (entry :script "The compiled browser app" "/js/main.js" text)
     (entry :head "Extra tags at the end of <head>, as HTML text" [] texts)]
+
+   :browser
+   [:map {:closed true}
+    (entry :build "The browser build's id" :app kind-name)
+    (entry :entry "The app's browser entry: the function that calls groundwork.browser/start!"
+           'app.browser/start
+           (pred "namespaced symbol" "must be a namespaced symbol naming a function, like app.browser/start"
+                 qualified-symbol?))
+    (entry :output-dir "Where the compiled files go, a folder whose public/ is served" "resources/public/js" text)
+    (entry :asset-path "Where the browser fetches them" "/js"
+           [:re {:error/message "must be a path like \"/js\"" :doc/type "path"} #"^/.*"])
+    (entry :watch? "In development, whether the start also watches the build" true
+           [:boolean {:error/message "must be true or false" :doc/type "true or false"}])]
 
    :web
    [:map {:closed true}
@@ -355,7 +367,7 @@
                     (entry :timeout-ms "How long one evaluation may run" 30000 positive)
                     (entry :max-chars "The longest result sent back" 20000 positive)]])
     (entry :hashed-files "Files whose names match (a regular expression, as text) are cached a year; nil for none"
-           "\\.[0-9a-f]{8,}\\."
+           "(?i)\\.[0-9a-f]{8,}\\."
            (pred "regular expression text or nil" "must be a regular expression as text, or nil"
                  #(or (nil? %) (regex-text? %))))
     (entry :gzip-min-bytes "Text-like answers at least this big go gzipped; nil for none" 1024 positive-or-nil)]
@@ -407,6 +419,7 @@
    :db          "The database"
    :migrations  "The schema's changes, run at start"
    :page        "The page shell every screen loads into"
+   :browser     "The app's browser code and its build"
    :web         "Requests: the app's routes, limits, hooks, languages"
    :server      "The web server"
    :sessions    "Who is signed in"

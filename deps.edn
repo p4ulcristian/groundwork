@@ -13,7 +13,8 @@
   metosin/malli                     {:mvn/version "0.20.3"}
   ;; the browser half (ClojureScript only)
   re-frame/re-frame                 {:mvn/version "1.4.7"}
-  reagent/reagent                   {:mvn/version "2.0.1"}}
+  reagent/reagent                   {:mvn/version "2.0.1"}
+  metosin/reitit-frontend           {:mvn/version "0.11.0"}}
 
  :aliases
  {;; npm install && npx shadow-cljs compile test   (the browser half's tests, on node)
@@ -29,5 +30,7 @@
                        ;; groundwork.leaks generates params
                        org.clojure/test.check {:mvn/version "1.1.1"}
                        ;; groundwork.repl's development start
-                       nrepl/nrepl {:mvn/version "1.8.0"}}
+                       nrepl/nrepl {:mvn/version "1.8.0"}
+                       ;; groundwork.build, compiling the example app in build-test
+                       thheller/shadow-cljs {:mvn/version "3.5.5"}}
          :exec-fn     cognitect.test-runner.api/test}}}

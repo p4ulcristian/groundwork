@@ -39,8 +39,10 @@ the JVM tests against Postgres 18, clj-kondo, the browser half's tests on node.
                     :db          {…}                          ; see Postgres, Start
                     :migrations  {:schema-snapshot "schema.sql"}
                     :page        {:lang "en" :title "Acme Coating" :description nil
-                                  :icon "/icon.svg" :stylesheets ["/app.css"]
-                                  :script "/js/main.js" :head []}
+                                  :icon "/icon.svg" :stylesheets ["/app.css"] :head []}
+                    :browser     {:build :app :entry 'app.browser/start      ; see In the browser
+                                  :output-dir "resources/public/js" :asset-path "/js"
+                                  :watch? true}
                     :web         {:routes                  [["/orders" {:get web/page :access :signed-in}]]
                                   :max-body-bytes          1048576
                                   :content-security-policy {}
@@ -54,7 +56,7 @@ the JVM tests against Postgres 18, clj-kondo, the browser half's tests on node.
                                                             :cookie "lang"}    ; or nil
                                   :test-sign-in            nil                ; or {:secret …}, never in production
                                   :eval-bridge             nil                ; or {:secret … :timeout-ms … :max-chars …}, never in production
-                                  :hashed-files            "\\.[0-9a-f]{8,}\\."   ; or nil
+                                  :hashed-files            "(?i)\\.[0-9a-f]{8,}\\."   ; or nil
                                   :gzip-min-bytes          1024}               ; or nil
                     :server      {:ip "0.0.0.0" :port 8080}
                     :sessions    {:cookie-name "acme_session" :max-age-days 30 :visitor-hours 24
@@ -122,8 +124,17 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:page :description` | text or nil | A one-sentence summary for search results and link previews, or nil | `"Powder coating, ordered online"` |
 | `:page :icon` | text | The tab's icon | `"/icon.svg"` |
 | `:page :stylesheets` | list of text | The CSS files every page loads | `["/app.css"]` |
-| `:page :script` | text | The compiled browser app | `"/js/main.js"` |
 | `:page :head` | list of text | Extra tags at the end of <head>, as HTML text | `[]` |
+
+#### `:browser`: The app's browser code and its build
+
+| Key | Type | What it is | Example |
+|-----|------|------------|---------|
+| `:browser :build` | keyword | The browser build's id | `:app` |
+| `:browser :entry` | namespaced symbol | The app's browser entry: the function that calls groundwork.browser/start! | `app.browser/start` |
+| `:browser :output-dir` | text | Where the compiled files go, a folder whose public/ is served | `"resources/public/js"` |
+| `:browser :asset-path` | path | Where the browser fetches them | `"/js"` |
+| `:browser :watch?` | true or false | In development, whether the start also watches the build | `true` |
 
 #### `:web`: Requests: the app's routes, limits, hooks, languages
 
@@ -149,7 +160,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:web :eval-bridge :secret` | text, 16+ characters | At least 16 characters | `"a-secret-only-the-previews-know"` |
 | `:web :eval-bridge :timeout-ms` | positive whole number | How long one evaluation may run | `30000` |
 | `:web :eval-bridge :max-chars` | positive whole number | The longest result sent back | `20000` |
-| `:web :hashed-files` | regular expression text or nil | Files whose names match (a regular expression, as text) are cached a year; nil for none | `"\\.[0-9a-f]{8,}\\."` |
+| `:web :hashed-files` | regular expression text or nil | Files whose names match (a regular expression, as text) are cached a year; nil for none | `"(?i)\\.[0-9a-f]{8,}\\."` |
 | `:web :gzip-min-bytes` | positive whole number or nil | Text-like answers at least this big go gzipped; nil for none | `1024` |
 
 #### `:server`: The web server
@@ -712,8 +723,40 @@ POST /parquery
 
 ### In the browser
 
+The app's browser entry (the `:browser` settings' `:entry`) makes one call:
+
 ```clojure
-(rf/dispatch [::store/start {:shapes app.shapes/endpoints}])   ; the same shapes as the server's (.cljc)
+(ns app.browser
+  (:require [groundwork.browser :as gb] [app.views :as views] [app.shapes :as shapes]))
+
+(defn start []
+  (gb/start! {:root   views/root
+              :routes [["/"                 {:name :home  :view views/home}]
+                       ["/orders/:order-id" {:name :order :view views/order}]]
+              :shapes shapes/answers}))   ; the same shapes as the server's (.cljc)
+```
+
+- Groundwork reads what the page shell put in the page (the person signed
+  in, their session's flags, the language), starts the store and its
+  websocket, asks for the person's grants, starts the browser's routing
+  (reitit; the match under `(rf/subscribe [::gb/route])`), and mounts
+  `:root` into `<div id="app">` with Reagent. `@(rf/subscribe [::gb/person])`,
+  `[::gb/flags]`, `[::gb/language]`; `(gb/navigate! :order {:order-id id})`.
+- **The build is Groundwork's** (`groundwork.build`): it makes the
+  shadow-cljs build from the `:browser` settings, so an app keeps no build
+  config. In development the one start (`repl/start!`) watches it; a save
+  recompiles and renders again. Before packaging, a release:
+  `clojure -X:build groundwork.build/release :settings app.settings/production`
+  compiles with fingerprinted names (`main.3F2A….js`) and a manifest the
+  page shell reads, so the page and the build can't disagree and the file
+  is cached a year (with `:hashed-files` like `"(?i)\\.[0-9a-f]{8,}\\."`).
+- Groundwork's own npm packages are in its `src/deps.cljs`; the app's
+  `package.json` holds only its own. The build needs `thheller/shadow-cljs`
+  on the classpath (an app's `:dev` and `:build` aliases).
+
+Then the store, under the screens:
+
+```clojure
 (rf/dispatch [::store/ensure :jobs-page [{:endpoint :jobs/list :params {:shop/id id}}]])
 @(rf/subscribe [::store/answer {:endpoint :jobs/list :params {:shop/id id}}])   ;=> {:status :ready :data […]}
 (rf/dispatch [::store/release :jobs-page])
@@ -768,7 +811,7 @@ through the eval bridge; stage only over SSH; production off (see
 and not saved to a file is gone on the next start.
 
 ```clojure
-(def dev (repl/start! settings {:shadow-build :app}))   ; :environment :development only
+(def dev (repl/start! settings {}))   ; :environment :development only
 (repl/ask (:app dev) :jobs/list {:shop/id acme} :as peter)
 (repl/why (:app dev) peter :orders/edit [:order order-id])
 ;=> {:allowed? false
@@ -784,7 +827,8 @@ and not saved to a file is gone on the next start.
 
 - **One start:** the app, an nREPL (with the browser build's middleware
   when shadow-cljs is there, so the same port has a ClojureScript REPL:
-  `(shadow.cljs.devtools.api/repl :app)`), the watcher, and everything
+  `(shadow.cljs.devtools.api/repl :app)`), the browser build's watcher (when
+  `:browser :watch?`), and everything
   printed also in `.groundwork/dev.log` (the last run's kept as
   `dev.log.1`). The port goes to `.nrepl-port`. It needs `nrepl/nrepl` and
   `thheller/shadow-cljs` on the classpath, as an app's `:dev` alias has them.

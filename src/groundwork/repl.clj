@@ -4,7 +4,7 @@
    permissions explained, and peeks into the lines, the bells, sessions and
    migrations.
 
-     (def dev (repl/start! settings {:shadow-build :app}))   ; server, watcher, nREPL, log
+     (def dev (repl/start! settings {}))   ; server, the browser build's watcher, nREPL, log
      (repl/ask (:app dev) :jobs/list {:shop/id acme} :as peter)
      (repl/why (:app dev) peter :orders/edit [:order order-id])
      (repl/lines (:app dev))  (repl/recent-bells (:app dev))
@@ -21,6 +21,7 @@
   (:require
    [clojure.java.io :as io]
    [clojure.string :as str]
+   [groundwork.build :as build]
    [groundwork.core :as gw]
    [groundwork.endpoints :as endpoints]
    [groundwork.migrations :as migrations]
@@ -101,27 +102,26 @@
 
 (defn start!
   "Start everything for development, from one place: the app, an nREPL for
-   both sides, the browser build's watcher (with :shadow-build, its build
-   id), and a log of everything printed at .groundwork/dev.log (the last
-   run's kept as dev.log.1). Only for :environment :development.
+   both sides, the browser build's watcher (when the :browser settings say
+   :watch? true; see groundwork.build), and a log of everything printed at
+   .groundwork/dev.log (the last run's kept as dev.log.1). Only for
+   :environment :development.
 
      options  :dir           where the log and .nrepl-port go, \".\" by default
               :nrepl-port    0 for any free port (default)
-              :shadow-build  the shadow-cljs build to watch, or nil
 
    Needs nrepl/nrepl (and thheller/shadow-cljs for the watcher) on the
    classpath, as an app's :dev alias has them."
-  [settings {:keys [dir nrepl-port shadow-build] :or {dir "." nrepl-port 0}}]
+  [settings {:keys [dir nrepl-port] :or {dir "." nrepl-port 0}}]
   (when-not (= :development (:environment settings))
     (throw (ex-info "The development start is for :environment :development only"
                     {:type ::not-development :environment (:environment settings)})))
   (let [{:keys [log undo]} (log-to! dir)]
     (try
       (let [nrepl  (start-nrepl! dir nrepl-port)
-            shadow (when shadow-build
-                     ((needs 'shadow.cljs.devtools.server/start! "thheller/shadow-cljs"))
-                     ((needs 'shadow.cljs.devtools.api/watch "thheller/shadow-cljs") shadow-build)
-                     shadow-build)
+            shadow (when (get-in settings [:browser :watch?])
+                     (needs 'shadow.cljs.devtools.server/start! "thheller/shadow-cljs")
+                     (build/watch! (:browser settings)))
             app    (gw/start settings)]
         (println (str "Groundwork is running: port " (gw/port app) ", nREPL " (:port nrepl)
                       (when shadow (str ", watching " shadow)) ", log " log))

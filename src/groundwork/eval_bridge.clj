@@ -70,7 +70,10 @@
   "Evaluate code in the browser tabs of a shadow-cljs build running in this
    JVM: {:value :out} or {:error …}."
   [build code timeout-ms]
-  (if-let [cljs-eval (try (requiring-resolve 'shadow.cljs.devtools.api/cljs-eval) (catch Exception _ nil))]
+  (if-let [cljs-eval (when (some-> (try (requiring-resolve 'shadow.cljs.devtools.server.runtime/get-instance)
+                                        (catch Exception _ nil))
+                                   (apply []))
+                       (requiring-resolve 'shadow.cljs.devtools.api/cljs-eval))]
     (let [f (future (try (cljs-eval (keyword build) code {})
                          (catch Throwable e {:err (ex-message e)})))
           r (deref f timeout-ms ::timeout)]
@@ -78,7 +81,7 @@
         (= ::timeout r) (do (future-cancel f) r)
         (:err r)        {:error (str (:err r)) :out (:out r)}
         :else           {:value (str/join "\n" (:results r)) :out (:out r)}))
-    {:error "The browser build isn't running in this server (shadow-cljs isn't on its classpath)"}))
+    {:error "The browser build isn't running in this server (no shadow-cljs started here)"}))
 
 (defn route
   "The bridge's route, server-to-server."

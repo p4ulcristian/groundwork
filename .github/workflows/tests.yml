@@ -77,10 +77,12 @@ jobs:
       - name: Lint
         run: clj-kondo --lint src test
 
+      # the JVM tests compile an example app's browser code too
+      - name: npm packages
+        run: npm ci
+
       - name: JVM tests
         run: clojure -X:test
 
       - name: Browser tests
-        run: |
-          npm ci
-          npx shadow-cljs compile test
+        run: npx shadow-cljs compile test

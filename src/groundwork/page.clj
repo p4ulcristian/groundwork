@@ -7,8 +7,10 @@
      :description  \"Powder coating, ordered online\"   or nil
      :icon         \"/icon.svg\"
      :stylesheets  [\"/app.css\"]
-     :script       \"/js/main.js\"    the compiled ClojureScript
      :head         []                extra tags, as HTML text, placed at the end of <head>
+
+   The app's compiled browser code is the build's own (see groundwork.build):
+   after a release, its fingerprinted file from the build's manifest.
 
    A route can give its own page, a map or a function of the request
    returning one, merged over these:
@@ -27,13 +29,19 @@
    language unless the route gives its own, and the alternate links name the
    same page in every language unless the route gives its own.
 
-   The page has one element for the app to render into, <div id=\"app\">, and
-   is never cached: a deploy is seen on the next load. Every <script> and
+   The page has one element for the app to render into, <div id=\"app\">,
+   and what the browser start reads first, as JSON in
+   <script type=\"application/json\" id=\"groundwork\">: the person signed in
+   (or null), their session's flags and the page's language. It is never
+   cached: a deploy is seen on the next load. Every <script> and
    <style> on it, the app's :head and :body included, carries the request's
    nonce, so the strict Content-Security-Policy lets them run."
   (:require
    [clojure.string :as str]
-   [groundwork.settings :as settings]))
+   [groundwork.build :as build]
+   [groundwork.sessions :as sessions]
+   [groundwork.settings :as settings]
+   [jsonista.core :as json]))
 
 (def ^:private route-keys
   #{:lang :title :description :canonical :alternates :stylesheets :scripts :head :body})
@@ -67,9 +75,17 @@
     (str/replace html #"(?i)<(script|style)(?![^>]*\bnonce=)" (str "<$1 nonce=\"" nonce "\""))
     html))
 
+(defn- initial-data
+  "What the browser start reads first, as JSON safe inside a <script>."
+  [{:keys [person flags lang]}]
+  (str/replace (json/write-value-as-string {"person"   (some-> person str)
+                                            "flags"    (mapv name (sort flags))
+                                            "language" lang})
+               "</" "<\\/"))
+
 (defn html
   "The page as HTML text; nonce, when given, goes on its scripts and styles."
-  [{:keys [lang title description icon canonical alternates stylesheets head script scripts body]} nonce]
+  [{:keys [lang title description icon canonical alternates stylesheets head script scripts body] :as page} nonce]
   (str "<!doctype html>\n"
        "<html lang=\"" (escape lang) "\">\n"
        "<head>\n"
@@ -87,6 +103,7 @@
        "</head>\n"
        "<body>\n"
        "<div id=\"app\">" (stamp-nonce body nonce) "</div>\n"
+       (stamp-nonce (str "<script type=\"application/json\" id=\"groundwork\">" (initial-data page) "</script>\n") nonce)
        (apply str (for [src (cons script scripts)]
                     (stamp-nonce (str "<script src=\"" (escape src) "\" defer></script>\n") nonce)))
        "</body>\n"
@@ -107,15 +124,23 @@
 
 (defn start
   "The page part: a Ring handler that answers with the page, the route's
-   own page (::route-page on the request) merged over the app's."
-  [{:keys [settings]}]
+   own page (::route-page on the request) merged over the app's. The build's
+   script is looked up on every page in development, where it changes, and
+   once otherwise."
+  [{:keys [settings app-settings environment]}]
   (settings/check-part! :page settings)
-  (fn [request]
-    {:status  200
-     :headers {"Content-Type"  "text/html; charset=utf-8"
-               "Cache-Control" "no-store"}
-     :body    (html (merged (cond-> settings
-                              (::language request)   (assoc :lang (::language request))
-                              (::alternates request) (assoc :alternates (::alternates request)))
-                            (route-page request))
-                    (::nonce request))}))
+  (let [browser (:browser app-settings)
+        once    (delay (build/script browser))
+        script  (if (= :development environment) #(build/script browser) #(deref once))]
+    (fn [request]
+      {:status  200
+       :headers {"Content-Type"  "text/html; charset=utf-8"
+                 "Cache-Control" "no-store"}
+       :body    (html (merged (cond-> (assoc settings
+                                             :script (script)
+                                             :person (sessions/person request)
+                                             :flags  (sessions/flags request))
+                                (::language request)   (assoc :lang (::language request))
+                                (::alternates request) (assoc :alternates (::alternates request)))
+                              (route-page request))
+                      (::nonce request))})))

@@ -57,11 +57,25 @@
   ;; The CSS files every page loads
   :stylesheets ["/app.css"]
 
-  ;; The compiled browser app
-  :script "/js/main.js"
-
   ;; Extra tags at the end of <head>, as HTML text
   :head []}
+
+ ;; The app's browser code and its build
+ :browser
+ {;; The browser build's id
+  :build :app
+
+  ;; The app's browser entry: the function that calls groundwork.browser/start!
+  :entry app.browser/start
+
+  ;; Where the compiled files go, a folder whose public/ is served
+  :output-dir "resources/public/js"
+
+  ;; Where the browser fetches them
+  :asset-path "/js"
+
+  ;; In development, whether the start also watches the build
+  :watch? true}
 
  ;; Requests: the app's routes, limits, hooks, languages
  :web
@@ -109,7 +123,7 @@
   :eval-bridge nil
 
   ;; Files whose names match (a regular expression, as text) are cached a year; nil for none
-  :hashed-files "\\.[0-9a-f]{8,}\\."
+  :hashed-files "(?i)\\.[0-9a-f]{8,}\\."
 
   ;; Text-like answers at least this big go gzipped; nil for none
   :gzip-min-bytes 1024}

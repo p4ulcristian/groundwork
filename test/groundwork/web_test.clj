@@ -310,6 +310,6 @@
 
 (deftest page-settings-are-checked
   (let [problems (fn [page] (mapv :in (:problems (ex-data (try (page/start {:settings page}) (catch Exception e e))))))]
-    (is (= [[:page :lang] [:page :description] [:page :icon] [:page :stylesheets] [:page :script] [:page :head]]
+    (is (= [[:page :lang] [:page :description] [:page :icon] [:page :stylesheets] [:page :head]]
            (problems {:title "x"})))
     (is (= [[:page :stylesheets]] (problems (assoc (:page app-settings) :stylesheets "x"))))))
