@@ -146,9 +146,11 @@
 
 (defn enqueue!
   "Queue a job in the transaction of ctx (an endpoint's or a job's): it
-   exists only if that commits. Options: :in-ms, run no sooner. Returns its id."
+   exists only if that commits. Options: :in-ms, run no sooner; :key, at
+   most one job of this key waiting or running at a time (a second enqueue
+   returns the first one's id). Returns its id."
   ([ctx kind params] (enqueue! ctx kind params {}))
-  ([{:keys [db jobs]} kind params {:keys [in-ms]}]
+  ([{:keys [db jobs]} kind params {:keys [in-ms key]}]
    (when-not jobs
      (throw (ex-info "This app has no :jobs" {:type ::no-jobs})))
    (let [{:keys [params-shape timeout-ms attempts]} (kind-of jobs kind)]
@@ -160,7 +162,8 @@
                                      :job/run-at       (OffsetDateTime/ofInstant (.plusMillis (Instant/now) (or in-ms 0))
                                                                                  ZoneOffset/UTC)
                                      :job/max-attempts attempts
-                                     :job/timeout-ms   timeout-ms})))))
+                                     :job/timeout-ms   timeout-ms
+                                     :job/key          key})))))
 
 ;; =============================================================================
 ;; Running

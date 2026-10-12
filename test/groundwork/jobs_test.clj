@@ -105,6 +105,17 @@
   (testing "params must fit their shape"
     (is (thrown? Exception (enqueue! :test/ok {:n "one"})))))
 
+(deftest one-job-per-key
+  (reset! ran [])
+  (let [first-job  (enqueue! :test/ok {:n 7} {:key "email:7"})
+        second-job (enqueue! :test/ok {:n 7} {:key "email:7"})]
+    (is (= first-job second-job) "the second enqueue keeps the first")
+    (is (= :done (claim-and-run)))
+    (is (nil? (claim-and-run)) "one job, not two")
+    (is (= [{:n 7}] @ran))
+    (testing "once done, the key is free again"
+      (is (not= first-job (enqueue! :test/ok {:n 7} {:key "email:7"}))))))
+
 (deftest a-job-runs-once-and-is-done
   (reset! ran [])
   (let [job (enqueue! :test/ok {:n 1})]
