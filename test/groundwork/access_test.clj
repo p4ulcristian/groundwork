@@ -124,7 +124,7 @@
   (let [build (fn [routes]
                 (try (web/handler {:routes routes :max-body-bytes 1000 :content-security-policy {}
                                    :login-path "/login" :page ok :sessions {} :environment :test
-                                   :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil
+                                   :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil :hashed-files nil
                                    :permissions (gw/permissions *app*)})
                      nil
                      (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))]

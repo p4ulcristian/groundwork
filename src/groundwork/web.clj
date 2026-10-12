@@ -71,6 +71,10 @@
    like JSON, and every server-to-server route's body stay untouched, so a
    webhook can check a signature over the exact bytes.
 
+   A file whose name carries its content's hash (it matches the regular
+   expression :hashed-files, like \"\\\\.[0-9a-f]{8,}\\\\.\", or nil) is cached a year;
+   every other file is revalidated on each load.
+
    Files answer byte ranges (206), so video plays and seeks everywhere. HEAD
    is answered for every GET route, like GET without the body.
 
@@ -598,10 +602,28 @@
 ;; Files, the page, the rest
 ;; =============================================================================
 
-(defn- wrap-file-caching [handler]
-  (fn [request]
-    (when-let [response (handler request)]
-      (assoc-in response [:headers "Cache-Control"] "no-cache"))))
+(defn- check-hashed-files [pattern]
+  (when (some? pattern)
+    (when-not (string? pattern)
+      (throw (ex-info ":hashed-files must be a regular expression as text, or nil"
+                      {:type ::bad-setting :setting :hashed-files :value pattern})))
+    (try (re-pattern pattern)
+         (catch Exception e
+           (throw (ex-info (str ":hashed-files isn't a regular expression: " (ex-message e))
+                           {:type ::bad-setting :setting :hashed-files :value pattern} e))))))
+
+(defn- wrap-file-caching
+  "A file whose name carries its content's hash (it matches :hashed-files)
+   never changes, so browsers keep it a year; every other file is
+   revalidated on each load."
+  [handler hashed-files]
+  (let [hashed (some-> hashed-files re-pattern)]
+    (fn [request]
+      (when-let [response (handler request)]
+        (assoc-in response [:headers "Cache-Control"]
+                  (if (and hashed (re-find hashed (:uri request)))
+                    "public, max-age=31536000, immutable"
+                    "no-cache"))))))
 
 (defn- bounded
   "At most n bytes of in, then the end."
@@ -731,7 +753,7 @@
 
 (def ^:private settings
   [:routes :max-body-bytes :content-security-policy :login-path :on-request :on-error :proxies :languages
-   :test-sign-in])
+   :test-sign-in :hashed-files])
 
 (defn- check-settings [opts environment]
   (when-not (map? opts)
@@ -756,7 +778,8 @@
         (throw (ex-info (str k " must be a function or nil") {:type ::bad-setting :setting k :value v}))))
     (check-proxies (:proxies opts))
     (check-languages (:languages opts))
-    (check-test-sign-in (:test-sign-in opts) environment)))
+    (check-test-sign-in (:test-sign-in opts) environment)
+    (check-hashed-files (:hashed-files opts))))
 
 (defn handler
   "The app's Ring handler, for settings already checked."
@@ -764,7 +787,7 @@
            environment]
     :as   settings}]
   (let [files  (-> (ring/create-resource-handler {:path "/" :root "public"})
-                   wrap-file-caching
+                   (wrap-file-caching (:hashed-files settings))
                    wrap-not-modified
                    wrap-ranges)
         router (ring/router (into (groundwork-routes settings) routes)

@@ -48,7 +48,8 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
                                                             :request-id-header "x-request-id"}
                                   :languages               {:supported ["en" "de"] :default "en"
                                                             :cookie "lang"}    ; or nil
-                                  :test-sign-in            nil}               ; or {:secret …}, never in production
+                                  :test-sign-in            nil                ; or {:secret …}, never in production
+                                  :hashed-files            "\\.[0-9a-f]{8,}\\."}   ; or nil
                     :server      {:ip "0.0.0.0" :port 8080}
                     :sessions    {:cookie-name "acme_session" :max-age-days 30 :visitor-hours 24
                                   :secure? true :origin "https://app.acme.example"}
@@ -299,6 +300,9 @@ resources/migrations/
 - **Files:** from `resources/public`, revalidated on every load (304 when
   unchanged), so a deploy is never hidden behind a stale cache. They answer
   byte ranges (206), so video plays and seeks everywhere, Safari included.
+  A file whose name carries its content's hash (it matches `:hashed-files`,
+  a regular expression as text) is cached for a year, since its name changes
+  whenever it does.
 - **HEAD** is answered for every GET route, like GET without the body.
 - **Outside production** `/robots.txt` disallows everything and every
   answer carries `X-Robots-Tag: noindex`, so a staging copy never shows up

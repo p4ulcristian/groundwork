@@ -115,7 +115,7 @@
   (is (= ::web/bad-route
          (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :access :public :embeddable ["shop.example"]}]]
                                             :max-body-bytes 1000 :content-security-policy {} :login-path "/login"
-                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil
+                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil :hashed-files nil
                                             :page (fn [_]) :sessions {} :environment :test})
                               (catch Exception e e)))))))
 
@@ -216,7 +216,7 @@
     (is (= ::page/bad-route
            (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :access :public :page {:titel "x"}}]]
                                               :max-body-bytes 1000 :content-security-policy {} :login-path "/login"
-                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil
+                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil :hashed-files nil
                                               :page (fn [_]) :sessions {} :environment :test})
                                 (catch Exception e e))))))))
 
@@ -252,6 +252,11 @@
     (is (= "no-cache" (headers "cache-control")))
     (testing "an unchanged file answers 304"
       (is (= 304 (:status (request "/app.css" {:headers {"If-Modified-Since" (headers "last-modified")}})))))))
+
+(deftest a-hashed-file-is-cached-for-a-year
+  (is (= "public, max-age=31536000, immutable"
+         ((:headers (request "/app.3f9a1c2b7d.js")) "cache-control")))
+  (is (= "no-cache" ((:headers (request "/app.css")) "cache-control"))))
 
 (deftest files-answer-byte-ranges
   (is (= "bytes" ((:headers (request "/app.css")) "accept-ranges")))
