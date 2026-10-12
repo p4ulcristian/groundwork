@@ -10,6 +10,9 @@
      :environment  :development, :test or :production
      :db           the database, see groundwork.postgres/start
      :migrations   see groundwork.migrations/start
+     :page         see groundwork.page
+     :routes       the app's routes, as reitit data; see groundwork.web
+     :server       see groundwork.server
 
    Inside, each part is an Integrant key and Integrant starts them in order,
    hands them to each other and stops them in reverse. That wiring is
@@ -17,7 +20,10 @@
   (:require
    [clojure.string :as str]
    [groundwork.migrations :as migrations]
+   [groundwork.page :as page]
    [groundwork.postgres :as pg]
+   [groundwork.server :as server]
+   [groundwork.web :as web]
    [integrant.core :as ig]))
 
 ;; =============================================================================
@@ -39,7 +45,17 @@
    :groundwork/migrations {:settings :migrations
                            :needs    [:groundwork/db]
                            :start    (fn [{:keys [app-settings] :as config}]
-                                       (migrations/start (assoc config :db-settings (:db app-settings))))}))
+                                       (migrations/start (assoc config :db-settings (:db app-settings))))}
+   :groundwork/page       {:settings :page
+                           :needs    []
+                           :start    page/start}
+   :groundwork/router     {:settings :routes
+                           :needs    [:groundwork/migrations :groundwork/page]
+                           :start    web/start}
+   :groundwork/server     {:settings :server
+                           :needs    [:groundwork/router]
+                           :start    server/start
+                           :stop     server/stop}))
 
 (doseq [k (keys parts)]
   (derive k ::part))
@@ -125,3 +141,8 @@
   "The app's db, for groundwork.postgres."
   [app]
   (part app :groundwork/db))
+
+(defn port
+  "The port the app's server listens on."
+  [app]
+  (server/port (part app :groundwork/server)))

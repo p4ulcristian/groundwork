@@ -16,12 +16,12 @@ keywords → postgres → parquery → re-frame → reagent
 | db                | `groundwork.postgres` | built on next.jdbc + PgJDBC + HikariCP |
 | parquery          |                       | next   |
 | parquery, browser |                       |        |
-| server            |                       |        |
-| router            |                       |        |
+| server            | `groundwork.server`   | built on http-kit |
+| router            | `groundwork.web`      | built on reitit |
 | migrations        | `groundwork.migrations` | built |
 | sessions          |                       |        |
 | permissions       |                       |        |
-| page shell        |                       |        |
+| page shell        | `groundwork.page`     | built  |
 | background jobs   |                       | later ([#1](https://github.com/p4ulcristian/groundwork/issues/1)) |
 
 Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
@@ -33,7 +33,11 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
 ```clojure
 (def app (gw/start {:environment :development
                     :db          {…}                          ; see Postgres, Start
-                    :migrations  {:schema-snapshot "schema.sql"}}))
+                    :migrations  {:schema-snapshot "schema.sql"}
+                    :page        {:lang "en" :title "Acme Coating" :icon "/icon.svg"
+                                  :stylesheets ["/app.css"] :script "/js/main.js" :head []}
+                    :routes      [["/health" {:get (fn [_] {:status 200 :body "ok"})}]]
+                    :server      {:ip "0.0.0.0" :port 8080}}))
 (gw/stop app)
 ```
 
@@ -225,3 +229,17 @@ resources/migrations/
   (`nil` for none), when `pg_dump` is on the PATH.
 - Groundwork's tables live in the `groundwork` schema; every connection's
   search path is only `public`, so the two never mix.
+
+---
+
+## 4. Server, routes and the page
+
+- **Server:** http-kit; every request runs on its own virtual thread.
+- **Routes:** the app's `:routes` are reitit data, next to Groundwork's own.
+- **Files:** from `resources/public`, revalidated on every load (304 when
+  unchanged), so a deploy is never hidden behind a stale cache.
+- **The page:** any other page a browser asks for gets the page shell, and
+  the app's routing in the browser takes over. It loads `:script` into
+  `<div id="app">`, and is never cached.
+- **Security headers** on every answer: no sniffing, no framing, a strict
+  referrer; in production also Strict-Transport-Security.

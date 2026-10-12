@@ -6,7 +6,10 @@
   org.postgresql/postgresql         {:mvn/version "42.7.13"}
   com.zaxxer/HikariCP               {:mvn/version "7.1.0"}
   metosin/jsonista                  {:mvn/version "0.3.14"}
-  integrant/integrant               {:mvn/version "1.0.1"}}
+  integrant/integrant               {:mvn/version "1.0.1"}
+  http-kit/http-kit                 {:mvn/version "2.8.1"}
+  metosin/reitit-ring               {:mvn/version "0.11.0"}
+  ring/ring-core                    {:mvn/version "1.15.5"}}
 
  :aliases
  {;; clojure -X:test   (local database groundwork_test, see test/groundwork/postgres_test.clj)

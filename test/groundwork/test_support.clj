@@ -28,3 +28,13 @@
                                          :user     (:user db-settings)
                                          :password (:password db-settings)})]
     (jdbc/execute! conn (into [text] params))))
+
+(def app-settings
+  "Settings for a whole test app: a free port, no routes, a plain page."
+  {:environment :test
+   :db          db-settings
+   :migrations  {:schema-snapshot nil}
+   :page        {:lang "en" :title "Test" :icon "/icon.svg" :stylesheets ["/app.css"]
+                 :script "/js/main.js" :head []}
+   :routes      []
+   :server      {:ip "127.0.0.1" :port 0}})

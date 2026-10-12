@@ -3,21 +3,18 @@
    [clojure.test :refer [deftest is testing]]
    [groundwork.core :as gw]
    [groundwork.postgres :as pg]
-   [groundwork.test-support :refer [db-settings]]))
+   [groundwork.test-support :refer [app-settings]]))
 
 (pg/defsql timeout-setting)
 
-(def settings
-  {:environment :test
-   :db          db-settings
-   :migrations  {:schema-snapshot nil}})
+(def settings app-settings)
 
 (defn- error [f]
   (try (f) nil (catch clojure.lang.ExceptionInfo e (ex-data e))))
 
 (deftest settings-are-checked
   (testing "a missing setting throws, naming every one that is missing"
-    (is (= {:type ::gw/missing-settings :missing [:environment :db :migrations]}
+    (is (= {:type ::gw/missing-settings :missing [:environment :db :migrations :page :routes :server]}
            (error #(gw/start {})))))
   (testing "an unknown setting throws, so a typo can't go unnoticed"
     (is (= {:type ::gw/unknown-settings :unknown [:dbb]}
