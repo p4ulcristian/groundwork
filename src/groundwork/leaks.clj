@@ -16,8 +16,9 @@
 
    Each endpoint's params are generated from its input shape, then every
    id it carries (its permission's own, and every marked field) is set to
-   the foreign one of that kind. An endpoint is skipped when no foreign id
-   of a kind it needs was given, or its shape can't be generated; public
+   the foreign one of that kind, as text (the way a JSON ask brings ids).
+   An endpoint is skipped when no foreign id of a kind it needs was given,
+   its shape can't be generated, or what was generated doesn't fit it; public
    and signed-in endpoints carry no ids and are skipped too. Writes are
    called like reads: they're refused before they run, or they leak.
 
@@ -46,12 +47,15 @@
                                  own-kind)
         needed                 (cond-> (set (vals ids)) own-kind (conj own-kind))]
     (when (every? #(contains? foreign %) needed)
-      (let [params (cond-> params own-param (assoc own-param (foreign own-kind)))]
+      ;; ids go in as text, the way a JSON ask brings them; a fixed scope
+      ;; (an id in the permission itself) has no param to set
+      (let [text   #(str (foreign %))
+            params (cond-> params (keyword? own-param) (assoc own-param (text own-kind)))]
         (walk/postwalk (fn [x]
                          (if (map? x)
                            (reduce-kv (fn [m k kind]
                                         (if (contains? m k)
-                                          (assoc m k (if (coll? (get m k)) [(foreign kind)] (foreign kind)))
+                                          (assoc m k (if (coll? (get m k)) [(text kind)] (text kind)))
                                           m))
                                       x ids)
                            x))
@@ -91,8 +95,11 @@
                     (if-let [params (foreign-ids entry generated foreign (keys (get-in part [:perms :description :scopes])))]
                       (let [answer (endpoints/call part {:endpoint k :params params :person person
                                                          :flags (or flags #{}) :request-id "leak-test"})]
-                        (if (= :not-found (:status answer))
-                          (update report :checked conj k)
+                        (case (:status answer)
+                          :not-found (update report :checked conj k)
+                          ;; the generated params didn't reach the check: not a leak, not checked either
+                          :invalid   (assoc-in report [:skipped k] (str "the generated params don't fit its input: "
+                                                                        (pr-str (:errors answer))))
                           (update report :leaked conj {:endpoint k :params params :answer answer})))
                       (assoc-in report [:skipped k] "no foreign id given for a kind it carries")))))))
           {:checked [] :skipped {} :leaked []}

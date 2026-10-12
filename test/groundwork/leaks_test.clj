@@ -54,6 +54,10 @@
                    :permission {:action :notes/see :list :note}
                    :input      [:map]
                    :answer     [:vector :uuid]}
+   :zinc/notice   {:read       (fn [_ _] "for zinc")
+                   :permission {:action :notes/see :scope [:shop zinc]}
+                   :input      [:map {:closed true}]
+                   :answer     :string}
    :site/hello    {:read       (fn [_ _] "hello")
                    :permission :public
                    :input      [:map]
@@ -104,15 +108,16 @@
 (deftest sealed-endpoints-pass
   (let [report (leaks/check (part sealed) {:person peter :foreign foreign})]
     (is (= [] (:leaked report)))
-    (is (= [:notes/mine :notes/move :notes/of-shop :notes/one] (:checked report)))
+    (is (= [:notes/mine :notes/move :notes/of-shop :notes/one :zinc/notice] (:checked report))
+        "a fixed scope too: Peter isn't Zinc's, and there is no param to set")
     (is (= #{:site/hello :groundwork/grants} (set (keys (:skipped report)))))
     (testing "the partner's member, through an ended link: nothing"
       (is (= [] (:leaked (leaks/check (part sealed) {:person pia :foreign foreign})))))))
 
 (deftest a-condition-that-forgot-the-status-is-caught
   (let [report (leaks/check (part broken) {:person pia :foreign foreign})]
-    (is (= #{:notes/of-shop :notes/one} (set (map :endpoint (:leaked report))))
-        "the ended link still lets Zinc's notes out")
+    (is (= #{:notes/of-shop :notes/one :zinc/notice} (set (map :endpoint (:leaked report))))
+        "the ended link still lets Zinc's notes out, and Zinc's own area")
     (is (= :ok (:status (:answer (first (:leaked report))))))))
 
 (deftest a-scope-endpoint-honours-a-link-like-a-record-one
