@@ -92,12 +92,12 @@
    :server-to-server route gets neither."
   [sessions]
   {:name    ::sessions
-   :compile (fn [{:keys [server-to-server]} {::keys [path]}]
+   :compile (fn [{:keys [server-to-server embeddable]} {::keys [path]}]
               (when-not (or (nil? server-to-server) (boolean? server-to-server))
                 (throw (ex-info (str "Route " path ": :server-to-server must be true or false")
                                 {:type ::bad-route :path path :server-to-server server-to-server})))
               (when-not server-to-server
-                #(sessions/wrap-sessions % sessions)))})
+                #(sessions/wrap-sessions % sessions (some? embeddable))))})
 
 ;; =============================================================================
 ;; Files, the page, the rest

@@ -21,7 +21,14 @@
    A request that changes something (anything but GET, HEAD, OPTIONS) must
    come from the app's own pages: its Origin header must be :origin, or it is
    refused. With the cookie's SameSite=Lax, another site can't act as the
-   person who is signed in."
+   person who is signed in.
+
+   A page shown in another site's frame (an :embeddable route) gets no Lax
+   cookie from the browser. A visitor session made there uses a second
+   cookie, <cookie-name>_embed (SameSite=None; Secure; Partitioned), which
+   the framed page's own requests carry. It only ever holds a visitor: sign-in
+   never writes it, and a signed-in session behind it is ignored. Signing in
+   and paying open on the app's own site, where the Lax cookie lives."
   (:require
    [clojure.string :as str]
    [groundwork.postgres :as pg])
@@ -86,9 +93,28 @@
               (when (= k cookie-name) v)))
           (str/split header #";"))))
 
+(defn- embed-cookie-name [cookie-name]
+  (str cookie-name "_embed"))
+
 (defn- cookie [{:keys [cookie-name secure?]} value max-age-seconds]
   (str cookie-name "=" value "; Path=/; Max-Age=" max-age-seconds "; HttpOnly; SameSite=Lax"
        (when secure? "; Secure")))
+
+(defn- embed-cookie
+  "The cookie a framed page keeps a visitor in. SameSite=None needs Secure;
+   browsers accept Secure cookies on localhost too."
+  [{:keys [cookie-name]} value max-age-seconds]
+  (str (embed-cookie-name cookie-name) "=" value "; Path=/; Max-Age=" max-age-seconds
+       "; HttpOnly; Secure; SameSite=None; Partitioned"))
+
+(defn- add-cookie
+  "The response with one more Set-Cookie header."
+  [response value]
+  (update-in response [:headers "Set-Cookie"]
+             (fn [existing]
+               (cond (nil? existing)    value
+                     (string? existing) [existing value]
+                     :else              (conj (vec existing) value)))))
 
 ;; =============================================================================
 ;; Reading the session
@@ -97,23 +123,32 @@
 (defn- data-in [{:keys [flags data]}]
   (assoc (or data {}) :session/flags (sort (map name flags))))
 
+(defn- session-by
+  "The live session for a cookie's key, or nil. A visitor's has no
+   :person-id; seeing it pushes its end out again, at most once an hour."
+  [{:keys [db settings]} key cookie]
+  (when-let [row (pg/row db session-by-key {:session/key-hash (key-hash key)})]
+    (let [data  (:session/data row)
+          hours (:visitor-hours settings)]
+      (when (and (nil? (:session/person-id row))
+                 (.isBefore ^OffsetDateTime (:session/expires-at row)
+                            (.plusHours (OffsetDateTime/now) (dec hours))))
+        (pg/execute! db extend-visitor {:session/key-hash (key-hash key) :hours hours}))
+      {:key       key
+       :cookie    cookie
+       :person-id (:session/person-id row)
+       :flags     (set (map keyword (:session/flags data)))
+       :data      (dissoc data :session/flags)})))
+
 (defn- session-of
-  "The request's live session: {:key … :person-id … :flags #{…} :data {…}},
-   or nil. A visitor's has no :person-id; seeing it pushes its end out again,
-   at most once an hour."
-  [{:keys [db settings]} request]
-  (when-let [key (cookie-key request (:cookie-name settings))]
-    (when-let [row (pg/row db session-by-key {:session/key-hash (key-hash key)})]
-      (let [data  (:session/data row)
-            hours (:visitor-hours settings)]
-        (when (and (nil? (:session/person-id row))
-                   (.isBefore ^OffsetDateTime (:session/expires-at row)
-                              (.plusHours (OffsetDateTime/now) (dec hours))))
-          (pg/execute! db extend-visitor {:session/key-hash (key-hash key) :hours hours}))
-        {:key       key
-         :person-id (:session/person-id row)
-         :flags     (set (map keyword (:session/flags data)))
-         :data      (dissoc data :session/flags)}))))
+  "The request's live session: {:key … :cookie :lax|:embed :person-id …
+   :flags #{…} :data {…}}, or nil. The Lax cookie first; the embed cookie
+   only for a visitor."
+  [{:keys [settings] :as sessions} request]
+  (or (some-> (cookie-key request (:cookie-name settings)) (#(session-by sessions % :lax)))
+      (some-> (cookie-key request (embed-cookie-name (:cookie-name settings)))
+              (#(session-by sessions % :embed))
+              (#(when (nil? (:person-id %)) %)))))
 
 (defn person
   "The id of the person signed in on this request, or nil."
@@ -153,13 +188,15 @@
       (do (pg/execute! db update-data {:session/key-hash (key-hash (:key session))
                                        :session/data     stored})
           response)
-      (let [key (new-key)]
+      (let [key     (new-key)
+            max-age (* 86400 (:max-age-days settings))]
         (pg/execute! db insert-session {:session/key-hash  (key-hash key)
                                         :session/person-id nil
                                         :session/data      stored
                                         :hours             (:visitor-hours settings)})
-        (assoc-in response [:headers "Set-Cookie"]
-                  (cookie settings key (* 86400 (:max-age-days settings))))))))
+        (add-cookie response (if (::embedded? request)
+                               (embed-cookie settings key max-age)
+                               (cookie settings key max-age)))))))
 
 ;; =============================================================================
 ;; Signing in and out
@@ -169,25 +206,31 @@
   "The response, signing the person in: a new session row and its cookie.
    A session the request already had is ended first, so a key someone else
    planted before the login is worthless after it. A visitor's data comes
-   along into the new session; a signed-in session's doesn't.
+   along into the new session; a signed-in session's doesn't. A page in
+   another site's frame can't sign in: the session it would make lives in
+   the app's own site's cookie.
 
      (sign-in request response person-id)
      (sign-in request response person-id {:flags #{:impersonated} :data {…}})"
   ([request response person-id] (sign-in request response person-id {}))
   ([request response person-id opts]
+   (when (::embedded? request)
+     (throw (ex-info "Signing in happens on the app's own site, not in another site's frame"
+                     {:type ::embedded-sign-in})))
    (let [{:keys [db settings] :as sessions} (::sessions request)
          key                                (new-key)
          visitor-data                       (let [s (::session request)]
                                               (when (and s (nil? (:person-id s))) (:data s)))]
-     (when-let [old (cookie-key request (:cookie-name settings))]
+     (doseq [old [(cookie-key request (:cookie-name settings))
+                  (some-> (::session request) (#(when (= :embed (:cookie %)) (:key %))))]
+             :when old]
        (pg/execute! db delete-by-key {:session/key-hash (key-hash old)}))
      (pg/execute! db delete-expired)
      (pg/execute! db insert-session {:session/key-hash  (key-hash key)
                                      :session/person-id person-id
                                      :session/data      (data-in (update opts :data #(merge visitor-data %)))
                                      :hours             (* 24 (:max-age-days settings))})
-     (assoc-in response [:headers "Set-Cookie"]
-               (cookie (:settings sessions) key (* 86400 (:max-age-days settings)))))))
+     (add-cookie response (cookie (:settings sessions) key (* 86400 (:max-age-days settings)))))))
 
 (defn sign-out
   "The response, ending this request's session and clearing its cookie."
@@ -195,7 +238,10 @@
   (let [{:keys [db settings]} (::sessions request)]
     (when-let [key (cookie-key request (:cookie-name settings))]
       (pg/execute! db delete-by-key {:session/key-hash (key-hash key)}))
-    (assoc-in response [:headers "Set-Cookie"] (cookie settings "" 0))))
+    (if (= :embed (:cookie (::session request)))
+      (do (pg/execute! db delete-by-key {:session/key-hash (key-hash (:key (::session request)))})
+          (add-cookie response (embed-cookie settings "" 0)))
+      (add-cookie response (cookie settings "" 0)))))
 
 (defn sign-out-everywhere!
   "End every session of a person: a removed member, a stolen laptop.
@@ -212,15 +258,18 @@
 
 (defn wrap-sessions
   "Put the session (if any) and the sessions part on every request, and
-   refuse a changing request that doesn't come from the app's own origin."
-  [handler {:keys [settings] :as sessions}]
+   refuse a changing request that doesn't come from the app's own origin.
+   On an :embeddable route (embedded? true), a new visitor session uses the
+   embed cookie."
+  [handler {:keys [settings] :as sessions} embedded?]
   (fn [request]
     (if (and (not (safe-methods (:request-method request)))
              (not= (:origin settings) (get-in request [:headers "origin"])))
       {:status  403
        :headers {"Content-Type" "text/plain; charset=utf-8"}
        :body    "Refused: the request didn't come from this app's pages"}
-      (let [request (assoc request ::sessions sessions)]
+      (let [request (cond-> (assoc request ::sessions sessions)
+                      embedded? (assoc ::embedded? true))]
         (handler (if-let [session (session-of sessions request)]
                    (assoc request ::session session)
                    request))))))

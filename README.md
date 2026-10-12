@@ -286,8 +286,12 @@ resources/migrations/
   cost no rows. It ends after `:visitor-hours` unseen (24 is a good start);
   each visit pushes the end out, at most once an hour. At sign-in its data
   moves into the signed-in session, under a new key.
-- In another site's frame the browser doesn't send the cookie, so a flow that
-  needs the session (sign-in, checkout) opens on the app's own site.
+- **In another site's frame** the browser doesn't send the Lax cookie. A
+  visitor session made on an `:embeddable` route uses a second cookie,
+  `<cookie-name>_embed` (SameSite=None; Secure; Partitioned), which the
+  framed page's own requests carry. It only ever holds a visitor: sign-in in
+  a frame is refused, so signing in and checkout open on the app's own site,
+  where the visitor's data moves into the signed-in session.
 - A request that changes something (not GET, HEAD, OPTIONS) must carry the
   app's own `:origin`, or it's refused with 403.
 - `:data` keys are shaped `:entity/field`, like every json key.

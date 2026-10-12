@@ -22,6 +22,11 @@
    ["/logout" {:post (fn [request] (sessions/sign-out request {:status 200 :body "out"}))}]
    ["/cart"   {:post (fn [request]
                        (sessions/put-data request {:status 200 :body "kept"} {:cart/items ["rim" "frame"]}))}]
+   ["/widget/cart"  {:post       (fn [request]
+                                   (sessions/put-data request {:status 200 :body "kept"} {:cart/items ["hood"]}))
+                     :embeddable true}]
+   ["/widget/login" {:post       (fn [request] (sessions/sign-in request {:status 200} peter))
+                     :embeddable true}]
    ["/me"     {:get (fn [request]
                       {:status 200
                        :body   (pr-str [(some-> (sessions/person request) str)
@@ -142,6 +147,31 @@
     (is (= [(str peter) #{:impersonated} {:cart/items ["rim" "frame"] :login/via "test"}] (me signed-in)))
     (testing "the visitor's key is worthless now"
       (is (= [nil #{} {}] (me visitor))))))
+
+(deftest a-framed-page-keeps-its-visitor-in-the-embed-cookie
+  (let [set-cookie (:set-cookie (request "POST" "/widget/cart" :origin origin))
+        cookie     (first (str/split set-cookie #";"))]
+    (testing "a cookie that works in another site's frame"
+      (is (str/starts-with? set-cookie "gw_session_embed="))
+      (is (str/includes? set-cookie "SameSite=None"))
+      (is (str/includes? set-cookie "Secure"))
+      (is (str/includes? set-cookie "Partitioned")))
+    (testing "the framed page's other requests carry it"
+      (is (= [nil #{} {:cart/items ["hood"]}] (me cookie))))
+    (testing "signing in from the frame is refused"
+      (is (= 500 (:status (request "POST" "/widget/login" :cookie cookie :origin origin)))))
+    (testing "signing in on the app's own site keeps the cart, under the Lax cookie"
+      (let [set-cookie (:set-cookie (request "POST" "/login" :cookie cookie :origin origin))]
+        (is (str/starts-with? set-cookie "gw_session="))
+        (is (str/includes? set-cookie "SameSite=Lax"))
+        (is (= [(str peter) #{:impersonated} {:cart/items ["hood"] :login/via "test"}]
+               (me (first (str/split set-cookie #";")))))
+        (is (= [nil #{} {}] (me cookie)) "the visitor's embed key is worthless now")))))
+
+(deftest the-embed-cookie-never-holds-someone-signed-in
+  (let [{:keys [cookie]} (login)
+        key              (second (str/split cookie #"=" 2))]
+    (is (= [nil #{} {}] (me (str "gw_session_embed=" key))))))
 
 (deftest settings-are-checked
   (is (= ::sessions/missing-settings

@@ -8,6 +8,6 @@
 
 **Why:** an app's page can live on its customers' own websites, people fill a cart before they sign in, and providers call the server directly. Each one is declared on its route, so the default stays strict: unframeable, no session for nobody, every changing request from the app's own pages.
 
-**The price:** in another site's frame the browser doesn't send the session cookie, so a flow that needs it (sign-in, checkout) opens on the app's own site. A server-to-server route has no protection from Groundwork; its handler must check the call.
+**The price:** in another site's frame the browser doesn't send the session cookie, so a flow that needs it (sign-in, checkout) opens on the app's own site. A visitor in a frame is kept in a second cookie made for frames (SameSite=None, Partitioned), which never holds anyone signed in. A server-to-server route has no protection from Groundwork; its handler must check the call.
 
 **Instead of:** allowing every page in frames (any site could frame the app's pages to trick clicks), a session for every visitor (a row per crawler hit), or turning the Origin check off for webhooks app-wide.
