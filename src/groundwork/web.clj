@@ -30,7 +30,12 @@
 
    Every answer carries the standard security headers, and no page may be
    framed by another site unless its route is :embeddable. In production also
-   Strict-Transport-Security. Files are revalidated on every load (a 304 when
+   Strict-Transport-Security. The Content-Security-Policy is strict: scripts
+   and styles only from the app's own origin or carrying this request's
+   nonce (the page shell stamps it on its own tags), plus what the app adds
+   per directive in :content-security-policy, like
+   {:script-src [\"https://js.payments.example\"] :frame-src […]}. Development
+   also allows eval, which its build needs. Files are revalidated on every load (a 304 when
    unchanged), so a deploy is never hidden behind a stale cache."
   (:require
    [clojure.string :as str]
@@ -50,33 +55,82 @@
 ;; Security headers and frames
 ;; =============================================================================
 
-(def ^:private csp-rest "base-uri 'self'; object-src 'none'")
+(def ^:private csp-directives
+  "The directives an app can add sources to, and what each allows already."
+  (array-map
+   :default-src ["'self'"]
+   :script-src  ["'self'"]
+   :style-src   ["'self'"]
+   :img-src     ["'self'" "data:" "blob:"]
+   :font-src    ["'self'" "data:"]
+   :connect-src ["'self'"]
+   :media-src   ["'self'" "blob:"]
+   :frame-src   ["'self'"]
+   :worker-src  ["'self'" "blob:"]
+   :form-action ["'self'"]))
+
+(defn- check-csp [csp]
+  (when-not (and (map? csp)
+                 (every? csp-directives (keys csp))
+                 (every? #(and (sequential? %) (every? string? %)) (vals csp)))
+    (throw (ex-info (str ":content-security-policy must map directives ("
+                         (str/join " " (keys csp-directives)) ") to lists of sources")
+                    {:type ::bad-setting :setting :content-security-policy :value csp}))))
+
+(defn- csp-header
+  "The policy for one answer: Groundwork's strict defaults, the app's added
+   sources, this request's nonce for scripts and styles, and who may frame
+   it. Style attributes stay allowed (style-src-attr): components set them."
+  [csp environment nonce ancestors]
+  (let [nonce-src (str "'nonce-" nonce "'")
+        sources   (fn [directive]
+                    (cond-> (into (csp-directives directive) (get csp directive))
+                      (#{:script-src :style-src} directive) (conj nonce-src)
+                      ;; the development build loads code with eval
+                      (and (= :script-src directive) (= :development environment)) (conj "'unsafe-eval'")))]
+    (str/join "; " (concat (for [directive (keys csp-directives)]
+                             (str (name directive) " " (str/join " " (sources directive))))
+                           ["style-src-attr 'unsafe-inline'"
+                            "object-src 'none'"
+                            "base-uri 'self'"
+                            (str "frame-ancestors " (or ancestors "'none'"))]))))
+
+(def ^:private random (java.security.SecureRandom.))
+
+(defn- new-nonce []
+  (let [bytes (byte-array 16)]
+    (.nextBytes random bytes)
+    (.encodeToString (java.util.Base64/getEncoder) bytes)))
+
+(defn nonce
+  "This request's nonce, for a handler that writes its own HTML:
+   <script nonce=…>."
+  [request]
+  (::page/nonce request))
 
 (def ^:private security-headers
-  {"X-Content-Type-Options"  "nosniff"
-   "X-Frame-Options"         "DENY"
-   "Referrer-Policy"         "strict-origin-when-cross-origin"
-   ;; what can't break an app's own scripts and styles
-   "Content-Security-Policy" (str "frame-ancestors 'none'; " csp-rest)})
+  {"X-Content-Type-Options" "nosniff"
+   "X-Frame-Options"        "DENY"
+   "Referrer-Policy"        "strict-origin-when-cross-origin"})
 
 (defn- wrap-security-headers
-  "The headers on every answer. A response that says which sites may frame it
-   (::frame-ancestors, from an :embeddable route) gets those instead of
-   'none', and no X-Frame-Options, which can't name another site."
-  [handler environment]
+  "The headers on every answer, with a nonce made for each request. A
+   response that says which sites may frame it (::frame-ancestors, from an
+   :embeddable route) names them in frame-ancestors, and gets no
+   X-Frame-Options, which can't name another site."
+  [handler environment csp]
   (let [headers (cond-> security-headers
                   (= :production environment)
                   (assoc "Strict-Transport-Security" "max-age=31536000; includeSubDomains"))]
     (fn [request]
-      (when-let [response (handler request)]
-        (let [ancestors (::frame-ancestors response)
-              headers   (if ancestors
-                          (-> (dissoc headers "X-Frame-Options")
-                              (assoc "Content-Security-Policy"
-                                     (str "frame-ancestors " ancestors "; " csp-rest)))
-                          headers)]
-          (-> (dissoc response ::frame-ancestors)
-              (update :headers #(merge headers %))))))))
+      (let [nonce (new-nonce)]
+        (when-let [response (handler (assoc request ::page/nonce nonce))]
+          (let [ancestors (::frame-ancestors response)
+                headers   (cond-> (assoc headers "Content-Security-Policy"
+                                         (csp-header csp environment nonce ancestors))
+                            ancestors (dissoc "X-Frame-Options"))]
+            (-> (dissoc response ::frame-ancestors)
+                (update :headers #(merge headers %)))))))))
 
 (defn- frame-ancestors
   "The frame-ancestors value for a route's :embeddable, checked when the
@@ -253,7 +307,7 @@
   []
   [])
 
-(def ^:private settings [:routes :max-body-bytes])
+(def ^:private settings [:routes :max-body-bytes :content-security-policy])
 
 (defn- check-settings [opts]
   (when-not (map? opts)
@@ -267,11 +321,12 @@
                       {:type ::bad-setting :setting :routes :value routes})))
     (when-not (pos-int? max-body-bytes)
       (throw (ex-info ":max-body-bytes must be a positive integer"
-                      {:type ::bad-setting :setting :max-body-bytes :value max-body-bytes})))))
+                      {:type ::bad-setting :setting :max-body-bytes :value max-body-bytes})))
+    (check-csp (:content-security-policy opts))))
 
 (defn handler
   "The app's Ring handler, for settings already checked."
-  [{:keys [routes max-body-bytes page sessions environment]}]
+  [{:keys [routes max-body-bytes content-security-policy page sessions environment]}]
   (let [files  (-> (ring/create-resource-handler {:path "/" :root "public"})
                    wrap-file-caching
                    wrap-not-modified)
@@ -289,7 +344,7 @@
                              (fn [request] (when (wants-page? request) (page request)))
                              not-found))]
     (-> (fn [request] (app (assoc request ::page page)))
-        (wrap-security-headers environment))))
+        (wrap-security-headers environment content-security-policy))))
 
 (defn start
   "The router part: {:handler … :max-body-bytes …}, the most any route

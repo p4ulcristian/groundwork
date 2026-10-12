@@ -47,7 +47,8 @@
    :page        {:lang "en" :title "Test" :description nil :icon "/icon.svg" :stylesheets ["/app.css"]
                  :script "/js/main.js" :head []}
    :web         {:routes         []
-                 :max-body-bytes 1048576}
+                 :max-body-bytes 1048576
+                 :content-security-policy {:connect-src ["https://api.example"]}}
    :server      {:ip "127.0.0.1" :port port}
    :sessions    {:cookie-name "gw_session" :max-age-days 30 :visitor-hours 24 :secure? false
                  :origin (str "http://127.0.0.1:" port)}

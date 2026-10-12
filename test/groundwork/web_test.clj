@@ -83,7 +83,8 @@
     (let [headers (:headers (request path {:headers html}))]
       (is (= "nosniff" (headers "x-content-type-options")) path)
       (is (= "DENY" (headers "x-frame-options")) path)
-      (is (str/includes? (headers "content-security-policy") "frame-ancestors 'none'") path)))
+      (is (str/includes? (headers "content-security-policy") "frame-ancestors 'none'") path)
+      (is (str/includes? (headers "content-security-policy") "script-src 'self' 'nonce-") path)))
   (testing "Strict-Transport-Security only in production"
     (is (nil? ((:headers (request "/api/hello")) "strict-transport-security")))))
 
@@ -92,13 +93,13 @@
     (let [{:keys [status body headers]} (request "/customize" {:headers html})]
       (is (= 200 status))
       (is (str/includes? body "<div id=\"app\"></div>") "the page shell")
-      (is (str/starts-with? (headers "content-security-policy") "frame-ancestors https:;"))
+      (is (str/includes? (headers "content-security-policy") "frame-ancestors https:"))
       (is (nil? (headers "x-frame-options")))
       (is (= "nosniff" (headers "x-content-type-options")) "the other headers stay")))
   (testing "a list of sites"
     (let [headers (:headers (request "/partner-widget" {:headers html}))]
-      (is (str/starts-with? (headers "content-security-policy")
-                            "frame-ancestors https://shop.example https://other.example;"))
+      (is (str/includes? (headers "content-security-policy")
+                         "frame-ancestors https://shop.example https://other.example"))
       (is (nil? (headers "x-frame-options")))))
   (testing "every other page stays unframeable"
     (let [headers (:headers (request "/shops/7/orders" {:headers html}))]
@@ -107,7 +108,7 @@
 
 (deftest a-route-declares-embeddable-properly
   (is (= ::web/bad-route
-         (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :embeddable ["shop.example"]}]] :max-body-bytes 1000
+         (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :embeddable ["shop.example"]}]] :max-body-bytes 1000 :content-security-policy {}
                                             :page (fn [_]) :sessions {} :environment :test})
                               (catch Exception e e)))))))
 
@@ -182,7 +183,7 @@
     (let [{:keys [status body headers]} (request path {:headers html})]
       (is (= 200 status) path)
       (is (str/includes? body "<div id=\"app\"></div>"))
-      (is (str/includes? body "<script src=\"/js/main.js\" defer></script>"))
+      (is (re-find #"<script nonce=\"[^\"]+\" src=\"/js/main.js\" defer></script>" body))
       (is (str/includes? body "<link rel=\"stylesheet\" href=\"/app.css\">"))
       (is (= "no-store" (headers "cache-control")))))
   (testing "the title is escaped"
@@ -197,8 +198,8 @@
     (is (str/includes? body "<link rel=\"alternate\" hreflang=\"de\" href=\"https://acme.example/de/coaters/zinc\">"))
     (is (str/includes? body "<link rel=\"stylesheet\" href=\"/app.css\">") "the app's stylesheets stay")
     (is (str/includes? body "<link rel=\"stylesheet\" href=\"/coaters.css\">"))
-    (is (str/includes? body "<script src=\"/js/main.js\" defer></script>"))
-    (is (str/includes? body "<script src=\"/js/map.js\" defer></script>"))
+    (is (re-find #"<script nonce=\"[^\"]+\" src=\"/js/main.js\" defer></script>" body))
+    (is (re-find #"<script nonce=\"[^\"]+\" src=\"/js/map.js\" defer></script>" body))
     (is (str/includes? body "<div id=\"app\"><h1>zinc</h1></div>")))
   (testing "a map works too, the rest from the app"
     (let [body (:body (request "/about" {:headers html}))]
@@ -206,9 +207,34 @@
       (is (str/includes? body "<div id=\"app\"></div>"))))
   (testing "a route's page keys are checked when the router is built"
     (is (= ::page/bad-route
-           (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :page {:titel "x"}}]] :max-body-bytes 1000
+           (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :page {:titel "x"}}]] :max-body-bytes 1000 :content-security-policy {}
                                               :page (fn [_]) :sessions {} :environment :test})
                                 (catch Exception e e))))))))
+
+(deftest a-strict-content-security-policy
+  (let [{:keys [body headers]} (request "/coaters/zinc" {:headers html})
+        policy                 (headers "content-security-policy")
+        nonce                  (second (re-find #"'nonce-([^']+)'" policy))]
+    (testing "scripts and styles only from the app or with this request's nonce"
+      (is (str/includes? policy (str "script-src 'self' 'nonce-" nonce "'")))
+      (is (str/includes? policy (str "style-src 'self' 'nonce-" nonce "'")))
+      (is (str/includes? policy "object-src 'none'"))
+      (is (not (str/includes? policy "unsafe-eval")) "eval only in development"))
+    (testing "the app's added sources"
+      (is (str/includes? policy "connect-src 'self' https://api.example")))
+    (testing "the shell's scripts carry the nonce"
+      (is (str/includes? body (str "<script nonce=\"" nonce "\" src=\"/js/main.js\""))))
+    (testing "a new nonce every request"
+      (is (not= policy ((:headers (request "/coaters/zinc" {:headers html})) "content-security-policy"))))))
+
+(deftest inline-tags-get-the-nonce
+  (let [page (page/start {:settings (assoc (:page app-settings)
+                                           :head ["<script>window.x=1</script>" "<style>a{}</style>"
+                                                  "<script nonce=\"mine\">y()</script>"])})
+        body (:body (page {::page/nonce "N1"}))]
+    (is (str/includes? body "<script nonce=\"N1\">window.x=1</script>"))
+    (is (str/includes? body "<style nonce=\"N1\">a{}</style>"))
+    (is (str/includes? body "<script nonce=\"mine\">y()</script>") "a nonce already there stays")))
 
 (deftest files-are-served-and-revalidated
   (let [{:keys [status body headers]} (request "/app.css")]

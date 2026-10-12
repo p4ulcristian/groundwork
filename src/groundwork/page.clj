@@ -24,7 +24,9 @@
                  search engines and the first paint; the app replaces it
 
    The page has one element for the app to render into, <div id=\"app\">, and
-   is never cached: a deploy is seen on the next load."
+   is never cached: a deploy is seen on the next load. Every <script> and
+   <style> on it, the app's :head and :body included, carries the request's
+   nonce, so the strict Content-Security-Policy lets them run."
   (:require
    [clojure.string :as str]))
 
@@ -75,9 +77,16 @@
       (update :head into (:head route))
       (assoc :scripts (vec (:scripts route)))))
 
+(defn- stamp-nonce
+  "HTML text with the nonce on every <script and <style tag that has none."
+  [html nonce]
+  (if (and html nonce)
+    (str/replace html #"(?i)<(script|style)(?![^>]*\bnonce=)" (str "<$1 nonce=\"" nonce "\""))
+    html))
+
 (defn html
-  "The page as HTML text."
-  [{:keys [lang title description icon canonical alternates stylesheets head script scripts body]}]
+  "The page as HTML text; nonce, when given, goes on its scripts and styles."
+  [{:keys [lang title description icon canonical alternates stylesheets head script scripts body]} nonce]
   (str "<!doctype html>\n"
        "<html lang=\"" (escape lang) "\">\n"
        "<head>\n"
@@ -91,13 +100,12 @@
                     (str "<link rel=\"alternate\" hreflang=\"" (escape lang) "\" href=\"" (escape href) "\">\n")))
        (apply str (for [href stylesheets]
                     (str "<link rel=\"stylesheet\" href=\"" (escape href) "\">\n")))
-       (apply str (for [tag head] (str tag "\n")))
+       (apply str (for [tag head] (str (stamp-nonce tag nonce) "\n")))
        "</head>\n"
        "<body>\n"
-       "<div id=\"app\">" body "</div>\n"
-       "<script src=\"" (escape script) "\" defer></script>\n"
-       (apply str (for [src scripts]
-                    (str "<script src=\"" (escape src) "\" defer></script>\n")))
+       "<div id=\"app\">" (stamp-nonce body nonce) "</div>\n"
+       (apply str (for [src (cons script scripts)]
+                    (stamp-nonce (str "<script src=\"" (escape src) "\" defer></script>\n") nonce)))
        "</body>\n"
        "</html>\n"))
 
@@ -123,4 +131,4 @@
     {:status  200
      :headers {"Content-Type"  "text/html; charset=utf-8"
                "Cache-Control" "no-store"}
-     :body    (html (merged settings (route-page request)))}))
+     :body    (html (merged settings (route-page request)) (::nonce request))}))

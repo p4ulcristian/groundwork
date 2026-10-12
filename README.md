@@ -37,8 +37,9 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
                     :page        {:lang "en" :title "Acme Coating" :description nil
                                   :icon "/icon.svg" :stylesheets ["/app.css"]
                                   :script "/js/main.js" :head []}
-                    :web         {:routes         [["/orders" {:get web/page}]]
-                                  :max-body-bytes 1048576}     ; see Server, routes and the page
+                    :web         {:routes                  [["/orders" {:get web/page}]]
+                                  :max-body-bytes          1048576
+                                  :content-security-policy {}}  ; see Server, routes and the page
                     :server      {:ip "0.0.0.0" :port 8080}
                     :sessions    {:cookie-name "acme_session" :max-age-days 30 :visitor-hours 24
                                   :secure? true :origin "https://app.acme.example"}
@@ -268,6 +269,14 @@ resources/migrations/
 
 - **Security headers** on every answer: no sniffing, no framing, a strict
   referrer; in production also Strict-Transport-Security.
+- **A strict Content-Security-Policy:** scripts and styles only from the
+  app's own origin or carrying the request's nonce, which the page shell
+  stamps on every `<script>` and `<style>` it writes (the app's `:head` and
+  `:body` included; `web/nonce` for a handler writing its own HTML). Style
+  attributes stay allowed, since components set them. The app adds sources
+  per directive: `:content-security-policy {:script-src ["https://js.payments.example"]
+  :frame-src […] :connect-src […]}`. Development also allows eval, which its
+  build needs.
 
 ```clojure
 ["/customize"        {:get web/page :embeddable true}]                     ; any https site may frame it
