@@ -51,6 +51,7 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
                                   :languages               {:supported ["en" "de"] :default "en"
                                                             :cookie "lang"}    ; or nil
                                   :test-sign-in            nil                ; or {:secret …}, never in production
+                                  :eval-bridge             nil                ; or {:secret … :timeout-ms … :max-chars …}, never in production
                                   :hashed-files            "\\.[0-9a-f]{8,}\\."   ; or nil
                                   :gzip-min-bytes          1024}               ; or nil
                     :server      {:ip "0.0.0.0" :port 8080}
@@ -638,6 +639,14 @@ and not saved to a file is gone on the next start.
 - **why** says it in plain words: the record's scope, the person's
   memberships, roles and extra actions there and above, the links followed,
   a person column, an only-when, a session's flags.
+- **Previews: the eval bridge.** With `:web :eval-bridge {:secret …
+  :timeout-ms 30000 :max-chars 20000}` (nil turns it off; production refuses
+  to start with it), `POST /groundwork/eval` with `X-Eval-Secret` and Clojure
+  code as the body evaluates it in the running app's `user` namespace and
+  answers `{"value": …, "out": …}` or `{"error": …}`; 504 when it ran too
+  long. `(groundwork.core/current)` is the running app. `?cljs=app` evaluates
+  in the browser tabs open on it, when the shadow-cljs build runs in that
+  server. Every evaluation is logged; a wrong secret is a plain 404.
 - **In the browser** (the build's REPL): `(groundwork.repl/entries)` lists
   every question the store holds, `(groundwork.repl/answer :jobs/list
   {:shop/id id})` one entry with its data.

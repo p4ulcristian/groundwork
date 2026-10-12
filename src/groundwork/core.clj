@@ -124,11 +124,19 @@
 ;; Start / stop
 ;; =============================================================================
 
+(defonce ^:private current-app (atom nil))
+
+(defn current
+  "The app started last in this JVM and still running, for code evaluated
+   from outside it (groundwork.eval-bridge) and the REPL."
+  []
+  @current-app)
+
 (defn start
   "Start an app from its settings. Returns the running app; give it to stop."
   [settings]
   (check-settings settings)
-  {::system (ig/init (config settings))})
+  (reset! current-app {::system (ig/init (config settings))}))
 
 (defn start-with
   "Start an app with some parts replaced by fakes, for tests:
@@ -144,13 +152,14 @@
                             (assoc config k {::fake fake}))
                           (config settings)
                           fakes)]
-    {::system (ig/init config)
-     ::fakes  (set (keys fakes))}))
+    (reset! current-app {::system (ig/init config)
+                         ::fakes  (set (keys fakes))})))
 
 (defn stop
   "Stop a running app, its parts in reverse order."
   [app]
   (let [system (::system app)]
+    (swap! current-app #(when-not (identical? (::system %) system) %))
     (ig/halt! system (remove (::fakes app #{}) (keys system)))))
 
 (defn part
