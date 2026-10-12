@@ -25,6 +25,7 @@
    [groundwork.endpoints :as endpoints]
    [groundwork.migrations :as migrations]
    [groundwork.page :as page]
+   [groundwork.parquery.route :as parquery]
    [groundwork.permissions :as permissions]
    [groundwork.postgres :as pg]
    [groundwork.server :as server]
@@ -61,12 +62,16 @@
    :groundwork/endpoints  {:settings :parquery
                            :needs    [:groundwork/db :groundwork/migrations :groundwork/permissions]
                            :start    endpoints/start}
+   :groundwork/parquery   {:settings :parquery
+                           :needs    [:groundwork/db :groundwork/endpoints :groundwork/sessions]
+                           :start    parquery/start
+                           :stop     parquery/stop}
    :groundwork/page       {:settings :page
                            :needs    []
                            :start    page/start}
    :groundwork/router     {:settings :web
                            :needs    [:groundwork/migrations :groundwork/sessions :groundwork/permissions
-                                      :groundwork/page]
+                                      :groundwork/page :groundwork/parquery]
                            :start    web/start}
    :groundwork/server     {:settings :server
                            :needs    [:groundwork/router]
@@ -90,7 +95,7 @@
 ;; =============================================================================
 
 (defn- check-settings [settings]
-  (let [required (into [:environment] (map :settings) (vals parts))
+  (let [required (distinct (into [:environment] (keep :settings) (vals parts)))
         missing  (remove #(contains? settings %) required)
         unknown  (remove (set required) (keys settings))]
     (when (seq missing)

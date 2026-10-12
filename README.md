@@ -15,7 +15,7 @@ keywords → postgres → parquery → re-frame → reagent
 | Keywords          | `groundwork.names`    | built  |
 | db                | `groundwork.postgres` | built on next.jdbc + PgJDBC + HikariCP |
 | endpoints         | `groundwork.endpoints` | built |
-| parquery          |                       | next   |
+| parquery          | `groundwork.parquery.*` | HTTP built; bells next |
 | parquery, browser |                       |        |
 | server            | `groundwork.server`   | built on http-kit |
 | router            | `groundwork.web`      | built on reitit |
@@ -501,3 +501,27 @@ Everything the browser, or a tool, can ask. The app lists them by area:
   ask)` for a tool, through `:bearer`.
 - `:groundwork/grants` is built in: every action the person holds, and
   where, for the browser's "can I?".
+
+---
+
+## 8. parquery
+
+The transport between browser and server, at one address, `/parquery`:
+
+- `parquery/http`: a POST carries the asks a page makes at one moment, as
+  a JSON list; the answers come back in the same order. Each ask runs on its
+  own, in parallel, with its own transaction, so one failing leaves the
+  others. At most `:max-asks` per request; at most `:max-running` running
+  across the server.
+- `parquery/wire`: the message format, the same on both sides. JSON, typed
+  by the endpoint's shapes: ids, dates (`:time/local-date` …) and decimals
+  (`:decimal`) travel as text and come back as what they are.
+- The route is public; each endpoint checks its own permission, under the
+  browser's session and the Origin check.
+
+```
+POST /parquery
+[{"endpoint": "jobs/of-shop", "params": {"shop/id": "…"}},
+ {"endpoint": "jobs/move", "params": {…}, "key": "…"}]
+→ [{"status": "ok", "data": […]}, {"status": "not-found"}]
+```

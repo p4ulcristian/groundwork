@@ -820,9 +820,10 @@
                 (plain 503 "database unreachable")))}])
 
 (defn groundwork-routes
-  "Groundwork's own routes, mounted next to the app's."
-  [{:keys [test-sign-in sessions]}]
-  (cond-> [(health-route (:db sessions))]
+  "Groundwork's own routes, mounted next to the app's: /health, parquery's
+   /parquery, and the test sign-in when it's on."
+  [{:keys [test-sign-in sessions parquery]}]
+  (cond-> (into [(health-route (:db sessions))] (:routes parquery))
     test-sign-in (conj (test-sign-in-route test-sign-in sessions))))
 
 (def ^:private settings
@@ -892,9 +893,10 @@
   "The router part: {:handler … :max-body-bytes …}, the most any route
    accepts, which the server reads at most. The handler can be swapped for
    one with new routes while the server runs (swap-routes!)."
-  [{:keys [settings environment page sessions permissions]}]
+  [{:keys [settings environment page sessions permissions parquery]}]
   (check-settings settings environment)
-  (let [inputs  (assoc settings :page page :sessions sessions :permissions permissions :environment environment)
+  (let [inputs  (assoc settings :page page :sessions sessions :permissions permissions :environment environment
+                       :parquery parquery)
         current (atom (handler inputs))
         largest (largest-body (:routes settings) (:max-body-bytes settings))]
     {:handler        (fn [request] (@current request))
@@ -908,7 +910,7 @@
    route taking a bigger body than the server reads needs a restart."
   [{::keys [current inputs] :keys [max-body-bytes]} routes]
   (let [inputs (assoc inputs :routes routes)]
-    (check-settings (apply dissoc inputs [:page :sessions :permissions :environment]) (:environment inputs))
+    (check-settings (apply dissoc inputs [:page :sessions :permissions :environment :parquery]) (:environment inputs))
     (when (> (largest-body routes (:max-body-bytes inputs)) max-body-bytes)
       (throw (ex-info "A route takes a bigger body than the running server reads; restart the app"
                       {:type ::restart-needed})))
