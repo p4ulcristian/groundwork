@@ -538,6 +538,12 @@ The transport between browser and server, at one address, `/parquery`:
   the tables its read's SQL uses (Postgres plans each file it ran; `:reads`
   adds what the plan can't see), in its verified scopes. A read about one
   record rings only when that record changed.
+- A line lives as long as its session. A session that ends (signed out,
+  signed out everywhere, deleted) rings on the same channel, and every
+  server closes its lines; each watch message checks the session first; a
+  sweep every minute closes lines whose session expired and checks every
+  line's watches again, so someone removed from a scope stops hearing
+  about it.
 - The route is public; each endpoint checks its own permission, under the
   browser's session and the Origin check (the websocket's too).
 

@@ -6,7 +6,9 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.core :as gw]
    [groundwork.endpoints :as endpoints]
+   [groundwork.parquery.websocket :as websocket]
    [groundwork.parquery.wire :as wire]
+   [groundwork.sessions :as sessions]
    [groundwork.permissions :as perm]
    [groundwork.postgres :as pg]
    [groundwork.test-support :refer [app-settings sql!]]
@@ -102,6 +104,9 @@
                    (onText [_ ws data _last]
                      (.add messages (str data))
                      (.request ws 1)
+                     nil)
+                   (onClose [_ _ws _code _reason]
+                     (.add messages "closed")
                      nil))
         ws       (.get (.buildAsync (cond-> (.header (.newWebSocketBuilder client) "Origin" line-origin)
                                       cookie (.header "Cookie" cookie))
@@ -118,7 +123,21 @@
   (some-> (.poll messages ms TimeUnit/MILLISECONDS) wire/read-json :changed))
 
 (defn- close! [{:keys [^WebSocket ws]}]
-  (.get (.sendClose ws WebSocket/NORMAL_CLOSURE "") 5 TimeUnit/SECONDS))
+  (when-not (.isOutputClosed ws)
+    (try (.get (.sendClose ws WebSocket/NORMAL_CLOSURE "") 5 TimeUnit/SECONDS)
+         (catch Exception _ nil))))
+
+(defn- closed-within? [{:keys [^LinkedBlockingQueue messages]} ms]
+  (loop [deadline (+ (System/currentTimeMillis) ms)]
+    (let [left (- deadline (System/currentTimeMillis))
+          m    (when (pos? left) (.poll messages left TimeUnit/MILLISECONDS))]
+      (cond (= "closed" m) true
+            (nil? m)       false
+            :else          (recur deadline)))))
+
+(defn- expire! [person]
+  (sql! "UPDATE groundwork.sessions SET session__expires_at = now() - interval '1 second'
+         WHERE session__person_id = ?" person))
 
 (defn- as-system! [sql & params]
   (perm/as-system (gw/permissions *app*) (fn [tx] (jdbc/execute! (::pg/conn tx) (into [sql] params)))))
@@ -192,4 +211,57 @@
       (as-system! "INSERT INTO tags VALUES (?, ?)" (UUID/randomUUID) acme)
       (is (= [["notes/one" {:note/id (str note-2)}]] (next-bell line 3000))
           "its tables aren't known, so any change in its scope rings it")
+      (finally (close! line)))))
+
+(deftest a-line-ends-with-its-session
+  (testing "signed out everywhere: the line closes, on every server, by the session's own bell"
+    (let [line (open-line (sign-in paul))]
+      (try
+        (sessions/sign-out-everywhere! (gw/part *app* :groundwork/sessions) paul)
+        (is (closed-within? line 3000))
+        (finally (close! line)))))
+  (testing "an expired session: the next watch message closes the line"
+    (let [line (open-line (sign-in ana))]
+      (try
+        (expire! ana)
+        (watch! line ["notes/of-shop" {:shop/id (str zinc)}])
+        (is (closed-within? line 3000))
+        (finally (close! line)))))
+  (testing "an expired session: the sweep closes a quiet line"
+    (let [line (open-line (sign-in ana))]
+      (try
+        (expire! ana)
+        (websocket/recheck! (get-in (gw/part *app* :groundwork/parquery) [:bells]))
+        (is (closed-within? line 3000))
+        (finally (close! line)))))
+  (testing "a line that stays: its session is live"
+    (let [cookie (sign-in paul)
+          _      (ask! cookie "notes/of-shop" {:shop/id (str acme)})
+          line   (open-line cookie)]
+      (try
+        (watch! line ["notes/of-shop" {:shop/id (str acme)}])
+        (websocket/recheck! (get-in (gw/part *app* :groundwork/parquery) [:bells]))
+        (as-system! "INSERT INTO notes VALUES (?, ?, 'six')" (UUID/randomUUID) acme)
+        (is (= [["notes/of-shop" {:shop/id (str acme)}]] (next-bell line 3000)))
+        (finally (close! line))))))
+
+(deftest the-sweep-drops-a-watch-no-longer-allowed
+  (let [nina   (UUID/randomUUID)
+        perms  (gw/permissions *app*)
+        email  (str nina "@test.example")
+        _      (perm/create-role! perms {:by paul :scope acme :role "Reader" :actions #{:notes/see}})
+        token  (perm/invite! perms {:by paul :scope acme :email email :role "Reader" :days 7})
+        _      (perm/accept-invitation! perms {:token token :person nina :email email})
+        cookie (sign-in nina)
+        _      (ask! cookie "notes/of-shop" {:shop/id (str acme)})
+        line   (open-line cookie)
+        list   ["notes/of-shop" {:shop/id (str acme)}]]
+    (try
+      (watch! line list)
+      (as-system! "INSERT INTO notes VALUES (?, ?, 'seven')" (UUID/randomUUID) acme)
+      (is (= [list] (next-bell line 3000)) "a member hears about the shop's notes")
+      (perm/remove-member! perms {:by paul :scope acme :person nina})
+      (websocket/recheck! (get-in (gw/part *app* :groundwork/parquery) [:bells]))
+      (as-system! "INSERT INTO notes VALUES (?, ?, 'eight')" (UUID/randomUUID) acme)
+      (is (nil? (next-bell line 700)) "removed from the shop, she hears nothing more")
       (finally (close! line)))))

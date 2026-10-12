@@ -132,6 +132,7 @@
       (is (= [nil #{} {:cart/items ["rim" "frame"]}] (me cookie)) "a visitor: no person"))))
 
 (deftest a-visitor-session-ends-when-unseen
+  (sql! "DELETE FROM groundwork.sessions WHERE session__person_id IS NULL")
   (let [cookie (visit-cart)]
     (testing "a visit pushes the end out again"
       (sql! "UPDATE groundwork.sessions SET session__expires_at = now() + interval '30 minutes'

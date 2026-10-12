@@ -20,7 +20,14 @@
    known yet rings on any change in its scopes.
 
    When the listening connection drops, it reconnects and rings everything,
-   since bells may have been missed."
+   since bells may have been missed.
+
+   A line lives as long as the session it was opened with. A session that
+   ends (signed out, signed out everywhere, deleted) rings on the same
+   channel, and every server closes that session's lines; each watch message
+   checks the session first; and a sweep every minute closes lines whose
+   session expired and checks every line's watches again, so a person removed
+   from a scope stops hearing about it."
   (:require
    [clojure.set :as set]
    [clojure.string :as str]
@@ -158,23 +165,61 @@
   (when (and (vector? x) (= 2 (count x)) (string? (first x)) (map? (second x)))
     [(keyword (first x)) (second x)]))
 
+(defn- close-line!
+  "Close a line and forget it."
+  [{:keys [lines]} ch]
+  (swap! lines dissoc ch)
+  (http/close ch))
+
+(defn- checked-watches
+  "A line's watches, each checked like an ask; one it may not ask is dropped."
+  [{:keys [endpoints]} {:keys [person flags]} asks]
+  (let [tables (get-in endpoints [:perms :description :records])]
+    (vec (keep (fn [[endpoint params]]
+                 (when-let [{:keys [scopes record]} (endpoints/watch endpoints {:endpoint endpoint :params params
+                                                                                :person person :flags flags})]
+                   {:ask          [(wire/endpoint-name endpoint) params]
+                    :endpoint     endpoint
+                    :scopes       (set (map str scopes))
+                    :record-table (some-> record first tables :table name)
+                    :record-id    (some-> record second str)}))
+               asks))))
+
+(defn- session-ended?
+  "Whether the session a line was opened with has ended."
+  [{:keys [sessions]} {:keys [session]}]
+  (and session (empty? (sessions/live sessions [session]))))
+
 (defn- watch!
-  "A line's new list of watches, each checked like an ask."
-  [{:keys [endpoints lines]} ch text]
-  (when-let [{:keys [person flags]} (get @lines ch)]
-    (let [message (try (wire/read-json text) (catch Exception _ nil))
-          asks    (keep read-watch (:watch message))
-          tables  (get-in endpoints [:perms :description :records])
-          watches (vec (keep (fn [[endpoint params]]
-                               (when-let [{:keys [scopes record]} (endpoints/watch endpoints {:endpoint endpoint :params params
-                                                                                              :person person :flags flags})]
-                                 {:ask          [(wire/endpoint-name endpoint) params]
-                                  :endpoint     endpoint
-                                  :scopes       (set (map str scopes))
-                                  :record-table (some-> record first tables :table name)
-                                  :record-id    (some-> record second str)}))
-                             asks))]
-      (swap! lines assoc-in [ch :watches] watches))))
+  "A line's new list of watches, each checked like an ask, after its session."
+  [{:keys [lines] :as part} ch text]
+  (when-let [line (get @lines ch)]
+    (if (session-ended? part line)
+      (close-line! part ch)
+      (let [message (try (wire/read-json text) (catch Exception _ nil))
+            asks    (vec (keep read-watch (:watch message)))]
+        (swap! lines update ch assoc :asks asks :watches (checked-watches part line asks))))))
+
+(defn- end-sessions!
+  "Close the lines of these ended sessions; nil means some ended, check them
+   all."
+  [{:keys [lines sessions] :as part} hashes]
+  (let [opened (keep :session (vals @lines))
+        ended  (if (nil? hashes)
+                 (set/difference (set opened) (sessions/live sessions opened))
+                 (set hashes))]
+    (doseq [[ch {:keys [session]}] @lines
+            :when (contains? ended session)]
+      (close-line! part ch))))
+
+(defn recheck!
+  "Close every line whose session ended, expiry included, and check every
+   other line's watches again: a person removed from a scope stops hearing
+   about it. The sweep runs this every minute."
+  [{:keys [lines] :as part}]
+  (end-sessions! part nil)
+  (doseq [[ch line] @lines]
+    (swap! lines (fn [ls] (if (contains? ls ch) (assoc-in ls [ch :watches] (checked-watches part line (:asks line))) ls)))))
 
 (defn- rings?
   "Whether a bell concerns a watch."
@@ -226,7 +271,10 @@
           (recur nil (min 30000 (max 1000 (* 2 wait))))
           (let [result (try
                          (doseq [^PGNotification n (.getNotifications (.unwrap conn PGConnection) 1000)]
-                           (try (ring! part (json/read-value (.getParameter n) json/keyword-keys-object-mapper))
+                           (try (let [message (json/read-value (.getParameter n) json/keyword-keys-object-mapper)]
+                                  (if (contains? message :e)
+                                    (end-sessions! part (:e message))
+                                    (ring! part message)))
                                 (catch Exception e
                                   (.log logger System$Logger$Level/WARNING "A bell couldn't ring" e))))
                          :ok
@@ -243,6 +291,19 @@
 ;; The route and the part
 ;; =============================================================================
 
+(defn- sweep!
+  "Every minute until stopped: recheck!."
+  [{:keys [stopped] :as part}]
+  (try
+    (loop []
+      (Thread/sleep 60000)
+      (when-not @stopped
+        (try (recheck! part)
+             (catch Exception e
+               (.log logger System$Logger$Level/WARNING "The lines' sweep failed" e)))
+        (recur)))
+    (catch InterruptedException _ nil)))
+
 (defn handle
   "The Ring handler for a websocket to /parquery."
   [{:keys [bells sessions]} request]
@@ -258,18 +319,21 @@
     :else
     (let [{:keys [lines]} bells
           person          (sessions/person request)
-          flags           (sessions/flags request)]
+          flags           (sessions/flags request)
+          session         (sessions/session-hash request)]
       (http/as-channel request
-                       {:on-open    (fn [ch] (swap! lines assoc ch {:person person :flags flags :watches []}))
+                       {:on-open    (fn [ch] (swap! lines assoc ch {:person person :flags flags :session session
+                                                                    :asks [] :watches []}))
                         :on-receive (fn [ch text] (watch! bells ch text))
                         :on-close   (fn [ch _] (swap! lines dissoc ch))}))))
 
 (defn start
-  "The bells: triggers installed, a connection listening."
-  [{:keys [endpoints db db-settings settings]}]
+  "The bells: triggers installed, a connection listening, the lines' sweep."
+  [{:keys [endpoints db db-settings settings sessions]}]
   (let [description (get-in endpoints [:perms :description])
         tables      (ringing-tables description (:bells settings))
         part        {:endpoints   endpoints
+                     :sessions    sessions
                      :db          db
                      :db-settings db-settings
                      :tables      tables
@@ -277,12 +341,15 @@
                      :lines       (atom {})
                      :stopped     (atom false)}]
     (install-bells! db tables)
-    (assoc part :listener (Thread/startVirtualThread #(listen! part)))))
+    (assoc part
+           :listener (Thread/startVirtualThread #(listen! part))
+           :sweeper  (Thread/startVirtualThread #(sweep! part)))))
 
 (defn stop
-  "Stop listening and close every line."
-  [{:keys [stopped listener lines]}]
+  "Stop listening and the sweep, and close every line."
+  [{:keys [stopped listener ^Thread sweeper lines]}]
   (when stopped
     (reset! stopped true)
     (doseq [ch (keys @lines)] (http/close ch))
+    (some-> sweeper .interrupt)
     (.join ^Thread listener 3000)))

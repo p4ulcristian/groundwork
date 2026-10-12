@@ -50,6 +50,7 @@
 (pg/defsql update-data "groundwork/sessions/update_data.sql")
 (pg/defsql extend-visitor "groundwork/sessions/extend_visitor.sql")
 (pg/defsql keep-visitor "groundwork/sessions/keep_visitor.sql")
+(pg/defsql live-of "groundwork/sessions/live_of.sql")
 
 (def ^:private settings [:cookie-name :max-age-days :visitor-hours :secure? :origin])
 
@@ -171,6 +172,22 @@
    what put-data added."
   [request]
   (get-in request [::session :data] {}))
+
+(defn session-hash
+  "The request's session as a name that isn't its key: the key's SHA-256, in
+   hex; nil without a session. An ended session rings with it (see
+   groundwork.parquery.websocket)."
+  [request]
+  (when-let [key (get-in request [::session :key])]
+    (apply str (map #(format "%02x" (bit-and % 0xff)) (key-hash key)))))
+
+(defn live
+  "Which of these session hashes are still live: not signed out, not
+   expired."
+  [{:keys [db]} hashes]
+  (if (empty? hashes)
+    #{}
+    (into #{} (map :session/hash) (pg/rows db live-of {:session/hashes (vec hashes)}))))
 
 (defn- check-data [m]
   (when-not (and (map? m) (every? qualified-keyword? (keys m)))
