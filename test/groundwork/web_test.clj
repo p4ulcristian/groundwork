@@ -5,7 +5,9 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.core :as gw]
    [groundwork.page :as page]
-   [groundwork.test-support :refer [app-settings]])
+   [groundwork.sessions :as sessions]
+   [groundwork.test-support :refer [app-settings]]
+   [groundwork.web :as web])
   (:import
    (java.net URI)
    (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)))
@@ -14,7 +16,15 @@
 
 (def routes
   [["/api/hello" {:get (fn [_] {:status 200 :body "hi"})}]
-   ["/api/thread" {:get (fn [_] {:status 200 :body (str (.isVirtual (Thread/currentThread)))})}]])
+   ["/api/thread" {:get (fn [_] {:status 200 :body (str (.isVirtual (Thread/currentThread)))})}]
+   ["/api/echo" {:post (fn [_] {:status 200 :body "changed"})}]
+   ["/customize" {:get web/page :embeddable true}]
+   ["/partner-widget" {:get web/page :embeddable ["https://shop.example" "https://other.example"]}]
+   ["/payments/webhook" {:post             (fn [request]
+                                             {:status 200
+                                              :body   (pr-str [(sessions/person request)
+                                                               (contains? request ::sessions/sessions)])})
+                         :server-to-server true}]])
 
 (use-fixtures :once
   (fn [t]
@@ -52,6 +62,40 @@
       (is (str/includes? (headers "content-security-policy") "frame-ancestors 'none'") path)))
   (testing "Strict-Transport-Security only in production"
     (is (nil? ((:headers (request "/api/hello")) "strict-transport-security")))))
+
+(deftest an-embeddable-page-may-be-framed-by-other-sites
+  (testing "any https site"
+    (let [{:keys [status body headers]} (request "/customize" {:headers html})]
+      (is (= 200 status))
+      (is (str/includes? body "<div id=\"app\"></div>") "the page shell")
+      (is (str/starts-with? (headers "content-security-policy") "frame-ancestors https:;"))
+      (is (nil? (headers "x-frame-options")))
+      (is (= "nosniff" (headers "x-content-type-options")) "the other headers stay")))
+  (testing "a list of sites"
+    (let [headers (:headers (request "/partner-widget" {:headers html}))]
+      (is (str/starts-with? (headers "content-security-policy")
+                            "frame-ancestors https://shop.example https://other.example;"))
+      (is (nil? (headers "x-frame-options")))))
+  (testing "every other page stays unframeable"
+    (let [headers (:headers (request "/shops/7/orders" {:headers html}))]
+      (is (str/includes? (headers "content-security-policy") "frame-ancestors 'none'"))
+      (is (= "DENY" (headers "x-frame-options"))))))
+
+(deftest a-route-declares-embeddable-properly
+  (is (= ::web/bad-route
+         (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :embeddable ["shop.example"]}]]
+                                            :page (fn [_]) :sessions {} :environment :test})
+                              (catch Exception e e)))))))
+
+(deftest a-server-to-server-route-is-not-a-browser-route
+  (testing "a POST without Origin is accepted, with no session read"
+    (let [{:keys [status body]} (request "/payments/webhook" {:method "POST"})]
+      (is (= 200 status))
+      (is (= "[nil false]" body))))
+  (testing "a browser route still refuses a POST without Origin"
+    (is (= 403 (:status (request "/api/echo" {:method "POST"}))))
+    (is (= 200 (:status (request "/api/echo" {:method  "POST"
+                                              :headers {"Origin" (:origin (:sessions app-settings))}}))))))
 
 (deftest a-browser-gets-the-page-for-any-other-path
   (doseq [path ["/" "/shops/7/orders"]]
