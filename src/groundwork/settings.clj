@@ -235,6 +235,18 @@
    (pred "one handler" "needs exactly one of :read or :write, its handler"
          #(= 1 (count (filter (fn [k] (contains? % k)) [:read :write]))))])
 
+(def job
+  [:map {:closed true :doc/key "<job name>"}
+   (entry :run "Its handler: (fn [ctx params] …); ctx has :db (its transaction), :job, :attempt, :jobs"
+          'app.mail/send-confirmation function)
+   (entry :params "What it is given, a malli shape" [:map [:order/id :uuid]] malli-shape)
+   (entry :timeout-ms "How long one run may take" 60000 positive)
+   (entry :attempts "How many times it runs before it is dead" 5 positive)
+   (optional :scope "The wall shows only this scope: [kind param], a scope kind or a record kind whose id is in params"
+             [:order :order/id]
+             (pred "[kind param]" "must be [kind param], like [:order :order/id]"
+                   #(and (vector? %) (= 2 (count %)) (every? keyword? %))))])
+
 (def ^:private access
   (pred ":public, :signed-in or {:action … :record [kind param]}"
         "must be :public, :signed-in, or {:action … :record [kind param]}"
@@ -411,6 +423,27 @@
     (entry :on-limit "Every caller turned away: (fn [{:keys [id limit caller]}] …), or nil"
            'app.log/limited function-or-nil)]
 
+   :jobs
+   [:maybe
+    [:map {:closed true}
+     (entry :kinds "The app's job kinds, gathered from its areas" '[app.mail/jobs]
+            [:sequential {:error/message "must be a list of the app's job maps" :doc/type "list of job maps"}
+             [:map-of {:error/message "must map job names (namespaced keywords) to entries" :doc/type "name → job"}
+              qualified job]])
+     (entry :schedules "Jobs run on a clock, cron lines in UTC"
+            [{:job :app.reminders/send :params {} :cron "0 18 * * *"}]
+            [:vector {:error/message "must be a list of schedules" :doc/type "list of schedules"}
+             [:map {:closed true}
+              (entry :job "The job kind" :app.reminders/send qualified)
+              (entry :params "Its params" {} [:map-of {:doc/type "map"} :keyword any?])
+              (entry :cron "When: minute hour day-of-month month day-of-week, in UTC" "0 18 * * *"
+                     (pred "cron line" "must be five cron fields, like \"0 18 * * *\""
+                           #(and (string? %) (= 5 (count (str/split (str/trim %) #"\s+"))))))]])
+     (entry :workers "Jobs running at once on this server" 4 positive)
+     (entry :poll-ms "How often to look for due jobs when nothing wakes the workers" 5000 positive)
+     (entry :on? "Whether this server runs jobs; false on previews, where they wait" true
+            [:boolean {:error/message "must be true or false" :doc/type "true or false"}])]]
+
    :parquery
    [:map {:closed true}
     (entry :endpoints "The app's endpoint maps, gathered from its areas" '[app.jobs/endpoints app.orders/endpoints]
@@ -446,6 +479,7 @@
    :sessions    "Who is signed in"
    :permissions "Who may do what, where: the permission description"
    :limits      "How often a caller may ask"
+   :jobs        "Background jobs and schedules, or nil for none"
    :parquery    "The endpoints and how they're asked"})
 
 ;; =============================================================================

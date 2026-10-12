@@ -33,6 +33,7 @@
 
 (pg/defsql set-bypass "groundwork/permissions/set_bypass.sql")
 (pg/defsql set-wall "groundwork/permissions/set_wall.sql")
+(pg/defsql set-member-scopes "groundwork/permissions/set_member_scopes.sql")
 (pg/defsql columns-of "groundwork/permissions/columns_of.sql")
 (pg/defsql links-between "groundwork/permissions/links_between.sql")
 (pg/defsql holds-sql "groundwork/permissions/holds.sql")
@@ -92,6 +93,16 @@
                                                :kind    (if kind (rules/action-name kind) "")
                                                :writing (if read-only? "" "on")})
                      (f tx))))
+
+(defn in-scopes
+  "Run (f tx) in its own transaction that sees every row of `scopes` and
+   nothing else: work done for a scope rather than a person, like a job
+   that names its scope (see groundwork.jobs)."
+  [perms scopes f]
+  (in-wall perms {:scopes scopes}
+           (fn [tx]
+             (pg/execute! tx set-member-scopes {:scopes (str "{" (str/join "," scopes) "}")})
+             (f tx))))
 
 (defn- query
   "Rows of compiled SQL on a transaction's connection."

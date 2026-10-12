@@ -20,7 +20,7 @@
 
 (deftest settings-are-checked
   (testing "a missing setting throws, naming every one that is missing"
-    (is (= [[:environment] [:db] [:migrations] [:page] [:browser] [:web] [:server] [:sessions] [:permissions] [:limits] [:parquery]]
+    (is (= [[:environment] [:db] [:migrations] [:page] [:browser] [:web] [:server] [:sessions] [:permissions] [:limits] [:jobs] [:parquery]]
            (problems {}))))
   (testing "an unknown setting throws, so a typo can't go unnoticed"
     (is (= [[:dbb]] (problems (assoc settings :dbb {})))))

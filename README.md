@@ -24,7 +24,7 @@ keywords → postgres → parquery → re-frame → reagent
 | permissions       | `groundwork.permissions` | built  |
 | page shell        | `groundwork.page`     | built  |
 | REPL              | `groundwork.repl` (clj and cljs) | built |
-| background jobs   |                       | later ([#1](https://github.com/p4ulcristian/groundwork/issues/1)) |
+| background jobs   | `groundwork.jobs`     | built ([#1](https://github.com/p4ulcristian/groundwork/issues/1)) |
 
 Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
 Every push runs the tests on GitHub ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)):
@@ -213,6 +213,19 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:limits :public :reads-per-minute` | positive whole number | Reads, and GET routes | `600` |
 | `:limits :public :writes-per-minute` | positive whole number | Writes, and changing routes | `60` |
 | `:limits :on-limit` | function or nil | Every caller turned away: (fn [{:keys [id limit caller]}] …), or nil | `app.log/limited` |
+
+#### `:jobs`: Background jobs and schedules, or nil for none
+
+| Key | Type | What it is | Example |
+|-----|------|------------|---------|
+| `:jobs :kinds` | list of job maps | The app's job kinds, gathered from its areas | `[app.mail/jobs]` |
+| `:jobs :schedules` | list of schedules | Jobs run on a clock, cron lines in UTC | `[{:job :app.reminders/send, :params {}, :cron "0 18 * * *"}]` |
+| `:jobs :schedules … :job` | namespaced keyword | The job kind | `:app.reminders/send` |
+| `:jobs :schedules … :params` | map | Its params | `{}` |
+| `:jobs :schedules … :cron` | cron line | When: minute hour day-of-month month day-of-week, in UTC | `"0 18 * * *"` |
+| `:jobs :workers` | positive whole number | Jobs running at once on this server | `4` |
+| `:jobs :poll-ms` | positive whole number | How often to look for due jobs when nothing wakes the workers | `5000` |
+| `:jobs :on?` | true or false | Whether this server runs jobs; false on previews, where they wait | `true` |
 
 #### `:parquery`: The endpoints and how they're asked
 
@@ -745,6 +758,39 @@ routes alike:
   `:too-many` with `:limit` and `:retry-after-seconds`, which the store
   keeps as the entry's error; a route answers 429 with `Retry-After`. Every
   hit goes to `:on-limit`; writes are never repeated by themselves.
+
+
+### Background jobs
+
+Work that shouldn't happen inside a request, or happens on a clock, queued
+in Postgres (`groundwork.jobs`):
+
+```clojure
+:jobs {:kinds     [app.mail/jobs]
+       :schedules [{:job :app.reminders/send :params {} :cron "0 18 * * *"}]   ; UTC
+       :workers 4 :poll-ms 5000 :on? true}                                    ; or nil
+
+{:app.mail/send-confirmation {:run        (fn [ctx params] …)
+                              :params     [:map [:order/id :uuid]]
+                              :timeout-ms 60000 :attempts 5
+                              :scope      [:order :order/id]}}   ; optional
+
+(jobs/enqueue! ctx :app.mail/send-confirmation {:order/id id})   ; in a write; {:in-ms n} for later
+```
+
+- A job is queued in the write's own transaction: it exists only if that
+  commits, and the workers hear about it then (or within `:poll-ms`).
+- Each due job is claimed by one worker (`FOR UPDATE SKIP LOCKED`), on any
+  server, and runs on a virtual thread within its `:timeout-ms`, in one
+  transaction: as the system, or behind the wall of its `:scope` only.
+- A failure waits longer each time (30 s, 1 min, 2 min… up to an hour);
+  after `:attempts` the job is dead, kept with its error;
+  `(repl/retry-job! app id)` runs it again. A job left running by a stopped
+  server is queued again. Work must be safe to repeat.
+- A due schedule is claimed by one server, which queues its job and moves
+  it on: it runs once across servers.
+- `:on? false` (previews): jobs are queued and wait. Done jobs are kept a
+  week. In the REPL: `repl/queued-jobs`, `repl/dead-jobs`.
 
 ---
 

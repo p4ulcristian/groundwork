@@ -10,6 +10,7 @@
      (repl/lines (:app dev))  (repl/recent-bells (:app dev))
      (repl/sessions (:app dev) peter)  (repl/sign-out-everywhere! (:app dev) peter)
      (repl/migrations (:app dev))
+     (repl/queued-jobs (:app dev))  (repl/dead-jobs (:app dev))  (repl/retry-job! (:app dev) id)
      (repl/explain-setting [:sessions :visitor-hours])  (repl/settings)
      (repl/stop! dev)
 
@@ -24,6 +25,7 @@
    [groundwork.build :as build]
    [groundwork.core :as gw]
    [groundwork.endpoints :as endpoints]
+   [groundwork.jobs :as jobs]
    [groundwork.migrations :as migrations]
    [groundwork.parquery.websocket :as websocket]
    [groundwork.permissions :as perm]
@@ -349,3 +351,22 @@
   []
   (for [{:keys [path type description]} (settings/all)]
     (str (str/join " " (map pr-str path)) "  (" type ")  " description)))
+
+;; =============================================================================
+;; Jobs
+;; =============================================================================
+
+(defn queued-jobs
+  "Jobs waiting to run, newest first."
+  [app]
+  (some-> (gw/jobs app) jobs/queued))
+
+(defn dead-jobs
+  "Jobs that had all their attempts, with their last error."
+  [app]
+  (some-> (gw/jobs app) jobs/dead))
+
+(defn retry-job!
+  "Run a dead job again now."
+  [app id]
+  (jobs/retry! (gw/jobs app) id))

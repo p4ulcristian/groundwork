@@ -43,7 +43,7 @@
   (let [example (edn/read-string (slurp example-file))]
     (is (= (set (keys settings/parts)) (set (keys example))))
     (testing "every value fits, apart from functions written as their names"
-      (is (empty? (remove #(re-find #"must be a function|must map endpoint names" (:message %))
+      (is (empty? (remove #(re-find #"must be a function|must map endpoint names|must map job names" (:message %))
                           (settings/problems example)))))))
 
 (deftest the-test-app-settings-fit

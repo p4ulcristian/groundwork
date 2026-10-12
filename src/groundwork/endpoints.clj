@@ -18,7 +18,8 @@
 
      :read or :write   its handler, (fn [ctx params] answer). ctx holds :db
                        (the transaction), :person, :flags, :scopes (the
-                       verified ones) and :request-id.
+                       verified ones), :request-id, and :jobs, for
+                       (jobs/enqueue! ctx …) in a write.
      :permission       :public, :signed-in, or an action:
                          {:action … :record [kind param]}  one record, its id in params
                          {:action … :scope [kind param]}   a scope, its id in params
@@ -379,7 +380,7 @@
                                      :action action :kind (or (first record) list)})
                             (fn [tx]
                               (let [tx  (cond-> tx (:read? entry) (assoc ::pg/on-query (collecting files (::pg/on-query tx))))
-                                    ctx (assoc ask :db tx :scopes scopes :flags flags :params decoded)
+                                    ctx (assoc ask :db tx :scopes scopes :flags flags :params decoded :jobs (:jobs part))
                                     run (fn []
                                           (let [data ((:handler entry) ctx decoded)]
                                             (when-not (wire/fits? (:answer entry) data)
@@ -444,7 +445,7 @@
 (defn start
   "The endpoints part: every endpoint checked against the permission
    description; old one-time keys forgotten."
-  [{:keys [settings db permissions limits app-settings]}]
+  [{:keys [settings db permissions limits jobs app-settings]}]
   (settings/check-part! :parquery settings)
   (let [app       (gather (:endpoints settings))
         _         (when-let [taken (seq (filter #(= "groundwork" (namespace %)) (keys app)))]
@@ -460,5 +461,6 @@
      :endpoints   endpoints
      :settings    settings
      :limits      limits
+     :jobs        jobs
      :bearer      (:bearer settings)
      :on-error    (get-in app-settings [:web :on-error])}))

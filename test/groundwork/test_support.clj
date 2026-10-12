@@ -65,5 +65,6 @@
                  :origin (str "http://127.0.0.1:" port)}
    :permissions {:scopes {} :records {} :links [] :session-blocks {}}
    :limits      {:public nil :on-limit nil}
+   :jobs        nil
    :parquery    {:endpoints [] :max-asks 50 :max-running 4 :bearer nil
                  :bells {:global #{} :personal {}}}})

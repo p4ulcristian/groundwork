@@ -18,6 +18,7 @@
      :sessions     see groundwork.sessions
      :permissions  the app's permission description, see groundwork.permissions.rules
      :limits       how often a caller may ask, see groundwork.limits
+     :jobs         background jobs and schedules, or nil; see groundwork.jobs
      :parquery     the app's endpoints and how they're asked, see groundwork.endpoints
 
    Inside, each part is an Integrant key and Integrant starts them in order,
@@ -25,6 +26,7 @@
    Groundwork's own: an app's settings don't name parts or replace them."
   (:require
    [groundwork.endpoints :as endpoints]
+   [groundwork.jobs :as jobs]
    [groundwork.limits :as limits]
    [groundwork.migrations :as migrations]
    [groundwork.page :as page]
@@ -64,9 +66,13 @@
    :groundwork/limits     {:settings :limits
                            :needs    [:groundwork/db :groundwork/migrations]
                            :start    limits/start}
+   :groundwork/jobs       {:settings :jobs
+                           :needs    [:groundwork/db :groundwork/migrations :groundwork/permissions]
+                           :start    jobs/start
+                           :stop     jobs/stop}
    :groundwork/endpoints  {:settings :parquery
                            :needs    [:groundwork/db :groundwork/migrations :groundwork/permissions
-                                      :groundwork/limits]
+                                      :groundwork/limits :groundwork/jobs]
                            :start    endpoints/start}
    :groundwork/parquery   {:settings :parquery
                            :needs    [:groundwork/db :groundwork/endpoints :groundwork/sessions]
@@ -168,6 +174,11 @@
   "The app's permissions part, for groundwork.permissions."
   [app]
   (part app :groundwork/permissions))
+
+(defn jobs
+  "The app's jobs part, for groundwork.jobs (queued, dead, retry!), or nil."
+  [app]
+  (part app :groundwork/jobs))
 
 (defn endpoints
   "The app's endpoints part, for groundwork.endpoints: (endpoints/call …)."

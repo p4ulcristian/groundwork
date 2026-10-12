@@ -178,6 +178,23 @@
   ;; Every caller turned away: (fn [{:keys [id limit caller]}] …), or nil
   :on-limit app.log/limited}
 
+ ;; Background jobs and schedules, or nil for none
+ :jobs
+ {;; The app's job kinds, gathered from its areas
+  :kinds [app.mail/jobs]
+
+  ;; Jobs run on a clock, cron lines in UTC
+  :schedules [{:job :app.reminders/send, :params {}, :cron "0 18 * * *"}]
+
+  ;; Jobs running at once on this server
+  :workers 4
+
+  ;; How often to look for due jobs when nothing wakes the workers
+  :poll-ms 5000
+
+  ;; Whether this server runs jobs; false on previews, where they wait
+  :on? true}
+
  ;; The endpoints and how they're asked
  :parquery
  {;; The app's endpoint maps, gathered from its areas
