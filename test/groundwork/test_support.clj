@@ -55,7 +55,8 @@
                  :proxies        {:trusted [] :client-ip-header nil :request-id-header nil}
                  :languages      nil
                  :test-sign-in   {:secret "a-secret-only-tests-know"}
-                 :hashed-files   "\\.[0-9a-f]{8,}\\."}
+                 :hashed-files   "\\.[0-9a-f]{8,}\\."
+                 :gzip-min-bytes 1024}
    :server      {:ip "127.0.0.1" :port port}
    :sessions    {:cookie-name "gw_session" :max-age-days 30 :visitor-hours 24 :secure? false
                  :origin (str "http://127.0.0.1:" port)}

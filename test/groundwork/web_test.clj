@@ -20,6 +20,10 @@
    ["/api/echo" {:access :public :post (fn [_] {:status 200 :body "changed"})}]
    ["/customize" {:access :public :get web/page :embeddable true}]
    ["/partner-widget" {:access :public :get web/page :embeddable ["https://shop.example" "https://other.example"]}]
+   ["/api/big" {:access :public :get (fn [_] {:status 200 :headers {"Content-Type" "application/json"}
+                                              :body (str "[" (apply str (interpose "," (repeat 600 "\"powder\""))) "]")})}]
+   ["/api/png" {:access :public :get (fn [_] {:status 200 :headers {"Content-Type" "image/png"}
+                                              :body (apply str (repeat 3000 "x"))})}]
    ["/label-editor" {:access :public :get web/page :embeddable :same-origin}]
    ["/payments/webhook" {:post             (fn [request]
                                              {:status 200
@@ -115,7 +119,7 @@
   (is (= ::web/bad-route
          (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :access :public :embeddable ["shop.example"]}]]
                                             :max-body-bytes 1000 :content-security-policy {} :login-path "/login"
-                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil :hashed-files nil
+                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil :hashed-files nil :gzip-min-bytes nil
                                             :page (fn [_]) :sessions {} :environment :test})
                               (catch Exception e e)))))))
 
@@ -216,7 +220,7 @@
     (is (= ::page/bad-route
            (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :access :public :page {:titel "x"}}]]
                                               :max-body-bytes 1000 :content-security-policy {} :login-path "/login"
-                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil :hashed-files nil
+                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil :hashed-files nil :gzip-min-bytes nil
                                               :page (fn [_]) :sessions {} :environment :test})
                                 (catch Exception e e))))))))
 
@@ -281,6 +285,17 @@
   (testing "production serves what the app serves"
     (let [handler (#'web/wrap-no-indexing (fn [_] {:status 200 :headers {} :body "app's own"}) :production)]
       (is (= {:status 200 :headers {} :body "app's own"} (handler {:uri "/robots.txt"}))))))
+
+(deftest text-goes-gzipped
+  (let [gz {"Accept-Encoding" "gzip, br"}
+        {:keys [headers body]} (request "/api/big" {:headers gz})]
+    (is (= "gzip" (headers "content-encoding")))
+    (is (= "Accept-Encoding" (headers "vary")))
+    (is (< (count body) 1000) "smaller on the wire"))
+  (testing "not when the browser doesn't ask, not small, not images"
+    (is (nil? ((:headers (request "/api/big")) "content-encoding")))
+    (is (nil? ((:headers (request "/api/hello" {:headers {"Accept-Encoding" "gzip"}})) "content-encoding")))
+    (is (nil? ((:headers (request "/api/png" {:headers {"Accept-Encoding" "gzip"}})) "content-encoding")))))
 
 (deftest anything-else-is-not-found
   (is (= 404 (:status (request "/missing.png" {:headers {"Accept" "image/*"}}))))

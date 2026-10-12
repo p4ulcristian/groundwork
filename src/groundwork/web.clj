@@ -75,6 +75,9 @@
    expression :hashed-files, like \"\\\\.[0-9a-f]{8,}\\\\.\", or nil) is cached a year;
    every other file is revalidated on each load.
 
+   Text-like answers of at least :gzip-min-bytes (or nil for none) go
+   gzipped to a browser that accepts it.
+
    Files answer byte ranges (206), so video plays and seeks everywhere. HEAD
    is answered for every GET route, like GET without the body.
 
@@ -684,6 +687,61 @@
                             "Content-Range"  (str "bytes " start "-" end "/" length)
                             "Content-Length" (str (inc (- end start)))))))))))))
 
+(defn- check-gzip [n]
+  (when-not (or (nil? n) (pos-int? n))
+    (throw (ex-info ":gzip-min-bytes must be a positive integer, or nil for no compression"
+                    {:type ::bad-setting :setting :gzip-min-bytes :value n}))))
+
+(defn- compressible? [content-type]
+  (let [t (str/lower-case (first (str/split (or content-type "") #";")))]
+    (or (str/starts-with? t "text/")
+        (#{"application/json" "application/javascript" "application/xml" "application/wasm"
+           "application/manifest+json" "image/svg+xml"} t))))
+
+(defn- body-bytes ^bytes [body]
+  (cond
+    (string? body)                 (.getBytes ^String body "UTF-8")
+    (bytes? body)                  body
+    (instance? File body)          (java.nio.file.Files/readAllBytes (.toPath ^File body))
+    (instance? InputStream body)   (with-open [in ^InputStream body] (.readAllBytes in))
+    :else                          nil))
+
+(defn- gzip ^bytes [^bytes b]
+  (let [out (java.io.ByteArrayOutputStream.)]
+    (with-open [z (java.util.zip.GZIPOutputStream. out)]
+      (.write z b))
+    (.toByteArray out)))
+
+(defn- wrap-gzip
+  "Text-like answers of at least min-bytes go gzipped to a browser that
+   accepts it; images, video, archives and fonts are compressed already."
+  [handler min-bytes]
+  (if (nil? min-bytes)
+    handler
+    (fn [request]
+      (let [response (handler request)
+            headers  (:headers response)
+            type     (or (get headers "Content-Type") (get headers "content-type"))]
+        (if (and response
+                 (= 200 (:status response))
+                 (some? (:body response))
+                 (str/includes? (get-in request [:headers "accept-encoding"] "") "gzip")
+                 (not (or (get headers "Content-Encoding") (get headers "Content-Range")))
+                 (compressible? type)
+                 (or (not (instance? File (:body response))) (<= min-bytes (.length ^File (:body response)))))
+          (let [b (body-bytes (:body response))]
+            (cond
+              (nil? b)                  response
+              (< (alength b) min-bytes) (assoc response :body b)
+              :else                     (let [z (gzip b)]
+                                          (-> response
+                                              (assoc :body z)
+                                              (update :headers assoc
+                                                      "Content-Encoding" "gzip"
+                                                      "Vary"             "Accept-Encoding"
+                                                      "Content-Length"   (str (alength z)))))))
+          response)))))
+
 (defn- wrap-no-indexing
   "Outside production, search engines are kept out: /robots.txt disallows
    everything, whatever the app serves there in production, and every
@@ -753,7 +811,7 @@
 
 (def ^:private settings
   [:routes :max-body-bytes :content-security-policy :login-path :on-request :on-error :proxies :languages
-   :test-sign-in :hashed-files])
+   :test-sign-in :hashed-files :gzip-min-bytes])
 
 (defn- check-settings [opts environment]
   (when-not (map? opts)
@@ -779,7 +837,8 @@
     (check-proxies (:proxies opts))
     (check-languages (:languages opts))
     (check-test-sign-in (:test-sign-in opts) environment)
-    (check-hashed-files (:hashed-files opts))))
+    (check-hashed-files (:hashed-files opts))
+    (check-gzip (:gzip-min-bytes opts))))
 
 (defn handler
   "The app's Ring handler, for settings already checked."
@@ -810,6 +869,7 @@
         (wrap-no-indexing environment)
         (wrap-languages languages (get-in sessions [:settings :origin]))
         (wrap-security-headers environment content-security-policy)
+        (wrap-gzip (:gzip-min-bytes settings))
         (wrap-context settings))))
 
 (defn start
