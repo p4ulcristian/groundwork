@@ -8,6 +8,7 @@
    unchanged), so a deploy is never hidden behind a stale cache."
   (:require
    [clojure.string :as str]
+   [groundwork.sessions :as sessions]
    [reitit.ring :as ring]
    [ring.middleware.not-modified :refer [wrap-not-modified]]))
 
@@ -47,7 +48,7 @@
 
 (defn handler
   "The app's Ring handler."
-  [{:keys [routes page environment]}]
+  [{:keys [routes page sessions environment]}]
   (when-not (vector? routes)
     (throw (ex-info ":routes must be a vector of reitit routes"
                     {:type ::bad-setting :setting :routes :value routes})))
@@ -59,9 +60,10 @@
          (ring/routes files
                       (fn [request] (when (wants-page? request) (page request)))
                       not-found))
+        (sessions/wrap-sessions sessions)
         (wrap-security-headers environment))))
 
 (defn start
   "The router part."
-  [{:keys [settings environment page]}]
-  (handler {:routes settings :page page :environment environment}))
+  [{:keys [settings environment page sessions]}]
+  (handler {:routes settings :page page :sessions sessions :environment environment}))

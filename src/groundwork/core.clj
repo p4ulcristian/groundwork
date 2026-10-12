@@ -13,6 +13,7 @@
      :page         see groundwork.page
      :routes       the app's routes, as reitit data; see groundwork.web
      :server       see groundwork.server
+     :sessions     see groundwork.sessions
 
    Inside, each part is an Integrant key and Integrant starts them in order,
    hands them to each other and stops them in reverse. That wiring is
@@ -23,6 +24,7 @@
    [groundwork.page :as page]
    [groundwork.postgres :as pg]
    [groundwork.server :as server]
+   [groundwork.sessions :as sessions]
    [groundwork.web :as web]
    [integrant.core :as ig]))
 
@@ -46,11 +48,14 @@
                            :needs    [:groundwork/db]
                            :start    (fn [{:keys [app-settings] :as config}]
                                        (migrations/start (assoc config :db-settings (:db app-settings))))}
+   :groundwork/sessions   {:settings :sessions
+                           :needs    [:groundwork/db :groundwork/migrations]
+                           :start    sessions/start}
    :groundwork/page       {:settings :page
                            :needs    []
                            :start    page/start}
    :groundwork/router     {:settings :routes
-                           :needs    [:groundwork/migrations :groundwork/page]
+                           :needs    [:groundwork/migrations :groundwork/sessions :groundwork/page]
                            :start    web/start}
    :groundwork/server     {:settings :server
                            :needs    [:groundwork/router]

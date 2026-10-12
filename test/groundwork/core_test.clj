@@ -14,7 +14,7 @@
 
 (deftest settings-are-checked
   (testing "a missing setting throws, naming every one that is missing"
-    (is (= {:type ::gw/missing-settings :missing [:environment :db :migrations :page :routes :server]}
+    (is (= {:type ::gw/missing-settings :missing [:environment :db :migrations :sessions :page :routes :server]}
            (error #(gw/start {})))))
   (testing "an unknown setting throws, so a typo can't go unnoticed"
     (is (= {:type ::gw/unknown-settings :unknown [:dbb]}
@@ -30,8 +30,8 @@
       (finally (gw/stop app)))))
 
 (deftest a-part-can-be-replaced-by-a-fake
-  (let [app (gw/start-with settings {:groundwork/db ::fake-db :groundwork/migrations {}})]
-    (is (= ::fake-db (gw/db app)))
+  (let [app (gw/start-with settings {:groundwork/server ::fake-server})]
+    (is (= ::fake-server (gw/part app :groundwork/server)))
     (testing "a fake isn't stopped"
       (gw/stop app))
     (testing "only parts can be replaced"

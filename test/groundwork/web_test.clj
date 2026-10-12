@@ -75,7 +75,7 @@
 
 (deftest anything-else-is-not-found
   (is (= 404 (:status (request "/missing.png" {:headers {"Accept" "image/*"}}))))
-  (is (= 404 (:status (request "/" {:method "POST" :headers html}))))
+  (is (= 404 (:status (request "/" {:method "POST" :headers (assoc html "Origin" (:origin (:sessions app-settings)))}))))
   (is (= 404 (:status (request "/api/nowhere")))))
 
 (deftest page-settings-are-checked

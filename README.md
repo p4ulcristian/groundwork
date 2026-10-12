@@ -19,7 +19,7 @@ keywords → postgres → parquery → re-frame → reagent
 | server            | `groundwork.server`   | built on http-kit |
 | router            | `groundwork.web`      | built on reitit |
 | migrations        | `groundwork.migrations` | built |
-| sessions          |                       |        |
+| sessions          | `groundwork.sessions` | built  |
 | permissions       |                       |        |
 | page shell        | `groundwork.page`     | built  |
 | background jobs   |                       | later ([#1](https://github.com/p4ulcristian/groundwork/issues/1)) |
@@ -37,7 +37,9 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
                     :page        {:lang "en" :title "Acme Coating" :icon "/icon.svg"
                                   :stylesheets ["/app.css"] :script "/js/main.js" :head []}
                     :routes      [["/health" {:get (fn [_] {:status 200 :body "ok"})}]]
-                    :server      {:ip "0.0.0.0" :port 8080}}))
+                    :server      {:ip "0.0.0.0" :port 8080}
+                    :sessions    {:cookie-name "acme_session" :max-age-days 30 :secure? true
+                                  :origin "https://app.acme.example"}}))
 (gw/stop app)
 ```
 
@@ -243,3 +245,26 @@ resources/migrations/
   `<div id="app">`, and is never cached.
 - **Security headers** on every answer: no sniffing, no framing, a strict
   referrer; in production also Strict-Transport-Security.
+
+---
+
+## 5. Sessions
+
+```clojure
+;; the app's login step, after the identity provider said who this is
+(sessions/sign-in request response person-id)
+(sessions/sign-in request response person-id {:flags #{:impersonated} :data {:login/via "sso"}})
+
+(sessions/person request)    ;=> the person's id, or nil
+(sessions/flags request)     ;=> #{:impersonated}
+(sessions/sign-out request response)
+(sessions/sign-out-everywhere! request person-id)
+```
+
+- A session is a row in `groundwork.sessions`. The cookie holds 32 random
+  bytes; the table keeps only their SHA-256.
+- The cookie is HttpOnly and SameSite=Lax, Secure when `:secure?`.
+- Signing in ends the session the request already had.
+- A request that changes something (not GET, HEAD, OPTIONS) must carry the
+  app's own `:origin`, or it's refused with 403.
+- `:data` keys are shaped `:entity/field`, like every json key.

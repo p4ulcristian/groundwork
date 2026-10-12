@@ -29,6 +29,14 @@
                                          :password (:password db-settings)})]
     (jdbc/execute! conn (into [text] params))))
 
+(defn free-port
+  "A port nothing listens on right now."
+  []
+  (with-open [socket (java.net.ServerSocket. 0)]
+    (.getLocalPort socket)))
+
+(def port (free-port))
+
 (def app-settings
   "Settings for a whole test app: a free port, no routes, a plain page."
   {:environment :test
@@ -37,4 +45,6 @@
    :page        {:lang "en" :title "Test" :icon "/icon.svg" :stylesheets ["/app.css"]
                  :script "/js/main.js" :head []}
    :routes      []
-   :server      {:ip "127.0.0.1" :port 0}})
+   :server      {:ip "127.0.0.1" :port port}
+   :sessions    {:cookie-name "gw_session" :max-age-days 30 :secure? false
+                 :origin (str "http://127.0.0.1:" port)}})
