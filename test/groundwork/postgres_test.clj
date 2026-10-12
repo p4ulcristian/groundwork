@@ -6,6 +6,7 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.names :as names]
    [groundwork.postgres :as pg]
+   [groundwork.settings :as settings]
    [groundwork.test-support :refer [sql!]])
   (:import
    (java.time OffsetDateTime)
@@ -255,13 +256,15 @@
   (testing "a missing setting throws, naming every one that is missing"
     (let [e (try (pg/start (dissoc config :pool-size :statement-timeout-ms))
                  (catch clojure.lang.ExceptionInfo e e))]
-      (is (= {:type ::pg/missing-settings :missing [:pool-size :statement-timeout-ms]}
+      (is (= {:type     ::settings/invalid
+              :problems [{:in [:db :pool-size] :message "is missing"}
+                         {:in [:db :statement-timeout-ms] :message "is missing"}]}
              (ex-data e)))))
   (testing "a nil password is a choice, not a missing setting"
     (is (contains? config :password)))
   (testing "a timeout is a positive number of ms or :none"
     (doseq [bad [0 "30s" nil]]
-      (is (= ::pg/bad-setting
+      (is (= ::settings/invalid
              (:type (ex-data (try (pg/start (assoc config :statement-timeout-ms bad))
                                   (catch clojure.lang.ExceptionInfo e e)))))))))
 
@@ -282,7 +285,7 @@
                                (:moment/at (pg/row db local-time-as-timestamptz
                                                    {:at (java.time.LocalDateTime/of 2026 3 29 1 30)}))))))))))
   (testing "a name that can't be a zone throws at start"
-    (is (= ::pg/bad-setting
+    (is (= ::settings/invalid
            (:type (ex-data (try (pg/start (assoc config :time-zone "UTC -c x=1"))
                                 (catch clojure.lang.ExceptionInfo e e))))))))
 

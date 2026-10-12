@@ -25,6 +25,7 @@
    [clojure.string :as str]
    [groundwork.permissions.rules :as rules]
    [groundwork.postgres :as pg]
+   [groundwork.settings :as settings]
    [next.jdbc :as jdbc])
   (:import
    (java.security MessageDigest SecureRandom)
@@ -527,7 +528,7 @@
   "The permissions part: check the description, against the database too,
    compile every rule, put up the wall and the fill rules."
   [{:keys [settings db]}]
-  (let [description (rules/check settings)]
+  (let [description (rules/check (settings/check-part! :permissions settings))]
     (check-database! db description)
     (let [perms {:db db :description description :rules (rules/rules-of description)}]
       (install-wall! perms)

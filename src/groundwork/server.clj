@@ -4,29 +4,16 @@
      :ip    \"0.0.0.0\"
      :port  8080        0 picks a free port (tests)"
   (:require
-   [clojure.string :as str]
+   [groundwork.settings :as settings]
    [org.httpkit.server :as http])
   (:import
    (java.util.concurrent ExecutorService Executors TimeUnit)))
-
-(defn- check-settings [{:keys [ip port] :as opts}]
-  (when-not (map? opts)
-    (throw (ex-info ":server must be a map" {:type ::bad-setting :setting :server :value opts})))
-  (when-let [missing (seq (remove #(contains? opts %) [:ip :port]))]
-    (throw (ex-info (str ":server needs " (str/join " " missing))
-                    {:type ::missing-settings :missing (vec missing)})))
-  (when-not (and (string? ip) (not (str/blank? ip)))
-    (throw (ex-info ":server :ip must be an address like \"0.0.0.0\""
-                    {:type ::bad-setting :setting :ip :value ip})))
-  (when-not (and (int? port) (<= 0 port 65535))
-    (throw (ex-info ":server :port must be a port number"
-                    {:type ::bad-setting :setting :port :value port}))))
 
 (defn start
   "The server part: serves the router's handler, reading no body larger than
    the largest any route accepts. Returns the running server."
   [{:keys [settings router]}]
-  (check-settings settings)
+  (settings/check-part! :server settings)
   (let [workers (Executors/newVirtualThreadPerTaskExecutor)]
     {::server  (http/run-server (:handler router) {:ip                   (:ip settings)
                                                    :port                 (:port settings)

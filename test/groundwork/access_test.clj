@@ -7,6 +7,7 @@
    [groundwork.permissions :as perm]
    [groundwork.sessions :as sessions]
    [groundwork.test-support :refer [app-settings sql!]]
+   [groundwork.settings :as settings]
    [groundwork.web :as web])
   (:import
    (java.net URI)
@@ -114,7 +115,7 @@
     (is (= 404 (:status (sign-in "a-wrong-secret-of-some-length"))))
     (is (= 404 (:status (sign-in nil)))))
   (testing "never in production"
-    (is (= ::web/bad-setting
+    (is (= ::settings/invalid
            (:type (ex-data (try (web/start {:settings    (:web app-settings)
                                             :environment :production
                                             :page ok :sessions {} :permissions (gw/permissions *app*)})

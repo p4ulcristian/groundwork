@@ -18,6 +18,7 @@
    [clojure.java.io :as io]
    [clojure.string :as str]
    [groundwork.names :as names]
+   [groundwork.settings :as settings]
    [groundwork.sql :as sql]
    [jsonista.core :as json]
    [next.jdbc :as jdbc]
@@ -61,10 +62,6 @@
 ;; Start / stop
 ;; =============================================================================
 
-(def ^:private settings
-  "Every setting start needs. None has a default: the app's config says all."
-  [:host :port :database :user :password :pool-size :statement-timeout-ms :time-zone])
-
 (defn- timeout-ms
   "A :statement-timeout-ms as Postgres takes it: :none is 0, no limit."
   [v]
@@ -73,20 +70,6 @@
     (pos-int? v) v
     :else        (throw (ex-info ":statement-timeout-ms must be a positive integer or :none"
                                  {:type ::bad-setting :setting :statement-timeout-ms :value v}))))
-
-(defn- check-settings [opts]
-  (when-let [missing (seq (remove #(contains? opts %) settings))]
-    (throw (ex-info (str "pg/start needs " (str/join " " missing))
-                    {:type ::missing-settings :missing (vec missing)})))
-  (let [{:keys [pool-size statement-timeout-ms time-zone]} opts]
-    (when-not (pos-int? pool-size)
-      (throw (ex-info ":pool-size must be a positive integer"
-                      {:type ::bad-setting :setting :pool-size :value pool-size})))
-    (timeout-ms statement-timeout-ms)
-    ;; Postgres checks the name itself when the first connection opens
-    (when-not (and (string? time-zone) (re-matches #"[A-Za-z0-9_+\-/]+" time-zone))
-      (throw (ex-info ":time-zone must be a time zone name like \"UTC\" or \"Europe/Budapest\""
-                      {:type ::bad-setting :setting :time-zone :value time-zone})))))
 
 (defn start
   "A db: a HikariCP connection pool plus Groundwork's hooks. Every setting is
@@ -103,7 +86,7 @@
   [{:keys [host port database user password pool-size statement-timeout-ms time-zone
            on-transaction on-query]
     :as   opts}]
-  (check-settings opts)
+  (settings/check-part! :db opts)
   (let [config (doto (HikariConfig.)
                  (.setJdbcUrl (connection/jdbc-url {:dbtype "postgresql"
                                                     :host   host
@@ -118,10 +101,10 @@
                                          (str "-c statement_timeout=" (timeout-ms statement-timeout-ms)))
                  ;; PgJDBC sends the JVM's zone when it connects, and that beats
                  ;; "options", so the zone is set right after. Hikari runs this on
-                 ;; each new connection; it takes no params, and check-settings
-                 ;; allows no quote in the name. The search path is only public:
-                 ;; Postgres's default puts a schema named like the user first,
-                 ;; and Groundwork's own schema must never catch an app's table.
+                 ;; each new connection; it takes no params, and the settings
+                 ;; schema allows no quote in the name. The search path is only
+                 ;; public: Postgres's default puts a schema named like the user
+                 ;; first, and Groundwork's own schema must never catch an app's table.
                  (.setConnectionInitSql (str "SET TIME ZONE '" time-zone "'; SET search_path = public")))]
     (when password (.setPassword config password))
     {::datasource     (HikariDataSource. config)

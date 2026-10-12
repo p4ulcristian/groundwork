@@ -309,8 +309,7 @@
   (is (= 404 (:status (request "/api/nowhere")))))
 
 (deftest page-settings-are-checked
-  (is (= ::page/missing-settings
-         (:type (ex-data (try (page/start {:settings {:title "x"}}) (catch Exception e e))))))
-  (is (= ::page/bad-setting
-         (:type (ex-data (try (page/start {:settings (assoc (:page app-settings) :stylesheets "x")})
-                              (catch Exception e e)))))))
+  (let [problems (fn [page] (mapv :in (:problems (ex-data (try (page/start {:settings page}) (catch Exception e e))))))]
+    (is (= [[:page :lang] [:page :description] [:page :icon] [:page :stylesheets] [:page :script] [:page :head]]
+           (problems {:title "x"})))
+    (is (= [[:page :stylesheets]] (problems (assoc (:page app-settings) :stylesheets "x"))))))

@@ -104,6 +104,7 @@
    [groundwork.permissions :as permissions]
    [groundwork.postgres :as pg]
    [groundwork.sessions :as sessions]
+   [groundwork.settings :as settings]
    [reitit.ring :as ring]
    [ring.middleware.multipart-params :refer [wrap-multipart-params]]
    [ring.middleware.multipart-params.temp-file :refer [temp-file-store]]
@@ -134,14 +135,6 @@
    :frame-src   ["'self'"]
    :worker-src  ["'self'" "blob:"]
    :form-action ["'self'"]))
-
-(defn- check-csp [csp]
-  (when-not (and (map? csp)
-                 (every? csp-directives (keys csp))
-                 (every? #(and (sequential? %) (every? string? %)) (vals csp)))
-    (throw (ex-info (str ":content-security-policy must map directives ("
-                         (str/join " " (keys csp-directives)) ") to lists of sources")
-                    {:type ::bad-setting :setting :content-security-policy :value csp}))))
 
 (defn- csp-header
   "The policy for one answer: Groundwork's strict defaults, the app's added
@@ -283,14 +276,6 @@
                          (= (bit-and (aget b i) mask) (bit-and (aget prefix i) mask))))
                      (range (quot (+ bits 7) 8))))))))
 
-(defn- check-proxies [proxies]
-  (when-not (and (map? proxies) (= #{:trusted :client-ip-header :request-id-header} (set (keys proxies)))
-                 (sequential? (:trusted proxies)) (every? string? (:trusted proxies))
-                 (every? #(or (nil? %) (string? %)) [(:client-ip-header proxies) (:request-id-header proxies)]))
-    (throw (ex-info ":proxies must be {:trusted [addresses or ranges] :client-ip-header name-or-nil :request-id-header name-or-nil}"
-                    {:type ::bad-setting :setting :proxies :value proxies})))
-  (doseq [entry (:trusted proxies)] (address-matcher entry)))
-
 (defn request-id
   "This request's id, also sent back as X-Request-Id."
   [request]
@@ -363,17 +348,6 @@
 ;; =============================================================================
 ;; Languages
 ;; =============================================================================
-
-(defn- check-languages [languages]
-  (when (some? languages)
-    (let [{:keys [supported default cookie]} languages]
-      (when-not (and (map? languages) (= #{:supported :default :cookie} (set (keys languages)))
-                     (vector? supported) (seq supported)
-                     (every? #(and (string? %) (re-matches #"[a-z]{2}(-[a-z]{2})?" %)) supported)
-                     (some #{default} supported)
-                     (or (nil? cookie) (and (string? cookie) (re-matches #"[A-Za-z0-9_\-]+" cookie))))
-        (throw (ex-info ":languages must be nil or {:supported [\"en\" \"de\"] :default \"en\" :cookie name-or-nil}"
-                        {:type ::bad-setting :setting :languages :value languages}))))))
 
 (defn- cookie-value [request name]
   (some (fn [pair]
@@ -613,16 +587,6 @@
 ;; Files, the page, the rest
 ;; =============================================================================
 
-(defn- check-hashed-files [pattern]
-  (when (some? pattern)
-    (when-not (string? pattern)
-      (throw (ex-info ":hashed-files must be a regular expression as text, or nil"
-                      {:type ::bad-setting :setting :hashed-files :value pattern})))
-    (try (re-pattern pattern)
-         (catch Exception e
-           (throw (ex-info (str ":hashed-files isn't a regular expression: " (ex-message e))
-                           {:type ::bad-setting :setting :hashed-files :value pattern} e))))))
-
 (defn- wrap-file-caching
   "A file whose name carries its content's hash (it matches :hashed-files)
    never changes, so browsers keep it a year; every other file is
@@ -694,11 +658,6 @@
                             "Accept-Ranges"  "bytes"
                             "Content-Range"  (str "bytes " start "-" end "/" length)
                             "Content-Length" (str (inc (- end start)))))))))))))
-
-(defn- check-gzip [n]
-  (when-not (or (nil? n) (pos-int? n))
-    (throw (ex-info ":gzip-min-bytes must be a positive integer, or nil for no compression"
-                    {:type ::bad-setting :setting :gzip-min-bytes :value n}))))
 
 (defn- compressible? [content-type]
   (let [t (str/lower-case (first (str/split (or content-type "") #";")))]
@@ -780,16 +739,6 @@
 (defn- not-found [_request]
   (plain 404 "Not found"))
 
-(defn- check-test-sign-in [test-sign-in environment]
-  (when (some? test-sign-in)
-    (when-not (and (map? test-sign-in) (= #{:secret} (set (keys test-sign-in)))
-                   (string? (:secret test-sign-in)) (<= 16 (count (:secret test-sign-in))))
-      (throw (ex-info ":test-sign-in must be nil or {:secret \"at least 16 characters\"}"
-                      {:type ::bad-setting :setting :test-sign-in})))
-    (when (= :production environment)
-      (throw (ex-info ":test-sign-in is never on in production"
-                      {:type ::bad-setting :setting :test-sign-in})))))
-
 (defn- test-sign-in-route
   "Signs a test in as a person, given the secret; unknown to anyone without it."
   [{:keys [secret]} sessions]
@@ -831,37 +780,9 @@
     test-sign-in (conj (test-sign-in-route test-sign-in sessions))
     eval-bridge  (conj (eval-bridge/route eval-bridge))))
 
-(def ^:private settings
+(def ^:private settings-keys
   [:routes :max-body-bytes :content-security-policy :login-path :on-request :on-error :proxies :languages
    :test-sign-in :eval-bridge :hashed-files :gzip-min-bytes])
-
-(defn- check-settings [opts environment]
-  (when-not (map? opts)
-    (throw (ex-info ":web must be a map" {:type ::bad-setting :setting :web :value opts})))
-  (when-let [missing (seq (remove #(contains? opts %) settings))]
-    (throw (ex-info (str ":web needs " (str/join " " missing))
-                    {:type ::missing-settings :missing (vec missing)})))
-  (let [{:keys [routes max-body-bytes]} opts]
-    (when-not (vector? routes)
-      (throw (ex-info ":routes must be a vector of reitit routes"
-                      {:type ::bad-setting :setting :routes :value routes})))
-    (when-not (pos-int? max-body-bytes)
-      (throw (ex-info ":max-body-bytes must be a positive integer"
-                      {:type ::bad-setting :setting :max-body-bytes :value max-body-bytes})))
-    (check-csp (:content-security-policy opts))
-    (when-not (and (string? (:login-path opts)) (str/starts-with? (:login-path opts) "/"))
-      (throw (ex-info ":login-path must be a path like \"/login\""
-                      {:type ::bad-setting :setting :login-path :value (:login-path opts)})))
-    (doseq [k [:on-request :on-error]
-            :let [v (get opts k)]]
-      (when-not (or (nil? v) (ifn? v))
-        (throw (ex-info (str k " must be a function or nil") {:type ::bad-setting :setting k :value v}))))
-    (check-proxies (:proxies opts))
-    (check-languages (:languages opts))
-    (check-test-sign-in (:test-sign-in opts) environment)
-    (eval-bridge/check-setting (:eval-bridge opts) environment)
-    (check-hashed-files (:hashed-files opts))
-    (check-gzip (:gzip-min-bytes opts))))
 
 (defn handler
   "The app's Ring handler, for settings already checked."
@@ -900,7 +821,7 @@
    accepts, which the server reads at most. The handler can be swapped for
    one with new routes while the server runs (swap-routes!)."
   [{:keys [settings environment page sessions permissions parquery]}]
-  (check-settings settings environment)
+  (settings/check-part! :web settings environment)
   (let [inputs  (assoc settings :page page :sessions sessions :permissions permissions :environment environment
                        :parquery parquery)
         current (atom (handler inputs))
@@ -916,7 +837,7 @@
    route taking a bigger body than the server reads needs a restart."
   [{::keys [current inputs] :keys [max-body-bytes]} routes]
   (let [inputs (assoc inputs :routes routes)]
-    (check-settings (apply dissoc inputs [:page :sessions :permissions :environment :parquery]) (:environment inputs))
+    (settings/check-part! :web (select-keys inputs settings-keys) (:environment inputs))
     (when (> (largest-body routes (:max-body-bytes inputs)) max-body-bytes)
       (throw (ex-info "A route takes a bigger body than the running server reads; restart the app"
                       {:type ::restart-needed})))

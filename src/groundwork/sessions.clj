@@ -36,7 +36,8 @@
    and paying open on the app's own site, where the Lax cookie lives."
   (:require
    [clojure.string :as str]
-   [groundwork.postgres :as pg])
+   [groundwork.postgres :as pg]
+   [groundwork.settings :as settings])
   (:import
    (java.security MessageDigest SecureRandom)
    (java.time OffsetDateTime)
@@ -52,31 +53,6 @@
 (pg/defsql keep-visitor "groundwork/sessions/keep_visitor.sql")
 (pg/defsql live-of "groundwork/sessions/live_of.sql")
 (pg/defsql of-person-sql "groundwork/sessions/of_person.sql")
-
-(def ^:private settings [:cookie-name :max-age-days :visitor-hours :secure? :origin])
-
-(defn- check-settings [opts]
-  (when-not (map? opts)
-    (throw (ex-info ":sessions must be a map" {:type ::bad-setting :setting :sessions :value opts})))
-  (when-let [missing (seq (remove #(contains? opts %) settings))]
-    (throw (ex-info (str ":sessions needs " (str/join " " missing))
-                    {:type ::missing-settings :missing (vec missing)})))
-  (let [{:keys [cookie-name max-age-days visitor-hours secure? origin]} opts]
-    (when-not (and (string? cookie-name) (re-matches #"[A-Za-z0-9_\-]+" cookie-name))
-      (throw (ex-info ":cookie-name must be letters, digits, _ or -"
-                      {:type ::bad-setting :setting :cookie-name :value cookie-name})))
-    (when-not (pos-int? max-age-days)
-      (throw (ex-info ":max-age-days must be a positive integer"
-                      {:type ::bad-setting :setting :max-age-days :value max-age-days})))
-    (when-not (pos-int? visitor-hours)
-      (throw (ex-info ":visitor-hours must be a positive integer"
-                      {:type ::bad-setting :setting :visitor-hours :value visitor-hours})))
-    (when-not (boolean? secure?)
-      (throw (ex-info ":secure? must be true or false"
-                      {:type ::bad-setting :setting :secure? :value secure?})))
-    (when-not (and (string? origin) (re-matches #"https?://[^/]+" origin))
-      (throw (ex-info ":origin must be like \"https://app.example.com\", with no path"
-                      {:type ::bad-setting :setting :origin :value origin})))))
 
 ;; =============================================================================
 ;; Keys
@@ -317,6 +293,6 @@
 (defn start
   "The sessions part. Forgets sessions that ended."
   [{:keys [settings db]}]
-  (check-settings settings)
+  (settings/check-part! :sessions settings)
   (pg/execute! db delete-expired)
   {:db db :settings settings})

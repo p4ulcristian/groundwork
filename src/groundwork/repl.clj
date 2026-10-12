@@ -10,6 +10,7 @@
      (repl/lines (:app dev))  (repl/recent-bells (:app dev))
      (repl/sessions (:app dev) peter)  (repl/sign-out-everywhere! (:app dev) peter)
      (repl/migrations (:app dev))
+     (repl/explain-setting [:sessions :visitor-hours])  (repl/settings)
      (repl/stop! dev)
 
    The browser's side has groundwork.repl too (ClojureScript): the store's
@@ -28,6 +29,7 @@
    [groundwork.permissions.rules :as rules]
    [groundwork.postgres :as pg]
    [groundwork.sessions :as sessions]
+   [groundwork.settings :as settings]
    [next.jdbc :as jdbc]
    [next.jdbc.result-set :as rs])
   (:import
@@ -330,3 +332,20 @@
    (those two would stop the next start)."
   [app]
   (migrations/status (gw/db app)))
+
+;; =============================================================================
+;; Settings
+;; =============================================================================
+
+(defn explain-setting
+  "What goes at a place in the settings: its type, what it is, an example.
+   (explain-setting [:sessions :visitor-hours])"
+  [path]
+  (settings/explain path))
+
+(defn settings
+  "Every setting gw/start takes, in order, each a line: its place, its type
+   and what it is. docs/example-settings.edn has them with examples."
+  []
+  (for [{:keys [path type description]} (settings/all)]
+    (str (str/join " " (map pr-str path)) "  (" type ")  " description)))

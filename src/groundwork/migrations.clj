@@ -20,6 +20,7 @@
    [clojure.java.io :as io]
    [clojure.string :as str]
    [groundwork.postgres :as pg]
+   [groundwork.settings :as settings]
    [next.jdbc :as jdbc])
   (:import
    (java.io File)
@@ -228,9 +229,7 @@
 
      :schema-snapshot  the file the snapshot goes to in development, or nil for none"
   [{:keys [settings environment db db-settings]}]
-  (when-not (and (map? settings) (contains? settings :schema-snapshot))
-    (throw (ex-info ":migrations needs :schema-snapshot (a file, or nil for none)"
-                    {:type ::missing-settings :missing [:schema-snapshot]})))
+  (settings/check-part! :migrations settings)
   (let [ran (migrate! db)]
     (when (and (= :development environment) (:schema-snapshot settings))
       (write-snapshot! db-settings (:schema-snapshot settings)))

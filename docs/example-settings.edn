@@ -1,0 +1,182 @@
+;; Every setting gw/start takes, with an example and what it is.
+;; Generated from groundwork.settings; don't edit by hand.
+{;; Where the app runs
+ :environment :development
+
+ ;; The database
+ :db
+ {;; The database server's address
+  :host "localhost"
+
+  ;; Its port
+  :port 5432
+
+  ;; The database's name
+  :database "app"
+
+  ;; The user Groundwork connects as
+  :user "app"
+
+  ;; Its password, or nil for none
+  :password nil
+
+  ;; Connections per server, a fixed number
+  :pool-size 10
+
+  ;; Postgres cancels a statement that runs longer; :none for no limit
+  :statement-timeout-ms 30000
+
+  ;; The session's time zone: how times without an offset are read
+  :time-zone "UTC"
+
+  ;; Runs first in every with-transaction: (fn [tx] …) (optional)
+  :on-transaction app.db/on-transaction
+
+  ;; After every query: (fn [{:keys [file sql ms error]}] …) (optional)
+  :on-query app.db/on-query}
+
+ ;; The schema's changes, run at start
+ :migrations
+ {;; The file development writes the whole schema to, or nil for none
+  :schema-snapshot "schema.sql"}
+
+ ;; The page shell every screen loads into
+ :page
+ {;; The page's language
+  :lang "en"
+
+  ;; The browser tab's title
+  :title "Acme Coating"
+
+  ;; A one-sentence summary for search results and link previews, or nil
+  :description "Powder coating, ordered online"
+
+  ;; The tab's icon
+  :icon "/icon.svg"
+
+  ;; The CSS files every page loads
+  :stylesheets ["/app.css"]
+
+  ;; The compiled browser app
+  :script "/js/main.js"
+
+  ;; Extra tags at the end of <head>, as HTML text
+  :head []}
+
+ ;; Requests: the app's routes, limits, hooks, languages
+ :web
+ {;; The app's routes, reitit data; each route's data is checked like below
+  :routes [["/" {:get groundwork.web/page, :access :public}]
+           ["/orders/:order-id"
+            {:get groundwork.web/page,
+             :access {:action :orders/see, :record [:order :order-id]}}]
+           ["/webhooks/payments"
+            {:post app.payments/webhook, :server-to-server true}]]
+
+  ;; The largest request body any route accepts (a route may allow more)
+  :max-body-bytes 1048576
+
+  ;; Sources the app adds to the strict policy, per directive
+  :content-security-policy {:img-src ["https://cdn.example"]}
+
+  ;; Where a signed-out browser asking for a page is sent
+  :login-path "/login"
+
+  ;; After every answer, for logs and metrics, or nil
+  :on-request app.log/request
+
+  ;; An exception no handler caught, or nil
+  :on-error app.log/error
+
+  ;; Which addresses are trusted proxies, and the headers believed from them
+  :proxies
+  {;; Trusted proxy addresses or ranges
+   :trusted ["10.0.0.0/8" "::1"]
+
+   ;; The header holding the visitor's address, or nil
+   :client-ip-header "cf-connecting-ip"
+
+   ;; The header holding a request id to keep, or nil
+   :request-id-header "x-request-id"}
+
+  ;; The languages the app speaks, or nil for one
+  :languages {:supported ["en" "de"], :default "en", :cookie "lang"}
+
+  ;; Lets automated tests sign in, given the secret; nil to switch off, never in production
+  :test-sign-in nil
+
+  ;; Evaluates code from outside, given the secret; nil to switch off, never in production
+  :eval-bridge nil
+
+  ;; Files whose names match (a regular expression, as text) are cached a year; nil for none
+  :hashed-files "\\.[0-9a-f]{8,}\\."
+
+  ;; Text-like answers at least this big go gzipped; nil for none
+  :gzip-min-bytes 1024}
+
+ ;; The web server
+ :server
+ {;; The address to listen on
+  :ip "0.0.0.0"
+
+  ;; The port to listen on; 0 picks a free one
+  :port 8080}
+
+ ;; Who is signed in
+ :sessions
+ {;; The session cookie's name
+  :cookie-name "acme_session"
+
+  ;; A signed-in session's lifetime
+  :max-age-days 30
+
+  ;; A visitor's session ends after this long unseen
+  :visitor-hours 24
+
+  ;; Cookies only over https; false only for plain-http development
+  :secure? true
+
+  ;; Where the app is served from; a changing request must come from here
+  :origin "https://app.acme.example"}
+
+ ;; Who may do what, where: the permission description
+ :permissions
+ {;; The kinds of scope: where data belongs and people are members
+  :scopes {:shop
+           {:actions #{:orders/see :orders/edit},
+            :roles {"Manager" #{:orders/see :orders/edit}},
+            :parent nil}}
+
+  ;; The kinds of record, each in a scope
+  :records {:order {:table :orders, :id :order/id, :in [:shop :order/shop-id]}}
+
+  ;; Scopes reaching other scopes through a linking record
+  :links []
+
+  ;; A session flag blocks actions: flag → actions
+  :session-blocks {:impersonated #{:money/move}}}
+
+ ;; The endpoints and how they're asked
+ :parquery
+ {;; The app's endpoint maps, gathered from its areas
+  :endpoints [app.jobs/endpoints app.orders/endpoints]
+
+  ;; The most asks one request may carry
+  :max-asks 50
+
+  ;; The most asks running at once across the server; keep it below the pool size
+  :max-running 16
+
+  ;; Whose token a tool calls with: (fn [token] person-id-or-nil), or nil
+  :bearer app.tools/token->person
+
+  ;; Decides when a caller has asked too often, or nil
+  :rate-limit nil
+
+  ;; Tables outside the permission description that ring too
+  :bells
+  {;; Tables every watcher of them hears about
+   :global #{:powder_colours}
+
+   ;; Tables only their person hears about: table → person column
+   :personal {:notifications :notification/person-id}}}}

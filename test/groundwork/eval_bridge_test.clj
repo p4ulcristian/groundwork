@@ -6,6 +6,7 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.core :as gw]
    [groundwork.eval-bridge :as eval-bridge]
+   [groundwork.settings :as gs]
    [groundwork.test-support :refer [app-settings]]
    [jsonista.core :as json])
   (:import
@@ -62,9 +63,7 @@
     (is (str/includes? (:error (:body (evaluate "(+ 1 2)" :cljs "app"))) "browser build isn't running"))))
 
 (deftest never-in-production
-  (is (= ::eval-bridge/bad-setting
-         (:type (ex-data (try (eval-bridge/check-setting {:secret secret :timeout-ms 1 :max-chars 1} :production)
-                              (catch Exception e e))))))
-  (is (= ::eval-bridge/bad-setting
-         (:type (ex-data (try (eval-bridge/check-setting {:secret "short" :timeout-ms 1 :max-chars 1} :test)
-                              (catch Exception e e)))))))
+  (let [problems (fn [bridge environment]
+                   (mapv :in (gs/part-problems :web (assoc (:web app-settings) :eval-bridge bridge :test-sign-in nil) environment)))]
+    (is (= [[:web :eval-bridge]] (problems {:secret secret :timeout-ms 1 :max-chars 1} :production)))
+    (is (= [[:web :eval-bridge :secret]] (problems {:secret "short" :timeout-ms 1 :max-chars 1} :test)))))

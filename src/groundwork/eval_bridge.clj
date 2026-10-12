@@ -32,19 +32,6 @@
 
 (def path "/groundwork/eval")
 
-(defn check-setting
-  "nil, or {:secret … :timeout-ms … :max-chars …}; never in production."
-  [setting environment]
-  (when (some? setting)
-    (let [{:keys [secret timeout-ms max-chars]} (when (map? setting) setting)]
-      (when-not (and (map? setting) (= #{:secret :timeout-ms :max-chars} (set (keys setting)))
-                     (string? secret) (<= 16 (count secret))
-                     (pos-int? timeout-ms) (pos-int? max-chars))
-        (throw (ex-info ":eval-bridge must be nil or {:secret \"at least 16 characters\" :timeout-ms n :max-chars n}"
-                        {:type ::bad-setting :setting :eval-bridge})))
-      (when (= :production environment)
-        (throw (ex-info ":eval-bridge is never on in production" {:type ::bad-setting :setting :eval-bridge}))))))
-
 (defn- cut [^String s max-chars]
   (when s
     (if (<= (count s) max-chars) s (str (subs s 0 max-chars) "… (cut at " max-chars " characters)"))))

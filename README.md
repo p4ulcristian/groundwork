@@ -68,12 +68,164 @@ the JVM tests against Postgres 18, clj-kondo, the browser half's tests on node.
 ```
 
 - One key per part, every key required; an unknown key throws.
+- Every problem is reported at once, each with its place and a plain
+  message: `:sessions :visitor-hours must be a positive whole number, got "24"`.
+- [`docs/example-settings.edn`](docs/example-settings.edn) holds every key with
+  an example and what it is; `(repl/explain-setting [:sessions :visitor-hours])`
+  answers in the REPL. Both, and the reference below, come from one malli
+  schema, `groundwork.settings`.
 - Inside, Integrant starts the parts in order and stops them in reverse.
   That wiring is Groundwork's own: settings don't name or replace parts.
 - Tests can replace a part: `(gw/start-with settings {:groundwork/db fake})`.
 - In the REPL, `(gw/swap-routes! app routes)` serves new routes without a
   restart; they're checked like at start, and wrong ones leave the old in
   place.
+
+
+### Settings reference
+
+<!-- settings reference: generated, see groundwork.settings-test -->
+Generated from `groundwork.settings`; `(groundwork.repl/explain-setting [:sessions :visitor-hours])`
+answers the same in the REPL, and `docs/example-settings.edn` holds every key with an example.
+
+#### `:environment`: Where the app runs
+
+`:development, :test or :production`
+
+#### `:db`: The database
+
+| Key | Type | What it is | Example |
+|-----|------|------------|---------|
+| `:db :host` | text | The database server's address | `"localhost"` |
+| `:db :port` | port number | Its port | `5432` |
+| `:db :database` | text | The database's name | `"app"` |
+| `:db :user` | text | The user Groundwork connects as | `"app"` |
+| `:db :password` | text or nil | Its password, or nil for none |  |
+| `:db :pool-size` | positive whole number | Connections per server, a fixed number | `10` |
+| `:db :statement-timeout-ms` | positive whole number or :none | Postgres cancels a statement that runs longer; :none for no limit | `30000` |
+| `:db :time-zone` | time zone name | The session's time zone: how times without an offset are read | `"UTC"` |
+| `:db :on-transaction` (optional) | function | Runs first in every with-transaction: (fn [tx] …) | `app.db/on-transaction` |
+| `:db :on-query` (optional) | function | After every query: (fn [{:keys [file sql ms error]}] …) | `app.db/on-query` |
+
+#### `:migrations`: The schema's changes, run at start
+
+| Key | Type | What it is | Example |
+|-----|------|------------|---------|
+| `:migrations :schema-snapshot` | text or nil | The file development writes the whole schema to, or nil for none | `"schema.sql"` |
+
+#### `:page`: The page shell every screen loads into
+
+| Key | Type | What it is | Example |
+|-----|------|------------|---------|
+| `:page :lang` | text | The page's language | `"en"` |
+| `:page :title` | text | The browser tab's title | `"Acme Coating"` |
+| `:page :description` | text or nil | A one-sentence summary for search results and link previews, or nil | `"Powder coating, ordered online"` |
+| `:page :icon` | text | The tab's icon | `"/icon.svg"` |
+| `:page :stylesheets` | list of text | The CSS files every page loads | `["/app.css"]` |
+| `:page :script` | text | The compiled browser app | `"/js/main.js"` |
+| `:page :head` | list of text | Extra tags at the end of <head>, as HTML text | `[]` |
+
+#### `:web`: Requests: the app's routes, limits, hooks, languages
+
+| Key | Type | What it is | Example |
+|-----|------|------------|---------|
+| `:web :routes` | reitit routes | The app's routes, reitit data; each route's data is checked like below | `[["/" {:get groundwork.web/page, :access :public}] ["/ord…` |
+| `:web :max-body-bytes` | positive whole number | The largest request body any route accepts (a route may allow more) | `1048576` |
+| `:web :content-security-policy` | directive → sources | Sources the app adds to the strict policy, per directive | `{:img-src ["https://cdn.example"]}` |
+| `:web :login-path` | path | Where a signed-out browser asking for a page is sent | `"/login"` |
+| `:web :on-request` | function or nil | After every answer, for logs and metrics, or nil | `app.log/request` |
+| `:web :on-error` | function or nil | An exception no handler caught, or nil | `app.log/error` |
+| `:web :proxies` | map | Which addresses are trusted proxies, and the headers believed from them | `{:trusted ["10.0.0.0/8"], :client-ip-header "cf-connectin…` |
+| `:web :proxies :trusted` | list of addresses or ranges | Trusted proxy addresses or ranges | `["10.0.0.0/8" "::1"]` |
+| `:web :proxies :client-ip-header` | text or nil | The header holding the visitor's address, or nil | `"cf-connecting-ip"` |
+| `:web :proxies :request-id-header` | text or nil | The header holding a request id to keep, or nil | `"x-request-id"` |
+| `:web :languages` | map or nil | The languages the app speaks, or nil for one | `{:supported ["en" "de"], :default "en", :cookie "lang"}` |
+| `:web :languages :supported` | list of language codes | Language codes | `["en" "de"]` |
+| `:web :languages :default` | language code | The language when nothing else says | `"en"` |
+| `:web :languages :cookie` | name or nil | A cookie holding the person's choice, or nil | `"lang"` |
+| `:web :test-sign-in` | map or nil | Lets automated tests sign in, given the secret; nil to switch off, never in production |  |
+| `:web :test-sign-in :secret` | text, 16+ characters | At least 16 characters | `"a-secret-only-tests-know"` |
+| `:web :eval-bridge` | map or nil | Evaluates code from outside, given the secret; nil to switch off, never in production |  |
+| `:web :eval-bridge :secret` | text, 16+ characters | At least 16 characters | `"a-secret-only-the-previews-know"` |
+| `:web :eval-bridge :timeout-ms` | positive whole number | How long one evaluation may run | `30000` |
+| `:web :eval-bridge :max-chars` | positive whole number | The longest result sent back | `20000` |
+| `:web :hashed-files` | regular expression text or nil | Files whose names match (a regular expression, as text) are cached a year; nil for none | `"\\.[0-9a-f]{8,}\\."` |
+| `:web :gzip-min-bytes` | positive whole number or nil | Text-like answers at least this big go gzipped; nil for none | `1024` |
+
+#### `:server`: The web server
+
+| Key | Type | What it is | Example |
+|-----|------|------------|---------|
+| `:server :ip` | text | The address to listen on | `"0.0.0.0"` |
+| `:server :port` | port number | The port to listen on; 0 picks a free one | `8080` |
+
+#### `:sessions`: Who is signed in
+
+| Key | Type | What it is | Example |
+|-----|------|------------|---------|
+| `:sessions :cookie-name` | name | The session cookie's name | `"acme_session"` |
+| `:sessions :max-age-days` | positive whole number | A signed-in session's lifetime | `30` |
+| `:sessions :visitor-hours` | positive whole number | A visitor's session ends after this long unseen | `24` |
+| `:sessions :secure?` | true or false | Cookies only over https; false only for plain-http development | `true` |
+| `:sessions :origin` | origin | Where the app is served from; a changing request must come from here | `"https://app.acme.example"` |
+
+#### `:permissions`: Who may do what, where: the permission description
+
+| Key | Type | What it is | Example |
+|-----|------|------------|---------|
+| `:permissions :scopes` | kind → scope kind | The kinds of scope: where data belongs and people are members | `{:shop {:actions #{:orders/see :orders/edit}, :roles {"Ma…` |
+| `:permissions :scopes <scope kind> :actions` | set of actions | The actions of this kind of scope | `#{:orders/see :orders/edit}` |
+| `:permissions :scopes <scope kind> :roles` | role name → actions | The starting roles every new scope of this kind gets: name → actions | `{"Manager" #{:orders/see :orders/edit}}` |
+| `:permissions :scopes <scope kind> :parent` | keyword or nil | The kind of scope above this one, or nil |  |
+| `:permissions :records` | kind → record kind | The kinds of record, each in a scope | `{:order {:table :orders, :id :order/id, :in [:shop :order…` |
+| `:permissions :records <record kind> :table` | keyword | Its table | `:orders` |
+| `:permissions :records <record kind> :id` | column keyword | Its id column | `:order/id` |
+| `:permissions :records <record kind> :in` | [kind column] or a list of them | Its scope column: [scope-kind column], or a list of them for a record shared by scopes | `[:shop :order/shop-id]` |
+| `:permissions :records <record kind> :parent` (optional) | [kind column] | The record it hangs under: [record-kind its-column] | `[:order :job/order-id]` |
+| `:permissions :records <record kind> :people` (optional) | action → column | An action a person on the record holds: action → their column | `#:orders{:see :order/customer-id}` |
+| `:permissions :records <record kind> :only-when` (optional) | action → condition | An action allowed only when the record matches: action → condition | `#:orders{:edit [:= :order/status "open"]}` |
+| `:permissions :links` | list of links | Scopes reaching other scopes through a linking record | `[]` |
+| `:permissions :links […] :table` | keyword | The linking record's table | `:agreements` |
+| `:permissions :links […] :from` | [kind column] | The scope the person is in: [kind column] | `[:partner :agreement/partner-id]` |
+| `:permissions :links […] :to` | [kind column] | The scope the link reaches: [kind column] | `[:shop :agreement/shop-id]` |
+| `:permissions :links […] :when` | condition | While this holds | `[:= :agreement/status "active"]` |
+| `:permissions :links […] :grants` | action → action | What it gives in :to: given action → the action needed in :from | `#:orders{:see :agreements/see}` |
+| `:permissions :session-blocks` | flag → actions | A session flag blocks actions: flag → actions | `{:impersonated #{:money/move}}` |
+
+#### `:parquery`: The endpoints and how they're asked
+
+| Key | Type | What it is | Example |
+|-----|------|------------|---------|
+| `:parquery :endpoints` | list of endpoint maps | The app's endpoint maps, gathered from its areas | `[app.jobs/endpoints app.orders/endpoints]` |
+| `:parquery :max-asks` | positive whole number | The most asks one request may carry | `50` |
+| `:parquery :max-running` | positive whole number | The most asks running at once across the server; keep it below the pool size | `16` |
+| `:parquery :bearer` | function or nil | Whose token a tool calls with: (fn [token] person-id-or-nil), or nil | `app.tools/token->person` |
+| `:parquery :rate-limit` | function or nil | Decides when a caller has asked too often, or nil |  |
+| `:parquery :bells` | map | Tables outside the permission description that ring too | `{:global #{:powder_colours}, :personal {:notifications :n…` |
+| `:parquery :bells :global` | set of tables | Tables every watcher of them hears about | `#{:powder_colours}` |
+| `:parquery :bells :personal` | table → column | Tables only their person hears about: table → person column | `{:notifications :notification/person-id}` |
+
+#### A route's data (in `:web :routes`)
+
+| Key | Type | What it is | Example |
+|-----|------|------------|---------|
+| `<path> :access` (optional) | :public, :signed-in or {:action … :record [kind param]} | Who may use it (or :server-to-server true) | `:public` |
+| `<path> :server-to-server` (optional) | true or false | Called by another server (a webhook): no session, no Origin check; the handler checks the call | `true` |
+| `<path> :embeddable` (optional) | true, :same-origin or origins | Other sites may show it in a frame: true (any https site), :same-origin, or a list of origins | `true` |
+| `<path> :page` (optional) | map or function | The page shell's own details for this route: a map, or a function of the request | `{:title "Design your part"}` |
+| `<path> :max-body-bytes` (optional) | positive whole number | The largest body it accepts, over the app's :max-body-bytes | `104857600` |
+
+#### An endpoint's entry (in `:parquery :endpoints`)
+
+| Key | Type | What it is | Example |
+|-----|------|------------|---------|
+| `<endpoint name> :read` (optional) | function | Its handler, for a read: (fn [ctx params] answer) | `app.jobs/list` |
+| `<endpoint name> :write` (optional) | function | Its handler, for a write: (fn [ctx params] answer) | `app.jobs/move` |
+| `<endpoint name> :permission` | :public, :signed-in or {:action … :record\|:scope\|:list …} | Who may ask it | `{:action :jobs/see, :scope [:shop :shop/id]}` |
+| `<endpoint name> :input` | malli shape | What may be sent, a malli :map; id fields say their record kind | `[:map [:shop/id :uuid]]` |
+| `<endpoint name> :answer` | malli shape | What may be sent back, a malli shape | `[:vector [:map [:job/id :uuid]]]` |
+| `<endpoint name> :reads` (optional) | list of tables | Tables a read uses that Postgres can't see in its SQL | `[:jobs]` |
+<!-- end of the settings reference -->
 
 ---
 

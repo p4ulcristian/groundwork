@@ -8,6 +8,7 @@
    [groundwork.migrations :as migrations]
    [groundwork.permissions :as perm]
    [groundwork.permissions.rules :as rules]
+   [groundwork.settings :as gs]
    [groundwork.postgres :as pg]
    [groundwork.test-support :refer [db-settings sql!]]
    [next.jdbc :as jdbc])
@@ -368,4 +369,4 @@
     (is (= ::rules/bad-description
            (problem (assoc-in description [:records :job :parent] [:agreement :job/order-id])))
         "a parent that belongs to two scopes")
-    (is (= ::rules/bad-description (problem (dissoc description :links))) "a missing key")))
+    (is (= ::gs/invalid (problem (dissoc description :links))) "a missing key, by the settings schema")))

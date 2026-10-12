@@ -209,11 +209,7 @@
       (is (every? #(< 1439 % 1441) (hours-left (rows)))))))
 
 (deftest settings-are-checked
-  (is (= ::sessions/missing-settings
-         (:type (ex-data (try (sessions/start {:settings {}}) (catch Exception e e))))))
-  (is (= ::sessions/bad-setting
-         (:type (ex-data (try (sessions/start {:settings (assoc (:sessions app-settings) :origin "http://x/path")})
-                              (catch Exception e e))))))
-  (is (= ::sessions/bad-setting
-         (:type (ex-data (try (sessions/start {:settings (assoc (:sessions app-settings) :visitor-hours 0)})
-                              (catch Exception e e)))))))
+  (let [problems (fn [opts] (mapv :in (:problems (ex-data (try (sessions/start {:settings opts}) (catch Exception e e))))))]
+    (is (= 5 (count (problems {}))))
+    (is (= [[:sessions :origin]] (problems (assoc (:sessions app-settings) :origin "http://x/path"))))
+    (is (= [[:sessions :visitor-hours]] (problems (assoc (:sessions app-settings) :visitor-hours 0))))))

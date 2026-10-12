@@ -146,7 +146,7 @@
     (is (re-find #"no action" (start-error [{:jobs/x {:read (fn [_ _]) :permission {:action :nope/x :list :order}
                                                       :input [:map] :answer :any}}]))))
   (testing "every declaration is required"
-    (is (re-find #"needs :answer" (start-error [{:jobs/x {:read (fn [_ _]) :permission :public :input [:map]}}])))))
+    (is (re-find #":jobs/x :answer is missing" (start-error [{:jobs/x {:read (fn [_ _]) :permission :public :input [:map]}}])))))
 
 (deftest a-scope-permission
   (is (= {:status :ok :data [{:job/id acme-job}]}

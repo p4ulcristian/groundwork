@@ -69,6 +69,7 @@
    [groundwork.permissions :as permissions]
    [groundwork.permissions.rules :as rules]
    [groundwork.postgres :as pg]
+   [groundwork.settings :as settings]
    [malli.core :as m])
   (:import
    (java.lang System$Logger System$Logger$Level)))
@@ -176,33 +177,24 @@
             {}
             (entries input))))
 
-(defn- check-entry [perms k entry]
-  (let [allowed #{:read :write :permission :input :answer :reads}]
-    (when-not (qualified-keyword? k)
-      (bad k "the name must be namespaced, like :jobs/list"))
-    (when-let [unknown (seq (remove allowed (keys entry)))]
-      (bad k (str "unknown keys " (str/join " " unknown))))
-    (when-let [missing (seq (remove #(contains? entry %) [:permission :input :answer]))]
-      (bad k (str "needs " (str/join " " missing))))
-    (when-not (= 1 (count (filter #(contains? entry %) [:read :write])))
-      (bad k "needs one of :read or :write, its handler"))
-    (when-not (ifn? (or (:read entry) (:write entry)))
-      (bad k "its handler must be a function"))
-    (when-not (or (nil? (:reads entry)) (and (sequential? (:reads entry)) (every? keyword? (:reads entry))))
-      (bad k ":reads must be a list of tables, like [:jobs]"))
-    (let [input      (shape k ":input" (:input entry))
-          answer     (shape k ":answer" (:answer entry))
-          _          (when-not (= :map (m/type input))
-                       (bad k ":input must be a malli :map"))
-          permission (check-permission perms k (:permission entry) input)]
-      (assoc entry
-             :name       k
-             :input      input
-             :answer     answer
-             :permission permission
-             :ids        (id-fields perms k permission input)
-             :read?      (contains? entry :read)
-             :handler    (or (:read entry) (:write entry))))))
+(defn- check-entry
+  "An entry whose shape the settings schema has checked, against the
+   permission description."
+  [perms k entry]
+  (settings/check-value! settings/endpoint entry [:parquery :endpoints k])
+  (let [input      (shape k ":input" (:input entry))
+        answer     (shape k ":answer" (:answer entry))
+        _          (when-not (= :map (m/type input))
+                     (bad k ":input must be a malli :map"))
+        permission (check-permission perms k (:permission entry) input)]
+    (assoc entry
+           :name       k
+           :input      input
+           :answer     answer
+           :permission permission
+           :ids        (id-fields perms k permission input)
+           :read?      (contains? entry :read)
+           :handler    (or (:read entry) (:write entry)))))
 
 (defn- built-in
   "Groundwork's own endpoints. :groundwork/grants is behind the browser's
@@ -222,8 +214,6 @@
   "The app's endpoint maps as one, refusing a name twice."
   [maps]
   (reduce (fn [all m]
-            (when-not (map? m)
-              (throw (ex-info ":endpoints must be a list of maps" {:type ::bad-setting :setting :endpoints})))
             (when-let [twice (seq (filter #(contains? all %) (keys m)))]
               (throw (ex-info (str "Endpoints named twice: " (str/join " " twice))
                               {:type ::bad-endpoint :endpoints (vec twice)})))
@@ -234,33 +224,6 @@
 ;; =============================================================================
 ;; Settings
 ;; =============================================================================
-
-(def ^:private settings [:endpoints :max-asks :max-running :bearer :rate-limit :bells])
-
-(defn- check-bells [{:keys [global personal] :as bells}]
-  (when-not (and (map? bells) (= #{:global :personal} (set (keys bells)))
-                 (set? global) (every? keyword? global)
-                 (map? personal) (every? keyword? (keys personal)) (every? qualified-keyword? (vals personal)))
-    (throw (ex-info ":bells must be {:global #{:table …} :personal {:table :entity/person-column}}"
-                    {:type ::bad-setting :setting :bells :value bells}))))
-
-(defn- check-settings [opts]
-  (when-not (map? opts)
-    (throw (ex-info ":parquery must be a map" {:type ::bad-setting :setting :parquery :value opts})))
-  (when-let [missing (seq (remove #(contains? opts %) settings))]
-    (throw (ex-info (str ":parquery needs " (str/join " " missing))
-                    {:type ::missing-settings :missing (vec missing)})))
-  (let [{:keys [endpoints max-asks max-running bearer rate-limit bells]} opts]
-    (when-not (sequential? endpoints)
-      (throw (ex-info ":endpoints must be a list of the app's endpoint maps"
-                      {:type ::bad-setting :setting :endpoints})))
-    (doseq [[k v] [[:max-asks max-asks] [:max-running max-running]]]
-      (when-not (pos-int? v)
-        (throw (ex-info (str k " must be a positive integer") {:type ::bad-setting :setting k :value v}))))
-    (doseq [[k v] [[:bearer bearer] [:rate-limit rate-limit]]]
-      (when-not (or (nil? v) (ifn? v))
-        (throw (ex-info (str k " must be a function or nil") {:type ::bad-setting :setting k :value v}))))
-    (check-bells bells)))
 
 ;; =============================================================================
 ;; Running one
@@ -457,7 +420,7 @@
   "The endpoints part: every endpoint checked against the permission
    description; old one-time keys forgotten."
   [{:keys [settings db permissions app-settings]}]
-  (check-settings settings)
+  (settings/check-part! :parquery settings)
   (let [app       (gather (:endpoints settings))
         _         (when-let [taken (seq (filter #(= "groundwork" (namespace %)) (keys app)))]
                     (throw (ex-info (str "Endpoint names under groundwork/ are Groundwork's: " (str/join " " taken))

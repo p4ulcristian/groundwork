@@ -5,7 +5,9 @@
      (gw/stop app)
 
    The settings map holds what is the app's own, one key per part; every key
-   is required and an unknown key throws, so a typo can't go unnoticed:
+   is required and an unknown key throws, so a typo can't go unnoticed. Every
+   problem is reported at once, with its place (see groundwork.settings, and
+   docs/example-settings.edn for every key with an example):
 
      :environment  :development, :test or :production
      :db           the database, see groundwork.postgres/start
@@ -21,7 +23,6 @@
    hands them to each other and stops them in reverse. That wiring is
    Groundwork's own: an app's settings don't name parts or replace them."
   (:require
-   [clojure.string :as str]
    [groundwork.endpoints :as endpoints]
    [groundwork.migrations :as migrations]
    [groundwork.page :as page]
@@ -30,14 +31,13 @@
    [groundwork.postgres :as pg]
    [groundwork.server :as server]
    [groundwork.sessions :as sessions]
+   [groundwork.settings :as settings]
    [groundwork.web :as web]
    [integrant.core :as ig]))
 
 ;; =============================================================================
 ;; Parts
 ;; =============================================================================
-
-(def ^:private environments #{:development :test :production})
 
 (def ^:private parts
   "Every part, in the order it starts: the settings key it reads, the parts it
@@ -94,20 +94,6 @@
 ;; Settings
 ;; =============================================================================
 
-(defn- check-settings [settings]
-  (let [required (distinct (into [:environment] (keep :settings) (vals parts)))
-        missing  (remove #(contains? settings %) required)
-        unknown  (remove (set required) (keys settings))]
-    (when (seq missing)
-      (throw (ex-info (str "gw/start needs " (str/join " " missing))
-                      {:type ::missing-settings :missing (vec missing)})))
-    (when (seq unknown)
-      (throw (ex-info (str "gw/start doesn't know " (str/join " " unknown))
-                      {:type ::unknown-settings :unknown (vec unknown)})))
-    (when-not (environments (:environment settings))
-      (throw (ex-info ":environment must be :development, :test or :production"
-                      {:type ::bad-setting :setting :environment :value (:environment settings)})))))
-
 (defn- config
   "The Integrant config for an app's settings."
   [settings]
@@ -135,7 +121,7 @@
 (defn start
   "Start an app from its settings. Returns the running app; give it to stop."
   [settings]
-  (check-settings settings)
+  (settings/check! settings)
   (reset! current-app {::system (ig/init (config settings))}))
 
 (defn start-with
@@ -145,7 +131,7 @@
 
    A fake is used as the part's value as it is, and it isn't stopped."
   [settings fakes]
-  (check-settings settings)
+  (settings/check! settings)
   (let [config (reduce-kv (fn [config k fake]
                             (when-not (contains? parts k)
                               (throw (ex-info (str "No part " k) {:type ::unknown-part :part k})))

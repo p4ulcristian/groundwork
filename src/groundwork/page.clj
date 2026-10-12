@@ -32,32 +32,11 @@
    <style> on it, the app's :head and :body included, carries the request's
    nonce, so the strict Content-Security-Policy lets them run."
   (:require
-   [clojure.string :as str]))
-
-(def ^:private settings [:lang :title :description :icon :stylesheets :script :head])
+   [clojure.string :as str]
+   [groundwork.settings :as settings]))
 
 (def ^:private route-keys
   #{:lang :title :description :canonical :alternates :stylesheets :scripts :head :body})
-
-(defn- check-settings [opts]
-  (when-not (map? opts)
-    (throw (ex-info ":page must be a map" {:type ::bad-setting :setting :page :value opts})))
-  (when-let [missing (seq (remove #(contains? opts %) settings))]
-    (throw (ex-info (str ":page needs " (str/join " " missing))
-                    {:type ::missing-settings :missing (vec missing)})))
-  (doseq [k [:lang :title :icon :script]
-          :let [v (get opts k)]]
-    (when-not (and (string? v) (not (str/blank? v)))
-      (throw (ex-info (str ":page " k " must be a string")
-                      {:type ::bad-setting :setting k :value v}))))
-  (doseq [k [:stylesheets :head]
-          :let [v (get opts k)]]
-    (when-not (and (sequential? v) (every? string? v))
-      (throw (ex-info (str ":page " k " must be a list of strings")
-                      {:type ::bad-setting :setting k :value v}))))
-  (when-not (or (nil? (:description opts)) (string? (:description opts)))
-    (throw (ex-info ":page :description must be a string or nil"
-                    {:type ::bad-setting :setting :description :value (:description opts)}))))
 
 (defn check-route-page
   "A route's :page: a map of route-keys or a function of the request."
@@ -130,7 +109,7 @@
   "The page part: a Ring handler that answers with the page, the route's
    own page (::route-page on the request) merged over the app's."
   [{:keys [settings]}]
-  (check-settings settings)
+  (settings/check-part! :page settings)
   (fn [request]
     {:status  200
      :headers {"Content-Type"  "text/html; charset=utf-8"
