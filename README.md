@@ -18,7 +18,7 @@ keywords → postgres → parquery → re-frame → reagent
 | parquery, browser |                       |        |
 | server            |                       |        |
 | router            |                       |        |
-| migrations        |                       |        |
+| migrations        | `groundwork.migrations` | built |
 | sessions          |                       |        |
 | permissions       |                       |        |
 | page shell        |                       |        |
@@ -32,7 +32,8 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
 
 ```clojure
 (def app (gw/start {:environment :development
-                    :db          {…}}))   ; see Postgres, Start
+                    :db          {…}                          ; see Postgres, Start
+                    :migrations  {:schema-snapshot "schema.sql"}}))
 (gw/stop app)
 ```
 
@@ -203,3 +204,24 @@ Work that is slow on purpose gets its own limit, until the transaction ends:
 `check-violation`, `not-null-violation`, `serialization-failure`,
 `deadlock`, `query-canceled` (past the time limit), else `error`, all under
 `:groundwork.postgres/`.
+
+---
+
+## 3. Migrations
+
+```
+resources/migrations/
+  001_create_shops.sql
+  002_add_shop_country.sql
+```
+
+- Numbered plain SQL files. At start, under a lock in Postgres, Groundwork
+  runs its own new migrations, then the app's, in number order.
+- Each file runs once, in its own transaction, with no time limit, and is
+  remembered in `groundwork.migrations` with its fingerprint.
+- A failing file rolls back and the app doesn't start. A file that ran and
+  then changed or disappeared stops the start: a fix is a new file.
+- In development the whole schema is written to `:schema-snapshot`
+  (`nil` for none), when `pg_dump` is on the PATH.
+- Groundwork's tables live in the `groundwork` schema; every connection's
+  search path is only `public`, so the two never mix.

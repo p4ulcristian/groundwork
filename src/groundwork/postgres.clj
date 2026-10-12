@@ -119,8 +119,10 @@
                  ;; PgJDBC sends the JVM's zone when it connects, and that beats
                  ;; "options", so the zone is set right after. Hikari runs this on
                  ;; each new connection; it takes no params, and check-settings
-                 ;; allows no quote in the name.
-                 (.setConnectionInitSql (str "SET TIME ZONE '" time-zone "'")))]
+                 ;; allows no quote in the name. The search path is only public:
+                 ;; Postgres's default puts a schema named like the user first,
+                 ;; and Groundwork's own schema must never catch an app's table.
+                 (.setConnectionInitSql (str "SET TIME ZONE '" time-zone "'; SET search_path = public")))]
     (when password (.setPassword config password))
     {::datasource     (HikariDataSource. config)
      ::on-transaction on-transaction

@@ -9,12 +9,14 @@
 
      :environment  :development, :test or :production
      :db           the database, see groundwork.postgres/start
+     :migrations   see groundwork.migrations/start
 
    Inside, each part is an Integrant key and Integrant starts them in order,
    hands them to each other and stops them in reverse. That wiring is
    Groundwork's own: an app's settings don't name parts or replace them."
   (:require
    [clojure.string :as str]
+   [groundwork.migrations :as migrations]
    [groundwork.postgres :as pg]
    [integrant.core :as ig]))
 
@@ -27,12 +29,17 @@
 (def ^:private parts
   "Every part, in the order it starts: the settings key it reads, the parts it
    needs, and how it starts and stops. A part's start gets
-   {:settings … :environment … <needed part> <its value> …}."
+   {:settings … :environment … :app-settings … <needed part> <its value> …},
+   a needed part under its name (:db for :groundwork/db)."
   (array-map
-   :groundwork/db {:settings :db
-                   :needs    []
-                   :start    (fn [{:keys [settings]}] (pg/start settings))
-                   :stop     pg/stop}))
+   :groundwork/db         {:settings :db
+                           :needs    []
+                           :start    (fn [{:keys [settings]}] (pg/start settings))
+                           :stop     pg/stop}
+   :groundwork/migrations {:settings :migrations
+                           :needs    [:groundwork/db]
+                           :start    (fn [{:keys [app-settings] :as config}]
+                                       (migrations/start (assoc config :db-settings (:db app-settings))))}))
 
 (doseq [k (keys parts)]
   (derive k ::part))
@@ -69,9 +76,10 @@
   [settings]
   (into {}
         (map (fn [[k {setting :settings needs :needs}]]
-               [k (into {:settings    (get settings setting)
-                         :environment (:environment settings)}
-                        (map (fn [need] [need (ig/ref need)]))
+               [k (into {:settings     (get settings setting)
+                         :environment  (:environment settings)
+                         :app-settings settings}
+                        (map (fn [need] [(keyword (name need)) (ig/ref need)]))
                         needs)]))
         parts))
 
