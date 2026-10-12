@@ -55,6 +55,13 @@
    Accept-Language, then the default (see language). The page shell's lang
    and its alternate links follow it.
 
+   Automated tests can sign in without the real login (never in production;
+   a setting there stops the start):
+
+     :test-sign-in {:secret \"at least 16 characters\"}   ; or nil
+     POST /groundwork/test-sign-in?person=<uuid>&flags=impersonated&hours=1
+          with X-Test-Secret: <secret>   → the session cookie
+
    Request bodies: none may be larger than :max-body-bytes, or a route's own
    [\"/uploads\" {:post upload :max-body-bytes 104857600}]; a larger one is
    refused with 413. A browser route's form body is parsed into :form-params,
@@ -86,7 +93,8 @@
    [ring.middleware.multipart-params :refer [wrap-multipart-params]]
    [ring.middleware.multipart-params.temp-file :refer [temp-file-store]]
    [ring.middleware.not-modified :refer [wrap-not-modified]]
-   [ring.middleware.params :refer [wrap-params]])
+   [ring.middleware.params :refer [wrap-params]]
+   [ring.util.codec :as codec])
   (:import
    (java.io File FileInputStream InputStream)
    (java.lang System$Logger System$Logger$Level)
@@ -671,15 +679,48 @@
 (defn- not-found [_request]
   (plain 404 "Not found"))
 
+(defn- check-test-sign-in [test-sign-in environment]
+  (when (some? test-sign-in)
+    (when-not (and (map? test-sign-in) (= #{:secret} (set (keys test-sign-in)))
+                   (string? (:secret test-sign-in)) (<= 16 (count (:secret test-sign-in))))
+      (throw (ex-info ":test-sign-in must be nil or {:secret \"at least 16 characters\"}"
+                      {:type ::bad-setting :setting :test-sign-in})))
+    (when (= :production environment)
+      (throw (ex-info ":test-sign-in is never on in production"
+                      {:type ::bad-setting :setting :test-sign-in})))))
+
+(defn- test-sign-in-route
+  "Signs a test in as a person, given the secret; unknown to anyone without it."
+  [{:keys [secret]} sessions]
+  (let [secret-bytes (.getBytes ^String secret "UTF-8")]
+    ["/groundwork/test-sign-in"
+     {:server-to-server true
+      :post             (fn [request]
+                          (let [given  (get-in request [:headers "x-test-secret"] "")
+                                params (let [p (codec/form-decode (or (:query-string request) "") "UTF-8")]
+                                         (if (map? p) p {}))
+                                person (some-> (get params "person") parse-uuid)]
+                            (if (and person
+                                     (java.security.MessageDigest/isEqual secret-bytes (.getBytes ^String given "UTF-8")))
+                              (sessions/sign-in (assoc request ::sessions/sessions sessions)
+                                                {:status 200 :headers {"Content-Type" "text/plain"} :body "signed in"}
+                                                person
+                                                (cond-> {:flags (into #{} (comp (remove str/blank?) (map keyword))
+                                                                      (str/split (get params "flags" "") #","))}
+                                                  (get params "hours") (assoc :hours (parse-long (get params "hours")))))
+                              (plain 404 "Not found"))))}]))
+
 (defn groundwork-routes
   "Groundwork's own routes, mounted next to the app's."
-  []
-  [])
+  [{:keys [test-sign-in sessions]}]
+  (cond-> []
+    test-sign-in (conj (test-sign-in-route test-sign-in sessions))))
 
 (def ^:private settings
-  [:routes :max-body-bytes :content-security-policy :login-path :on-request :on-error :proxies :languages])
+  [:routes :max-body-bytes :content-security-policy :login-path :on-request :on-error :proxies :languages
+   :test-sign-in])
 
-(defn- check-settings [opts]
+(defn- check-settings [opts environment]
   (when-not (map? opts)
     (throw (ex-info ":web must be a map" {:type ::bad-setting :setting :web :value opts})))
   (when-let [missing (seq (remove #(contains? opts %) settings))]
@@ -701,7 +742,8 @@
       (when-not (or (nil? v) (ifn? v))
         (throw (ex-info (str k " must be a function or nil") {:type ::bad-setting :setting k :value v}))))
     (check-proxies (:proxies opts))
-    (check-languages (:languages opts))))
+    (check-languages (:languages opts))
+    (check-test-sign-in (:test-sign-in opts) environment)))
 
 (defn handler
   "The app's Ring handler, for settings already checked."
@@ -712,7 +754,7 @@
                    wrap-file-caching
                    wrap-not-modified
                    wrap-ranges)
-        router (ring/router (into (groundwork-routes) routes)
+        router (ring/router (into (groundwork-routes settings) routes)
                             {:data    {:middleware [page-middleware
                                                     embeddable-middleware
                                                     (body-middleware max-body-bytes)
@@ -737,7 +779,7 @@
   "The router part: {:handler … :max-body-bytes …}, the most any route
    accepts, which the server reads at most."
   [{:keys [settings environment page sessions permissions]}]
-  (check-settings settings)
+  (check-settings settings environment)
   {:handler        (handler (assoc settings :page page :sessions sessions :permissions permissions
                                    :environment environment))
    :max-body-bytes (largest-body (:routes settings) (:max-body-bytes settings))})

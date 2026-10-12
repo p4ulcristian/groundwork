@@ -98,11 +98,33 @@
       (is (= 404 (:status (request "POST" "/notes" :cookie owner-cookie :body (str "note-id=" other-note))))))
     (is (= 401 (:status (request "GET" (str "/notes/" note)))) "signed out")))
 
+(deftest tests-can-sign-in-with-the-secret
+  (let [sign-in (fn [secret]
+                  (let [builder (-> (HttpRequest/newBuilder
+                                     (URI. (str "http://127.0.0.1:" (gw/port *app*)
+                                                "/groundwork/test-sign-in?person=" owner "&flags=impersonated&hours=1")))
+                                    (.POST (HttpRequest$BodyPublishers/noBody)))]
+                    (when secret (.header builder "X-Test-Secret" secret))
+                    (let [response (.send client (.build builder) (HttpResponse$BodyHandlers/ofString))]
+                      {:status (.statusCode response)
+                       :cookie (some-> (first (.allValues (.headers response) "set-cookie")) (str/split #";") first)})))]
+    (let [{:keys [status cookie]} (sign-in (get-in app-settings [:web :test-sign-in :secret]))]
+      (is (= 200 status))
+      (is (= 200 (:status (request "GET" (str "/notes/" note) :cookie cookie)))))
+    (is (= 404 (:status (sign-in "a-wrong-secret-of-some-length"))))
+    (is (= 404 (:status (sign-in nil)))))
+  (testing "never in production"
+    (is (= ::web/bad-setting
+           (:type (ex-data (try (web/start {:settings    (:web app-settings)
+                                            :environment :production
+                                            :page ok :sessions {} :permissions (gw/permissions *app*)})
+                                (catch clojure.lang.ExceptionInfo e e))))))))
+
 (deftest a-route-without-a-declaration-stops-the-start
   (let [build (fn [routes]
                 (try (web/handler {:routes routes :max-body-bytes 1000 :content-security-policy {}
                                    :login-path "/login" :page ok :sessions {} :environment :test
-                                   :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil
+                                   :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil
                                    :permissions (gw/permissions *app*)})
                      nil
                      (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))]

@@ -47,7 +47,8 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
                                                             :client-ip-header "cf-connecting-ip"
                                                             :request-id-header "x-request-id"}
                                   :languages               {:supported ["en" "de"] :default "en"
-                                                            :cookie "lang"}}   ; or nil
+                                                            :cookie "lang"}    ; or nil
+                                  :test-sign-in            nil}               ; or {:secret …}, never in production
                     :server      {:ip "0.0.0.0" :port 8080}
                     :sessions    {:cookie-name "acme_session" :max-age-days 30 :visitor-hours 24
                                   :secure? true :origin "https://app.acme.example"}
@@ -281,6 +282,11 @@ resources/migrations/
   Accept-Language, then the default. The page shell's `lang` follows it, and
   its alternate links name the same page in every language (the default
   without a prefix, plus x-default), unless the route gives its own.
+- **Test sign-in** for automated tests: with `:test-sign-in {:secret …}`
+  (16+ characters; set in production, the app refuses to start), `POST
+  /groundwork/test-sign-in?person=<uuid>&flags=impersonated&hours=1` with
+  `X-Test-Secret` answers the session cookie. A wrong or missing secret is
+  404.
 - **Request bodies:** none larger than `:max-body-bytes`, or a route's own
   (`["/uploads" {:post upload :access :signed-in :max-body-bytes 104857600}]`); larger is 413,
   and the server never reads more than the largest any route accepts. A
