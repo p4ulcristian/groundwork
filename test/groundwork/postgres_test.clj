@@ -6,7 +6,7 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.names :as names]
    [groundwork.postgres :as pg]
-   [next.jdbc :as jdbc])
+   [groundwork.test-support :refer [sql!]])
   (:import
    (java.time OffsetDateTime)
    (java.util UUID)))
@@ -42,12 +42,7 @@
 
 (use-fixtures :each
   (fn [t]
-    (with-open [conn (jdbc/get-connection {:dbtype "postgresql"
-                                           :host   (:host config)
-                                           :port   (:port config)
-                                           :dbname (:database config)
-                                           :user   (:user config)})]
-      (jdbc/execute! conn [schema]))
+    (sql! schema)
     (reset! queries [])
     (let [db (pg/start (assoc config :on-query #(swap! queries conj %)))]
       (try

@@ -18,8 +18,9 @@
    :time-zone            "UTC"})
 
 (defn sql!
-  "Run SQL text on its own connection, outside Groundwork. Returns the rows of
-   a query, as next.jdbc gives them."
+  "Run SQL text on its own connection, outside Groundwork, with the search
+   path on public as Groundwork's own connections have it. Returns the rows
+   of a query, as next.jdbc gives them."
   [text & params]
   (with-open [conn (jdbc/get-connection {:dbtype   "postgresql"
                                          :host     (:host db-settings)
@@ -27,6 +28,7 @@
                                          :dbname   (:database db-settings)
                                          :user     (:user db-settings)
                                          :password (:password db-settings)})]
+    (jdbc/execute! conn ["SET search_path = public"])
     (jdbc/execute! conn (into [text] params))))
 
 (defn free-port
@@ -47,4 +49,5 @@
    :routes      []
    :server      {:ip "127.0.0.1" :port port}
    :sessions    {:cookie-name "gw_session" :max-age-days 30 :secure? false
-                 :origin (str "http://127.0.0.1:" port)}})
+                 :origin (str "http://127.0.0.1:" port)}
+   :permissions {:scopes {} :records {} :links [] :session-blocks {}}})

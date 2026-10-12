@@ -14,6 +14,7 @@
      :routes       the app's routes, as reitit data; see groundwork.web
      :server       see groundwork.server
      :sessions     see groundwork.sessions
+     :permissions  the app's permission description, see groundwork.permissions.rules
 
    Inside, each part is an Integrant key and Integrant starts them in order,
    hands them to each other and stops them in reverse. That wiring is
@@ -22,6 +23,7 @@
    [clojure.string :as str]
    [groundwork.migrations :as migrations]
    [groundwork.page :as page]
+   [groundwork.permissions :as permissions]
    [groundwork.postgres :as pg]
    [groundwork.server :as server]
    [groundwork.sessions :as sessions]
@@ -51,11 +53,15 @@
    :groundwork/sessions   {:settings :sessions
                            :needs    [:groundwork/db :groundwork/migrations]
                            :start    sessions/start}
+   :groundwork/permissions {:settings :permissions
+                            :needs    [:groundwork/db :groundwork/migrations]
+                            :start    permissions/start}
    :groundwork/page       {:settings :page
                            :needs    []
                            :start    page/start}
    :groundwork/router     {:settings :routes
-                           :needs    [:groundwork/migrations :groundwork/sessions :groundwork/page]
+                           :needs    [:groundwork/migrations :groundwork/sessions :groundwork/permissions
+                                      :groundwork/page]
                            :start    web/start}
    :groundwork/server     {:settings :server
                            :needs    [:groundwork/router]
@@ -146,6 +152,11 @@
   "The app's db, for groundwork.postgres."
   [app]
   (part app :groundwork/db))
+
+(defn permissions
+  "The app's permissions part, for groundwork.permissions."
+  [app]
+  (part app :groundwork/permissions))
 
 (defn port
   "The port the app's server listens on."

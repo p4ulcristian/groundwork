@@ -20,7 +20,7 @@ keywords → postgres → parquery → re-frame → reagent
 | router            | `groundwork.web`      | built on reitit |
 | migrations        | `groundwork.migrations` | built |
 | sessions          | `groundwork.sessions` | built  |
-| permissions       |                       |        |
+| permissions       | `groundwork.permissions` | built (endpoints wait for parquery) |
 | page shell        | `groundwork.page`     | built  |
 | background jobs   |                       | later ([#1](https://github.com/p4ulcristian/groundwork/issues/1)) |
 
@@ -39,7 +39,8 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
                     :routes      [["/health" {:get (fn [_] {:status 200 :body "ok"})}]]
                     :server      {:ip "0.0.0.0" :port 8080}
                     :sessions    {:cookie-name "acme_session" :max-age-days 30 :secure? true
-                                  :origin "https://app.acme.example"}}))
+                                  :origin "https://app.acme.example"}
+                    :permissions {…}}))   ; see Permissions
 (gw/stop app)
 ```
 
@@ -268,3 +269,52 @@ resources/migrations/
 - A request that changes something (not GET, HEAD, OPTIONS) must carry the
   app's own `:origin`, or it's refused with 403.
 - `:data` keys are shaped `:entity/field`, like every json key.
+
+---
+
+## 6. Permissions
+
+The app describes its places, actions, roles and records once:
+
+```clojure
+{:scopes  {:shop    {:actions #{:orders/see :orders/edit :jobs/move}
+                     :roles   {"Manager"    #{:orders/see :orders/edit :jobs/move :groundwork/team}
+                               "Production" #{:orders/see :jobs/move}}
+                     :parent  :company}
+           :company {:actions #{:company/report} :roles {} :parent nil}}
+ :records {:order {:table :orders :id :order/id :in [:shop :order/shop-id]
+                   :people {:orders/see :order/customer-id}           ; optional
+                   :only-when {:orders/edit [:= :order/status "open"]}} ; optional
+           :job   {:table :jobs :id :job/id :in [:order :job/order-id]}}
+ :links   [{:table :agreements :from [:partner :agreement/partner-id] :to [:shop :agreement/shop-id]
+            :when [:= :agreement/status "active"] :grants {:orders/see :agreements/see}}]
+ :session-blocks {:impersonated #{:money/move}}}
+```
+
+```clojure
+(perm/allowed? perms {:person p :flags #{} :action :jobs/move :record [:job id]})
+(perm/check! perms {… :also {:machine [machine-id]}})   ; every id; else not-found
+(perm/list-filter perms {:person p :flags #{} :action :orders/see :kind :order})
+(perm/in-wall perms {:person p :scopes #{shop-id}} (fn [tx] …))
+(perm/as-system perms (fn [tx] …))
+```
+
+- Groundwork keeps scopes, roles, role actions, memberships, extra actions
+  and invitations in the `groundwork` schema. Changes count on the next
+  check; nothing is cached.
+- A record reaches its scope through its own columns (job → order → shop),
+  never a scope the browser names. Another scope's record is not-found.
+- A membership in a parent scope counts in its children; an owner holds
+  everything; a link gives access while its condition holds; a person on
+  the record, a condition on its own columns and session flags are part of
+  the rule.
+- Each rule is one SQL condition: it checks one record and filters a list.
+- The description is checked at start, against the database too.
+- **The wall:** every record table gets forced row-level security at start.
+  A transaction sees only its verified scopes and the person's own records,
+  or everything as the system. Both last one transaction and can't nest.
+- **Team:** `create-scope!`, `invite!`, `accept-invitation!`,
+  `change-role!`, `create-role!`, `set-role-actions!`, `remove-member!`,
+  `grant-extra!`, `revoke-extra!`. Managing needs `:groundwork/team`, and
+  only actions the manager holds can be given; only an owner makes owners;
+  a scope always keeps one.
