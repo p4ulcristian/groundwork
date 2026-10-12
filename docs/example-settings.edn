@@ -75,7 +75,18 @@
   :asset-path "/js"
 
   ;; In development, whether the start also watches the build
-  :watch? true}
+  :watch? true
+
+  ;; The build's modules, for an app with more than one: module → {:init-fn … or :entries […], :depends-on #{…}}. Without it there is one, :main, starting :entry (optional)
+  :modules {:base {:init-fn app.browser/start},
+            :admin {:entries [app.admin.view], :depends-on #{:base}}}
+
+  ;; Whether modules no page names load on demand (shadow-cljs's module loader) (optional)
+  :loader? true
+
+  ;; Extra shadow-cljs build options, merged over Groundwork's: JS resolution, build hooks, compiler options (optional)
+  :options
+  {}}
 
  ;; Requests: the app's routes, limits, hooks, languages
  :web

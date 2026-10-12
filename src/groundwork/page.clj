@@ -22,6 +22,9 @@
      :canonical  \"https://…\"     <link rel=canonical>
      :alternates [{:lang \"de\" :href \"https://…/de/…\"}]   <link rel=alternate hreflang>
      :stylesheets :scripts :head added after the app's
+     :module     the build module this page starts, loaded after the modules
+                 it depends on (see groundwork.build); without it the
+                 module(s) that depend on no other
      :body       HTML text the server writes inside <div id=\"app\">, for
                  search engines and the first paint; the app replaces it
 
@@ -44,7 +47,7 @@
    [jsonista.core :as json]))
 
 (def ^:private route-keys
-  #{:lang :title :description :canonical :alternates :stylesheets :scripts :head :body})
+  #{:lang :title :description :canonical :alternates :stylesheets :scripts :head :body :module})
 
 (defn check-route-page
   "A route's :page: a map of route-keys or a function of the request."
@@ -63,7 +66,7 @@
 (defn merged
   "The app's page settings with a route's page over them."
   [app route]
-  (-> (merge app (select-keys route [:lang :title :description :canonical :alternates :body]))
+  (-> (merge app (select-keys route [:lang :title :description :canonical :alternates :body :module]))
       (update :stylesheets into (:stylesheets route))
       (update :head into (:head route))
       (assoc :scripts (vec (:scripts route)))))
@@ -85,7 +88,7 @@
 
 (defn html
   "The page as HTML text; nonce, when given, goes on its scripts and styles."
-  [{:keys [lang title description icon canonical alternates stylesheets head script scripts body] :as page} nonce]
+  [{:keys [lang title description icon canonical alternates stylesheets head module-scripts scripts body] :as page} nonce]
   (str "<!doctype html>\n"
        "<html lang=\"" (escape lang) "\">\n"
        "<head>\n"
@@ -104,7 +107,7 @@
        "<body>\n"
        "<div id=\"app\">" (stamp-nonce body nonce) "</div>\n"
        (stamp-nonce (str "<script type=\"application/json\" id=\"groundwork\">" (initial-data page) "</script>\n") nonce)
-       (apply str (for [src (cons script scripts)]
+       (apply str (for [src (concat module-scripts scripts)]
                     (stamp-nonce (str "<script src=\"" (escape src) "\" defer></script>\n") nonce)))
        "</body>\n"
        "</html>\n"))
@@ -130,17 +133,22 @@
   [{:keys [settings app-settings environment]}]
   (settings/check-part! :page settings)
   (let [browser (:browser app-settings)
-        once    (delay (build/script browser))
-        script  (if (= :development environment) #(build/script browser) #(deref once))]
+        for*    (fn [module]
+                  (if module
+                    (build/scripts browser module)
+                    (into [] (comp (mapcat #(build/scripts browser %)) (distinct)) (build/roots browser))))
+        cached  (memoize for*)
+        ;; in development the build changes while the app runs
+        scripts (if (= :development environment) for* cached)]
     (fn [request]
-      {:status  200
-       :headers {"Content-Type"  "text/html; charset=utf-8"
-                 "Cache-Control" "no-store"}
-       :body    (html (merged (cond-> (assoc settings
-                                             :script (script)
-                                             :person (sessions/person request)
-                                             :flags  (sessions/flags request))
-                                (::language request)   (assoc :lang (::language request))
-                                (::alternates request) (assoc :alternates (::alternates request)))
-                              (route-page request))
-                      (::nonce request))})))
+      (let [page (merged (cond-> (assoc settings
+                                        :person (sessions/person request)
+                                        :flags  (sessions/flags request))
+                           (::language request)   (assoc :lang (::language request))
+                           (::alternates request) (assoc :alternates (::alternates request)))
+                         (route-page request))]
+        {:status  200
+         :headers {"Content-Type"  "text/html; charset=utf-8"
+                   "Cache-Control" "no-store"}
+         :body    (html (assoc page :module-scripts (scripts (:module page)))
+                        (::nonce request))}))))

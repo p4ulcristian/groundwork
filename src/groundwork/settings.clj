@@ -258,7 +258,7 @@
                    (vector? (:record a)) (= 2 (count (:record a))) (every? keyword? (:record a)))))))
 
 (def ^:private route-page-keys
-  #{:lang :title :description :canonical :alternates :stylesheets :scripts :head :body})
+  #{:lang :title :description :canonical :alternates :stylesheets :scripts :head :body :module})
 
 (def route
   [:and {:doc/key "<path>"}
@@ -343,7 +343,21 @@
     (entry :asset-path "Where the browser fetches them" "/js"
            [:re {:error/message "must be a path like \"/js\"" :doc/type "path"} #"^/.*"])
     (entry :watch? "In development, whether the start also watches the build" true
-           [:boolean {:error/message "must be true or false" :doc/type "true or false"}])]
+           [:boolean {:error/message "must be true or false" :doc/type "true or false"}])
+    (optional :modules "The build's modules, for an app with more than one: module → {:init-fn … or :entries […], :depends-on #{…}}. Without it there is one, :main, starting :entry"
+              {:base {:init-fn 'app.browser/start} :admin {:entries ['app.admin.view] :depends-on #{:base}}}
+              [:map-of {:error/message "must be a map of module → {:init-fn or :entries, :depends-on}" :doc/type "map of modules"}
+               :keyword
+               [:map {:closed true}
+                [:init-fn {:optional true} qualified-symbol?]
+                [:entries {:optional true} [:vector symbol?]]
+                [:depends-on {:optional true} [:set :keyword]]
+                [:web-worker {:optional true} :boolean]]])
+    (optional :loader? "Whether modules no page names load on demand (shadow-cljs's module loader)" true
+              [:boolean {:error/message "must be true or false" :doc/type "true or false"}])
+    (optional :options "Extra shadow-cljs build options, merged over Groundwork's: JS resolution, build hooks, compiler options"
+              {:js-options {:js-provider :shadow}}
+              [:map {:error/message "must be a map of shadow-cljs build options" :doc/type "map"}])]
 
    :web
    [:map {:closed true}

@@ -49,6 +49,63 @@
                                                        :asset-path "/nothing-built")))
       "before any build"))
 
+(def ^:private several
+  (assoc browser
+         :output-dir "test/public/nothing-built" :asset-path "/nothing-built"
+         :modules {:base   {:init-fn 'example.hello.browser/start}
+                   :shared {:entries ['example.hello.shared] :depends-on #{:base}}
+                   :admin  {:init-fn 'example.hello.admin/start :depends-on #{:base :shared}}
+                   :maps   {:entries ['example.hello.maps] :depends-on #{:base}}}
+         :loader? true
+         :options {:js-options {:js-provider :shadow}
+                   :release    {:compiler-options {:output-feature-set :es2020}}}))
+
+(deftest a-build-with-several-modules
+  (testing "the app's modules, the loader, and its own options merged over Groundwork's"
+    (let [config (build/config several)]
+      (is (= (:modules several) (:modules config)))
+      (is (true? (:module-loader config)))
+      (is (= {:js-provider :shadow} (:js-options config)))
+      (is (= {:module-hash-names true :compiler-options {:output-feature-set :es2020}} (:release config)))))
+  (testing "a module loads after everything it depends on, each once"
+    (is (= ["/nothing-built/base.js"] (build/scripts several :base)))
+    (is (= ["/nothing-built/base.js" "/nothing-built/shared.js" "/nothing-built/admin.js"]
+           (build/scripts several :admin)))
+    (is (= ["/nothing-built/base.js" "/nothing-built/maps.js"] (build/scripts several :maps))))
+  (testing "a page that names no module loads the ones that depend on no other"
+    (is (= [:base] (build/roots several)))
+    (is (= [:main] (build/roots browser))))
+  (testing "a module the build doesn't have is refused"
+    (is (= ::build/unknown-module
+           (:type (ex-data (try (build/scripts several :nope) (catch Exception e e)))))))
+  (testing "after a release the names are the manifest's"
+    (let [dir (io/file "test/public/several-built")]
+      (.mkdirs dir)
+      (spit (io/file dir "manifest.edn")
+            (pr-str [{:module-id :base :output-name "base.AAAA1111.js"}
+                     {:module-id :shared :output-name "shared.BBBB2222.js"}
+                     {:module-id :admin :output-name "admin.CCCC3333.js"}]))
+      (try
+        (is (= ["/several/base.AAAA1111.js" "/several/shared.BBBB2222.js" "/several/admin.CCCC3333.js"]
+               (build/scripts (assoc several :output-dir (str dir) :asset-path "/several") :admin)))
+        (finally
+          (io/delete-file (io/file dir "manifest.edn"))
+          (io/delete-file dir))))))
+
+(deftest a-page-loads-its-module-after-what-it-depends-on
+  (let [app (gw/start (-> app-settings
+                          (assoc :browser several)
+                          (assoc-in [:web :routes]
+                                    [["/" {:get web/page :access :public}]
+                                     ["/admin" {:get web/page :access :public :page {:module :admin}}]])))
+        scripts (fn [path]
+                  (mapv second (re-seq #"<script[^>]* src=\"([^\"]+)\"" (:body (get-text app path)))))]
+    (try
+      (is (= ["/nothing-built/base.js"] (scripts "/")) "no module named: the root module")
+      (is (= ["/nothing-built/base.js" "/nothing-built/shared.js" "/nothing-built/admin.js"]
+             (scripts "/admin")))
+      (finally (gw/stop app)))))
+
 (deftest a-release-is-what-the-page-loads
   (build/release! browser)
   (let [manifest (edn/read-string (slurp (io/file (:output-dir browser) "manifest.edn")))

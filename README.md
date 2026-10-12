@@ -137,6 +137,13 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:browser :output-dir` | text | Where the compiled files go, a folder whose public/ is served | `"resources/public/js"` |
 | `:browser :asset-path` | path | Where the browser fetches them | `"/js"` |
 | `:browser :watch?` | true or false | In development, whether the start also watches the build | `true` |
+| `:browser :modules` (optional) | map of modules | The build's modules, for an app with more than one: module → {:init-fn … or :entries […], :depends-on #{…}}. Without it there is one, :main, starting :entry | `{:base {:init-fn app.browser/start}, :admin {:entries [ap…` |
+| `:browser :modules … :init-fn` (optional) | value |  |  |
+| `:browser :modules … :entries` (optional) | list |  |  |
+| `:browser :modules … :depends-on` (optional) | value |  |  |
+| `:browser :modules … :web-worker` (optional) | true or false |  |  |
+| `:browser :loader?` (optional) | true or false | Whether modules no page names load on demand (shadow-cljs's module loader) | `true` |
+| `:browser :options` (optional) | map | Extra shadow-cljs build options, merged over Groundwork's: JS resolution, build hooks, compiler options | `{:js-options {:js-provider :shadow}}` |
 
 #### `:web`: Requests: the app's routes, limits, hooks, languages
 
@@ -865,6 +872,13 @@ The app's browser entry (the `:browser` settings' `:entry`) makes one call:
   compiles with fingerprinted names (`main.3F2A….js`) and a manifest the
   page shell reads, so the page and the build can't disagree and the file
   is cached a year (with `:hashed-files` like `"(?i)\\.[0-9a-f]{8,}\\."`).
+- **An app with several modules** names them in `:browser :modules`
+  (module → `:init-fn` or `:entries`, and `:depends-on`), and a page names
+  the one it starts: `["/admin" {:get web/page :page {:module :admin}}]`.
+  The page shell loads that module after the ones it depends on; a page
+  that names none loads the module(s) that depend on no other. With
+  `:loader? true`, modules no page names load on demand. `:options` are
+  extra shadow-cljs build options, merged over Groundwork's.
 - Groundwork's own npm packages are in its `src/deps.cljs`; the app's
   `package.json` holds only its own. The build needs `thheller/shadow-cljs`
   on the classpath (an app's `:dev` and `:build` aliases).
