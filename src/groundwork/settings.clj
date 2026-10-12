@@ -201,14 +201,16 @@
 
 (def ^:private permission
   (pred ":public, :signed-in or {:action … :record|:scope|:list …}"
-        "must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param]} or {:action … :list kind}"
+        "must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param-or-id]} or {:action … :list kind}"
         (fn [p]
           (or (#{:public :signed-in} p)
               (and (map? p) (qualified-keyword? (:action p)) (= 2 (count p))
                    (let [[k v] (first (dissoc p :action))]
                      (case k
-                       (:record :scope) (and (vector? v) (= 2 (count v)) (every? keyword? v))
-                       :list            (keyword? v)
+                       :record (and (vector? v) (= 2 (count v)) (every? keyword? v))
+                       :scope  (and (vector? v) (= 2 (count v)) (keyword? (first v))
+                                    (or (keyword? (second v)) (uuid? (second v))))
+                       :list   (keyword? v)
                        false)))))))
 
 (def ^:private rate-limit

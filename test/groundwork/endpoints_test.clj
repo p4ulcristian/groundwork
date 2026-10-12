@@ -47,6 +47,9 @@
 (pg/defsql ep-insert-machine)
 
 (def runs (atom 0))
+(def later (atom nil))
+(def parts (atom nil))
+(pg/defsql ep-job-note)
 (def errors (atom []))
 
 (def jobs-endpoints
@@ -61,6 +64,17 @@
                   :input      [:map [:job/id :uuid] [:job/note :string]
                                [:machine/id {:groundwork/record :machine} :uuid]]
                   :answer     [:map [:job/id :uuid] [:job/note :string]]}
+   :jobs/later   {:write      (fn [{:keys [db after-commit]} params]
+                                (pg/row db ep-note-job params)
+                                (after-commit (fn [_db]
+                                                (reset! later (perm/as-system (:perms @parts)
+                                                                              (fn [tx] (:job/note (pg/row tx ep-job-note params)))))))
+                                (when (= "refuse" (:job/note params))
+                                  (throw (endpoints/refuse "Not this one")))
+                                nil)
+                  :permission {:action :jobs/move :record [:job :job/id]}
+                  :input      [:map [:job/id :uuid] [:job/note :string]]
+                  :answer     :nil}
    :jobs/refused {:write      (fn [_ _] (throw (endpoints/refuse "This job is finished")))
                   :permission {:action :jobs/move :record [:job :job/id]}
                   :input      [:map [:job/id :uuid]]
@@ -71,6 +85,10 @@
                    :permission {:action :orders/see :list :order}
                    :input      [:map]
                    :answer     [:vector :uuid]}
+   :acme/notice   {:read       (fn [{:keys [request]} _] (str "for acme " (get-in request [:headers "x-note"])))
+                   :permission {:action :orders/see :scope [:shop acme]}
+                   :input      [:map]
+                   :answer     :string}
    :site/hello    {:read       (fn [{:keys [person]} _] (if person "hello, you" "hello"))
                    :permission :public
                    :input      [:map]
@@ -114,7 +132,8 @@
               acme-order acme zinc-order zinc kati-order zinc kati
               acme-job acme-order acme zinc-job zinc-order zinc
               acme-machine acme zinc-machine zinc)
-        (let [perms (perm/start {:settings description :db db})]
+        (let [perms (perm/start {:settings description :db db})
+              _     (reset! parts {:perms perms})]
           (perm/create-scope! perms {:kind :shop :id acme :parent nil :owner paul})
           (perm/create-scope! perms {:kind :shop :id zinc :parent nil :owner ana})
           (join! perms paul acme peter "Production")
@@ -154,6 +173,20 @@
   (is (= {:status :not-found} (call peter :jobs/of-shop {:shop/id (str zinc)})) "another shop")
   (is (= {:status :signed-out} (call nil :jobs/of-shop {:shop/id (str acme)})))
   (is (= :invalid (:status (call peter :jobs/of-shop {:shop/id "not an id"})))))
+
+(deftest a-fixed-scope-permission
+  (testing "one scope named in the permission itself, for an area every member shares"
+    (is (= {:status :ok :data "for acme hi"}
+           (call peter :acme/notice {} :request {:headers {"x-note" "hi"}}))
+        "the Ring request the ask came in is on ctx")
+    (is (= {:status :not-found} (call ana :acme/notice {})) "a member of another shop")))
+
+(deftest work-after-the-commit
+  (is (= {:status :ok :data nil} (call peter :jobs/later {:job/id acme-job :job/note "cured"})))
+  (is (= "cured" @later) "it runs after the commit, and sees what was written")
+  (reset! later nil)
+  (is (= :refused (:status (call peter :jobs/later {:job/id acme-job :job/note "refuse"}))))
+  (is (nil? @later) "nothing runs after a rollback"))
 
 (deftest every-id-in-a-request-is-checked
   (is (= {:status :ok :data {:job/id acme-job :job/note "sanded"}}

@@ -54,6 +54,7 @@
       (let [about {:person       (sessions/person request)
                    :flags        (sessions/flags request)
                    :session-data (sessions/data request)
+                   :request      request
                    :request-id (web/request-id request)
                    :client-ip  (web/client-ip request)}
             run   (fn [raw]

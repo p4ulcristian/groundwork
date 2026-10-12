@@ -18,11 +18,21 @@
 
      :read or :write   its handler, (fn [ctx params] answer). ctx holds :db
                        (the transaction), :person, :flags, :scopes (the
-                       verified ones), :request-id, and :jobs, for
-                       (jobs/enqueue! ctx …) in a write.
+                       verified ones), :request-id, :jobs, for
+                       (jobs/enqueue! ctx …) in a write, and :request, the
+                       Ring request the ask came in (for what Groundwork
+                       doesn't carry: a header, the user agent); nil for a
+                       tool's call. (:after-commit ctx) takes (fn [db] …),
+                       run once the transaction has committed and not at all
+                       after a rollback: work that may be lost with the
+                       server (work that must happen is a job). A failure
+                       there goes to :on-error and never changes the answer.
      :permission       :public, :signed-in, or an action:
                          {:action … :record [kind param]}  one record, its id in params
                          {:action … :scope [kind param]}   a scope, its id in params
+                         {:action … :scope [kind #uuid \"…\"]}  one fixed scope, for an
+                                                           app-wide area (an admin
+                                                           area every member shares)
                          {:action … :list kind}            every record of a kind the
                                                            person may
      :input            what may be sent, a malli :map. Every field holding ids
@@ -119,7 +129,12 @@
   (and (keyword? k) (boolean (re-find #"(^|-)ids?$" (name k)))))
 
 (defn- permission-param [{:keys [record scope]}]
-  (second (or record scope)))
+  (let [p (second (or record scope))]
+    (when (keyword? p) p)))
+
+(defn- scope-of [{:keys [scope]} params]
+  (let [[_ p] scope]
+    (if (uuid? p) p (get params p))))
 
 (defn- check-permission [perms k permission input]
   (let [kinds   (set (keys (get-in perms [:description :records])))
@@ -150,7 +165,7 @@
           (let [[kind param] scope]
             (when-not (or (scopes kind) (and team? (= :groundwork/any kind)))
               (bad k (str "no scope kind " kind)))
-            (when-not (in-map? param)
+            (when-not (or (uuid? param) (in-map? param))
               (bad k (str "the scope's param " param " isn't in :input")))))
         (when list
           (when-not (kinds list)
@@ -278,7 +293,7 @@
                                             :record [(first record) (get params (second record))]
                                             :also   also})
           scope  (let [scopes (permissions/scopes-under perms {:person person :flags flags :action action
-                                                               :scope  (get params (second scope))})]
+                                                               :scope  (scope-of permission params)})]
                    (when (empty? scopes)
                      (throw (ex-info "Not found" {:type ::permissions/not-found :scope scope})))
                    (also-belongs! perms scopes also)
@@ -337,13 +352,24 @@
     (.log logger System$Logger$Level/ERROR (str "Endpoint " (:endpoint about) " failed") e))
   (answer :error :message "Something went wrong. Please try again." :request-id (:request-id about)))
 
+(defn- run-after-commit!
+  "The work registered with :after-commit, once the transaction committed."
+  [part thunks about]
+  (doseq [f thunks]
+    (try (f (:db part))
+         (catch Throwable e
+           (failed part e (assoc about :after-commit true))))))
+
 (defn call
   "Run one ask for a person: {:endpoint :params :key :person :flags
    :request-id :client-ip}. Returns the answer; never throws for the ask's
    own reasons."
   [{:keys [perms endpoints limits] :as part} {:keys [endpoint params person flags request-id client-ip] :as ask}]
   (let [entry (get endpoints endpoint)
-        flags (or flags #{})]
+        flags (or flags #{})
+        after (atom [])
+        ask   (assoc ask :after-commit (fn [f] (swap! after conj f) nil))
+        about {:endpoint endpoint :person person :request-id request-id :client-ip client-ip}]
     (if (nil? entry)
       (answer :not-found)
       (let [{decoded :value errors :errors} (wire/decode (:input entry) (or params {}))]
@@ -372,6 +398,7 @@
                     (when-not (wire/fits? (:answer entry) data)
                       (throw (ex-info (str "Endpoint " endpoint "'s answer doesn't fit its shape")
                                       {:type ::bad-answer :endpoint endpoint :errors (wire/explain (:answer entry) data)})))
+                    (run-after-commit! part @after about)
                     (answer :ok :data data))
                 (let [files (atom #{})
                       data  (permissions/in-wall
@@ -390,15 +417,16 @@
                                             data))]
                                 (if (:read? entry) (run) (run-write-once entry tx ask run)))))]
                   (when (:read? entry) (remember-files! part endpoint @files))
+                  (run-after-commit! part @after about)
                   (answer :ok :data data)))))
             (catch clojure.lang.ExceptionInfo e
               (case (:type (ex-data e))
                 ::permissions/not-found (answer :not-found)
                 (::refused ::permissions/refused ::permissions/unknown-role ::permissions/unknown-action)
                 (answer :refused :message (ex-message e))
-                (failed part e {:endpoint endpoint :person person :request-id request-id :client-ip client-ip})))
+                (failed part e about)))
             (catch Throwable e
-              (failed part e {:endpoint endpoint :person person :request-id request-id :client-ip client-ip}))))))))
+              (failed part e about))))))))
 
 (defn watch
   "What a person watching a read may be told about, or nil when they may
