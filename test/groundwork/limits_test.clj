@@ -113,6 +113,19 @@
       (is (= 429 status))
       (is (pos-int? (parse-long retry-after))))))
 
+(deftest parquerys-address-has-no-limit-of-its-own
+  (testing "every ask of every screen goes through /parquery: only the endpoints count"
+    (let [post #(.statusCode
+                 (.send (HttpClient/newHttpClient)
+                        (-> (HttpRequest/newBuilder (URI. (str "http://127.0.0.1:" (gw/port *app*) "/parquery")))
+                            (.header "Origin" (get-in app-settings [:sessions :origin]))
+                            (.header "Content-Type" "application/json")
+                            (.method "POST" (HttpRequest$BodyPublishers/ofString
+                                             "[{\"endpoint\":\"site/free\",\"params\":{}}]"))
+                            (.build))
+                        (HttpResponse$BodyHandlers/ofString)))]
+      (is (= (repeat 5 200) (repeatedly 5 post)) "more than the public write default of 1 a minute"))))
+
 (deftest a-route-limit-counts-people-or-addresses
   (is (thrown-with-msg? Exception #"counts :person or :client-ip"
                         (web/handler {:routes [["/x" {:get identity :access :public :rate-limit {:per-day 1 :by :scope}}]]

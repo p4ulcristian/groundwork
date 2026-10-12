@@ -16,6 +16,9 @@
   "parquery's route, for the router."
   [part]
   [[path {:access :public
+          ;; each endpoint is limited on its own (groundwork.limits); the
+          ;; address all asks share doesn't get a public route's default
+          :groundwork.web/limited-inside? true
           :post   (fn [request] (http/handle part request))
           :get    (fn [request] (websocket/handle part request))}]])
 

@@ -505,11 +505,13 @@
    counted after access, before the handler (see groundwork.limits)."
   [limits]
   {:name    ::rate-limit
-   :compile (fn [{:keys [rate-limit access]} {::keys [path]}]
+   :compile (fn [{:keys [rate-limit access] ::keys [limited-inside?]} {::keys [path]}]
               (when (= :scope (:by rate-limit))
                 (throw (ex-info (str "Route " path ": a route's limit counts :person or :client-ip, not :scope")
                                 {:type ::bad-route :path path :rate-limit rate-limit})))
-              (when (and limits (or rate-limit (= :public access)))
+              ;; /parquery carries every ask of every screen: each endpoint is
+              ;; limited on its own, so the address itself has no default
+              (when (and limits (or rate-limit (and (= :public access) (not limited-inside?))))
                 (fn [handler]
                   (fn [request]
                     (let [read? (#{:get :head :options} (:request-method request))
