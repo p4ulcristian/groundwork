@@ -113,8 +113,9 @@
     (is (= :done (claim-and-run)))
     (is (nil? (claim-and-run)) "one job, not two")
     (is (= [{:n 7}] @ran))
-    (testing "once done, the key is free again"
-      (is (not= first-job (enqueue! :test/ok {:n 7} {:key "email:7"}))))))
+    (testing "a done job still holds its key"
+      (is (= first-job (enqueue! :test/ok {:n 7} {:key "email:7"})))
+      (is (nil? (claim-and-run))))))
 
 (deftest a-job-runs-once-and-is-done
   (reset! ran [])

@@ -146,9 +146,10 @@
 
 (defn enqueue!
   "Queue a job in the transaction of ctx (an endpoint's or a job's): it
-   exists only if that commits. Options: :in-ms, run no sooner; :key, at
-   most one job of this key waiting or running at a time (a second enqueue
-   returns the first one's id). Returns its id."
+   exists only if that commits. Options: :in-ms, run no sooner; :key, one
+   job of this key for as long as it is remembered (done jobs are kept a
+   week): a second enqueue queues nothing and returns the first one's id.
+   Returns its id."
   ([ctx kind params] (enqueue! ctx kind params {}))
   ([{:keys [db jobs]} kind params {:keys [in-ms key]}]
    (when-not jobs
