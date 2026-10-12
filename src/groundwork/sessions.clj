@@ -3,13 +3,20 @@
    cookie holds 32 random bytes and the table keeps only their SHA-256, so a
    copy of the table can't sign anyone in.
 
-     :cookie-name   \"acme_session\"
-     :max-age-days  30
-     :secure?       true      false only for plain-http development
-     :origin        \"https://app.acme.example\"   where the app is served from
+     :cookie-name    \"acme_session\"
+     :max-age-days   30        a signed-in session's lifetime
+     :visitor-hours  24        a visitor's session ends after this long unseen
+     :secure?        true      false only for plain-http development
+     :origin         \"https://app.acme.example\"   where the app is served from
 
    The app's login step (an identity provider, a gate, a password) ends with
    sign-in; sign-out, sign-out-everywhere! and expiry end sessions.
+
+   A visitor (someone not signed in) gets a session the first time the app
+   keeps something for them with put-data, like a cart; a request that keeps
+   nothing makes nothing, so crawlers cost no rows. Each visit pushes the end
+   out again, at most once an hour. At sign-in, a visitor's data moves into
+   the signed-in session, under a new key.
 
    A request that changes something (anything but GET, HEAD, OPTIONS) must
    come from the app's own pages: its Origin header must be :origin, or it is
@@ -20,6 +27,7 @@
    [groundwork.postgres :as pg])
   (:import
    (java.security MessageDigest SecureRandom)
+   (java.time OffsetDateTime)
    (java.util Base64)))
 
 (pg/defsql insert-session "groundwork/sessions/insert.sql")
@@ -27,8 +35,10 @@
 (pg/defsql delete-by-key "groundwork/sessions/delete_by_key.sql")
 (pg/defsql delete-for-person "groundwork/sessions/delete_for_person.sql")
 (pg/defsql delete-expired "groundwork/sessions/delete_expired.sql")
+(pg/defsql update-data "groundwork/sessions/update_data.sql")
+(pg/defsql extend-visitor "groundwork/sessions/extend_visitor.sql")
 
-(def ^:private settings [:cookie-name :max-age-days :secure? :origin])
+(def ^:private settings [:cookie-name :max-age-days :visitor-hours :secure? :origin])
 
 (defn- check-settings [opts]
   (when-not (map? opts)
@@ -36,13 +46,16 @@
   (when-let [missing (seq (remove #(contains? opts %) settings))]
     (throw (ex-info (str ":sessions needs " (str/join " " missing))
                     {:type ::missing-settings :missing (vec missing)})))
-  (let [{:keys [cookie-name max-age-days secure? origin]} opts]
+  (let [{:keys [cookie-name max-age-days visitor-hours secure? origin]} opts]
     (when-not (and (string? cookie-name) (re-matches #"[A-Za-z0-9_\-]+" cookie-name))
       (throw (ex-info ":cookie-name must be letters, digits, _ or -"
                       {:type ::bad-setting :setting :cookie-name :value cookie-name})))
     (when-not (pos-int? max-age-days)
       (throw (ex-info ":max-age-days must be a positive integer"
                       {:type ::bad-setting :setting :max-age-days :value max-age-days})))
+    (when-not (pos-int? visitor-hours)
+      (throw (ex-info ":visitor-hours must be a positive integer"
+                      {:type ::bad-setting :setting :visitor-hours :value visitor-hours})))
     (when-not (boolean? secure?)
       (throw (ex-info ":secure? must be true or false"
                       {:type ::bad-setting :setting :secure? :value secure?})))
@@ -85,11 +98,18 @@
   (assoc (or data {}) :session/flags (sort (map name flags))))
 
 (defn- session-of
-  "The request's live session: {:person-id … :flags #{…} :data {…}}, or nil."
+  "The request's live session: {:key … :person-id … :flags #{…} :data {…}},
+   or nil. A visitor's has no :person-id; seeing it pushes its end out again,
+   at most once an hour."
   [{:keys [db settings]} request]
   (when-let [key (cookie-key request (:cookie-name settings))]
     (when-let [row (pg/row db session-by-key {:session/key-hash (key-hash key)})]
-      (let [data (:session/data row)]
+      (let [data  (:session/data row)
+            hours (:visitor-hours settings)]
+        (when (and (nil? (:session/person-id row))
+                   (.isBefore ^OffsetDateTime (:session/expires-at row)
+                              (.plusHours (OffsetDateTime/now) (dec hours))))
+          (pg/execute! db extend-visitor {:session/key-hash (key-hash key) :hours hours}))
         {:key       key
          :person-id (:session/person-id row)
          :flags     (set (map keyword (:session/flags data)))
@@ -106,9 +126,40 @@
   (get-in request [::session :flags] #{}))
 
 (defn data
-  "What the login step kept in the session (keys shaped :entity/field)."
+  "What the session keeps (keys shaped :entity/field): the login step's, and
+   what put-data added."
   [request]
   (get-in request [::session :data] {}))
+
+(defn- check-data [m]
+  (when-not (and (map? m) (every? qualified-keyword? (keys m)))
+    (throw (ex-info "Session data is a map with keys shaped :entity/field"
+                    {:type ::bad-data :data m}))))
+
+(defn put-data
+  "The response, keeping m in the session, merged into what it has; a nil
+   value forgets its key. A visitor without a session gets one now, with its
+   cookie. Within one request, the response of the last call is the one to
+   return.
+
+     (put-data request response {:cart/items items})"
+  [request response m]
+  (check-data m)
+  (let [{:keys [db settings]} (::sessions request)
+        session               (::session request)
+        merged                (into {} (remove (comp nil? val)) (merge (:data session) m))
+        stored                (assoc merged :session/flags (sort (map name (:flags session))))]
+    (if session
+      (do (pg/execute! db update-data {:session/key-hash (key-hash (:key session))
+                                       :session/data     stored})
+          response)
+      (let [key (new-key)]
+        (pg/execute! db insert-session {:session/key-hash  (key-hash key)
+                                        :session/person-id nil
+                                        :session/data      stored
+                                        :hours             (:visitor-hours settings)})
+        (assoc-in response [:headers "Set-Cookie"]
+                  (cookie settings key (* 86400 (:max-age-days settings))))))))
 
 ;; =============================================================================
 ;; Signing in and out
@@ -117,21 +168,24 @@
 (defn sign-in
   "The response, signing the person in: a new session row and its cookie.
    A session the request already had is ended first, so a key someone else
-   planted before the login is worthless after it.
+   planted before the login is worthless after it. A visitor's data comes
+   along into the new session; a signed-in session's doesn't.
 
      (sign-in request response person-id)
      (sign-in request response person-id {:flags #{:impersonated} :data {…}})"
   ([request response person-id] (sign-in request response person-id {}))
   ([request response person-id opts]
    (let [{:keys [db settings] :as sessions} (::sessions request)
-         key                                (new-key)]
+         key                                (new-key)
+         visitor-data                       (let [s (::session request)]
+                                              (when (and s (nil? (:person-id s))) (:data s)))]
      (when-let [old (cookie-key request (:cookie-name settings))]
        (pg/execute! db delete-by-key {:session/key-hash (key-hash old)}))
      (pg/execute! db delete-expired)
      (pg/execute! db insert-session {:session/key-hash  (key-hash key)
                                      :session/person-id person-id
-                                     :session/data      (data-in opts)
-                                     :max-age-days      (:max-age-days settings)})
+                                     :session/data      (data-in (update opts :data #(merge visitor-data %)))
+                                     :hours             (* 24 (:max-age-days settings))})
      (assoc-in response [:headers "Set-Cookie"]
                (cookie (:settings sessions) key (* 86400 (:max-age-days settings)))))))
 

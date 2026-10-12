@@ -48,6 +48,6 @@
                  :script "/js/main.js" :head []}
    :routes      []
    :server      {:ip "127.0.0.1" :port port}
-   :sessions    {:cookie-name "gw_session" :max-age-days 30 :secure? false
+   :sessions    {:cookie-name "gw_session" :max-age-days 30 :visitor-hours 24 :secure? false
                  :origin (str "http://127.0.0.1:" port)}
    :permissions {:scopes {} :records {} :links [] :session-blocks {}}})

@@ -20,6 +20,8 @@
                        (sessions/sign-in request {:status 200 :body "in"} peter
                                          {:flags #{:impersonated} :data {:login/via "test"}}))}]
    ["/logout" {:post (fn [request] (sessions/sign-out request {:status 200 :body "out"}))}]
+   ["/cart"   {:post (fn [request]
+                       (sessions/put-data request {:status 200 :body "kept"} {:cart/items ["rim" "frame"]}))}]
    ["/me"     {:get (fn [request]
                       {:status 200
                        :body   (pr-str [(some-> (sessions/person request) str)
@@ -99,9 +101,54 @@
   (testing "reading needs no Origin"
     (is (= 200 (:status (request "GET" "/me"))))))
 
+(defn- visitor-rows []
+  (sql! "SELECT session__id, session__expires_at FROM groundwork.sessions WHERE session__person_id IS NULL"))
+
+(defn- visit-cart
+  "A visitor keeps a cart: the cookie of their new visitor session."
+  []
+  (first (str/split (:set-cookie (request "POST" "/cart" :origin origin)) #";")))
+
+(deftest a-visitor-gets-a-session-only-when-something-is-kept
+  (sql! "DELETE FROM groundwork.sessions WHERE session__person_id IS NULL")
+  (testing "reading makes nothing: no cookie, no row"
+    (let [response (request "GET" "/me")]
+      (is (nil? (:set-cookie response)))
+      (is (empty? (visitor-rows)))))
+  (testing "keeping a cart makes the session"
+    (let [cookie (visit-cart)]
+      (is (= 1 (count (visitor-rows))))
+      (is (= [nil #{} {:cart/items ["rim" "frame"]}] (me cookie)) "a visitor: no person"))))
+
+(deftest a-visitor-session-ends-when-unseen
+  (let [cookie (visit-cart)]
+    (testing "a visit pushes the end out again"
+      (sql! "UPDATE groundwork.sessions SET session__expires_at = now() + interval '30 minutes'
+             WHERE session__person_id IS NULL")
+      (me cookie)
+      (is (every? #(.isAfter (.toInstant ^java.sql.Timestamp (:sessions/session__expires_at %))
+                             (.plusSeconds (java.time.Instant/now) (* 23 3600)))
+                  (visitor-rows))))
+    (testing "unseen for too long, it's gone"
+      (sql! "UPDATE groundwork.sessions SET session__expires_at = now() - interval '1 second'
+             WHERE session__person_id IS NULL")
+      (is (= [nil #{} {}] (me cookie))))))
+
+(deftest signing-in-keeps-the-visitors-data-under-a-new-key
+  (let [visitor    (visit-cart)
+        set-cookie (:set-cookie (request "POST" "/login" :cookie visitor :origin origin))
+        signed-in  (first (str/split set-cookie #";"))]
+    (is (not= visitor signed-in) "a new key")
+    (is (= [(str peter) #{:impersonated} {:cart/items ["rim" "frame"] :login/via "test"}] (me signed-in)))
+    (testing "the visitor's key is worthless now"
+      (is (= [nil #{} {}] (me visitor))))))
+
 (deftest settings-are-checked
   (is (= ::sessions/missing-settings
          (:type (ex-data (try (sessions/start {:settings {}}) (catch Exception e e))))))
   (is (= ::sessions/bad-setting
          (:type (ex-data (try (sessions/start {:settings (assoc (:sessions app-settings) :origin "http://x/path")})
+                              (catch Exception e e))))))
+  (is (= ::sessions/bad-setting
+         (:type (ex-data (try (sessions/start {:settings (assoc (:sessions app-settings) :visitor-hours 0)})
                               (catch Exception e e)))))))
