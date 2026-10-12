@@ -6,26 +6,45 @@
    Each ask runs on its own, in parallel, with its own transaction: one
    failing doesn't touch the others. A request carries at most :max-asks
    asks, and across the server at most :max-running run at once; the rest
-   wait their turn."
+   wait their turn. The :on-answer hook hears every ask's endpoint, answer
+   status and time, for counters and alerts."
   (:require
    [groundwork.endpoints :as endpoints]
    [groundwork.parquery.wire :as wire]
    [groundwork.sessions :as sessions]
    [groundwork.web :as web])
   (:import
+   (java.lang System$Logger System$Logger$Level)
    (java.util.concurrent Callable ExecutionException ExecutorService Future Semaphore)))
+
+(def ^:private ^System$Logger logger (System/getLogger "groundwork.parquery.http"))
 
 (defn- json [status body]
   {:status  status
    :headers {"Content-Type" "application/json; charset=utf-8" "Cache-Control" "no-store"}
    :body    (wire/write-json body)})
 
+(defn- answered!
+  "Tell the :on-answer hook; a hook that throws never breaks the answer."
+  [hook ask about answer started]
+  (when hook
+    (try (hook {:endpoint   (:endpoint ask)
+                :status     (:status answer)
+                :ms         (/ (- (System/nanoTime) started) 1e6)
+                :person     (:person about)
+                :request-id (:request-id about)})
+         (catch Throwable e
+           (.log logger System$Logger$Level/WARNING "The on-answer hook threw" e)))))
+
 (defn- run-one
   "One ask, waiting its turn among every ask running on the server."
-  [{:keys [endpoints ^Semaphore running]} ask about]
+  [{:keys [endpoints ^Semaphore running settings]} ask about]
   (.acquire running)
   (try
-    (endpoints/encode-answer endpoints (:endpoint ask) (endpoints/call endpoints (merge about ask)))
+    (let [started (System/nanoTime)
+          answer  (endpoints/call endpoints (merge about ask))]
+      (answered! (:on-answer settings) ask about answer started)
+      (endpoints/encode-answer endpoints (:endpoint ask) answer))
     (finally (.release running))))
 
 (defn- run-all

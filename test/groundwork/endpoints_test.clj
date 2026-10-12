@@ -109,6 +109,7 @@
    :max-asks    50
    :max-running 4
    :bearer      (fn [token] (when (= "peters-token" token) peter))
+   :on-answer   nil
    :bells       {:global #{} :personal {}}})
 
 (def ^:dynamic *part* nil)

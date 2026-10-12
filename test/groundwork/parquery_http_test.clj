@@ -43,6 +43,8 @@
                    :input      [:map [:seconds :double]]
                    :answer     :boolean}})
 
+(def ^:private answered (atom []))
+
 (use-fixtures :once
   (fn [t]
     (sql! "DROP TABLE IF EXISTS notes;
@@ -50,7 +52,8 @@
     (let [app (gw/start (-> app-settings
                             (assoc :permissions description)
                             (assoc-in [:parquery :endpoints] [endpoints])
-                            (assoc-in [:parquery :max-asks] 3)))]
+                            (assoc-in [:parquery :max-asks] 3)
+                            (assoc-in [:parquery :on-answer] #(swap! answered conj %))))]
       (try
         (perm/create-scope! (gw/permissions app) {:kind :shop :id shop :parent nil :owner owner})
         (perm/create-scope! (gw/permissions app) {:kind :shop :id other-shop :parent nil :owner stranger})
@@ -126,3 +129,13 @@
            (:answers (ask nil 42)))))
   (testing "another site's page can't ask"
     (is (= 403 (:status (post "/parquery" "[]" :origin? false))))))
+
+(deftest every-answer-is-heard
+  (reset! answered [])
+  (let [cookie (sign-in owner)]
+    (post "/parquery" (wire/write-json [{:endpoint "notes/of-shop" :params {:shop/id (str shop)}}
+                                        {:endpoint "notes/of-shop" :params {:shop/id (str other-shop)}}])
+          :cookie cookie)
+    (is (= #{[:notes/of-shop :ok] [:notes/of-shop :not-found]}
+           (set (map (juxt :endpoint :status) @answered))))
+    (is (every? #(and (number? (:ms %)) (= owner (:person %)) (string? (:request-id %))) @answered))))

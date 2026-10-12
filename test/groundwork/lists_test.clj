@@ -69,7 +69,7 @@
                          :input      [:map [:lst-order/id :uuid]]
                          :answer     [:maybe :uuid]}})
 
-(def settings {:endpoints [endpoint-map] :max-asks 50 :max-running 4 :bearer nil
+(def settings {:endpoints [endpoint-map] :max-asks 50 :max-running 4 :bearer nil :on-answer nil
                :bells {:global #{} :personal {}}})
 
 (def ^:dynamic *db* nil)

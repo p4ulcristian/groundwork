@@ -454,6 +454,8 @@
     (entry :max-running "The most asks running at once across the server; keep it below the pool size" 16 positive)
     (entry :bearer "Whose token a tool calls with: (fn [token] person-id-or-nil), or nil" 'app.tools/token->person
            function-or-nil)
+    (entry :on-answer "After every ask over HTTP: (fn [{:keys [endpoint status ms person request-id]}] …), or nil"
+           'app.metrics/on-answer function-or-nil)
     (entry :bells "Tables outside the permission description that ring too"
            {:global #{:powder_colours} :personal {:notifications :notification/person-id}}
            [:map {:closed true}

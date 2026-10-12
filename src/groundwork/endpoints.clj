@@ -69,6 +69,8 @@
                             keep it below the database pool's size
      :bearer       (fn [token] person-id-or-nil), for tools calling with a
                    token (see call-with-token), or nil
+     :on-answer    (fn [{:keys [endpoint status ms person request-id]}] …)
+                   after every ask over HTTP, for counters and alerts, or nil
      :bells        {:global #{:table …} :personal {:table :entity/person-column}}
                    tables outside the permission description that ring too:
                    global ones every watcher of them, personal ones only

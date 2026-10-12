@@ -235,6 +235,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:parquery :max-asks` | positive whole number | The most asks one request may carry | `50` |
 | `:parquery :max-running` | positive whole number | The most asks running at once across the server; keep it below the pool size | `16` |
 | `:parquery :bearer` | function or nil | Whose token a tool calls with: (fn [token] person-id-or-nil), or nil | `app.tools/token->person` |
+| `:parquery :on-answer` | function or nil | After every ask over HTTP: (fn [{:keys [endpoint status ms person request-id]}] …), or nil | `app.metrics/on-answer` |
 | `:parquery :bells` | map | Tables outside the permission description that ring too | `{:global #{:powder_colours}, :personal {:notifications :n…` |
 | `:parquery :bells :global` | set of tables | Tables every watcher of them hears about | `#{:powder_colours}` |
 | `:parquery :bells :personal` | table → column | Tables only their person hears about: table → person column | `{:notifications :notification/person-id}` |

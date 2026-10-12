@@ -209,6 +209,9 @@
   ;; Whose token a tool calls with: (fn [token] person-id-or-nil), or nil
   :bearer app.tools/token->person
 
+  ;; After every ask over HTTP: (fn [{:keys [endpoint status ms person request-id]}] …), or nil
+  :on-answer app.metrics/on-answer
+
   ;; Tables outside the permission description that ring too
   :bells
   {;; Tables every watcher of them hears about
