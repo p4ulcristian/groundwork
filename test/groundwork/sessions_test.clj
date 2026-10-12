@@ -22,6 +22,12 @@
    ["/logout" {:access :public :post (fn [request] (sessions/sign-out request {:status 200 :body "out"}))}]
    ["/cart"   {:access :public :post (fn [request]
                        (sessions/put-data request {:status 200 :body "kept"} {:cart/items ["rim" "frame"]}))}]
+   ["/login-short" {:access :public :post (fn [request]
+                                            (sessions/sign-in request {:status 200} peter
+                                                              {:flags #{:impersonated} :hours 1}))}]
+   ["/designs" {:access :public :post (fn [request]
+                                        (sessions/put-data request {:status 200} {:design/ids ["d1"]}
+                                                           {:keep-days 60}))}]
    ["/widget/cart"  {:access :public :post       (fn [request]
                                    (sessions/put-data request {:status 200 :body "kept"} {:cart/items ["hood"]}))
                      :embeddable true}]
@@ -172,6 +178,34 @@
   (let [{:keys [cookie]} (login)
         key              (second (str/split cookie #"=" 2))]
     (is (= [nil #{} {}] (me (str "gw_session_embed=" key))))))
+
+(defn- hours-left [rows]
+  (map #(/ (- (.getTime ^java.sql.Timestamp (:sessions/session__expires_at %)) (System/currentTimeMillis))
+           3600000.0)
+       rows))
+
+(deftest a-sign-in-can-have-its-own-lifetime
+  (let [set-cookie (:set-cookie (request "POST" "/login-short" :origin origin))
+        key        (second (str/split (first (str/split set-cookie #";")) #"=" 2))]
+    (is (str/includes? set-cookie "Max-Age=3600"))
+    (is (every? #(< 0.9 % 1.01)
+                (hours-left (sql! "SELECT session__expires_at FROM groundwork.sessions WHERE session__key_hash = ?"
+                                  (byte-array (sha-256 key))))))))
+
+(deftest a-visitor-session-worth-keeping-lives-longer
+  (let [set-cookie (:set-cookie (request "POST" "/designs" :origin origin))
+        cookie     (first (str/split set-cookie #";"))
+        key        (second (str/split cookie #"=" 2))
+        rows       #(sql! "SELECT session__expires_at, session__keep_hours FROM groundwork.sessions
+                           WHERE session__key_hash = ?" (byte-array (sha-256 key)))]
+    (is (str/includes? set-cookie "Max-Age=5184000") "the cookie outlives it too")
+    (is (= 1440 (:sessions/session__keep_hours (first (rows)))))
+    (is (every? #(< 1439 % 1441) (hours-left (rows))))
+    (testing "each visit pushes the end out by its own hours"
+      (sql! "UPDATE groundwork.sessions SET session__expires_at = now() + interval '10 days'
+             WHERE session__key_hash = ?" (byte-array (sha-256 key)))
+      (is (= [nil #{} {:design/ids ["d1"]}] (me cookie)))
+      (is (every? #(< 1439 % 1441) (hours-left (rows)))))))
 
 (deftest settings-are-checked
   (is (= ::sessions/missing-settings

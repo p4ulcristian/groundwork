@@ -330,12 +330,14 @@ resources/migrations/
 ```clojure
 ;; the app's login step, after the identity provider said who this is
 (sessions/sign-in request response person-id)
-(sessions/sign-in request response person-id {:flags #{:impersonated} :data {:login/via "sso"}})
+(sessions/sign-in request response person-id {:flags #{:impersonated} :data {:login/via "sso"}
+                                              :hours 1})   ; its own lifetime
 
 (sessions/person request)    ;=> the person's id, or nil (also for a visitor)
 (sessions/flags request)     ;=> #{:impersonated}
 (sessions/data request)      ;=> {:cart/items […] :login/via "sso"}
 (sessions/put-data request response {:cart/items items})   ; nil forgets a key
+(sessions/put-data request response {:design/ids ids} {:keep-days 30})   ; a visitor's, kept longer
 (sessions/sign-out request response)
 (sessions/sign-out-everywhere! request person-id)
 ```
@@ -347,7 +349,11 @@ resources/migrations/
 - **Visitors** (not signed in) get a session the first time the app keeps
   something with `put-data`, like a cart; reading makes nothing, so crawlers
   cost no rows. It ends after `:visitor-hours` unseen (24 is a good start);
-  each visit pushes the end out, at most once an hour. At sign-in its data
+  each visit pushes the end out, at most once an hour. Once it holds
+  something worth keeping (uploaded designs), `{:keep-days 30}` makes it
+  live that long from each visit, its cookie too.
+- A sign-in lives `:max-age-days`, or its own `:hours` (an impersonated
+  session, an hour). At sign-in its data
   moves into the signed-in session, under a new key.
 - **In another site's frame** the browser doesn't send the Lax cookie. A
   visitor session made on an `:embeddable` route uses a second cookie,

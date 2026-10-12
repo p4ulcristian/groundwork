@@ -15,8 +15,13 @@
    A visitor (someone not signed in) gets a session the first time the app
    keeps something for them with put-data, like a cart; a request that keeps
    nothing makes nothing, so crawlers cost no rows. Each visit pushes the end
-   out again, at most once an hour. At sign-in, a visitor's data moves into
-   the signed-in session, under a new key.
+   out again, at most once an hour. Once it holds something worth keeping
+   (uploaded designs), put-data with {:keep-days 30} makes it live that long
+   from each visit. At sign-in, a visitor's data moves into the signed-in
+   session, under a new key.
+
+   A sign-in lives :max-age-days, or its own {:hours …}: an impersonated
+   session an hour, say.
 
    A request that changes something (anything but GET, HEAD, OPTIONS) must
    come from the app's own pages: its Origin header must be :origin, or it is
@@ -44,6 +49,7 @@
 (pg/defsql delete-expired "groundwork/sessions/delete_expired.sql")
 (pg/defsql update-data "groundwork/sessions/update_data.sql")
 (pg/defsql extend-visitor "groundwork/sessions/extend_visitor.sql")
+(pg/defsql keep-visitor "groundwork/sessions/keep_visitor.sql")
 
 (def ^:private settings [:cookie-name :max-age-days :visitor-hours :secure? :origin])
 
@@ -129,7 +135,7 @@
   [{:keys [db settings]} key cookie]
   (when-let [row (pg/row db session-by-key {:session/key-hash (key-hash key)})]
     (let [data  (:session/data row)
-          hours (:visitor-hours settings)]
+          hours (or (:session/keep-hours row) (:visitor-hours settings))]
       (when (and (nil? (:session/person-id row))
                  (.isBefore ^OffsetDateTime (:session/expires-at row)
                             (.plusHours (OffsetDateTime/now) (dec hours))))
@@ -177,26 +183,33 @@
    cookie. Within one request, the response of the last call is the one to
    return.
 
-     (put-data request response {:cart/items items})"
-  [request response m]
-  (check-data m)
-  (let [{:keys [db settings]} (::sessions request)
-        session               (::session request)
-        merged                (into {} (remove (comp nil? val)) (merge (:data session) m))
-        stored                (assoc merged :session/flags (sort (map name (:flags session))))]
-    (if session
-      (do (pg/execute! db update-data {:session/key-hash (key-hash (:key session))
-                                       :session/data     stored})
-          response)
-      (let [key     (new-key)
-            max-age (* 86400 (:max-age-days settings))]
-        (pg/execute! db insert-session {:session/key-hash  (key-hash key)
-                                        :session/person-id nil
-                                        :session/data      stored
-                                        :hours             (:visitor-hours settings)})
-        (add-cookie response (if (::embedded? request)
-                               (embed-cookie settings key max-age)
-                               (cookie settings key max-age)))))))
+     (put-data request response {:cart/items items})
+     (put-data request response {:design/ids ids} {:keep-days 30})   ; a visitor's, kept longer"
+  ([request response m] (put-data request response m {}))
+  ([request response m {:keys [keep-days]}]
+   (check-data m)
+   (when-not (or (nil? keep-days) (pos-int? keep-days))
+     (throw (ex-info ":keep-days must be a positive integer" {:type ::bad-data :keep-days keep-days})))
+   (let [{:keys [db settings]} (::sessions request)
+         session               (::session request)
+         merged                (into {} (remove (comp nil? val)) (merge (:data session) m))
+         stored                (assoc merged :session/flags (sort (map name (:flags session))))
+         key                   (or (:key session) (new-key))
+         embed?                (if session (= :embed (:cookie session)) (::embedded? request))
+         max-age               (* 86400 (max (:max-age-days settings) (or keep-days 0)))
+         set-cookie            #(add-cookie % (if embed?
+                                                (embed-cookie settings key max-age)
+                                                (cookie settings key max-age)))]
+     (if session
+       (pg/execute! db update-data {:session/key-hash (key-hash key) :session/data stored})
+       (pg/execute! db insert-session {:session/key-hash  (key-hash key)
+                                       :session/person-id nil
+                                       :session/data      stored
+                                       :hours             (:visitor-hours settings)}))
+     (when (and keep-days (nil? (:person-id session)))
+       (pg/execute! db keep-visitor {:session/key-hash (key-hash key) :hours (* 24 keep-days)}))
+     (cond-> response
+       (or (nil? session) (and keep-days (nil? (:person-id session)))) set-cookie))))
 
 ;; =============================================================================
 ;; Signing in and out
@@ -211,14 +224,17 @@
    the app's own site's cookie.
 
      (sign-in request response person-id)
-     (sign-in request response person-id {:flags #{:impersonated} :data {…}})"
+     (sign-in request response person-id {:flags #{:impersonated} :data {…} :hours 1})"
   ([request response person-id] (sign-in request response person-id {}))
   ([request response person-id opts]
    (when (::embedded? request)
      (throw (ex-info "Signing in happens on the app's own site, not in another site's frame"
                      {:type ::embedded-sign-in})))
+   (when-not (or (nil? (:hours opts)) (pos-int? (:hours opts)))
+     (throw (ex-info ":hours must be a positive integer" {:type ::bad-data :hours (:hours opts)})))
    (let [{:keys [db settings] :as sessions} (::sessions request)
          key                                (new-key)
+         hours                              (or (:hours opts) (* 24 (:max-age-days settings)))
          visitor-data                       (let [s (::session request)]
                                               (when (and s (nil? (:person-id s))) (:data s)))]
      (doseq [old [(cookie-key request (:cookie-name settings))
@@ -228,9 +244,9 @@
      (pg/execute! db delete-expired)
      (pg/execute! db insert-session {:session/key-hash  (key-hash key)
                                      :session/person-id person-id
-                                     :session/data      (data-in (update opts :data #(merge visitor-data %)))
-                                     :hours             (* 24 (:max-age-days settings))})
-     (add-cookie response (cookie (:settings sessions) key (* 86400 (:max-age-days settings)))))))
+                                     :session/data      (data-in (update (dissoc opts :hours) :data #(merge visitor-data %)))
+                                     :hours             hours})
+     (add-cookie response (cookie (:settings sessions) key (* 3600 hours))))))
 
 (defn sign-out
   "The response, ending this request's session and clearing its cookie."
