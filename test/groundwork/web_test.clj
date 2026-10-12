@@ -248,6 +248,15 @@
     (testing "an unchanged file answers 304"
       (is (= 304 (:status (request "/app.css" {:headers {"If-Modified-Since" (headers "last-modified")}})))))))
 
+(deftest files-answer-byte-ranges
+  (is (= "bytes" ((:headers (request "/app.css")) "accept-ranges")))
+  (let [{:keys [status body headers]} (request "/app.css" {:headers {"Range" "bytes=0-3"}})]
+    (is (= [206 "body" "bytes 0-3/20"] [status body (headers "content-range")])))
+  (is (= "margin: 0; }\n" (:body (request "/app.css" {:headers {"Range" "bytes=7-"}}))))
+  (is (= "; }\n" (:body (request "/app.css" {:headers {"Range" "bytes=-4"}}))) "the last bytes")
+  (let [{:keys [status headers]} (request "/app.css" {:headers {"Range" "bytes=100-200"}})]
+    (is (= [416 "bytes */20"] [status (headers "content-range")]))))
+
 (deftest anything-else-is-not-found
   (is (= 404 (:status (request "/missing.png" {:headers {"Accept" "image/*"}}))))
   (is (= 404 (:status (request "/" {:method "POST" :headers (assoc html "Origin" (:origin (:sessions app-settings)))}))))

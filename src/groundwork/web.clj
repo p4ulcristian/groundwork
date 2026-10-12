@@ -63,6 +63,8 @@
    like JSON, and every server-to-server route's body stay untouched, so a
    webhook can check a signature over the exact bytes.
 
+   Files answer byte ranges (206), so video plays and seeks everywhere.
+
    Every answer carries the standard security headers, and no page may be
    framed by another site unless its route is :embeddable. In production also
    Strict-Transport-Security. The Content-Security-Policy is strict: scripts
@@ -586,6 +588,65 @@
     (when-let [response (handler request)]
       (assoc-in response [:headers "Cache-Control"] "no-cache"))))
 
+(defn- bounded
+  "At most n bytes of in, then the end."
+  ^InputStream [^InputStream in n]
+  (let [left (atom n)]
+    (proxy [java.io.FilterInputStream] [in]
+      (read
+        ([] (if (pos? @left)
+              (let [b (.read in)] (when-not (neg? b) (swap! left dec)) b)
+              -1))
+        ([^bytes buf] (.read ^InputStream this buf 0 (alength buf)))
+        ([^bytes buf off len]
+         (if (pos? @left)
+           (let [n (.read in buf (int off) (int (min len @left)))]
+             (when (pos? n) (swap! left - n))
+             n)
+           -1)))
+      (available [] (int (min (.available in) @left))))))
+
+(defn- body-length [{:keys [body headers]}]
+  (cond
+    (instance? File body) (.length ^File body)
+    :else                 (some-> (get headers "Content-Length") str parse-long)))
+
+(defn- open-body ^InputStream [body]
+  (if (instance? File body) (FileInputStream. ^File body) body))
+
+(defn- wrap-ranges
+  "Files answer one byte range of themselves (a video player's seeking, which
+   Safari needs): 206 with that part, 416 when it's outside the file."
+  [handler]
+  (fn [request]
+    (when-let [response (handler request)]
+      (let [length (body-length response)
+            range  (some->> (get-in request [:headers "range"]) (re-matches #"bytes=(\d*)-(\d*)"))]
+        (cond
+          (or (not= 200 (:status response)) (nil? length))
+          response
+
+          (or (nil? range) (= ["" ""] (rest range)))
+          (assoc-in response [:headers "Accept-Ranges"] "bytes")
+
+          :else
+          (let [[_ from to] range
+                [start end] (if (str/blank? from)
+                              [(max 0 (- length (parse-long to))) (dec length)]
+                              [(parse-long from) (min (dec length) (if (str/blank? to) (dec length) (parse-long to)))])]
+            (if (or (>= start length) (> start end))
+              {:status  416
+               :headers {"Content-Range" (str "bytes */" length)}
+               :body    ""}
+              (let [in (open-body (:body response))]
+                (.skipNBytes in start)
+                (-> response
+                    (assoc :status 206 :body (bounded in (inc (- end start))))
+                    (update :headers assoc
+                            "Accept-Ranges"  "bytes"
+                            "Content-Range"  (str "bytes " start "-" end "/" length)
+                            "Content-Length" (str (inc (- end start)))))))))))))
+
 (defn page
   "A Ring handler answering with the page shell, for a route of the app's own:
    [\"/customize\" {:get web/page :embeddable true}]."
@@ -634,7 +695,8 @@
     :as   settings}]
   (let [files  (-> (ring/create-resource-handler {:path "/" :root "public"})
                    wrap-file-caching
-                   wrap-not-modified)
+                   wrap-not-modified
+                   wrap-ranges)
         router (ring/router (into (groundwork-routes) routes)
                             {:data    {:middleware [page-middleware
                                                     embeddable-middleware

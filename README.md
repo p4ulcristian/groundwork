@@ -291,7 +291,8 @@ resources/migrations/
   body stay untouched, so a webhook can check its signature. Storing files is
   the app's.
 - **Files:** from `resources/public`, revalidated on every load (304 when
-  unchanged), so a deploy is never hidden behind a stale cache.
+  unchanged), so a deploy is never hidden behind a stale cache. They answer
+  byte ranges (206), so video plays and seeks everywhere, Safari included.
 - **The page:** any other page a browser asks for gets the page shell, and
   the app's routing in the browser takes over. It loads `:script` into
   `<div id="app">`, and is never cached.
