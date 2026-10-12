@@ -61,23 +61,25 @@
 ;; Transactions: the system, and the wall
 ;; =============================================================================
 
-(defn- own-transaction [{:keys [db]} f]
+(defn- own-transaction [{:keys [db]} opts f]
   (when (::pg/tx-opts db)
     (throw (ex-info "Permissions open their own transaction; this one can't run inside another"
                     {:type ::nested-transaction})))
-  (pg/transact db {} f))
+  (pg/transact db opts f))
 
 (defn as-system
   "Run (f tx) in its own transaction where the wall lets every row through.
    It ends with the transaction, and can't be called inside another one."
   [perms f]
-  (own-transaction perms (fn [tx] (pg/execute! tx set-bypass) (f tx))))
+  (own-transaction perms {} (fn [tx] (pg/execute! tx set-bypass) (f tx))))
 
 (defn in-wall
   "Run (f tx) in its own transaction that sees only rows of `scopes` (the
-   ones verified for this request) and the person's own records."
-  [perms {:keys [person scopes]} f]
+   ones verified for this request) and the person's own records. With
+   :read-only? true, the transaction can't change anything."
+  [perms {:keys [person scopes read-only?]} f]
   (own-transaction perms
+                   {:read-only? (boolean read-only?)}
                    (fn [tx]
                      (pg/execute! tx set-wall {:scopes (str "{" (str/join "," scopes) "}")
                                                :person (if person (str person) "")})
@@ -158,6 +160,58 @@
     (if (or (nil? person) (nil? sql) (rules/blocked? (:description perms) action flags))
       {:sql "FALSE" :params []}
       {:sql sql :params (rules/bind params person)})))
+
+(defn blocked?
+  "Whether a session's flags block an action."
+  [perms action flags]
+  (rules/blocked? (:description perms) action flags))
+
+(defn action-kind
+  "The kind of scope an action belongs to, or nil for an unknown action."
+  [perms action]
+  (get (rules/action-kinds (:description perms)) action))
+
+(defn scopes-under
+  "The scope and every scope below it where the person holds the action:
+   what a request about that scope may see. Empty when the person holds it
+   nowhere there, or the session blocks it."
+  [perms {:keys [person flags action scope]}]
+  (if (or (nil? person) (nil? scope) (blocked? perms action flags))
+    #{}
+    (as-system perms
+               (fn [tx]
+                 (into #{}
+                       (map (comp val first))
+                       (query tx (str "WITH RECURSIVE below(scope) AS ("
+                                      " SELECT CAST(? AS uuid)"
+                                      " UNION SELECT s.scope__id FROM groundwork.scopes s"
+                                      " JOIN below b ON s.scope__parent_id = b.scope)"
+                                      " SELECT scope FROM below"
+                                      " WHERE scope IN (SELECT groundwork.scopes_holding(CAST(? AS uuid), ?))")
+                              [(str scope) (str person) (rules/action-name action)]))))))
+
+(defn scopes-listed
+  "The scopes of every record of a kind the person may do the action on
+   through a scope (a role there, an extra action, a link): what a request
+   listing them may see. Records that are the person's own (a person column)
+   don't count, the wall shows those by the person. Empty when nothing is
+   granted."
+  [perms {:keys [person flags action kind]}]
+  (let [description (update-in (:description perms) [:records kind] dissoc :people)
+        rule        (rules/compile-rule description action kind)
+        {t :table :as spec} (record-spec perms kind)
+        arrows      (let [in (:in spec)] (if (keyword? (first in)) [in] in))]
+    (if (or (nil? person) (nil? rule) (blocked? perms action flags))
+      #{}
+      (as-system perms
+                 (fn [tx]
+                   (into #{}
+                         (comp (mapcat vals) (remove nil?))
+                         (query tx (str "SELECT DISTINCT "
+                                        (str/join ", " (map-indexed (fn [i arrow] (str (rules/scope-sql "r" arrow) " AS s" i))
+                                                                    arrows))
+                                        " FROM " (rules/quote-table t) " r WHERE " (:sql rule))
+                                (rules/bind (:params rule) person))))))))
 
 (defn holds?
   "Whether a person holds an action in a scope, or in one above it."

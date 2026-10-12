@@ -15,12 +15,14 @@
      :server       see groundwork.server
      :sessions     see groundwork.sessions
      :permissions  the app's permission description, see groundwork.permissions.rules
+     :parquery     the app's endpoints and how they're asked, see groundwork.endpoints
 
    Inside, each part is an Integrant key and Integrant starts them in order,
    hands them to each other and stops them in reverse. That wiring is
    Groundwork's own: an app's settings don't name parts or replace them."
   (:require
    [clojure.string :as str]
+   [groundwork.endpoints :as endpoints]
    [groundwork.migrations :as migrations]
    [groundwork.page :as page]
    [groundwork.permissions :as permissions]
@@ -56,6 +58,9 @@
    :groundwork/permissions {:settings :permissions
                             :needs    [:groundwork/db :groundwork/migrations]
                             :start    permissions/start}
+   :groundwork/endpoints  {:settings :parquery
+                           :needs    [:groundwork/db :groundwork/migrations :groundwork/permissions]
+                           :start    endpoints/start}
    :groundwork/page       {:settings :page
                            :needs    []
                            :start    page/start}
@@ -157,6 +162,11 @@
   "The app's permissions part, for groundwork.permissions."
   [app]
   (part app :groundwork/permissions))
+
+(defn endpoints
+  "The app's endpoints part, for groundwork.endpoints: (endpoints/call …)."
+  [app]
+  (part app :groundwork/endpoints))
 
 (defn swap-routes!
   "Serve new routes without restarting, for the REPL:

@@ -14,13 +14,14 @@ keywords → postgres → parquery → re-frame → reagent
 | Starting an app   | `groundwork.core`     | built  |
 | Keywords          | `groundwork.names`    | built  |
 | db                | `groundwork.postgres` | built on next.jdbc + PgJDBC + HikariCP |
+| endpoints         | `groundwork.endpoints` | built |
 | parquery          |                       | next   |
 | parquery, browser |                       |        |
 | server            | `groundwork.server`   | built on http-kit |
 | router            | `groundwork.web`      | built on reitit |
 | migrations        | `groundwork.migrations` | built |
 | sessions          | `groundwork.sessions` | built  |
-| permissions       | `groundwork.permissions` | built (endpoints wait for parquery) |
+| permissions       | `groundwork.permissions` | built  |
 | page shell        | `groundwork.page`     | built  |
 | background jobs   |                       | later ([#1](https://github.com/p4ulcristian/groundwork/issues/1)) |
 
@@ -54,7 +55,11 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
                     :server      {:ip "0.0.0.0" :port 8080}
                     :sessions    {:cookie-name "acme_session" :max-age-days 30 :visitor-hours 24
                                   :secure? true :origin "https://app.acme.example"}
-                    :permissions {…}}))   ; see Permissions
+                    :permissions {…}                          ; see Permissions
+                    :parquery    {:endpoints [app.jobs/endpoints …]   ; see Endpoints
+                                  :max-asks 50 :max-running 16
+                                  :bearer nil :rate-limit nil
+                                  :bells {:global #{} :personal {}}}}))
 (gw/stop app)
 ```
 
@@ -456,3 +461,43 @@ The app describes its places, actions, roles and records once:
   `grant-extra!`, `revoke-extra!`. Managing needs `:groundwork/team`, and
   only actions the manager holds can be given; only an owner makes owners;
   a scope always keeps one.
+
+---
+
+## 7. Endpoints
+
+Everything the browser, or a tool, can ask. The app lists them by area:
+
+```clojure
+(def endpoints
+  {:jobs/of-shop {:read       #'jobs/of-shop                         ; (fn [ctx params] answer)
+                  :permission {:action :orders/see :scope [:shop :shop/id]}
+                  :input      [:map [:shop/id :uuid]]
+                  :answer     [:vector job]}
+   :jobs/move    {:write      #'jobs/move
+                  :permission {:action :jobs/move :record [:job :job/id]}
+                  :input      [:map [:job/id :uuid]
+                                    [:machine/id {:groundwork/record :machine} :uuid]]
+                  :answer     job}})
+```
+
+- Every endpoint declares its handler (`:read` or `:write`), `:permission`,
+  `:input` and `:answer`, or the app doesn't start; a name in two areas
+  doesn't start either.
+- `:permission`: `:public`, `:signed-in`, or an action on one record
+  (`:record`), on a scope (`:scope`, with every scope below it) or on every
+  record of a kind the person may (`:list`).
+- Every input field holding ids says which kind of record they are
+  (`{:groundwork/record :machine}`) or that they aren't one
+  (`{:groundwork/record false}`); each id must belong to the verified
+  scopes, or the answer is not-found.
+- A read runs read-only; a write commits only when its answer fits its
+  shape. Both run behind the wall, on the verified scopes.
+- A write with a one-time key runs once; a repeat gets the first answer.
+- Answers: `:ok`, `:invalid` (the input shape's errors), `:signed-out`,
+  `:not-found`, `:refused` (`(endpoints/refuse "message")`), `:too-many`,
+  `:error` (a plain message and the request id; details to `:on-error`).
+- `(endpoints/call part ask)` runs one; `(endpoints/call-with-token part token
+  ask)` for a tool, through `:bearer`.
+- `:groundwork/grants` is built in: every action the person holds, and
+  where, for the browser's "can I?".
