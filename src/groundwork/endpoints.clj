@@ -33,7 +33,9 @@
      :answer           what may be sent back, a malli shape
 
    Optional: :reads [:table …], tables a read uses that Postgres can't see
-   in its SQL (a database function), for the bells.
+   in its SQL (a database function), for the bells; :rate-limit, how often a
+   caller may ask it (see groundwork.limits). A public endpoint without one
+   gets the app's :public limit.
 
    A read runs in a read-only transaction; a write in one transaction that
    commits only when everything succeeded, its answer fitting its shape
@@ -43,8 +45,9 @@
 
    An answer: {:status :ok :data …}, or :invalid (with :errors, from the input
    shape), :signed-out, :not-found (not allowed looks the same), :refused
-   (with the app's own :message, see refuse), :too-many (with
-   :retry-after-seconds), :error (a plain message and the :request-id; the
+   (with the app's own :message, see refuse), :too-many (with :limit,
+   :per-minute or :per-day, and :retry-after-seconds; see groundwork.limits),
+   :error (a plain message and the :request-id; the
    details go to the :on-error hook, or the log).
 
    Settings, the app's :parquery:
@@ -55,8 +58,6 @@
                             keep it below the database pool's size
      :bearer       (fn [token] person-id-or-nil), for tools calling with a
                    token (see call-with-token), or nil
-     :rate-limit   (fn [{:keys [endpoint person client-ip]}] nil-or-{:retry-after-seconds n}),
-                   or nil
      :bells        {:global #{:table …} :personal {:table :entity/person-column}}
                    tables outside the permission description that ring too:
                    global ones every watcher of them, personal ones only
@@ -65,6 +66,7 @@
    [clojure.set :as set]
    [clojure.string :as str]
    [clojure.walk :as walk]
+   [groundwork.limits :as limits]
    [groundwork.parquery.wire :as wire]
    [groundwork.permissions :as permissions]
    [groundwork.permissions.rules :as rules]
@@ -338,7 +340,7 @@
   "Run one ask for a person: {:endpoint :params :key :person :flags
    :request-id :client-ip}. Returns the answer; never throws for the ask's
    own reasons."
-  [{:keys [perms endpoints rate-limit] :as part} {:keys [endpoint params person flags request-id client-ip] :as ask}]
+  [{:keys [perms endpoints limits] :as part} {:keys [endpoint params person flags request-id client-ip] :as ask}]
   (let [entry (get endpoints endpoint)
         flags (or flags #{})]
     (if (nil? entry)
@@ -354,9 +356,15 @@
           :else
           (try
             (let [scopes (verified-scopes perms entry {:person person :flags flags} decoded)]
-              (if-let [{:keys [retry-after-seconds]}
-                       (when rate-limit (rate-limit {:endpoint endpoint :person person :client-ip client-ip}))]
-                (answer :too-many :retry-after-seconds retry-after-seconds)
+              (if-let [{:keys [limit retry-after-seconds]}
+                       (when limits
+                         (limits/take! limits {:id       endpoint
+                                               :endpoint endpoint
+                                               :limit    (limits/limit-of limits {:own     (:rate-limit entry)
+                                                                                  :public? (= :public (:permission entry))
+                                                                                  :read?   (:read? entry)})
+                                               :about    {:person person :scopes scopes :client-ip client-ip}}))]
+                (answer :too-many :limit limit :retry-after-seconds retry-after-seconds)
                 (if (own-transaction? entry)
                   (let [data ((:handler entry) (assoc ask :perms perms :scopes scopes :flags flags :params decoded)
                                                decoded)]
@@ -436,7 +444,7 @@
 (defn start
   "The endpoints part: every endpoint checked against the permission
    description; old one-time keys forgotten."
-  [{:keys [settings db permissions app-settings]}]
+  [{:keys [settings db permissions limits app-settings]}]
   (settings/check-part! :parquery settings)
   (let [app       (gather (:endpoints settings))
         _         (when-let [taken (seq (filter #(= "groundwork" (namespace %)) (keys app)))]
@@ -451,6 +459,6 @@
      :perms       permissions
      :endpoints   endpoints
      :settings    settings
-     :rate-limit  (:rate-limit settings)
+     :limits      limits
      :bearer      (:bearer settings)
      :on-error    (get-in app-settings [:web :on-error])}))

@@ -64,5 +64,6 @@
    :sessions    {:cookie-name "gw_session" :max-age-days 30 :visitor-hours 24 :secure? false
                  :origin (str "http://127.0.0.1:" port)}
    :permissions {:scopes {} :records {} :links [] :session-blocks {}}
-   :parquery    {:endpoints [] :max-asks 50 :max-running 4 :bearer nil :rate-limit nil
+   :limits      {:public nil :on-limit nil}
+   :parquery    {:endpoints [] :max-asks 50 :max-running 4 :bearer nil
                  :bells {:global #{} :personal {}}}})

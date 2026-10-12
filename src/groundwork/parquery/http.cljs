@@ -39,7 +39,8 @@
   [(wire/endpoint-name endpoint) (wire/read-json (wire/write-json (or (encode-params ask) {})))])
 
 (defn- decode-answer [endpoint {:keys [status data] :as answer}]
-  (let [answer (assoc answer :status (keyword status))]
+  (let [answer (cond-> (assoc answer :status (keyword status))
+                 (:limit answer) (update :limit keyword))]
     (if-let [shape (and (= "ok" status) (get-in @shapes [endpoint :answer]))]
       (let [{:keys [value errors]} (wire/decode shape data)]
         (if errors

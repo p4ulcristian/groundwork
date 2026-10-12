@@ -91,7 +91,6 @@
    :max-asks    50
    :max-running 4
    :bearer      (fn [token] (when (= "peters-token" token) peter))
-   :rate-limit  (fn [{:keys [endpoint]}] (when (= :site/hello endpoint) nil))
    :bells       {:global #{} :personal {}}})
 
 (def ^:dynamic *part* nil)

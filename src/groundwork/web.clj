@@ -68,6 +68,9 @@
    A preview can be talked to from outside, given a secret (never in
    production either): :eval-bridge, see groundwork.eval-bridge.
 
+   Rate limits: a route's own :rate-limit, or for a :public route the app's
+   :public limit (see groundwork.limits); over it, 429 with Retry-After.
+
    Request bodies: none may be larger than :max-body-bytes, or a route's own
    [\"/uploads\" {:post upload :max-body-bytes 104857600}]; a larger one is
    refused with 413. A browser route's form body is parsed into :form-params,
@@ -100,6 +103,7 @@
    [clojure.string :as str]
    [clojure.walk :as walk]
    [groundwork.eval-bridge :as eval-bridge]
+   [groundwork.limits :as limits]
    [groundwork.page :as page]
    [groundwork.permissions :as permissions]
    [groundwork.postgres :as pg]
@@ -488,6 +492,36 @@
                                 (plain 404 "Not found")))))))))))})
 
 ;; =============================================================================
+;; Rate limits
+;; =============================================================================
+
+(defn- rate-limit-middleware
+  "A route's own :rate-limit, or the app's :public one for a public route;
+   counted after access, before the handler (see groundwork.limits)."
+  [limits]
+  {:name    ::rate-limit
+   :compile (fn [{:keys [rate-limit access]} {::keys [path]}]
+              (when (= :scope (:by rate-limit))
+                (throw (ex-info (str "Route " path ": a route's limit counts :person or :client-ip, not :scope")
+                                {:type ::bad-route :path path :rate-limit rate-limit})))
+              (when (and limits (or rate-limit (= :public access)))
+                (fn [handler]
+                  (fn [request]
+                    (let [read? (#{:get :head :options} (:request-method request))
+                          limit (limits/limit-of limits {:own rate-limit :public? (= :public access) :read? read?})
+                          hit   (when limit
+                                  (limits/take! limits {:id    (str (name (:request-method request)) " " path)
+                                                        :route path
+                                                        :limit limit
+                                                        :about {:person    (sessions/person request)
+                                                                :client-ip (client-ip request)}}))]
+                      (if-let [{:keys [retry-after-seconds limit]} hit]
+                        (-> (plain 429 (str "Too many requests: try again in " retry-after-seconds " seconds"))
+                            (assoc-in [:headers "Retry-After"] (str retry-after-seconds))
+                            (assoc-in [:headers "X-Rate-Limit"] (name limit)))
+                        (handler request)))))))})
+
+;; =============================================================================
 ;; Request bodies
 ;; =============================================================================
 
@@ -787,7 +821,7 @@
 (defn handler
   "The app's Ring handler, for settings already checked."
   [{:keys [routes max-body-bytes content-security-policy login-path languages page sessions permissions
-           environment]
+           environment limits]
     :as   settings}]
   (let [files  (-> (ring/create-resource-handler {:path "/" :root "public"})
                    (wrap-file-caching (:hashed-files settings))
@@ -799,7 +833,8 @@
                                                     (body-middleware max-body-bytes)
                                                     (sessions-middleware sessions)
                                                     context-middleware
-                                                    (access-middleware permissions login-path)]}
+                                                    (access-middleware permissions login-path)
+                                                    (rate-limit-middleware limits)]}
                              ;; the path, for errors in a route's data
                              :compile (fn [[path data] opts]
                                         (ring/compile-result [path data] (assoc opts ::path path)))})
@@ -820,10 +855,10 @@
   "The router part: {:handler … :max-body-bytes …}, the most any route
    accepts, which the server reads at most. The handler can be swapped for
    one with new routes while the server runs (swap-routes!)."
-  [{:keys [settings environment page sessions permissions parquery]}]
+  [{:keys [settings environment page sessions permissions parquery limits]}]
   (settings/check-part! :web settings environment)
   (let [inputs  (assoc settings :page page :sessions sessions :permissions permissions :environment environment
-                       :parquery parquery)
+                       :parquery parquery :limits limits)
         current (atom (handler inputs))
         largest (largest-body (:routes settings) (:max-body-bytes settings))]
     {:handler        (fn [request] (@current request))

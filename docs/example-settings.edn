@@ -170,6 +170,14 @@
   ;; A session flag blocks actions: flag → actions
   :session-blocks {:impersonated #{:money/move}}}
 
+ ;; How often a caller may ask
+ :limits
+ {;; What a public endpoint or route without its own limit gets, per caller each minute, or nil
+  :public {:reads-per-minute 600, :writes-per-minute 60}
+
+  ;; Every caller turned away: (fn [{:keys [id limit caller]}] …), or nil
+  :on-limit app.log/limited}
+
  ;; The endpoints and how they're asked
  :parquery
  {;; The app's endpoint maps, gathered from its areas
@@ -183,9 +191,6 @@
 
   ;; Whose token a tool calls with: (fn [token] person-id-or-nil), or nil
   :bearer app.tools/token->person
-
-  ;; Decides when a caller has asked too often, or nil
-  :rate-limit nil
 
   ;; Tables outside the permission description that ring too
   :bells

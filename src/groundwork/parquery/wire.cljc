@@ -13,7 +13,7 @@
                {\"status\": \"invalid\", \"errors\": {…}}
                {\"status\": \"signed-out\"} {\"status\": \"not-found\"}
                {\"status\": \"refused\", \"message\": \"…\"}
-               {\"status\": \"too-many\", \"retry-after-seconds\": 40}
+               {\"status\": \"too-many\", \"limit\": \"per-minute\", \"retry-after-seconds\": 40}
                {\"status\": \"error\", \"message\": \"…\", \"request-id\": \"…\"}
    A request carries a list of asks and gets the answers in the same order.
 

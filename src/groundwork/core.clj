@@ -17,6 +17,7 @@
      :server       see groundwork.server
      :sessions     see groundwork.sessions
      :permissions  the app's permission description, see groundwork.permissions.rules
+     :limits       how often a caller may ask, see groundwork.limits
      :parquery     the app's endpoints and how they're asked, see groundwork.endpoints
 
    Inside, each part is an Integrant key and Integrant starts them in order,
@@ -24,6 +25,7 @@
    Groundwork's own: an app's settings don't name parts or replace them."
   (:require
    [groundwork.endpoints :as endpoints]
+   [groundwork.limits :as limits]
    [groundwork.migrations :as migrations]
    [groundwork.page :as page]
    [groundwork.parquery.route :as parquery]
@@ -59,8 +61,12 @@
    :groundwork/permissions {:settings :permissions
                             :needs    [:groundwork/db :groundwork/migrations]
                             :start    permissions/start}
+   :groundwork/limits     {:settings :limits
+                           :needs    [:groundwork/db :groundwork/migrations]
+                           :start    limits/start}
    :groundwork/endpoints  {:settings :parquery
-                           :needs    [:groundwork/db :groundwork/migrations :groundwork/permissions]
+                           :needs    [:groundwork/db :groundwork/migrations :groundwork/permissions
+                                      :groundwork/limits]
                            :start    endpoints/start}
    :groundwork/parquery   {:settings :parquery
                            :needs    [:groundwork/db :groundwork/endpoints :groundwork/sessions]
@@ -71,7 +77,7 @@
                            :start    page/start}
    :groundwork/router     {:settings :web
                            :needs    [:groundwork/migrations :groundwork/sessions :groundwork/permissions
-                                      :groundwork/page :groundwork/parquery]
+                                      :groundwork/page :groundwork/parquery :groundwork/limits]
                            :start    web/start}
    :groundwork/server     {:settings :server
                            :needs    [:groundwork/router]

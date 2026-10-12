@@ -24,6 +24,9 @@
    - An entry nothing needs is kept 5 minutes, then dropped.
    - Writes are sent once, with a one-time key, and never kept; their
      effect reaches screens through the bells.
+   - A caller over a rate limit gets its answer as the entry's :error:
+     {:status :too-many :limit :per-minute|:per-day :retry-after-seconds n};
+     the store doesn't ask again by itself, and a write is never repeated.
    - \"Can I?\" reads the person's grants: ensure
      {:endpoint :groundwork/grants :params {}} for a signed-in person."
   (:require

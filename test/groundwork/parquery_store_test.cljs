@@ -72,3 +72,11 @@
                               {:status :ok :data [{:grant/scope-id shop :grant/action :jobs/move}]})]
     (is (store/can? s :jobs/move shop))
     (is (not (store/can? s :money/move shop)))))
+
+(deftest too-many-is-kept-as-the-error
+  (let [[s _] (ensured store/empty-store :board jobs)
+        [s n] (store/start-fetch s jobs-key)
+        limit {:status :too-many :limit :per-minute :retry-after-seconds 40}
+        s     (store/answered s jobs-key n limit)]
+    (is (= :error (get-in s [:entries jobs-key :status])))
+    (is (= limit (get-in s [:entries jobs-key :error])) "which limit, and when to come back")))

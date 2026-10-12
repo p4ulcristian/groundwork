@@ -211,6 +211,15 @@
                        :list            (keyword? v)
                        false)))))))
 
+(def ^:private rate-limit
+  (pred "{:per-minute n :per-day n :by …}"
+        "must be {:per-minute n} and/or {:per-day n}, optionally :by :person, :scope or :client-ip"
+        (fn [l]
+          (and (map? l) (seq (select-keys l [:per-minute :per-day]))
+               (every? #{:per-minute :per-day :by} (keys l))
+               (every? #(or (nil? %) (pos-int? %)) ((juxt :per-minute :per-day) l))
+               (contains? #{nil :person :scope :client-ip} (:by l))))))
+
 (def endpoint
   [:and {:doc/key "<endpoint name>"}
    [:map {:closed true}
@@ -221,7 +230,8 @@
            [:map [:shop/id :uuid]] malli-shape)
     (entry :answer "What may be sent back, a malli shape" [:vector [:map [:job/id :uuid]]] malli-shape)
     (optional :reads "Tables a read uses that Postgres can't see in its SQL" [:jobs]
-              [:vector {:error/message "must be a list of tables, like [:jobs]" :doc/type "list of tables"} :keyword])]
+              [:vector {:error/message "must be a list of tables, like [:jobs]" :doc/type "list of tables"} :keyword])
+    (optional :rate-limit "How often a caller may ask it (see groundwork.limits)" {:per-day 20 :by :person} rate-limit)]
    (pred "one handler" "needs exactly one of :read or :write, its handler"
          #(= 1 (count (filter (fn [k] (contains? % k)) [:read :write]))))])
 
@@ -251,7 +261,9 @@
               (pred "map or function" (str "must be a function of the request or a map of "
                                            (str/join " " (sort route-page-keys)))
                     #(or (fn? %) (var? %) (and (map? %) (every? route-page-keys (keys %))))))
-    (optional :max-body-bytes "The largest body it accepts, over the app's :max-body-bytes" 104857600 positive)]
+    (optional :max-body-bytes "The largest body it accepts, over the app's :max-body-bytes" 104857600 positive)
+    (optional :rate-limit "How often a caller may use it, counted by :person or :client-ip (see groundwork.limits)"
+              {:per-minute 10 :by :client-ip} rate-limit)]
    (pred "declares access" "must declare :access, or be :server-to-server true (not both)"
          #(if (:server-to-server %) (not (contains? % :access)) (contains? % :access)))])
 
@@ -389,6 +401,16 @@
    :permissions
    permission-description
 
+   :limits
+   [:map {:closed true}
+    (entry :public "What a public endpoint or route without its own limit gets, per caller each minute, or nil"
+           {:reads-per-minute 600 :writes-per-minute 60}
+           [:maybe [:map {:closed true}
+                    (entry :reads-per-minute "Reads, and GET routes" 600 positive)
+                    (entry :writes-per-minute "Writes, and changing routes" 60 positive)]])
+    (entry :on-limit "Every caller turned away: (fn [{:keys [id limit caller]}] …), or nil"
+           'app.log/limited function-or-nil)]
+
    :parquery
    [:map {:closed true}
     (entry :endpoints "The app's endpoint maps, gathered from its areas" '[app.jobs/endpoints app.orders/endpoints]
@@ -397,7 +419,6 @@
     (entry :max-running "The most asks running at once across the server; keep it below the pool size" 16 positive)
     (entry :bearer "Whose token a tool calls with: (fn [token] person-id-or-nil), or nil" 'app.tools/token->person
            function-or-nil)
-    (entry :rate-limit "Decides when a caller has asked too often, or nil" nil function-or-nil)
     (entry :bells "Tables outside the permission description that ring too"
            {:global #{:powder_colours} :personal {:notifications :notification/person-id}}
            [:map {:closed true}
@@ -424,6 +445,7 @@
    :server      "The web server"
    :sessions    "Who is signed in"
    :permissions "Who may do what, where: the permission description"
+   :limits      "How often a caller may ask"
    :parquery    "The endpoints and how they're asked"})
 
 ;; =============================================================================

@@ -59,7 +59,7 @@
                    :input      [:map]
                    :answer     :string}})
 
-(def settings {:endpoints [endpoint-map] :max-asks 50 :max-running 4 :bearer nil :rate-limit nil
+(def settings {:endpoints [endpoint-map] :max-asks 50 :max-running 4 :bearer nil
                :bells {:global #{} :personal {}}})
 
 (def ^:dynamic *db* nil)

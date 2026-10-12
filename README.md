@@ -62,9 +62,11 @@ the JVM tests against Postgres 18, clj-kondo, the browser half's tests on node.
                     :sessions    {:cookie-name "acme_session" :max-age-days 30 :visitor-hours 24
                                   :secure? true :origin "https://app.acme.example"}
                     :permissions {…}                          ; see Permissions
+                    :limits      {:public {:reads-per-minute 600 :writes-per-minute 60}   ; see Limits
+                                  :on-limit nil}
                     :parquery    {:endpoints [app.jobs/endpoints …]   ; see Endpoints
                                   :max-asks 50 :max-running 16
-                                  :bearer nil :rate-limit nil
+                                  :bearer nil
                                   :bells {:global #{} :personal {}}}}))
 (gw/stop app)
 ```
@@ -203,6 +205,15 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:permissions :links […] :grants` | action → action | What it gives in :to: given action → the action needed in :from | `#:orders{:see :agreements/see}` |
 | `:permissions :session-blocks` | flag → actions | A session flag blocks actions: flag → actions | `{:impersonated #{:money/move}}` |
 
+#### `:limits`: How often a caller may ask
+
+| Key | Type | What it is | Example |
+|-----|------|------------|---------|
+| `:limits :public` | map or nil | What a public endpoint or route without its own limit gets, per caller each minute, or nil | `{:reads-per-minute 600, :writes-per-minute 60}` |
+| `:limits :public :reads-per-minute` | positive whole number | Reads, and GET routes | `600` |
+| `:limits :public :writes-per-minute` | positive whole number | Writes, and changing routes | `60` |
+| `:limits :on-limit` | function or nil | Every caller turned away: (fn [{:keys [id limit caller]}] …), or nil | `app.log/limited` |
+
 #### `:parquery`: The endpoints and how they're asked
 
 | Key | Type | What it is | Example |
@@ -211,7 +222,6 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:parquery :max-asks` | positive whole number | The most asks one request may carry | `50` |
 | `:parquery :max-running` | positive whole number | The most asks running at once across the server; keep it below the pool size | `16` |
 | `:parquery :bearer` | function or nil | Whose token a tool calls with: (fn [token] person-id-or-nil), or nil | `app.tools/token->person` |
-| `:parquery :rate-limit` | function or nil | Decides when a caller has asked too often, or nil |  |
 | `:parquery :bells` | map | Tables outside the permission description that ring too | `{:global #{:powder_colours}, :personal {:notifications :n…` |
 | `:parquery :bells :global` | set of tables | Tables every watcher of them hears about | `#{:powder_colours}` |
 | `:parquery :bells :personal` | table → column | Tables only their person hears about: table → person column | `{:notifications :notification/person-id}` |
@@ -225,6 +235,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `<path> :embeddable` (optional) | true, :same-origin or origins | Other sites may show it in a frame: true (any https site), :same-origin, or a list of origins | `true` |
 | `<path> :page` (optional) | map or function | The page shell's own details for this route: a map, or a function of the request | `{:title "Design your part"}` |
 | `<path> :max-body-bytes` (optional) | positive whole number | The largest body it accepts, over the app's :max-body-bytes | `104857600` |
+| `<path> :rate-limit` (optional) | {:per-minute n :per-day n :by …} | How often a caller may use it, counted by :person or :client-ip (see groundwork.limits) | `{:per-minute 10, :by :client-ip}` |
 
 #### An endpoint's entry (in `:parquery :endpoints`)
 
@@ -236,6 +247,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `<endpoint name> :input` | malli shape | What may be sent, a malli :map; id fields say their record kind | `[:map [:shop/id :uuid]]` |
 | `<endpoint name> :answer` | malli shape | What may be sent back, a malli shape | `[:vector [:map [:job/id :uuid]]]` |
 | `<endpoint name> :reads` (optional) | list of tables | Tables a read uses that Postgres can't see in its SQL | `[:jobs]` |
+| `<endpoint name> :rate-limit` (optional) | {:per-minute n :per-day n :by …} | How often a caller may ask it (see groundwork.limits) | `{:per-day 20, :by :person}` |
 <!-- end of the settings reference -->
 
 ---
@@ -706,6 +718,33 @@ UI). The app adds them to its list:
   by the address it was sent to.
 - They run outside the wall: Groundwork's team functions check, then open
   their own transactions as the system.
+
+
+### Limits
+
+How often a caller may ask (`groundwork.limits`), for endpoints and plain
+routes alike:
+
+```clojure
+:limits {:public   {:reads-per-minute 600 :writes-per-minute 60}   ; or nil
+         :on-limit (fn [{:keys [id limit caller]}] …)}             ; or nil
+
+:ai/suggest {:write … :rate-limit {:per-day 20 :by :person}}       ; an endpoint's own
+["/quote" {:post … :access :public :rate-limit {:per-minute 10 :by :client-ip}}]   ; a route's own
+```
+
+- `:per-minute`: a bucket of that size, refilled over the minute, in each
+  server's memory. `:per-day`: a cap counted in Postgres, across servers and
+  restarts, reset at midnight UTC.
+- `:by` is `:person`, `:scope` (endpoints only: a whole shop's cap) or
+  `:client-ip` (the trusted proxy's header); without it, the person, or
+  the address when no one is signed in.
+- A public endpoint or route without its own limit gets `:public`, reads
+  and writes each their own. Signed-in calls without one have none.
+- Checked after the permission, before the work. An endpoint answers
+  `:too-many` with `:limit` and `:retry-after-seconds`, which the store
+  keeps as the entry's error; a route answers 429 with `Retry-After`. Every
+  hit goes to `:on-limit`; writes are never repeated by themselves.
 
 ---
 

@@ -40,7 +40,7 @@
           (perm/create-scope! perms {:kind :shop :id acme :parent nil :owner paul})
           (perm/create-scope! perms {:kind :shop :id zinc :parent nil :owner ana})
           (binding [*part* (endpoints/start {:settings     {:endpoints [team/endpoints] :max-asks 50 :max-running 4
-                                                            :bearer nil :rate-limit nil :bells {:global #{} :personal {}}}
+                                                            :bearer nil :bells {:global #{} :personal {}}}
                                              :db db :permissions perms :app-settings {}})]
             (t)))
         (finally (pg/stop db))))))
