@@ -233,11 +233,34 @@
              (and person (or (nil? p) (some #{(str person)} p))))
          (or (not= t record-table) (nil? i) (some #{record-id} i)))))
 
-(defn- ring! [{:keys [lines] :as part} bell]
-  (doseq [[ch {:keys [person watches]}] @lines
-          :let [changed (into [] (comp (filter #(rings? part person % bell)) (map :ask) (distinct)) watches)]
-          :when (seq changed)]
-    (send! ch {:changed changed})))
+(def ^:private recent-kept 50)
+
+(defn- ring! [{:keys [lines recent] :as part} bell]
+  (let [rang (atom 0)]
+    (doseq [[ch {:keys [person watches]}] @lines
+            :let [changed (into [] (comp (filter #(rings? part person % bell)) (map :ask) (distinct)) watches)]
+            :when (seq changed)]
+      (swap! rang inc)
+      (send! ch {:changed changed}))
+    (when recent
+      (swap! recent #(vec (take-last recent-kept (conj % {:at (java.time.Instant/now) :bell bell :lines @rang})))))))
+
+(defn lines-of
+  "The open lines, for the REPL: who opened each, its session (the first
+   characters of its hash) and the reads it watches."
+  [{:keys [lines]}]
+  (mapv (fn [{:keys [person flags session watches]}]
+          {:person  person
+           :flags   flags
+           :session (some-> session (subs 0 12))
+           :watches (mapv :ask watches)})
+        (vals @lines)))
+
+(defn recent-bells
+  "The last bells this server heard, newest last: when, the bell (table,
+   scopes, people, ids) and how many lines it rang."
+  [{:keys [recent]}]
+  @recent)
 
 (defn- ring-everything! [{:keys [lines]}]
   (doseq [[ch {:keys [watches]}] @lines
@@ -339,6 +362,7 @@
                      :tables      tables
                      :plans       (atom {})
                      :lines       (atom {})
+                     :recent      (atom [])
                      :stopped     (atom false)}]
     (install-bells! db tables)
     (assoc part

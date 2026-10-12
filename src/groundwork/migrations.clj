@@ -34,6 +34,7 @@
 (pg/defsql applied "groundwork/migrator/applied.sql")
 (pg/defsql record "groundwork/migrator/record.sql")
 (pg/defsql no-time-limit "groundwork/migrator/no_time_limit.sql")
+(pg/defsql ran-sql "groundwork/migrator/ran.sql")
 
 (def sources
   "Where migrations come from, in the order they run: Groundwork's own, then
@@ -157,6 +158,34 @@
                  sources))
          (finally
            (pg/execute! conn-db unlock)))))))
+
+(defn status
+  "Where the migrations stand, for the REPL: {:ran [{:source :file :ran-at}]
+   :waiting [{:source :file}] :changed [{:source :file}] :missing [{:source
+   :file}]}. Changed and missing files would stop the next start."
+  ([db] (status db sources))
+  ([db sources]
+   (let [ran (group-by :migration/source (pg/rows db ran-sql))]
+     (reduce (fn [report [source path]]
+               (let [files   (into {} (map (juxt :file identity)) (files path))
+                     applied (ran source)
+                     names   (set (map :migration/file applied))]
+                 (-> report
+                     (update :ran into (map (fn [{:migration/keys [file ran-at]}]
+                                              {:source source :file file :ran-at ran-at}))
+                             applied)
+                     (update :waiting into (for [[file _] (sort-by (comp :number val) files)
+                                                 :when (not (names file))]
+                                             {:source source :file file}))
+                     (update :changed into (for [{:migration/keys [file fingerprint]} applied
+                                                 :let [now (files file)]
+                                                 :when (and now (not= fingerprint (:fingerprint now)))]
+                                             {:source source :file file}))
+                     (update :missing into (for [{:migration/keys [file]} applied
+                                                 :when (not (files file))]
+                                             {:source source :file file})))))
+             {:ran [] :waiting [] :changed [] :missing []}
+             sources))))
 
 ;; =============================================================================
 ;; Snapshot

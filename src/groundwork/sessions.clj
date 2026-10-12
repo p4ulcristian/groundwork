@@ -51,6 +51,7 @@
 (pg/defsql extend-visitor "groundwork/sessions/extend_visitor.sql")
 (pg/defsql keep-visitor "groundwork/sessions/keep_visitor.sql")
 (pg/defsql live-of "groundwork/sessions/live_of.sql")
+(pg/defsql of-person-sql "groundwork/sessions/of_person.sql")
 
 (def ^:private settings [:cookie-name :max-age-days :visitor-hours :secure? :origin])
 
@@ -188,6 +189,12 @@
   (if (empty? hashes)
     #{}
     (into #{} (map :session/hash) (pg/rows db live-of {:session/hashes (vec hashes)}))))
+
+(defn of-person
+  "A person's live sessions, for the REPL: the first characters of each
+   session's hash, when it began and ends, its flags."
+  [{:keys [db]} person-id]
+  (pg/rows db of-person-sql {:session/person-id person-id}))
 
 (defn- check-data [m]
   (when-not (and (map? m) (every? qualified-keyword? (keys m)))

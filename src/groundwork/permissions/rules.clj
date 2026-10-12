@@ -212,7 +212,7 @@
 ;; Compiling
 ;; =============================================================================
 
-(defn- condition-sql
+(defn condition-sql
   "A condition on a table's own columns: [sql params]."
   [alias condition]
   (let [[op & args] condition

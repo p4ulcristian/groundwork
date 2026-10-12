@@ -27,5 +27,7 @@
                        ;; HikariCP logs through SLF4J; the app picks a logger, tests pick none
                        org.slf4j/slf4j-nop {:mvn/version "2.0.20"}
                        ;; groundwork.leaks generates params
-                       org.clojure/test.check {:mvn/version "1.1.1"}}
+                       org.clojure/test.check {:mvn/version "1.1.1"}
+                       ;; groundwork.repl's development start
+                       nrepl/nrepl {:mvn/version "1.8.0"}}
          :exec-fn     cognitect.test-runner.api/test}}}

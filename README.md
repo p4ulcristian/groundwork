@@ -23,6 +23,7 @@ keywords → postgres → parquery → re-frame → reagent
 | sessions          | `groundwork.sessions` | built  |
 | permissions       | `groundwork.permissions` | built  |
 | page shell        | `groundwork.page`     | built  |
+| REPL              | `groundwork.repl` (clj and cljs) | built |
 | background jobs   |                       | later ([#1](https://github.com/p4ulcristian/groundwork/issues/1)) |
 
 Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
@@ -601,3 +602,42 @@ POST /parquery
 - Public and signed-in endpoints are skipped, and so is one that needs a
   foreign id nobody gave; the report says which and why.
 - Generating needs `org.clojure/test.check` on the test classpath.
+
+---
+
+## 9. The REPL
+
+Where a REPL into a running app may exist: development always; previews
+through the eval bridge; stage only over SSH; production off (see
+[the decision](decisions/2026-10-12-repls-by-environment.md)). What's tried
+and not saved to a file is gone on the next start.
+
+```clojure
+(def dev (repl/start! settings {:shadow-build :app}))   ; :environment :development only
+(repl/ask (:app dev) :jobs/list {:shop/id acme} :as peter)
+(repl/why (:app dev) peter :orders/edit [:order order-id])
+;=> {:allowed? false
+;    :because ["The order … is in shop …."
+;              "… is Production in shop …, but Production doesn't hold :orders/edit."]}
+(repl/why (:app dev) pia :orders/see acme)              ; in a scope
+(repl/lines (:app dev))          ; open websocket lines: who, session, what they watch
+(repl/recent-bells (:app dev))   ; the last 50 bells this server heard
+(repl/sessions (:app dev) peter) (repl/sign-out-everywhere! (:app dev) peter)
+(repl/migrations (:app dev))     ; ran, waiting, changed, missing
+(repl/restart! dev)  (repl/stop! dev)
+```
+
+- **One start:** the app, an nREPL (with the browser build's middleware
+  when shadow-cljs is there, so the same port has a ClojureScript REPL:
+  `(shadow.cljs.devtools.api/repl :app)`), the watcher, and everything
+  printed also in `.groundwork/dev.log` (the last run's kept as
+  `dev.log.1`). The port goes to `.nrepl-port`. It needs `nrepl/nrepl` and
+  `thheller/shadow-cljs` on the classpath, as an app's `:dev` alias has them.
+- **ask** goes through every check a browser's ask does; a write runs too,
+  with a fresh one-time key.
+- **why** says it in plain words: the record's scope, the person's
+  memberships, roles and extra actions there and above, the links followed,
+  a person column, an only-when, a session's flags.
+- **In the browser** (the build's REPL): `(groundwork.repl/entries)` lists
+  every question the store holds, `(groundwork.repl/answer :jobs/list
+  {:shop/id id})` one entry with its data.
