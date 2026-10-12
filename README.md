@@ -1,19 +1,27 @@
 # Groundwork
 
-A Clojure library for database-backed web apps. One name for each piece of
-data, from the column to the browser.
+An opinionated Clojure framework for database-backed web apps. One name for
+each piece of data, from the column to the browser. Groundwork makes the
+decisions and solves the hard parts; an app adds its settings, tables,
+queries, permissions, login and pages.
 
 ```
 keywords → postgres → parquery → re-frame → reagent
 ```
 
-| Part     | Namespace             | Status |
-|----------|-----------------------|--------|
-| Keywords | `groundwork.names`    | built  |
-| Postgres | `groundwork.postgres` | built on next.jdbc + PgJDBC + HikariCP |
-| Parquery |                       | next   |
-| re-frame |                       |        |
-| Reagent  |                       |        |
+| Part              | Namespace             | Status |
+|-------------------|-----------------------|--------|
+| Keywords          | `groundwork.names`    | built  |
+| db                | `groundwork.postgres` | built on next.jdbc + PgJDBC + HikariCP |
+| parquery          |                       | next   |
+| parquery, browser |                       |        |
+| server            |                       |        |
+| router            |                       |        |
+| migrations        |                       |        |
+| sessions          |                       |        |
+| permissions       |                       |        |
+| page shell        |                       |        |
+| background jobs   |                       | later ([#1](https://github.com/p4ulcristian/groundwork/issues/1)) |
 
 Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
 
