@@ -34,8 +34,9 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
 (def app (gw/start {:environment :development
                     :db          {…}                          ; see Postgres, Start
                     :migrations  {:schema-snapshot "schema.sql"}
-                    :page        {:lang "en" :title "Acme Coating" :icon "/icon.svg"
-                                  :stylesheets ["/app.css"] :script "/js/main.js" :head []}
+                    :page        {:lang "en" :title "Acme Coating" :description nil
+                                  :icon "/icon.svg" :stylesheets ["/app.css"]
+                                  :script "/js/main.js" :head []}
                     :web         {:routes         [["/orders" {:get web/page}]]
                                   :max-body-bytes 1048576}     ; see Server, routes and the page
                     :server      {:ip "0.0.0.0" :port 8080}
@@ -254,6 +255,17 @@ resources/migrations/
 - **The page:** any other page a browser asks for gets the page shell, and
   the app's routing in the browser takes over. It loads `:script` into
   `<div id="app">`, and is never cached.
+- **A page per route:** a route's `:page`, a map or a function of the
+  request, is merged over the app's: its own `:lang :title :description`,
+  `:canonical`, `:alternates` (hreflang links), extra `:stylesheets
+  :scripts :head`, and `:body`, HTML the server writes inside
+  `<div id="app">` for search engines and the first paint.
+
+```clojure
+["/coaters/:slug" {:get  web/page
+                   :page (fn [request] {:title (str "Coater " …) :body (render-coater …)})}]
+```
+
 - **Security headers** on every answer: no sniffing, no framing, a strict
   referrer; in production also Strict-Transport-Security.
 

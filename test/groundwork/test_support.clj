@@ -44,7 +44,7 @@
   {:environment :test
    :db          db-settings
    :migrations  {:schema-snapshot nil}
-   :page        {:lang "en" :title "Test" :icon "/icon.svg" :stylesheets ["/app.css"]
+   :page        {:lang "en" :title "Test" :description nil :icon "/icon.svg" :stylesheets ["/app.css"]
                  :script "/js/main.js" :head []}
    :web         {:routes         []
                  :max-body-bytes 1048576}

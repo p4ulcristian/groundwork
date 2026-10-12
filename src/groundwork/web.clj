@@ -9,6 +9,9 @@
          a page other sites may show in a frame; true for any https site, or
          a list of origins: [\"https://shop.example\"]
      [\"/payments/webhook\" {:post handle :server-to-server true}]
+     [\"/coaters/:slug\" {:get web/page :page (fn [request] {:title …})}]
+         the page shell with the route's own title, description, links,
+         scripts and server-written body; see groundwork.page
          called by another server (a payment provider's webhook), never by a
          browser: no session is read or made and the Origin check doesn't
          apply, so the handler authenticates the call itself (a signature)
@@ -32,6 +35,7 @@
   (:require
    [clojure.string :as str]
    [clojure.walk :as walk]
+   [groundwork.page :as page]
    [groundwork.sessions :as sessions]
    [reitit.ring :as ring]
    [ring.middleware.multipart-params :refer [wrap-multipart-params]]
@@ -89,6 +93,15 @@
     :else
     (throw (ex-info (str "Route " path ": :embeddable must be true or a list of origins like \"https://shop.example\"")
                     {:type ::bad-route :path path :embeddable embeddable}))))
+
+(def ^:private page-middleware
+  {:name    ::page
+   :compile (fn [{:keys [page]} {::keys [path]}]
+              (when (some? page)
+                (page/check-route-page path page)
+                (fn [handler]
+                  (fn [request]
+                    (handler (assoc request ::page/route-page page))))))})
 
 (def ^:private embeddable-middleware
   {:name    ::embeddable
@@ -263,7 +276,8 @@
                    wrap-file-caching
                    wrap-not-modified)
         router (ring/router (into (groundwork-routes) routes)
-                            {:data    {:middleware [embeddable-middleware
+                            {:data    {:middleware [page-middleware
+                                                    embeddable-middleware
                                                     (body-middleware max-body-bytes)
                                                     (sessions-middleware sessions)]}
                              ;; the path, for errors in a route's data

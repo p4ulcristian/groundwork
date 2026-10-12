@@ -25,6 +25,17 @@
                                               :body   (pr-str [(sessions/person request)
                                                                (contains? request ::sessions/sessions)])})
                          :server-to-server true}]
+   ["/coaters/:slug" {:get  web/page
+                      :page (fn [request]
+                              (let [slug (get-in request [:path-params :slug])]
+                                {:title       (str "Coater " slug)
+                                 :description "Powder coating & more"
+                                 :canonical   (str "https://acme.example/coaters/" slug)
+                                 :alternates  [{:lang "de" :href (str "https://acme.example/de/coaters/" slug)}]
+                                 :stylesheets ["/coaters.css"]
+                                 :scripts     ["/js/map.js"]
+                                 :body        (str "<h1>" slug "</h1>")}))}]
+   ["/about" {:get web/page :page {:title "About us"}}]
    ["/api/form" {:post (fn [request] {:status 200 :body (pr-str (:form-params request))})}]
    ["/api/upload" {:post           (fn [request]
                                      {:status 200
@@ -177,6 +188,27 @@
   (testing "the title is escaped"
     (is (str/includes? (:body (request "/" {:headers html}))
                        "<title>Acme &lt;Coating&gt; &amp; Co</title>"))))
+
+(deftest a-route-gives-its-own-page
+  (let [body (:body (request "/coaters/zinc" {:headers html}))]
+    (is (str/includes? body "<title>Coater zinc</title>"))
+    (is (str/includes? body "<meta name=\"description\" content=\"Powder coating &amp; more\">"))
+    (is (str/includes? body "<link rel=\"canonical\" href=\"https://acme.example/coaters/zinc\">"))
+    (is (str/includes? body "<link rel=\"alternate\" hreflang=\"de\" href=\"https://acme.example/de/coaters/zinc\">"))
+    (is (str/includes? body "<link rel=\"stylesheet\" href=\"/app.css\">") "the app's stylesheets stay")
+    (is (str/includes? body "<link rel=\"stylesheet\" href=\"/coaters.css\">"))
+    (is (str/includes? body "<script src=\"/js/main.js\" defer></script>"))
+    (is (str/includes? body "<script src=\"/js/map.js\" defer></script>"))
+    (is (str/includes? body "<div id=\"app\"><h1>zinc</h1></div>")))
+  (testing "a map works too, the rest from the app"
+    (let [body (:body (request "/about" {:headers html}))]
+      (is (str/includes? body "<title>About us</title>"))
+      (is (str/includes? body "<div id=\"app\"></div>"))))
+  (testing "a route's page keys are checked when the router is built"
+    (is (= ::page/bad-route
+           (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :page {:titel "x"}}]] :max-body-bytes 1000
+                                              :page (fn [_]) :sessions {} :environment :test})
+                                (catch Exception e e))))))))
 
 (deftest files-are-served-and-revalidated
   (let [{:keys [status body headers]} (request "/app.css")]

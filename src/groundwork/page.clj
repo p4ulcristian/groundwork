@@ -4,17 +4,34 @@
 
      :lang         \"en\"
      :title        \"Acme Coating\"
+     :description  \"Powder coating, ordered online\"   or nil
      :icon         \"/icon.svg\"
      :stylesheets  [\"/app.css\"]
      :script       \"/js/main.js\"    the compiled ClojureScript
      :head         []                extra tags, as HTML text, placed at the end of <head>
+
+   A route can give its own page, a map or a function of the request
+   returning one, merged over these:
+
+     [\"/coaters/:slug\" {:get web/page
+                         :page (fn [request] {:title … :description … :body …})}]
+
+     :lang :title :description   replace the app's
+     :canonical  \"https://…\"     <link rel=canonical>
+     :alternates [{:lang \"de\" :href \"https://…/de/…\"}]   <link rel=alternate hreflang>
+     :stylesheets :scripts :head added after the app's
+     :body       HTML text the server writes inside <div id=\"app\">, for
+                 search engines and the first paint; the app replaces it
 
    The page has one element for the app to render into, <div id=\"app\">, and
    is never cached: a deploy is seen on the next load."
   (:require
    [clojure.string :as str]))
 
-(def ^:private settings [:lang :title :icon :stylesheets :script :head])
+(def ^:private settings [:lang :title :description :icon :stylesheets :script :head])
+
+(def ^:private route-keys
+  #{:lang :title :description :canonical :alternates :stylesheets :scripts :head :body})
 
 (defn- check-settings [opts]
   (when-not (map? opts)
@@ -31,40 +48,79 @@
           :let [v (get opts k)]]
     (when-not (and (sequential? v) (every? string? v))
       (throw (ex-info (str ":page " k " must be a list of strings")
-                      {:type ::bad-setting :setting k :value v})))))
+                      {:type ::bad-setting :setting k :value v}))))
+  (when-not (or (nil? (:description opts)) (string? (:description opts)))
+    (throw (ex-info ":page :description must be a string or nil"
+                    {:type ::bad-setting :setting :description :value (:description opts)}))))
+
+(defn check-route-page
+  "A route's :page: a map of route-keys or a function of the request."
+  [path page]
+  (when-not (or (fn? page) (var? page)
+                (and (map? page) (every? route-keys (keys page))))
+    (throw (ex-info (str "Route " path ": :page must be a function of the request or a map of "
+                         (str/join " " (sort route-keys)))
+                    {:type ::bad-route :path path :page page}))))
 
 (defn- escape
   "Text made safe inside HTML and inside a quoted attribute."
   [s]
   (str/escape (str s) {\& "&amp;" \< "&lt;" \> "&gt;" \" "&quot;" \' "&#39;"}))
 
+(defn merged
+  "The app's page settings with a route's page over them."
+  [app route]
+  (-> (merge app (select-keys route [:lang :title :description :canonical :alternates :body]))
+      (update :stylesheets into (:stylesheets route))
+      (update :head into (:head route))
+      (assoc :scripts (vec (:scripts route)))))
+
 (defn html
   "The page as HTML text."
-  [{:keys [lang title icon stylesheets script head]}]
+  [{:keys [lang title description icon canonical alternates stylesheets head script scripts body]}]
   (str "<!doctype html>\n"
        "<html lang=\"" (escape lang) "\">\n"
        "<head>\n"
        "<meta charset=\"utf-8\">\n"
        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
        "<title>" (escape title) "</title>\n"
+       (when description (str "<meta name=\"description\" content=\"" (escape description) "\">\n"))
        "<link rel=\"icon\" href=\"" (escape icon) "\">\n"
+       (when canonical (str "<link rel=\"canonical\" href=\"" (escape canonical) "\">\n"))
+       (apply str (for [{:keys [lang href]} alternates]
+                    (str "<link rel=\"alternate\" hreflang=\"" (escape lang) "\" href=\"" (escape href) "\">\n")))
        (apply str (for [href stylesheets]
                     (str "<link rel=\"stylesheet\" href=\"" (escape href) "\">\n")))
        (apply str (for [tag head] (str tag "\n")))
        "</head>\n"
        "<body>\n"
-       "<div id=\"app\"></div>\n"
+       "<div id=\"app\">" body "</div>\n"
        "<script src=\"" (escape script) "\" defer></script>\n"
+       (apply str (for [src scripts]
+                    (str "<script src=\"" (escape src) "\" defer></script>\n")))
        "</body>\n"
        "</html>\n"))
 
+(defn- route-page
+  "A route's page for this request: its map, or what its function returns."
+  [request]
+  (let [page (::route-page request)]
+    (cond
+      (nil? page) {}
+      (map? page) page
+      :else       (let [result (page request)]
+                    (when-not (and (map? result) (every? route-keys (keys result)))
+                      (throw (ex-info "A route's :page function must return a map of page keys"
+                                      {:type ::bad-page :page result})))
+                    result))))
+
 (defn start
-  "The page part: a Ring handler that answers with the page."
+  "The page part: a Ring handler that answers with the page, the route's
+   own page (::route-page on the request) merged over the app's."
   [{:keys [settings]}]
   (check-settings settings)
-  (let [body (html settings)]
-    (fn [_request]
-      {:status  200
-       :headers {"Content-Type"  "text/html; charset=utf-8"
-                 "Cache-Control" "no-store"}
-       :body    body})))
+  (fn [request]
+    {:status  200
+     :headers {"Content-Type"  "text/html; charset=utf-8"
+               "Cache-Control" "no-store"}
+     :body    (html (merged settings (route-page request)))}))
