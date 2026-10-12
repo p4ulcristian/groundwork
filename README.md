@@ -45,7 +45,9 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
                                   :on-error                report-error  ; or nil
                                   :proxies                 {:trusted ["10.0.0.0/8"]
                                                             :client-ip-header "cf-connecting-ip"
-                                                            :request-id-header "x-request-id"}}
+                                                            :request-id-header "x-request-id"}
+                                  :languages               {:supported ["en" "de"] :default "en"
+                                                            :cookie "lang"}}   ; or nil
                     :server      {:ip "0.0.0.0" :port 8080}
                     :sessions    {:cookie-name "acme_session" :max-age-days 30 :visitor-hours 24
                                   :secure? true :origin "https://app.acme.example"}
@@ -273,6 +275,12 @@ resources/migrations/
   :trusted` address or range is believed about the visitor's address
   (`:client-ip-header`, its first entry) and its id; otherwise the
   connection's address and a new id (`web/client-ip`).
+- **Languages** (`:languages`, or nil for one): a `/de/…` prefix is taken
+  off before routing; the request's language (`web/language`) is the
+  address's, then the cookie's (when named), then the browser's
+  Accept-Language, then the default. The page shell's `lang` follows it, and
+  its alternate links name the same page in every language (the default
+  without a prefix, plus x-default), unless the route gives its own.
 - **Request bodies:** none larger than `:max-body-bytes`, or a route's own
   (`["/uploads" {:post upload :access :signed-in :max-body-bytes 104857600}]`); larger is 413,
   and the server never reads more than the largest any route accepts. A

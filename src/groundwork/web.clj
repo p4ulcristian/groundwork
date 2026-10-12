@@ -45,6 +45,15 @@
                :client-ip-header  \"cf-connecting-ip\"   ; or nil
                :request-id-header \"x-request-id\"}      ; or nil
 
+   Languages (or nil for one language):
+
+     :languages {:supported [\"en\" \"de\"] :default \"en\" :cookie \"lang\"}
+
+   A /de/… prefix is taken off before routing; the request's language comes
+   from the address, then the cookie (when named), then the browser's
+   Accept-Language, then the default (see language). The page shell's lang
+   and its alternate links follow it.
+
    Request bodies: none may be larger than :max-body-bytes, or a route's own
    [\"/uploads\" {:post upload :max-body-bytes 104857600}]; a larger one is
    refused with 413. A browser route's form body is parsed into :form-params,
@@ -320,6 +329,69 @@
              (handler request)))})
 
 ;; =============================================================================
+;; Languages
+;; =============================================================================
+
+(defn- check-languages [languages]
+  (when (some? languages)
+    (let [{:keys [supported default cookie]} languages]
+      (when-not (and (map? languages) (= #{:supported :default :cookie} (set (keys languages)))
+                     (vector? supported) (seq supported)
+                     (every? #(and (string? %) (re-matches #"[a-z]{2}(-[a-z]{2})?" %)) supported)
+                     (some #{default} supported)
+                     (or (nil? cookie) (and (string? cookie) (re-matches #"[A-Za-z0-9_\-]+" cookie))))
+        (throw (ex-info ":languages must be nil or {:supported [\"en\" \"de\"] :default \"en\" :cookie name-or-nil}"
+                        {:type ::bad-setting :setting :languages :value languages}))))))
+
+(defn- cookie-value [request name]
+  (some (fn [pair]
+          (let [[k v] (str/split (str/trim pair) #"=" 2)]
+            (when (= k name) v)))
+        (some-> (get-in request [:headers "cookie"]) (str/split #";"))))
+
+(defn- accepted-languages
+  "The browser's Accept-Language, most wanted first, as lowercase tags."
+  [header]
+  (->> (str/split (or header "") #",")
+       (keep (fn [entry]
+               (let [[tag & params] (map str/trim (str/split entry #";"))
+                     q (or (some #(some-> (re-matches #"q=([0-9.]+)" %) second parse-double) params) 1.0)]
+                 (when (and (seq tag) (not= "*" tag)) [(str/lower-case tag) q]))))
+       (sort-by (comp - second))
+       (map first)))
+
+(defn- pick-language [{:keys [supported default cookie]} request]
+  (let [supported? (set supported)]
+    (or (some-> cookie (#(cookie-value request %)) supported?)
+        (some (fn [tag] (or (supported? tag) (supported? (first (str/split tag #"-")))))
+              (accepted-languages (get-in request [:headers "accept-language"])))
+        default)))
+
+(defn language
+  "The request's language, or nil when the app has one."
+  [request]
+  (::page/language request))
+
+(defn- wrap-languages
+  "Take a /xx/ prefix off the path and pick the request's language; give the
+   page shell the language and the same page's address in each language."
+  [handler languages origin]
+  (if (nil? languages)
+    handler
+    (let [{:keys [supported default]} languages
+          prefix (re-pattern (str "^/(" (str/join "|" supported) ")(/.*)?$"))]
+      (fn [request]
+        (let [[_ lang rest] (re-matches prefix (:uri request))
+              path          (if lang (or rest "/") (:uri request))
+              chosen        (or lang (pick-language languages request))
+              href          (fn [l] (str origin (when (not= l default) (str "/" l)) (if (= "/" path) (when (= l default) "/") path)))]
+          (handler (assoc request
+                          :uri                 path
+                          ::page/language      chosen
+                          ::page/alternates    (conj (mapv (fn [l] {:lang l :href (href l)}) supported)
+                                                     {:lang "x-default" :href (href default)}))))))))
+
+;; =============================================================================
 ;; Access
 ;; =============================================================================
 
@@ -529,7 +601,7 @@
   [])
 
 (def ^:private settings
-  [:routes :max-body-bytes :content-security-policy :login-path :on-request :on-error :proxies])
+  [:routes :max-body-bytes :content-security-policy :login-path :on-request :on-error :proxies :languages])
 
 (defn- check-settings [opts]
   (when-not (map? opts)
@@ -552,11 +624,13 @@
             :let [v (get opts k)]]
       (when-not (or (nil? v) (ifn? v))
         (throw (ex-info (str k " must be a function or nil") {:type ::bad-setting :setting k :value v}))))
-    (check-proxies (:proxies opts))))
+    (check-proxies (:proxies opts))
+    (check-languages (:languages opts))))
 
 (defn handler
   "The app's Ring handler, for settings already checked."
-  [{:keys [routes max-body-bytes content-security-policy login-path page sessions permissions environment]
+  [{:keys [routes max-body-bytes content-security-policy login-path languages page sessions permissions
+           environment]
     :as   settings}]
   (let [files  (-> (ring/create-resource-handler {:path "/" :root "public"})
                    wrap-file-caching
@@ -577,6 +651,7 @@
                              (fn [request] (when (wants-page? request) (page request)))
                              not-found))]
     (-> (fn [request] (app (assoc request ::page page)))
+        (wrap-languages languages (get-in sessions [:settings :origin]))
         (wrap-security-headers environment content-security-policy)
         (wrap-context settings))))
 

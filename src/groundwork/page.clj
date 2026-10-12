@@ -23,6 +23,10 @@
      :body       HTML text the server writes inside <div id=\"app\">, for
                  search engines and the first paint; the app replaces it
 
+   With languages (see groundwork.web), the page's lang is the request's
+   language unless the route gives its own, and the alternate links name the
+   same page in every language unless the route gives its own.
+
    The page has one element for the app to render into, <div id=\"app\">, and
    is never cached: a deploy is seen on the next load. Every <script> and
    <style> on it, the app's :head and :body included, carries the request's
@@ -131,4 +135,8 @@
     {:status  200
      :headers {"Content-Type"  "text/html; charset=utf-8"
                "Cache-Control" "no-store"}
-     :body    (html (merged settings (route-page request)) (::nonce request))}))
+     :body    (html (merged (cond-> settings
+                              (::language request)   (assoc :lang (::language request))
+                              (::alternates request) (assoc :alternates (::alternates request)))
+                            (route-page request))
+                    (::nonce request))}))
