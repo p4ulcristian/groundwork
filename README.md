@@ -62,6 +62,9 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
 - Inside, Integrant starts the parts in order and stops them in reverse.
   That wiring is Groundwork's own: settings don't name or replace parts.
 - Tests can replace a part: `(gw/start-with settings {:groundwork/db fake})`.
+- In the REPL, `(gw/swap-routes! app routes)` serves new routes without a
+  restart; they're checked like at start, and wrong ones leave the old in
+  place.
 
 ---
 

@@ -890,9 +890,27 @@
 
 (defn start
   "The router part: {:handler … :max-body-bytes …}, the most any route
-   accepts, which the server reads at most."
+   accepts, which the server reads at most. The handler can be swapped for
+   one with new routes while the server runs (swap-routes!)."
   [{:keys [settings environment page sessions permissions]}]
   (check-settings settings environment)
-  {:handler        (handler (assoc settings :page page :sessions sessions :permissions permissions
-                                   :environment environment))
-   :max-body-bytes (largest-body (:routes settings) (:max-body-bytes settings))})
+  (let [inputs  (assoc settings :page page :sessions sessions :permissions permissions :environment environment)
+        current (atom (handler inputs))
+        largest (largest-body (:routes settings) (:max-body-bytes settings))]
+    {:handler        (fn [request] (@current request))
+     :max-body-bytes largest
+     ::current       current
+     ::inputs        inputs}))
+
+(defn swap-routes!
+  "Serve new routes from now on, without restarting the server: for the
+   REPL. Checked like at start; when they're wrong, the old routes stay. A
+   route taking a bigger body than the server reads needs a restart."
+  [{::keys [current inputs] :keys [max-body-bytes]} routes]
+  (let [inputs (assoc inputs :routes routes)]
+    (check-settings (apply dissoc inputs [:page :sessions :permissions :environment]) (:environment inputs))
+    (when (> (largest-body routes (:max-body-bytes inputs)) max-body-bytes)
+      (throw (ex-info "A route takes a bigger body than the running server reads; restart the app"
+                      {:type ::restart-needed})))
+    (reset! current (handler inputs))
+    routes))

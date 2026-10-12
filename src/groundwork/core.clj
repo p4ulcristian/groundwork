@@ -158,6 +158,13 @@
   [app]
   (part app :groundwork/permissions))
 
+(defn swap-routes!
+  "Serve new routes without restarting, for the REPL:
+   (gw/swap-routes! app (app.routes/routes)). Checked like at start; wrong
+   routes throw and the old ones stay."
+  [app routes]
+  (web/swap-routes! (part app :groundwork/router) routes))
+
 (defn port
   "The port the app's server listens on."
   [app]
