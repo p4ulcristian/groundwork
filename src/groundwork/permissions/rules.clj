@@ -272,6 +272,20 @@
                              granted)]
         {:sql sql :params params}))))
 
+(defn linked-scope-clauses
+  "Conditions on a scope id (the SQL `scope`) that hold when a link gives the
+   action there: [[sql params] …], params naming the person as :person."
+  [{:keys [links]} action scope]
+  (for [{:keys [from to grants] t :table condition :when} links
+        :let [needed (grants action)]
+        :when needed]
+    (let [[when-sql when-params] (condition-sql "gwl" condition)]
+      [(str scope " IN (SELECT gwl." (quote-id (column (second to)))
+            " FROM " (quote-id (table t)) " gwl WHERE " when-sql
+            " AND gwl." (quote-id (column (second from)))
+            " IN (SELECT groundwork.scopes_holding(CAST(? AS uuid), ?)))")
+       (into when-params [:person (action-name needed)])])))
+
 (defn rules-of
   "Every rule a description can grant: {[action kind] {:sql :params}}. An
    action named on a record kind that nothing can grant throws."

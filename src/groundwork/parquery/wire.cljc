@@ -38,8 +38,11 @@
 
 (def decimal-schema
   "An exact decimal: BigDecimal on the server, big.js in the browser."
-  (m/-simple-schema {:type :decimal
-                     :pred #?(:clj decimal? :cljs #(instance? Big %))}))
+  (m/-simple-schema {:type            :decimal
+                     :pred            #?(:clj decimal? :cljs #(instance? Big %))
+                     ;; for generated values (tests): a whole number, as a decimal
+                     :type-properties {:gen/schema :int
+                                       :gen/fmap   (fn [n] #?(:clj (BigDecimal. (str n ".00")) :cljs (Big. (str n))))}}))
 
 (def registry
   "The schemas an endpoint's shapes may use: malli's own, the :time/…

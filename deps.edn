@@ -25,5 +25,7 @@
          :extra-deps  {io.github.cognitect-labs/test-runner
                        {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                        ;; HikariCP logs through SLF4J; the app picks a logger, tests pick none
-                       org.slf4j/slf4j-nop {:mvn/version "2.0.20"}}
+                       org.slf4j/slf4j-nop {:mvn/version "2.0.20"}
+                       ;; groundwork.leaks generates params
+                       org.clojure/test.check {:mvn/version "1.1.1"}}
          :exec-fn     cognitect.test-runner.api/test}}}

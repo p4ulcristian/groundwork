@@ -172,23 +172,26 @@
   (get (rules/action-kinds (:description perms)) action))
 
 (defn scopes-under
-  "The scope and every scope below it where the person holds the action:
-   what a request about that scope may see. Empty when the person holds it
-   nowhere there, or the session blocks it."
+  "The scope and every scope below it where the person holds the action,
+   or a link gives it to them: what a request about that scope may see.
+   Empty when nothing grants it there, or the session blocks it."
   [perms {:keys [person flags action scope]}]
   (if (or (nil? person) (nil? scope) (blocked? perms action flags))
     #{}
-    (as-system perms
-               (fn [tx]
-                 (into #{}
-                       (map (comp val first))
-                       (query tx (str "WITH RECURSIVE below(scope) AS ("
-                                      " SELECT CAST(? AS uuid)"
-                                      " UNION SELECT s.scope__id FROM groundwork.scopes s"
-                                      " JOIN below b ON s.scope__parent_id = b.scope)"
-                                      " SELECT scope FROM below"
-                                      " WHERE scope IN (SELECT groundwork.scopes_holding(CAST(? AS uuid), ?))")
-                              [(str scope) (str person) (rules/action-name action)]))))))
+    (let [links (rules/linked-scope-clauses (:description perms) action "scope")]
+      (as-system perms
+                 (fn [tx]
+                   (into #{}
+                         (map (comp val first))
+                         (query tx (str "WITH RECURSIVE below(scope) AS ("
+                                        " SELECT CAST(? AS uuid)"
+                                        " UNION SELECT s.scope__id FROM groundwork.scopes s"
+                                        " JOIN below b ON s.scope__parent_id = b.scope)"
+                                        " SELECT scope FROM below"
+                                        " WHERE scope IN (SELECT groundwork.scopes_holding(CAST(? AS uuid), ?))"
+                                        (apply str (map #(str " OR " (first %)) links)))
+                                (into [(str scope) (str person) (rules/action-name action)]
+                                      (mapcat #(rules/bind (second %) person) links)))))))))
 
 (defn scopes-listed
   "The scopes of every record of a kind the person may do the action on

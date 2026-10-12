@@ -565,3 +565,21 @@ POST /parquery
   zeros aren't kept). An app's build needs the npm packages in
   `src/deps.cljs`.
 - Tests: `npm install && npx shadow-cljs compile test` (headless, on node).
+
+### The leak test
+
+```clojure
+(deftest nothing-leaks
+  (let [report (leaks/check (gw/endpoints app)
+                            {:person  peter                                  ; a member of one shop
+                             :foreign {:shop zinc :order zinc-order :job zinc-job}})]   ; another shop's ids
+    (is (empty? (:leaked report)) (pr-str (:leaked report)))))
+```
+
+- Every endpoint with an action permission is called with params generated
+  from its input shape and every id set to the foreign one of its kind; it
+  must answer not-found. It catches a permission description that grants
+  too much, like a link whose condition forgot the status.
+- Public, signed-in and id-less list endpoints are skipped, and so is one
+  that needs a foreign id nobody gave; the report says which and why.
+- Generating needs `org.clojure/test.check` on the test classpath.
