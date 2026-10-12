@@ -131,8 +131,11 @@
       (bad k ":permission must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param]} or {:action … :list kind}")
 
       :else
-      (let [{:keys [action record scope list]} permission]
-        (when-not (permissions/action-kind perms action)
+      (let [{:keys [action record scope list]} permission
+            team? (= rules/team-action action)]
+        (when (and team? (not (and scope (= :groundwork/any (first scope)))))
+          (bad k (str rules/team-action " goes with {:scope [:groundwork/any param]}: it is held in any kind of scope")))
+        (when-not (or team? (permissions/action-kind perms action))
           (bad k (str "no action " action " in the permission description")))
         (when record
           (let [[kind param] record]
@@ -142,7 +145,7 @@
               (bad k (str "the record's param " param " isn't in :input")))))
         (when scope
           (let [[kind param] scope]
-            (when-not (scopes kind)
+            (when-not (or (scopes kind) (and team? (= :groundwork/any kind)))
               (bad k (str "no scope kind " kind)))
             (when-not (in-map? param)
               (bad k (str "the scope's param " param " isn't in :input")))))
@@ -195,6 +198,12 @@
            :ids        (id-fields perms k permission input)
            :read?      (contains? entry :read)
            :handler    (or (:read entry) (:write entry)))))
+
+(defn- own-transaction?
+  "Groundwork's team endpoints (groundwork.team) open their own transactions
+   after their own checks, outside the wall."
+  [entry]
+  (boolean (::own-transaction (meta entry))))
 
 (defn- built-in
   "Groundwork's own endpoints. :groundwork/grants is behind the browser's
@@ -348,6 +357,13 @@
               (if-let [{:keys [retry-after-seconds]}
                        (when rate-limit (rate-limit {:endpoint endpoint :person person :client-ip client-ip}))]
                 (answer :too-many :retry-after-seconds retry-after-seconds)
+                (if (own-transaction? entry)
+                  (let [data ((:handler entry) (assoc ask :perms perms :scopes scopes :flags flags :params decoded)
+                                               decoded)]
+                    (when-not (wire/fits? (:answer entry) data)
+                      (throw (ex-info (str "Endpoint " endpoint "'s answer doesn't fit its shape")
+                                      {:type ::bad-answer :endpoint endpoint :errors (wire/explain (:answer entry) data)})))
+                    (answer :ok :data data))
                 (let [files (atom #{})
                       data  (permissions/in-wall
                             perms (let [{:keys [action record list]} (when (map? (:permission entry)) (:permission entry))]
@@ -365,11 +381,12 @@
                                             data))]
                                 (if (:read? entry) (run) (run-write-once entry tx ask run)))))]
                   (when (:read? entry) (remember-files! part endpoint @files))
-                  (answer :ok :data data))))
+                  (answer :ok :data data)))))
             (catch clojure.lang.ExceptionInfo e
               (case (:type (ex-data e))
                 ::permissions/not-found (answer :not-found)
-                ::refused               (answer :refused :message (ex-message e))
+                (::refused ::permissions/refused ::permissions/unknown-role ::permissions/unknown-action)
+                (answer :refused :message (ex-message e))
                 (failed part e {:endpoint endpoint :person person :request-id request-id :client-ip client-ip})))
             (catch Throwable e
               (failed part e {:endpoint endpoint :person person :request-id request-id :client-ip client-ip}))))))))

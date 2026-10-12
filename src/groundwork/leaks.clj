@@ -37,9 +37,13 @@
 (defn- foreign-ids
   "The params with every id the endpoint carries set to the foreign one of
    its kind; nil when a kind has no foreign id."
-  [{:keys [permission ids]} params foreign]
+  [{:keys [permission ids]} params foreign scope-kinds]
   (let [{:keys [record scope]} permission
         [own-kind own-param]   (or record scope)
+        ;; held in any kind of scope (the team endpoints): any foreign scope
+        own-kind               (if (= :groundwork/any own-kind)
+                                 (some #(when (contains? foreign %) %) scope-kinds)
+                                 own-kind)
         needed                 (cond-> (set (vals ids)) own-kind (conj own-kind))]
     (when (every? #(contains? foreign %) needed)
       (let [params (cond-> params own-param (assoc own-param (foreign own-kind)))]
@@ -84,7 +88,7 @@
                 (let [generated (try (generate (:input entry)) (catch Exception e e))]
                   (if (instance? Exception generated)
                     (assoc-in report [:skipped k] (str "its input can't be generated: " (ex-message generated)))
-                    (if-let [params (foreign-ids entry generated foreign)]
+                    (if-let [params (foreign-ids entry generated foreign (keys (get-in part [:perms :description :scopes])))]
                       (let [answer (endpoints/call part {:endpoint k :params params :person person
                                                          :flags (or flags #{}) :request-id "leak-test"})]
                         (if (= :not-found (:status answer))

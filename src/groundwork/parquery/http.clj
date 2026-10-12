@@ -51,8 +51,9 @@
       (json 413 {:error (str "At most " (:max-asks settings) " asks in one request")})
 
       :else
-      (let [about {:person     (sessions/person request)
-                   :flags      (sessions/flags request)
+      (let [about {:person       (sessions/person request)
+                   :flags        (sessions/flags request)
+                   :session-data (sessions/data request)
                    :request-id (web/request-id request)
                    :client-ip  (web/client-ip request)}
             run   (fn [raw]

@@ -679,6 +679,34 @@ Everything the browser, or a tool, can ask. The app lists them by area:
 - `:groundwork/grants` is built in: every action the person holds, and
   where, for the browser's "can I?".
 
+### The team endpoints
+
+A scope's people and roles, for the app's own screens (Groundwork ships no
+UI). The app adds them to its list:
+`:parquery {:endpoints [groundwork.team/endpoints app.jobs/endpoints …]}`.
+
+| Endpoint | | |
+|---|---|---|
+| `:groundwork.team/members` | read | who is in the scope: role, owner, extra actions |
+| `:groundwork.team/roles` | read | the roles and their actions (the roles grid) |
+| `:groundwork.team/invite` | write | an email with a role → `{:invitation/token …}` for the link the app mails |
+| `:groundwork.team/accept` | write | the signed-in person joins; needs `:person/email` in the session |
+| `:groundwork.team/change-role` | write | a member gets another role |
+| `:groundwork.team/set-role-actions` | write | a role's actions (ticks in the grid) |
+| `:groundwork.team/create-role` | write | a new role with its actions |
+| `:groundwork.team/remove-member` | write | a person leaves the scope |
+| `:groundwork.team/grant-extra`, `revoke-extra` | write | one action on top of a role |
+
+- All but accept need `:groundwork/team` in the scope named by
+  `:team/scope-id`; another scope's id answers not-found. Every action
+  handed out or taken back must be one the person holds; only an owner makes
+  or removes owners, and a scope always keeps one.
+- The app's login keeps the person's email in the session as
+  `:person/email` (`sessions/put-data`), so an invitation can be accepted only
+  by the address it was sent to.
+- They run outside the wall: Groundwork's team functions check, then open
+  their own transactions as the system.
+
 ---
 
 ## 8. parquery
