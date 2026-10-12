@@ -11,6 +11,7 @@ keywords → postgres → parquery → re-frame → reagent
 
 | Part              | Namespace             | Status |
 |-------------------|-----------------------|--------|
+| Starting an app   | `groundwork.core`     | built  |
 | Keywords          | `groundwork.names`    | built  |
 | db                | `groundwork.postgres` | built on next.jdbc + PgJDBC + HikariCP |
 | parquery          |                       | next   |
@@ -24,6 +25,21 @@ keywords → postgres → parquery → re-frame → reagent
 | background jobs   |                       | later ([#1](https://github.com/p4ulcristian/groundwork/issues/1)) |
 
 Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
+
+---
+
+## Starting an app
+
+```clojure
+(def app (gw/start {:environment :development
+                    :db          {…}}))   ; see Postgres, Start
+(gw/stop app)
+```
+
+- One key per part, every key required; an unknown key throws.
+- Inside, Integrant starts the parts in order and stops them in reverse.
+  That wiring is Groundwork's own: settings don't name or replace parts.
+- Tests can replace a part: `(gw/start-with settings {:groundwork/db fake})`.
 
 ---
 
