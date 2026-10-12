@@ -63,7 +63,8 @@
    like JSON, and every server-to-server route's body stay untouched, so a
    webhook can check a signature over the exact bytes.
 
-   Files answer byte ranges (206), so video plays and seeks everywhere.
+   Files answer byte ranges (206), so video plays and seeks everywhere. HEAD
+   is answered for every GET route, like GET without the body.
 
    Every answer carries the standard security headers, and no page may be
    framed by another site unless its route is :embeddable. In production also
@@ -647,6 +648,14 @@
                             "Content-Range"  (str "bytes " start "-" end "/" length)
                             "Content-Length" (str (inc (- end start)))))))))))))
 
+(defn- wrap-head
+  "HEAD is answered like GET, without the body: every GET route has one."
+  [handler]
+  (fn [request]
+    (if (= :head (:request-method request))
+      (some-> (handler (assoc request :request-method :get)) (assoc :body nil))
+      (handler request))))
+
 (defn page
   "A Ring handler answering with the page shell, for a route of the app's own:
    [\"/customize\" {:get web/page :embeddable true}]."
@@ -713,6 +722,7 @@
                              (fn [request] (when (wants-page? request) (page request)))
                              not-found))]
     (-> (fn [request] (app (assoc request ::page page)))
+        wrap-head
         (wrap-languages languages (get-in sessions [:settings :origin]))
         (wrap-security-headers environment content-security-policy)
         (wrap-context settings))))

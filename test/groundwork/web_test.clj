@@ -257,6 +257,13 @@
   (let [{:keys [status headers]} (request "/app.css" {:headers {"Range" "bytes=100-200"}})]
     (is (= [416 "bytes */20"] [status (headers "content-range")]))))
 
+(deftest head-is-answered-like-get
+  (let [{:keys [status body]} (request "/api/hello" {:method "HEAD"})]
+    (is (= 200 status))
+    (is (= "" body)))
+  (is (= 200 (:status (request "/app.css" {:method "HEAD"}))))
+  (is (= 200 (:status (request "/about" {:method "HEAD" :headers html})))))
+
 (deftest anything-else-is-not-found
   (is (= 404 (:status (request "/missing.png" {:headers {"Accept" "image/*"}}))))
   (is (= 404 (:status (request "/" {:method "POST" :headers (assoc html "Origin" (:origin (:sessions app-settings)))}))))
