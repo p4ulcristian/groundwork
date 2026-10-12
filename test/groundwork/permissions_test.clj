@@ -290,6 +290,29 @@
                                                 REFERENCES jobs (job__id, job__shop_id) ON UPDATE CASCADE)"))))
       (finally (sql! "DROP TABLE IF EXISTS parts")))))
 
+(deftest a-record-not-in-a-scope-yet
+  (let [d       (assoc-in description [:records :draft]
+                          {:table :drafts :id :draft/id :in [:shop :draft/shop-id]
+                           :people {:orders/see :draft/author-id}})
+        loose   (UUID/randomUUID)
+        placed  (UUID/randomUUID)]
+    (sql! (str "DROP TABLE IF EXISTS drafts;"
+               "CREATE TABLE drafts (draft__id uuid PRIMARY KEY, draft__shop_id uuid, draft__author_id uuid);"
+               "INSERT INTO drafts VALUES (?, NULL, ?), (?, ?, NULL);")
+          loose kati placed acme)
+    (try
+      (let [perms (perm/start {:settings d :db (:db *perms*)})
+            may?  (fn [person id] (perm/allowed? perms {:person person :action :orders/see
+                                                        :record [:draft id] :flags #{}}))]
+        (testing "a record on its own may leave its scope empty: it starts"
+          (is (some? perms)))
+        (testing "an empty scope column is in no scope: no member sees the row"
+          (is (not (may? paul loose)))
+          (is (may? paul placed) "the one in Acme, Acme's owner does"))
+        (testing "its people still do"
+          (is (may? kati loose))))
+      (finally (sql! "DROP TABLE IF EXISTS drafts")))))
+
 (deftest the-bypass-never-leaks
   (let [db    (pg/start (assoc db-settings :pool-size 1))
         perms (assoc *perms* :db db)]

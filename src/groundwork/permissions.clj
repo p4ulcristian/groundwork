@@ -443,9 +443,14 @@
        "  REFERENCES " parent-table " (" parent-id ", " parent-scope ") ON UPDATE CASCADE;"))
 
 (defn- check-scope-columns!
-  "Every record table has its scope columns, NOT NULL."
+  "Every record table has its scope columns. A record under another record,
+   and a record others hang under, keep them NOT NULL: their matching link
+   holds only then. A record on its own may leave one empty: the row is in
+   no scope through it yet, and only its people and the system see it."
   [db description]
-  (let [parents (into {} (map (juxt :kind identity)) (rules/parent-links description))]
+  (let [parents     (into {} (map (juxt :kind identity)) (rules/parent-links description))
+        above       (set (keep (comp first :parent val) (:records description)))
+        must-fill?  (fn [kind] (or (contains? parents kind) (contains? above kind)))]
     (doseq [{:keys [kind table column]} (rules/scope-columns description)]
       (let [have (into {} (map (juxt :column/name :column/not-null)) (pg/rows db columns-of {:table table}))
             link (parents kind)]
@@ -461,8 +466,9 @@
                       (str "-- fill " column " for the rows already there\n"))
                     "ALTER TABLE " table " ALTER COLUMN " column " SET NOT NULL;"))
 
-          (not (have column))
-          (bad (str "Scope column " table "." column " must be NOT NULL")
+          (and (must-fill? kind) (not (have column)))
+          (bad (str "Scope column " table "." column " must be NOT NULL: records hang under " table
+                    ", or it hangs under another")
                {:table table :column column}
                (str "ALTER TABLE " table " ALTER COLUMN " column " SET NOT NULL;")))))))
 
@@ -491,7 +497,7 @@
 
 (defn- check-database!
   "Every table and column the description names must exist; every record
-   table names its scope, NOT NULL; every record under another is tied to it."
+   table names its scope; every record under another is tied to it."
   [db description]
   (doseq [t (keys (rules/columns-needed description))]
     (when (empty? (pg/rows db columns-of {:table t}))

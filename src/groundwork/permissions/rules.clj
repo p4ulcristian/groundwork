@@ -422,7 +422,7 @@
      :check (str "(" (wall-sql description kind) ") AND " (by-action (constantly "TRUE")))}))
 
 (defn scope-columns
-  "Every record table's scope columns, as plain names: each must be NOT NULL."
+  "Every record table's scope columns, as plain names."
   [{:keys [records]}]
   (for [[kind record] records
         arrow         (arrows record)]
