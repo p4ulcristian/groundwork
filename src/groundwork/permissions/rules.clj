@@ -12,7 +12,9 @@
                            :in [:shop :order/shop-id]                    ; the arrow to its scope
                            :people {:orders/see :order/customer-id}     ; optional: a person on the record
                            :only-when {:orders/edit [:= :order/status \"open\"]}} ; optional
-                 :job     {:table :jobs :id :job/id :in [:order :job/order-id]}  ; job → order → shop
+                 :job     {:table :jobs :id :job/id
+                           :in [:shop :job/shop-id]                      ; its own scope column
+                           :parent [:order :job/order-id]}               ; and the record it hangs under
                  :agreement {:table :agreements :id :agreement/id
                              :in [[:shop :agreement/shop-id] [:partner :agreement/partner-id]]}}
       :links    [{:table :agreements
@@ -21,6 +23,11 @@
                   :when  [:= :agreement/status \"active\"]
                   :grants {:orders/see :agreements/see}}]  ; agreements/see in the partner gives orders/see in the shop
       :session-blocks {:impersonated #{:money/move}}}
+
+   Every record names its scope through its own column, however deep it
+   sits: a job keeps its shop, not only its order. A record under another
+   record names that parent too; the database must tie the two with a
+   matching link (see parent-links).
 
    Every action belongs to one kind of scope. A role may hold its kind's
    actions and those of the kinds below it, plus :groundwork/team (managing
@@ -80,18 +87,16 @@
   (or (= kind above) (some #{above} (ancestors-of description kind))))
 
 (defn- end-kind
-  "The scope kind an arrow ends at, following record kinds."
-  [{:keys [scopes records] :as description} [target _] seen]
+  "The scope kind an arrow leads to: an arrow names a scope kind directly."
+  [{:keys [scopes records]} kind [target _]]
   (cond
     (contains? scopes target)  target
-    (contains? records target) (if (some #{target} seen)
-                                 (problem (str "Record kinds form a loop through " target) {:kind target})
-                                 (let [as (arrows (records target))]
-                                   (when (< 1 (count as))
-                                     (problem (str "An arrow can't go through " target ", which belongs to two scopes")
-                                              {:kind target}))
-                                   (end-kind description (first as) (conj seen target))))
-    :else                      (problem (str "No scope or record kind " target) {:kind target})))
+    (contains? records target) (problem (str "Record kind " kind "'s :in names the record kind " target
+                                             ". A record under another record keeps its own scope column and"
+                                             " names the parent: :in [<scope kind> <its scope column>] :parent ["
+                                             target " <its column to the parent>]")
+                                        {:kind kind})
+    :else                      (problem (str "No scope kind " target) {:kind kind})))
 
 (defn- column [col]
   (names/key->column col))
@@ -120,9 +125,10 @@
   [{:keys [records links]}]
   (merge-with into
               (into {}
-                    (map (fn [[_ {:keys [id people only-when] t :table :as record}]]
+                    (map (fn [[_ {:keys [id people only-when parent] t :table :as record}]]
                            [(table t) (set (map column (concat [id]
                                                                (map second (arrows record))
+                                                               (when parent [(second parent)])
                                                                (vals people)
                                                                (mapcat condition-columns (vals only-when)))))]))
                     records)
@@ -157,7 +163,7 @@
         (when-not (and action-kind (under? description action-kind kind))
           (problem (str "Role " role " of " kind " holds " action ", which isn't an action of " kind " or below")
                    {:kind kind :role role :action action}))))
-    (doseq [[kind {:keys [id people only-when] :as record}] records]
+    (doseq [[kind {:keys [id people only-when parent] :as record}] records]
       (when (contains? scopes kind)
         (problem (str kind " is both a scope kind and a record kind") {:kind kind}))
       (when-let [missing (seq (remove #(contains? record %) [:table :id :in]))]
@@ -165,7 +171,20 @@
       (when-not (qualified-keyword? id)
         (problem (str "Record kind " kind ": :id must be a column like :order/id") {:kind kind}))
       (doseq [arrow (arrows record)]
-        (end-kind description arrow [kind]))
+        (end-kind description kind arrow))
+      (when-let [[parent-kind col] parent]
+        (let [above (records parent-kind)]
+          (when-not above
+            (problem (str "Record kind " kind " has an unknown parent " parent-kind) {:kind kind}))
+          (when-not (qualified-keyword? col)
+            (problem (str "Record kind " kind ": :parent's column must be like :job/order-id") {:kind kind}))
+          (when (or (< 1 (count (arrows record))) (< 1 (count (arrows above))))
+            (problem (str "Record kind " kind " and its parent " parent-kind " must each belong to one scope")
+                     {:kind kind}))
+          (when-not (= (ffirst (arrows record)) (ffirst (arrows above)))
+            (problem (str "Record kind " kind " is in " (ffirst (arrows record)) ", but its parent "
+                          parent-kind " is in " (ffirst (arrows above)))
+                     {:kind kind}))))
       (doseq [action (concat (keys people) (keys only-when))]
         (when-not (kinds action)
           (problem (str "Record kind " kind " names an unknown action " action) {:kind kind :action action}))))
@@ -210,16 +229,9 @@
 
 (defn scope-sql
   "The SQL for the scope id an arrow leads to, from `base` (an alias or a
-   quoted table name), following record kinds through subqueries."
-  [{:keys [scopes records] :as description} base [target col] depth]
-  (let [here (str base "." (quote-id (column col)))]
-    (if (contains? scopes target)
-      here
-      (let [{t :table id :id :as next-record} (records target)
-            alias                             (str "gw" depth)]
-        (str "(SELECT " (scope-sql description alias (first (arrows next-record)) (inc depth))
-             " FROM " (quote-id (table t)) " " alias
-             " WHERE " alias "." (quote-id (column id)) " = " here ")")))))
+   quoted table name): the row's own scope column, no lookup."
+  [base [_ col]]
+  (str base "." (quote-id (column col))))
 
 (defn compile-rule
   "The rule for an action on a kind of record, as {:sql … :params […]}: a
@@ -234,17 +246,17 @@
         (concat
          ;; the record's own scope, or one below the action's kind
          (for [arrow (arrows record)
-               :let  [end (end-kind description arrow [kind])]
+               :let  [end (end-kind description kind arrow)]
                :when (under? description end action-kind)]
-           [(str (scope-sql description "r" arrow 0) " " holding) [:person (action-name action)]])
+           [(str (scope-sql "r" arrow) " " holding) [:person (action-name action)]])
          ;; a scope linked to the record's scope
          (for [arrow                                      (arrows record)
-               :let                                       [end (end-kind description arrow [kind])]
+               :let                                       [end (end-kind description kind arrow)]
                {:keys [from to grants] t :table condition :when} links
                :let                                       [needed (grants action)]
                :when                                      (and needed (= end (first to)))]
            (let [[when-sql when-params] (condition-sql "gwl" condition)]
-             [(str (scope-sql description "r" arrow 0)
+             [(str (scope-sql "r" arrow)
                    " IN (SELECT gwl." (quote-id (column (second to)))
                    " FROM " (quote-id (table t)) " gwl WHERE " when-sql
                    " AND gwl." (quote-id (column (second from))) " " holding ")")
@@ -277,14 +289,55 @@
 (defn wall-sql
   "The database wall's condition for a record kind's table: a row is visible
    when one of its scopes was verified, or it belongs to the person."
-  [{:keys [records] :as description} kind]
+  [{:keys [records]} kind]
   (let [{t :table :keys [people] :as record} (records kind)
         base                                 (quote-id (table t))]
     (str/join " OR "
               (concat (for [arrow (arrows record)]
-                        (str "groundwork.wall_allows(" (scope-sql description base arrow 0) ")"))
+                        (str "groundwork.wall_allows(" (scope-sql base arrow) ")"))
                       (for [col (distinct (vals people))]
                         (str base "." (quote-id (column col)) " = groundwork.wall_person()"))))))
+
+(defn scope-columns
+  "Every record table's scope columns, as plain names: each must be NOT NULL."
+  [{:keys [records]}]
+  (for [[kind record] records
+        arrow         (arrows record)]
+    {:kind kind :table (table (:table record)) :column (column (second arrow))}))
+
+(defn parent-links
+  "For every record kind under another record: the matching link the
+   database must have, as plain names. The child's (parent column, scope
+   column) must reference the parent's (id, scope column), ON UPDATE CASCADE,
+   so a child's scope can't differ from its parent's and follows it when the
+   parent moves."
+  [{:keys [records]}]
+  (for [[kind {t :table [parent-kind parent-col] :parent :as record}] records
+        :when parent-kind
+        :let  [{pt :table pid :id :as above} (records parent-kind)]]
+    {:kind          kind
+     :table         (table t)
+     :scope-column  (column (second (first (arrows record))))
+     :parent-column (column parent-col)
+     :parent-table  (table pt)
+     :parent-id     (column pid)
+     :parent-scope  (column (second (first (arrows above))))}))
+
+(defn fill-sql
+  "The statements that install a link's fill rule: a row inserted without
+   its scope takes its parent's. Safe to run again."
+  [{t :table :keys [scope-column parent-column parent-table parent-id parent-scope]}]
+  (let [function (str "groundwork." (quote-id (str "fill_scope__" t)))]
+    [(str "CREATE OR REPLACE FUNCTION " function "() RETURNS trigger LANGUAGE plpgsql AS $$\n"
+          "BEGIN\n"
+          "  IF NEW." (quote-id scope-column) " IS NULL THEN\n"
+          "    SELECT p." (quote-id parent-scope) " INTO NEW." (quote-id scope-column)
+          " FROM " (quote-id parent-table) " p WHERE p." (quote-id parent-id) " = NEW." (quote-id parent-column) ";\n"
+          "  END IF;\n"
+          "  RETURN NEW;\n"
+          "END $$")
+     (str "CREATE OR REPLACE TRIGGER groundwork_fill_scope BEFORE INSERT ON " (quote-id t)
+          " FOR EACH ROW EXECUTE FUNCTION " function "()")]))
 
 (defn blocked?
   "Whether a session's flags block an action."

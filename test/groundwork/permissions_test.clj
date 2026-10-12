@@ -1,7 +1,9 @@
 (ns groundwork.permissions-test
   "Shops under a company, a partner linked to shops by agreements, records
-   that reach their shop through other records, customers on their orders."
+   under other records that keep their shop themselves, customers on their
+   orders."
   (:require
+   [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.migrations :as migrations]
    [groundwork.permissions :as perm]
@@ -38,7 +40,7 @@
                        :parent  nil}}
    :records {:order     {:table :orders :id :order/id :in [:shop :order/shop-id]
                          :people {:orders/see :order/customer-id}}
-             :job       {:table :jobs :id :job/id :in [:order :job/order-id]}
+             :job       {:table :jobs :id :job/id :in [:shop :job/shop-id] :parent [:order :job/order-id]}
              :invoice   {:table :invoices :id :invoice/id :in [:shop :invoice/shop-id]
                          :only-when {:invoices/edit [:= :invoice/status "draft"]}}
              :machine   {:table :machines :id :machine/id :in [:shop :machine/shop-id]}
@@ -52,10 +54,14 @@
    :session-blocks {:impersonated #{:money/move}}})
 
 (def tables
-  "DROP TABLE IF EXISTS jobs, orders, invoices, machines, agreements;
+  "DROP TABLE IF EXISTS parts, jobs, orders, invoices, machines, agreements;
    CREATE TABLE orders (order__id uuid PRIMARY KEY, order__shop_id uuid NOT NULL,
-                        order__customer_id uuid, order__status text NOT NULL);
-   CREATE TABLE jobs (job__id uuid PRIMARY KEY, job__order_id uuid NOT NULL REFERENCES orders);
+                        order__customer_id uuid, order__status text NOT NULL,
+                        UNIQUE (order__id, order__shop_id));
+   CREATE TABLE jobs (job__id uuid PRIMARY KEY, job__order_id uuid NOT NULL, job__shop_id uuid NOT NULL,
+                      UNIQUE (job__id, job__shop_id),
+                      FOREIGN KEY (job__order_id, job__shop_id)
+                        REFERENCES orders (order__id, order__shop_id) ON UPDATE CASCADE);
    CREATE TABLE invoices (invoice__id uuid PRIMARY KEY, invoice__shop_id uuid NOT NULL,
                           invoice__status text NOT NULL);
    CREATE TABLE machines (machine__id uuid PRIMARY KEY, machine__shop_id uuid NOT NULL);
@@ -80,12 +86,12 @@
         (sql! "TRUNCATE groundwork.scopes, groundwork.roles, groundwork.role_actions, groundwork.memberships,
                         groundwork.extra_actions, groundwork.invitations CASCADE")
         (sql! (str "INSERT INTO orders VALUES (?, ?, ?, 'open'), (?, ?, NULL, 'open');"
-                   "INSERT INTO jobs VALUES (?, ?), (?, ?);"
+                   "INSERT INTO jobs VALUES (?, ?, ?), (?, ?, ?);"
                    "INSERT INTO invoices VALUES (?, ?, 'draft'), (?, ?, 'sent');"
                    "INSERT INTO machines VALUES (?, ?), (?, ?);"
                    "INSERT INTO agreements VALUES (?, ?, ?, 'active'), (?, ?, ?, 'ended');")
               acme-order acme kati zinc-order zinc
-              acme-job acme-order zinc-job zinc-order
+              acme-job acme-order acme zinc-job zinc-order zinc
               draft-invoice acme sent-invoice acme
               acme-machine acme zinc-machine zinc
               acme-agreement acme partner zinc-agreement zinc partner)
@@ -101,7 +107,7 @@
           (binding [*perms* perms] (t)))
         (finally
           (pg/stop db)
-          (sql! "DROP TABLE IF EXISTS jobs, orders, invoices, machines, agreements"))))))
+          (sql! "DROP TABLE IF EXISTS parts, jobs, orders, invoices, machines, agreements"))))))
 
 (defn- may? [person action record & [flags]]
   (perm/allowed? *perms* {:person person :action action :record record :flags (or flags #{})}))
@@ -110,7 +116,7 @@
   (try (f) nil (catch clojure.lang.ExceptionInfo e (ex-data e))))
 
 (deftest a-record-is-checked-through-its-own-scope
-  (testing "a job reaches its shop through its order"
+  (testing "a job is checked through its own shop"
     (is (may? peter :jobs/move [:job acme-job]))
     (is (not (may? peter :jobs/move [:job zinc-job])) "another shop's job"))
   (testing "a role gives only its own actions"
@@ -195,7 +201,7 @@
     (is (= #{} (perm/in-wall *perms* {:person peter :scopes #{}} order-ids))))
   (testing "a record that belongs to the person"
     (is (= #{acme-order} (perm/in-wall *perms* {:person kati :scopes #{}} order-ids))))
-  (testing "a child table follows its parent's scope"
+  (testing "a deep table is walled by its own scope column"
     (is (= #{acme-job} (perm/in-wall *perms* {:person peter :scopes #{acme}}
                                      (fn [tx] (set (map :jobs/job__id (jdbc/execute! (::pg/conn tx) ["SELECT job__id FROM jobs"]))))))))
   (testing "outside the wall, nothing: it fails closed"
@@ -207,6 +213,81 @@
                  (perm/in-wall *perms* {:person peter :scopes #{acme}}
                                (fn [tx] (jdbc/execute! (::pg/conn tx)
                                                        ["INSERT INTO machines VALUES (?, ?)" (id) zinc])))))))
+
+(defn- as-system! [sql & params]
+  (perm/as-system *perms* (fn [tx] (jdbc/execute! (::pg/conn tx) (into [sql] params)))))
+
+(defn- shop-of-job [job]
+  (:jobs/job__shop_id (first (as-system! "SELECT job__shop_id FROM jobs WHERE job__id = ?" job))))
+
+(deftest a-deep-table-keeps-its-own-scope
+  (testing "a job inserted without its shop takes its order's"
+    (let [job (id)]
+      (try
+        (as-system! "INSERT INTO jobs (job__id, job__order_id) VALUES (?, ?)" job acme-order)
+        (is (= acme (shop-of-job job)))
+        (finally (as-system! "DELETE FROM jobs WHERE job__id = ?" job)))))
+  (testing "a job can't name a shop other than its order's"
+    (is (thrown? Exception (as-system! "INSERT INTO jobs VALUES (?, ?, ?)" (id) acme-order zinc))))
+  (testing "an order moving to another shop takes its jobs along"
+    (let [order (id) job (id)]
+      (try
+        (as-system! "INSERT INTO orders VALUES (?, ?, NULL, 'open')" order acme)
+        (as-system! "INSERT INTO jobs (job__id, job__order_id) VALUES (?, ?)" job order)
+        (as-system! "UPDATE orders SET order__shop_id = ? WHERE order__id = ?" zinc order)
+        (is (= zinc (shop-of-job job)))
+        (finally
+          (as-system! "DELETE FROM jobs WHERE job__id = ?" job)
+          (as-system! "DELETE FROM orders WHERE order__id = ?" order)))))
+  (testing "inside the wall, a job takes its order's shop and passes"
+    (let [job (id)]
+      (try
+        (perm/in-wall *perms* {:person peter :scopes #{acme}}
+                      (fn [tx] (jdbc/execute! (::pg/conn tx) ["INSERT INTO jobs (job__id, job__order_id) VALUES (?, ?)"
+                                                              job acme-order])))
+        (is (= acme (shop-of-job job)))
+        (finally (as-system! "DELETE FROM jobs WHERE job__id = ?" job)))))
+  (testing "an order the wall hides gives a job no shop, so it's refused"
+    (is (thrown? Exception
+                 (perm/in-wall *perms* {:person peter :scopes #{acme}}
+                               (fn [tx] (jdbc/execute! (::pg/conn tx) ["INSERT INTO jobs (job__id, job__order_id) VALUES (?, ?)"
+                                                                       (id) zinc-order]))))))
+  (testing "the wall compares the row's own column, no lookup"
+    (is (= "groundwork.wall_allows(\"jobs\".\"job__shop_id\")" (rules/wall-sql description :job)))))
+
+(deftest start-refuses-a-deep-table-without-its-scope-or-link
+  (let [d     (assoc-in description [:records :part]
+                        {:table :parts :id :part/id :in [:shop :part/shop-id] :parent [:job :part/job-id]})
+        start (fn [ddl]
+                (sql! (str "DROP TABLE IF EXISTS parts; " ddl))
+                (error #(perm/start {:settings d :db (:db *perms*)})))]
+    (try
+      (testing "no scope column: the SQL to add and fill it"
+        (let [e (start "CREATE TABLE parts (part__id uuid PRIMARY KEY, part__job_id uuid NOT NULL)")]
+          (is (= ::perm/bad-description (:type e)))
+          (is (str/includes? (:sql e) "ALTER TABLE parts ADD COLUMN part__shop_id uuid;"))
+          (is (str/includes? (:sql e) "UPDATE parts c SET part__shop_id = p.job__shop_id FROM jobs p WHERE p.job__id = c.part__job_id;"))))
+      (testing "a scope column that may be empty"
+        (let [e (start "CREATE TABLE parts (part__id uuid PRIMARY KEY, part__job_id uuid NOT NULL, part__shop_id uuid)")]
+          (is (= "ALTER TABLE parts ALTER COLUMN part__shop_id SET NOT NULL;" (:sql e)))))
+      (testing "no link to the parent"
+        (let [e (start "CREATE TABLE parts (part__id uuid PRIMARY KEY, part__job_id uuid NOT NULL,
+                                            part__shop_id uuid NOT NULL)")]
+          (is (= ::perm/bad-description (:type e)))
+          (is (str/includes? (:sql e) (str "ALTER TABLE parts ADD FOREIGN KEY (part__job_id, part__shop_id)\n"
+                                           "  REFERENCES jobs (job__id, job__shop_id) ON UPDATE CASCADE;")))))
+      (testing "a link that doesn't carry a parent's move down"
+        (let [e (start "CREATE TABLE parts (part__id uuid PRIMARY KEY, part__job_id uuid NOT NULL,
+                                            part__shop_id uuid NOT NULL,
+                                            FOREIGN KEY (part__job_id, part__shop_id) REFERENCES jobs (job__id, job__shop_id))")]
+          (is (= ::perm/bad-description (:type e)))
+          (is (str/includes? (:sql e) "ON UPDATE CASCADE"))))
+      (testing "with its column and link, it starts"
+        (is (nil? (start "CREATE TABLE parts (part__id uuid PRIMARY KEY, part__job_id uuid NOT NULL,
+                                              part__shop_id uuid NOT NULL,
+                                              FOREIGN KEY (part__job_id, part__shop_id)
+                                                REFERENCES jobs (job__id, job__shop_id) ON UPDATE CASCADE)"))))
+      (finally (sql! "DROP TABLE IF EXISTS parts")))))
 
 (deftest the-bypass-never-leaks
   (let [db    (pg/start (assoc db-settings :pool-size 1))
@@ -281,4 +362,10 @@
     (is (= ::rules/bad-description
            (problem (assoc-in description [:records :job :in] [:batch :job/order-id])))
         "an arrow to an unknown kind")
+    (is (= ::rules/bad-description
+           (problem (assoc-in description [:records :job :in] [:order :job/order-id])))
+        "an arrow to another record: it keeps its own scope column and names the parent")
+    (is (= ::rules/bad-description
+           (problem (assoc-in description [:records :job :parent] [:agreement :job/order-id])))
+        "a parent that belongs to two scopes")
     (is (= ::rules/bad-description (problem (dissoc description :links))) "a missing key")))

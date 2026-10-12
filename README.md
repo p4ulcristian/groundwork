@@ -413,7 +413,8 @@ The app describes its places, actions, roles and records once:
  :records {:order {:table :orders :id :order/id :in [:shop :order/shop-id]
                    :people {:orders/see :order/customer-id}           ; optional
                    :only-when {:orders/edit [:= :order/status "open"]}} ; optional
-           :job   {:table :jobs :id :job/id :in [:order :job/order-id]}}
+           :job   {:table :jobs :id :job/id :in [:shop :job/shop-id]  ; its own scope column
+                   :parent [:order :job/order-id]}}                    ; the record it hangs under
  :links   [{:table :agreements :from [:partner :agreement/partner-id] :to [:shop :agreement/shop-id]
             :when [:= :agreement/status "active"] :grants {:orders/see :agreements/see}}]
  :session-blocks {:impersonated #{:money/move}}}
@@ -430,8 +431,17 @@ The app describes its places, actions, roles and records once:
 - Groundwork keeps scopes, roles, role actions, memberships, extra actions
   and invitations in the `groundwork` schema. Changes count on the next
   check; nothing is cached.
-- A record reaches its scope through its own columns (job → order → shop),
-  never a scope the browser names. Another scope's record is not-found.
+- A record is checked through its own scope column, never a scope the
+  browser names. Another scope's record is not-found.
+- **Every scoped table names its scope,** however deep: a job keeps its
+  shop, not only its order. A record under another record names the parent,
+  and the database ties them with a matching link, so the two can't differ:
+  the child's (parent, scope) references the parent's (id, scope),
+  `ON UPDATE CASCADE`, and a parent moving to another scope takes its
+  children along. At start Groundwork installs a rule that fills the scope
+  from the parent when a row is inserted without one, and refuses to start
+  when a scope column is missing or may be empty, or a link is missing or
+  doesn't cascade; the error carries the SQL to add.
 - A membership in a parent scope counts in its children; an owner holds
   everything; a link gives access while its condition holds; a person on
   the record, a condition on its own columns and session flags are part of

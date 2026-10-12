@@ -33,6 +33,7 @@
 (pg/defsql set-bypass "groundwork/permissions/set_bypass.sql")
 (pg/defsql set-wall "groundwork/permissions/set_wall.sql")
 (pg/defsql columns-of "groundwork/permissions/columns_of.sql")
+(pg/defsql links-between "groundwork/permissions/links_between.sql")
 (pg/defsql holds-sql "groundwork/permissions/holds.sql")
 (pg/defsql insert-scope "groundwork/permissions/insert_scope.sql")
 (pg/defsql insert-role "groundwork/permissions/insert_role.sql")
@@ -121,7 +122,6 @@
   "The scope ids a record belongs to, through its own columns."
   [perms [kind id]]
   (let [{t :table id-col :id :as spec} (record-spec perms kind)
-        description                    (:description perms)
         arrows                         (let [in (:in spec)] (if (keyword? (first in)) [in] in))]
     (as-system perms
                (fn [tx]
@@ -129,7 +129,7 @@
                        (comp (mapcat vals) (remove nil?))
                        (query tx (str "SELECT "
                                       (str/join ", " (map-indexed (fn [i arrow]
-                                                                    (str (rules/scope-sql description "r" arrow 0)
+                                                                    (str (rules/scope-sql "r" arrow)
                                                                          " AS s" i))
                                                                   arrows))
                                       " FROM " (rules/quote-table t) " r WHERE r." (rules/quote-column id-col) " = ?")
@@ -354,18 +354,81 @@
 ;; The part
 ;; =============================================================================
 
-(defn- check-database!
-  "Every table and column the description names must exist."
+(defn- bad [message data sql]
+  (throw (ex-info (str message (when sql (str "\nIn a migration:\n" sql)))
+                  (assoc data :type ::bad-description :sql sql))))
+
+(defn- link-sql
+  "The SQL that adds a parent link: the parent's unique pair, if it has
+   none, and the child's foreign key."
+  [{t :table :keys [scope-column parent-column parent-table parent-id parent-scope]}]
+  (str "ALTER TABLE " parent-table " ADD UNIQUE (" parent-id ", " parent-scope ");  -- if it has none\n"
+       "ALTER TABLE " t " ADD FOREIGN KEY (" parent-column ", " scope-column ")\n"
+       "  REFERENCES " parent-table " (" parent-id ", " parent-scope ") ON UPDATE CASCADE;"))
+
+(defn- check-scope-columns!
+  "Every record table has its scope columns, NOT NULL."
   [db description]
+  (let [parents (into {} (map (juxt :kind identity)) (rules/parent-links description))]
+    (doseq [{:keys [kind table column]} (rules/scope-columns description)]
+      (let [have (into {} (map (juxt :column/name :column/not-null)) (pg/rows db columns-of {:table table}))
+            link (parents kind)]
+        (cond
+          (not (contains? have column))
+          (bad (str "Table " table " needs its own scope column " column)
+               {:table table :column column}
+               (str "ALTER TABLE " table " ADD COLUMN " column " uuid;\n"
+                    (if link
+                      (str "UPDATE " table " c SET " column " = p." (:parent-scope link)
+                           " FROM " (:parent-table link) " p WHERE p." (:parent-id link)
+                           " = c." (:parent-column link) ";\n")
+                      (str "-- fill " column " for the rows already there\n"))
+                    "ALTER TABLE " table " ALTER COLUMN " column " SET NOT NULL;"))
+
+          (not (have column))
+          (bad (str "Scope column " table "." column " must be NOT NULL")
+               {:table table :column column}
+               (str "ALTER TABLE " table " ALTER COLUMN " column " SET NOT NULL;")))))))
+
+(defn- check-parent-links!
+  "Every record under another record is tied to it by its matching link."
+  [db description]
+  (doseq [{t :table :keys [scope-column parent-column parent-table parent-id parent-scope] :as link}
+          (rules/parent-links description)]
+    (let [wanted #{[parent-column parent-id] [scope-column parent-scope]}
+          found  (first (filter #(= wanted (set (map vector (:link/child-columns %) (:link/parent-columns %))))
+                                (pg/rows db links-between {:child t :parent parent-table})))]
+      (cond
+        (nil? found)
+        (bad (str "Table " t " needs a link to " parent-table " that keeps its scope its parent's: "
+                  "a foreign key (" parent-column ", " scope-column ") → " parent-table
+                  " (" parent-id ", " parent-scope ") ON UPDATE CASCADE")
+             {:table t :parent parent-table}
+             (link-sql link))
+
+        (not (:link/cascades found))
+        (bad (str "The link from " t " to " parent-table " must be ON UPDATE CASCADE, so "
+                  t " follows its parent when the parent moves to another scope")
+             {:table t :parent parent-table}
+             (str "-- drop the existing foreign key (" parent-column ", " scope-column "), then:\n"
+                  (link-sql link)))))))
+
+(defn- check-database!
+  "Every table and column the description names must exist; every record
+   table names its scope, NOT NULL; every record under another is tied to it."
+  [db description]
+  (doseq [t (keys (rules/columns-needed description))]
+    (when (empty? (pg/rows db columns-of {:table t}))
+      (throw (ex-info (str "Permissions name a table " t " that doesn't exist")
+                      {:type ::bad-description :table t}))))
+  (check-scope-columns! db description)
   (doseq [[t needed] (rules/columns-needed description)]
     (let [have (set (map :column/name (pg/rows db columns-of {:table t})))]
-      (when (empty? have)
-        (throw (ex-info (str "Permissions name a table " t " that doesn't exist")
-                        {:type ::bad-description :table t})))
       (doseq [c needed
               :when (not (have c))]
         (throw (ex-info (str "Permissions name a column " t "." c " that doesn't exist")
-                        {:type ::bad-description :table t :column c}))))))
+                        {:type ::bad-description :table t :column c})))))
+  (check-parent-links! db description))
 
 (defn install-wall!
   "Row-level security on every record kind's table: its own rows are
@@ -382,12 +445,23 @@
       (jdbc/execute! (::pg/conn tx) [(str "CREATE POLICY groundwork_wall ON " table
                                           " USING (" wall ") WITH CHECK (" wall ")")]))))
 
+(defn install-fill!
+  "On every record table under another record, a rule that fills a row's
+   scope from its parent when it's inserted without one. Run at start; safe
+   to run again."
+  [{:keys [db description]}]
+  (pg/with-transaction [tx db]
+    (doseq [link      (rules/parent-links description)
+            statement (rules/fill-sql link)]
+      (jdbc/execute! (::pg/conn tx) [statement]))))
+
 (defn start
   "The permissions part: check the description, against the database too,
-   compile every rule, and put up the wall."
+   compile every rule, put up the wall and the fill rules."
   [{:keys [settings db]}]
   (let [description (rules/check settings)]
     (check-database! db description)
     (let [perms {:db db :description description :rules (rules/rules-of description)}]
       (install-wall! perms)
+      (install-fill! perms)
       perms)))
