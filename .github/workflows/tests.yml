@@ -1,0 +1,78 @@
+# Groundwork's own checks, on every push and pull request: the JVM tests
+# against Postgres 18, clj-kondo, and the browser half's tests on node.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      GROUNDWORK_TEST_HOST: 127.0.0.1
+      GROUNDWORK_TEST_PORT: "5432"
+      GROUNDWORK_TEST_DB: groundwork_test
+      GROUNDWORK_TEST_USER: groundwork
+      GROUNDWORK_TEST_PASSWORD: groundwork
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The tests' role is no superuser: a superuser would walk through the
+      # database wall (row-level security) the tests check.
+      - name: Test database
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -c "CREATE ROLE groundwork LOGIN PASSWORD 'groundwork' NOSUPERUSER NOBYPASSRLS"
+          psql -h 127.0.0.1 -U postgres -c "CREATE DATABASE groundwork_test OWNER groundwork"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: DeLaGuardo/setup-clojure@13.4
+        with:
+          cli: latest
+          clj-kondo: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+            ~/.deps.clj
+          key: deps-${{ hashFiles('deps.edn') }}
+
+      - name: Lint
+        run: clj-kondo --lint src test
+
+      - name: JVM tests
+        run: clojure -X:test
+
+      - name: Browser tests
+        run: |
+          npm ci
+          npx shadow-cljs compile test
