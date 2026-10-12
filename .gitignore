@@ -8,3 +8,4 @@ out/
 .groundwork/
 test/public/example-hello/
 .mcp.json
+test/public/example-dev/

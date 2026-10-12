@@ -946,6 +946,16 @@ and not saved to a file is gone on the next start.
   `dev.log.1`). The port goes to `.nrepl-port`. It needs `nrepl/nrepl` and
   `thheller/shadow-cljs` on the classpath, as an app's `:dev` alias has them.
   An app's `.gitignore` lists `.groundwork/`, `.nrepl-port` and `.mcp.json`.
+- **As a service:** `groundwork.repl/serve` runs the same start until the
+  process is stopped, with no terminal:
+  `clojure -X:dev groundwork.repl/serve :settings app.settings/dev :nrepl-port 7888`.
+  [`docs/groundwork-dev.service`](docs/groundwork-dev.service) is a systemd
+  user unit for it; `systemctl --user stop` (SIGTERM) stops the app, the
+  watcher and the nREPL cleanly. The running dev map is `@repl/running`, so
+  from the nREPL: `(swap! repl/running repl/restart!)`. Checked by running
+  the example app (`test/example/hello`) as a transient user service:
+  served, recompiled on save, evaluated and restarted over the nREPL, and
+  stopped with every port closed.
 - **clojure-mcp by default:** the start points a `clojure-mcp` server at its
   nREPL in the app's `.mcp.json` (Claude Code's project MCP servers),
   keeping any other servers there, so Claude Code evaluates in the running

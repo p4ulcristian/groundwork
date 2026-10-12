@@ -177,6 +177,30 @@
     (finally
       (some-> undo (apply [])))))
 
+(defonce ^{:doc "The development start serve made, for the nREPL: (repl/restart! @repl/running)."}
+  running
+  (atom nil))
+
+(defn serve
+  "The development start until the process is stopped, as a service runs
+   (see docs/groundwork-dev.service): no terminal needed, and SIGTERM stops
+   the app, the watcher and the nREPL cleanly on the way out.
+
+     clojure -X:dev groundwork.repl/serve :settings app.settings/dev :nrepl-port 7888
+
+   :settings is the settings map or the symbol of a var holding it; :dir and
+   :nrepl-port as for start!. The running dev map is in repl/running."
+  [{:keys [settings dir nrepl-port mcp-json?] :or {dir "." nrepl-port 0 mcp-json? true}}]
+  (let [settings (if (symbol? settings) @(requiring-resolve settings) settings)]
+    (reset! running (start! settings {:dir dir :nrepl-port nrepl-port :mcp-json? mcp-json?}))
+    (.addShutdownHook (Runtime/getRuntime)
+                      (Thread. ^Runnable (fn []
+                                           (when-let [dev @running]
+                                             (reset! running nil)
+                                             (stop! dev)
+                                             (println "Groundwork stopped")))))
+    @(promise)))
+
 ;; =============================================================================
 ;; Asking as a person
 ;; =============================================================================
