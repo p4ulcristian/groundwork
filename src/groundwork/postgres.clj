@@ -197,6 +197,11 @@
             (.put cache path parsed)
             parsed))))))
 
+(defn sql-text
+  "The SQL a query sends, with ? where its params go."
+  [query]
+  (:sql (load-query query)))
+
 (defn statement
   "[sql values] a query would send, for the REPL and tests."
   [query params]

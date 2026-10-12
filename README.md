@@ -15,7 +15,7 @@ keywords → postgres → parquery → re-frame → reagent
 | Keywords          | `groundwork.names`    | built  |
 | db                | `groundwork.postgres` | built on next.jdbc + PgJDBC + HikariCP |
 | endpoints         | `groundwork.endpoints` | built |
-| parquery          | `groundwork.parquery.*` | HTTP built; bells next |
+| parquery          | `groundwork.parquery.*` | built: HTTP and the bells |
 | parquery, browser |                       |        |
 | server            | `groundwork.server`   | built on http-kit |
 | router            | `groundwork.web`      | built on reitit |
@@ -516,8 +516,20 @@ The transport between browser and server, at one address, `/parquery`:
 - `parquery/wire`: the message format, the same on both sides. JSON, typed
   by the endpoint's shapes: ids, dates (`:time/local-date` …) and decimals
   (`:decimal`) travel as text and come back as what they are.
+- `parquery/websocket`: the bells. A browser opens one line to
+  `/parquery` and sends the reads it shows, `{"watch": [[endpoint params] …]}`;
+  each is checked like an ask. When something it shows changes, it hears
+  `{"changed": [[endpoint params] …]}` and asks again over HTTP. A bell
+  carries no data.
+- Postgres rings: at start every table in the permission description, and
+  the `:bells` setting's `:global` and `:personal` tables, gets a trigger
+  that announces, after a commit, the table, the scopes and people of the
+  changed rows, and their ids; a rollback rings nothing. A watch waits for
+  the tables its read's SQL uses (Postgres plans each file it ran; `:reads`
+  adds what the plan can't see), in its verified scopes. A read about one
+  record rings only when that record changed.
 - The route is public; each endpoint checks its own permission, under the
-  browser's session and the Origin check.
+  browser's session and the Origin check (the websocket's too).
 
 ```
 POST /parquery

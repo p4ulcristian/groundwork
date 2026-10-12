@@ -78,6 +78,8 @@
 (pg/defsql keep-answer "groundwork/endpoints/keep_answer.sql")
 (pg/defsql forget-old-keys "groundwork/endpoints/forget_old_keys.sql")
 (pg/defsql grants-sql "groundwork/endpoints/grants.sql")
+(pg/defsql remember-file "groundwork/endpoints/remember_file.sql")
+(pg/defsql files-of-sql "groundwork/endpoints/files_of.sql")
 
 (def ^:private ^System$Logger logger (System/getLogger "groundwork.endpoints"))
 
@@ -325,6 +327,33 @@
           (throw (refuse "This key was used for something else")))
         (:value (wire/decode answer (wire/read-json stored)))))))
 
+(defn- collecting
+  "An on-query hook that notes each SQL file a read runs, and calls the
+   app's own hook too."
+  [files hook]
+  (fn [{:keys [file] :as q}]
+    (when file (swap! files conj file))
+    (when hook (hook q))))
+
+(defn- remember-files!
+  "Note which SQL files a read endpoint ran, here and in the database, so
+   every server knows which tables its watchers wait for."
+  [{:keys [db known-files]} endpoint files]
+  (doseq [file files
+          :when (not (contains? (get @known-files endpoint) file))]
+    (pg/execute! db remember-file {:endpoint-file/endpoint (wire/endpoint-name endpoint) :endpoint-file/file file})
+    (swap! known-files update endpoint (fnil conj #{}) file)))
+
+(defn files-of
+  "The SQL files a read endpoint has run, on any server: what its watchers
+   wait for. Empty when it has never run."
+  [{:keys [db known-files]} endpoint]
+  (or (not-empty (get @known-files endpoint))
+      (let [files (into #{} (map :endpoint-file/file)
+                        (pg/rows db files-of-sql {:endpoint-file/endpoint (wire/endpoint-name endpoint)}))]
+        (when (seq files) (swap! known-files assoc endpoint files))
+        files)))
+
 (defn- failed [{:keys [on-error]} e about]
   (if on-error
     (try (on-error (assoc about :error e))
@@ -356,10 +385,12 @@
               (if-let [{:keys [retry-after-seconds]}
                        (when rate-limit (rate-limit {:endpoint endpoint :person person :client-ip client-ip}))]
                 (answer :too-many :retry-after-seconds retry-after-seconds)
-                (let [data (permissions/in-wall
+                (let [files (atom #{})
+                      data  (permissions/in-wall
                             perms {:person person :scopes scopes :read-only? (:read? entry)}
                             (fn [tx]
-                              (let [ctx (assoc ask :db tx :scopes scopes :flags flags :params decoded)
+                              (let [tx  (cond-> tx (:read? entry) (assoc ::pg/on-query (collecting files (::pg/on-query tx))))
+                                    ctx (assoc ask :db tx :scopes scopes :flags flags :params decoded)
                                     run (fn []
                                           (let [data ((:handler entry) ctx decoded)]
                                             (when-not (wire/fits? (:answer entry) data)
@@ -368,6 +399,7 @@
                                                                :errors (wire/explain (:answer entry) data)})))
                                             data))]
                                 (if (:read? entry) (run) (run-write-once entry tx ask run)))))]
+                  (when (:read? entry) (remember-files! part endpoint @files))
                   (answer :ok :data data))))
             (catch clojure.lang.ExceptionInfo e
               (case (:type (ex-data e))
@@ -376,6 +408,23 @@
                 (failed part e {:endpoint endpoint :person person :request-id request-id :client-ip client-ip})))
             (catch Throwable e
               (failed part e {:endpoint endpoint :person person :request-id request-id :client-ip client-ip}))))))))
+
+(defn watch
+  "What a person watching a read may be told about, or nil when they may
+   not ask it: {:scopes … :record [kind id]-or-nil}. The same check as
+   asking."
+  [{:keys [perms endpoints]} {:keys [endpoint params person flags]}]
+  (let [entry (get endpoints endpoint)]
+    (when (and entry (:read? entry) (or person (= :public (:permission entry))))
+      (let [{decoded :value} (wire/decode (:input entry) (or params {}))]
+        (when decoded
+          (try
+            {:scopes (verified-scopes perms entry {:person person :flags (or flags #{})} decoded)
+             :record (when-let [[kind param] (get-in entry [:permission :record])]
+                       [kind (get decoded param)])}
+            (catch clojure.lang.ExceptionInfo e
+              (when-not (= ::permissions/not-found (:type (ex-data e)))
+                (throw e)))))))))
 
 (defn call-with-token
   "Run one ask for a tool calling with a token instead of a browser session:
@@ -416,6 +465,7 @@
                         (merge app (built-in permissions)))]
     (pg/execute! db forget-old-keys)
     {:db          db
+     :known-files (atom {})
      :perms       permissions
      :endpoints   endpoints
      :settings    settings
