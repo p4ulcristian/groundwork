@@ -55,6 +55,9 @@
    Accept-Language, then the default (see language). The page shell's lang
    and its alternate links follow it.
 
+   GET /health answers 200 when the database answers, 503 when it doesn't,
+   for a load balancer or a monitor.
+
    Automated tests can sign in without the real login (never in production;
    a setting there stops the start):
 
@@ -95,6 +98,7 @@
    [clojure.walk :as walk]
    [groundwork.page :as page]
    [groundwork.permissions :as permissions]
+   [groundwork.postgres :as pg]
    [groundwork.sessions :as sessions]
    [reitit.ring :as ring]
    [ring.middleware.multipart-params :refer [wrap-multipart-params]]
@@ -803,10 +807,22 @@
                                                   (get params "hours") (assoc :hours (parse-long (get params "hours")))))
                               (plain 404 "Not found"))))}]))
 
+(pg/defsql health-check "groundwork/health.sql")
+
+(defn- health-route
+  "GET /health: 200 when the database answers, 503 when it doesn't."
+  [db]
+  ["/health"
+   {:access :public
+    :get    (fn [_]
+              (if (try (pg/row db health-check) (catch Exception _ nil))
+                (plain 200 "ok")
+                (plain 503 "database unreachable")))}])
+
 (defn groundwork-routes
   "Groundwork's own routes, mounted next to the app's."
   [{:keys [test-sign-in sessions]}]
-  (cond-> []
+  (cond-> [(health-route (:db sessions))]
     test-sign-in (conj (test-sign-in-route test-sign-in sessions))))
 
 (def ^:private settings

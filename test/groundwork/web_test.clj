@@ -297,6 +297,12 @@
     (is (nil? ((:headers (request "/api/hello" {:headers {"Accept-Encoding" "gzip"}})) "content-encoding")))
     (is (nil? ((:headers (request "/api/png" {:headers {"Accept-Encoding" "gzip"}})) "content-encoding")))))
 
+(deftest health
+  (is (= [200 "ok"] ((juxt :status :body) (request "/health"))))
+  (testing "no database, 503"
+    (let [[_ {:keys [get]}] (#'web/health-route nil)]
+      (is (= 503 (:status (get {})))))))
+
 (deftest anything-else-is-not-found
   (is (= 404 (:status (request "/missing.png" {:headers {"Accept" "image/*"}}))))
   (is (= 404 (:status (request "/" {:method "POST" :headers (assoc html "Origin" (:origin (:sessions app-settings)))}))))

@@ -307,6 +307,8 @@ resources/migrations/
 - **gzip:** text-like answers (HTML, CSS, JavaScript, JSON, SVG…) of at
   least `:gzip-min-bytes` go gzipped to a browser that accepts it; images,
   video, archives and fonts are compressed already and go as they are.
+- **Health:** `GET /health` answers 200 when the database answers, 503
+  when it doesn't, for a load balancer or a monitor.
 - **HEAD** is answered for every GET route, like GET without the body.
 - **Outside production** `/robots.txt` disallows everything and every
   answer carries `X-Robots-Tag: noindex`, so a staging copy never shows up
