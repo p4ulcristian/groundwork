@@ -187,6 +187,21 @@
       (permissions/in-scopes perms (scopes-for part scope params) go)
       (permissions/as-system perms go))))
 
+(defn give-up
+  "The exception a job's work throws to end the job for good: no retry can
+   fix it (the record it was for is gone, the address doesn't exist). The
+   job is dead at once, kept with this message.
+
+     (throw (jobs/give-up \"The order was deleted\" {:order/id id}))"
+  ([message] (give-up message {}))
+  ([message data] (ex-info message (assoc data :type ::give-up))))
+
+(defn- gave-up?
+  "Whether a failure, or what caused it, is a give-up."
+  [e]
+  (boolean (some #(= ::give-up (:type (ex-data %)))
+                 (take-while some? (iterate ex-cause e)))))
+
 (defn run-one!
   "Run one claimed job; record what happened. Returns :done, :queued or :dead."
   [{:keys [db] :as part} {:job/keys [id kind params attempts timeout-ms]}]
@@ -217,6 +232,8 @@
           (.log logger System$Logger$Level/WARNING (str "Job " kind " " id " failed") ^Throwable result))
         (keyword (:job/state (pg/row db failed {:job/id         (str id)
                                                 :job/retry-ms   (retry-ms attempts)
+                                                :job/for-good   (and (instance? Throwable result)
+                                                                     (gave-up? result))
                                                 :job/last-error message})))))))
 
 (defn- run-schedules!

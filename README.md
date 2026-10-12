@@ -785,7 +785,8 @@ in Postgres (`groundwork.jobs`):
   server, and runs on a virtual thread within its `:timeout-ms`, in one
   transaction: as the system, or behind the wall of its `:scope` only.
 - A failure waits longer each time (30 s, 1 min, 2 min… up to an hour);
-  after `:attempts` the job is dead, kept with its error;
+  after `:attempts` the job is dead, kept with its error. Work that no
+  retry can fix throws `(jobs/give-up "why")` and is dead at once;
   `(repl/retry-job! app id)` runs it again. A job left running by a stopped
   server is queued again. Work must be safe to repeat.
 - A due schedule is claimed by one server, which queues its job and moves

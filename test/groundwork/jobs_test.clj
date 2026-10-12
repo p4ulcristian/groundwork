@@ -28,6 +28,8 @@
    :test/flaky  {:run        (fn [_ _] (when (= 1 (swap! flaky-runs inc)) (throw (ex-info "not yet" {}))))
                  :params     [:map] :timeout-ms 5000 :attempts 3}
    :test/broken {:run (fn [_ _] (throw (ex-info "always" {}))) :params [:map] :timeout-ms 5000 :attempts 2}
+   :test/gone   {:run (fn [_ _] (throw (jobs/give-up "The order was deleted" {:order/id 7})))
+                 :params [:map] :timeout-ms 5000 :attempts 5}
    :test/slow   {:run (fn [_ _] (Thread/sleep 5000)) :params [:map] :timeout-ms 200 :attempts 1}
    :test/notes  {:run        (fn [{:keys [db]} _] (swap! ran conj (:count (pg/row db jb-count-notes))))
                  :params     [:map [:note/id :uuid]]
@@ -138,6 +140,12 @@
     (testing "retry! brings it back, its attempts afresh"
       (is (true? (jobs/retry! (part) broken)))
       (is (= "queued" (state broken))))))
+
+(deftest a-job-can-give-up-for-good
+  (let [job (enqueue! :test/gone {})]
+    (is (= :dead (claim-and-run)) "dead at once, with attempts left")
+    (is (re-find #"The order was deleted"
+                 (:job/last-error (first (filter #(= job (:job/id %)) (jobs/dead (part)))))))))
 
 (deftest a-job-has-a-time-limit
   (let [job (enqueue! :test/slow {})]
