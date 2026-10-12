@@ -143,12 +143,17 @@
 (defn- csp-header
   "The policy for one answer: Groundwork's strict defaults, the app's added
    sources, this request's nonce for scripts and styles, and who may frame
-   it. Style attributes stay allowed (style-src-attr): components set them."
+   it. Style attributes stay allowed (style-src-attr): components set them.
+   An app that adds 'unsafe-inline' to :style-src gets no nonce there: a
+   nonce makes browsers ignore 'unsafe-inline', so its inline <style> tags
+   would stop working."
   [csp environment nonce ancestors]
   (let [nonce-src (str "'nonce-" nonce "'")
+        inline?   (fn [directive] (some #{"'unsafe-inline'"} (get csp directive)))
         sources   (fn [directive]
                     (cond-> (into (csp-directives directive) (get csp directive))
-                      (#{:script-src :style-src} directive) (conj nonce-src)
+                      (or (= :script-src directive)
+                          (and (= :style-src directive) (not (inline? :style-src)))) (conj nonce-src)
                       ;; the development build loads code with eval
                       (and (= :script-src directive) (= :development environment)) (conj "'unsafe-eval'")))]
     (str/join "; " (concat (for [directive (keys csp-directives)]

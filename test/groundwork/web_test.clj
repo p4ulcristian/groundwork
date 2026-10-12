@@ -245,6 +245,12 @@
     (testing "a new nonce every request"
       (is (not= policy ((:headers (request "/coaters/zinc" {:headers html})) "content-security-policy"))))))
 
+(deftest unsafe-inline-styles-get-no-nonce
+  (testing "an app that allows inline styles keeps them working: a nonce would make browsers ignore 'unsafe-inline'"
+    (let [policy (#'web/csp-header {:style-src ["'unsafe-inline'"]} :production "N1" nil)]
+      (is (str/includes? policy "style-src 'self' 'unsafe-inline';"))
+      (is (str/includes? policy "script-src 'self' 'nonce-N1'") "scripts keep theirs"))))
+
 (deftest inline-tags-get-the-nonce
   (let [page (page/start {:settings (assoc (:page app-settings)
                                            :head ["<script>window.x=1</script>" "<style>a{}</style>"
