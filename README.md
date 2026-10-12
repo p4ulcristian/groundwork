@@ -300,6 +300,9 @@ resources/migrations/
   unchanged), so a deploy is never hidden behind a stale cache. They answer
   byte ranges (206), so video plays and seeks everywhere, Safari included.
 - **HEAD** is answered for every GET route, like GET without the body.
+- **Outside production** `/robots.txt` disallows everything and every
+  answer carries `X-Robots-Tag: noindex`, so a staging copy never shows up
+  in search. In production the app's own `robots.txt` is served.
 - **The page:** any other page a browser asks for gets the page shell, and
   the app's routing in the browser takes over. It loads `:script` into
   `<div id="app">`, and is never cached.

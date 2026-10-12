@@ -269,6 +269,14 @@
   (is (= 200 (:status (request "/app.css" {:method "HEAD"}))))
   (is (= 200 (:status (request "/about" {:method "HEAD" :headers html})))))
 
+(deftest no-indexing-outside-production
+  (let [{:keys [status body]} (request "/robots.txt")]
+    (is (= [200 "User-agent: *\nDisallow: /\n"] [status body])))
+  (is (= "noindex, nofollow" ((:headers (request "/api/hello")) "x-robots-tag")))
+  (testing "production serves what the app serves"
+    (let [handler (#'web/wrap-no-indexing (fn [_] {:status 200 :headers {} :body "app's own"}) :production)]
+      (is (= {:status 200 :headers {} :body "app's own"} (handler {:uri "/robots.txt"}))))))
+
 (deftest anything-else-is-not-found
   (is (= 404 (:status (request "/missing.png" {:headers {"Accept" "image/*"}}))))
   (is (= 404 (:status (request "/" {:method "POST" :headers (assoc html "Origin" (:origin (:sessions app-settings)))}))))

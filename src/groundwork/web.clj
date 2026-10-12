@@ -662,6 +662,19 @@
                             "Content-Range"  (str "bytes " start "-" end "/" length)
                             "Content-Length" (str (inc (- end start)))))))))))))
 
+(defn- wrap-no-indexing
+  "Outside production, search engines are kept out: /robots.txt disallows
+   everything, whatever the app serves there in production, and every
+   answer says noindex."
+  [handler environment]
+  (if (= :production environment)
+    handler
+    (fn [request]
+      (some-> (if (= "/robots.txt" (:uri request))
+                {:status 200 :headers {"Content-Type" "text/plain; charset=utf-8"} :body "User-agent: *\nDisallow: /\n"}
+                (handler request))
+              (assoc-in [:headers "X-Robots-Tag"] "noindex, nofollow")))))
+
 (defn- wrap-head
   "HEAD is answered like GET, without the body: every GET route has one."
   [handler]
@@ -771,6 +784,7 @@
                              not-found))]
     (-> (fn [request] (app (assoc request ::page page)))
         wrap-head
+        (wrap-no-indexing environment)
         (wrap-languages languages (get-in sessions [:settings :origin]))
         (wrap-security-headers environment content-security-policy)
         (wrap-context settings))))
