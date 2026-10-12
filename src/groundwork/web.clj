@@ -6,8 +6,9 @@
    Route data Groundwork reads:
 
      [\"/customize\" {:get web/page :embeddable true}]
-         a page other sites may show in a frame; true for any https site, or
-         a list of origins: [\"https://shop.example\"]
+         a page other sites may show in a frame; true for any https site, a
+         list of origins: [\"https://shop.example\"], or :same-origin for
+         only the app's own pages (an editor inside another page)
      [\"/payments/webhook\" {:post handle :server-to-server true}]
      [\"/coaters/:slug\" {:get web/page :page (fn [request] {:title …})}]
          the page shell with the route's own title, description, links,
@@ -170,7 +171,8 @@
           (let [ancestors (::frame-ancestors response)
                 headers   (cond-> (assoc headers "Content-Security-Policy"
                                          (csp-header csp environment nonce ancestors))
-                            ancestors (dissoc "X-Frame-Options"))]
+                            ancestors                (dissoc "X-Frame-Options")
+                            (= "'self'" ancestors)   (assoc "X-Frame-Options" "SAMEORIGIN"))]
             (-> (dissoc response ::frame-ancestors)
                 (update :headers #(merge headers %)))))))))
 
@@ -182,12 +184,15 @@
     (true? embeddable)
     "https:"
 
+    (= :same-origin embeddable)
+    "'self'"
+
     (and (vector? embeddable) (seq embeddable)
          (every? #(and (string? %) (re-matches #"https?://[^/\s;,]+" %)) embeddable))
     (str/join " " embeddable)
 
     :else
-    (throw (ex-info (str "Route " path ": :embeddable must be true or a list of origins like \"https://shop.example\"")
+    (throw (ex-info (str "Route " path ": :embeddable must be true, :same-origin, or a list of origins like \"https://shop.example\"")
                     {:type ::bad-route :path path :embeddable embeddable}))))
 
 (def ^:private page-middleware
@@ -222,7 +227,8 @@
                 (throw (ex-info (str "Route " path ": :server-to-server must be true or false")
                                 {:type ::bad-route :path path :server-to-server server-to-server})))
               (when-not server-to-server
-                #(sessions/wrap-sessions % sessions (some? embeddable))))})
+                ;; only another site's frame needs the embed cookie
+                #(sessions/wrap-sessions % sessions (and (some? embeddable) (not= :same-origin embeddable)))))})
 
 ;; =============================================================================
 ;; Request ids, the client's address, hooks

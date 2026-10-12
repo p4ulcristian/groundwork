@@ -323,6 +323,7 @@ resources/migrations/
 ```clojure
 ["/customize"        {:get web/page :access :public :embeddable true}]                     ; any https site may frame it
 ["/partner-widget"   {:get web/page :access :public :embeddable ["https://shop.example"]}] ; only these sites
+["/label-editor"     {:get web/page :access :signed-in :embeddable :same-origin}]       ; only the app's own pages
 ["/payments/webhook" {:post handle-webhook :server-to-server true}]
 ```
 

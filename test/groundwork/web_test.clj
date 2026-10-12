@@ -20,6 +20,7 @@
    ["/api/echo" {:access :public :post (fn [_] {:status 200 :body "changed"})}]
    ["/customize" {:access :public :get web/page :embeddable true}]
    ["/partner-widget" {:access :public :get web/page :embeddable ["https://shop.example" "https://other.example"]}]
+   ["/label-editor" {:access :public :get web/page :embeddable :same-origin}]
    ["/payments/webhook" {:post             (fn [request]
                                              {:status 200
                                               :body   (pr-str [(sessions/person request)
@@ -101,6 +102,10 @@
       (is (str/includes? (headers "content-security-policy")
                          "frame-ancestors https://shop.example https://other.example"))
       (is (nil? (headers "x-frame-options")))))
+  (testing "only the app's own pages"
+    (let [headers (:headers (request "/label-editor" {:headers html}))]
+      (is (str/includes? (headers "content-security-policy") "frame-ancestors 'self'"))
+      (is (= "SAMEORIGIN" (headers "x-frame-options")))))
   (testing "every other page stays unframeable"
     (let [headers (:headers (request "/shops/7/orders" {:headers html}))]
       (is (str/includes? (headers "content-security-policy") "frame-ancestors 'none'"))
