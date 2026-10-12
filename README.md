@@ -247,6 +247,19 @@ resources/migrations/
 - **Security headers** on every answer: no sniffing, no framing, a strict
   referrer; in production also Strict-Transport-Security.
 
+```clojure
+["/customize"        {:get web/page :embeddable true}]                     ; any https site may frame it
+["/partner-widget"   {:get web/page :embeddable ["https://shop.example"]}] ; only these sites
+["/payments/webhook" {:post handle-webhook :server-to-server true}]
+```
+
+- **Embeddable pages:** a route with `:embeddable` may be shown in other
+  sites' frames, any https site or only the listed ones. Every other answer
+  stays unframeable. `web/page` answers a route with the page shell.
+- **Server-to-server routes** (a payment provider's webhook): no session is
+  read or made and the Origin check doesn't apply; the handler checks the
+  call itself, like its signature. Every other route is a browser route.
+
 ---
 
 ## 5. Sessions
@@ -256,8 +269,10 @@ resources/migrations/
 (sessions/sign-in request response person-id)
 (sessions/sign-in request response person-id {:flags #{:impersonated} :data {:login/via "sso"}})
 
-(sessions/person request)    ;=> the person's id, or nil
+(sessions/person request)    ;=> the person's id, or nil (also for a visitor)
 (sessions/flags request)     ;=> #{:impersonated}
+(sessions/data request)      ;=> {:cart/items […] :login/via "sso"}
+(sessions/put-data request response {:cart/items items})   ; nil forgets a key
 (sessions/sign-out request response)
 (sessions/sign-out-everywhere! request person-id)
 ```
@@ -266,6 +281,13 @@ resources/migrations/
   bytes; the table keeps only their SHA-256.
 - The cookie is HttpOnly and SameSite=Lax, Secure when `:secure?`.
 - Signing in ends the session the request already had.
+- **Visitors** (not signed in) get a session the first time the app keeps
+  something with `put-data`, like a cart; reading makes nothing, so crawlers
+  cost no rows. It ends after `:visitor-hours` unseen (24 is a good start);
+  each visit pushes the end out, at most once an hour. At sign-in its data
+  moves into the signed-in session, under a new key.
+- In another site's frame the browser doesn't send the cookie, so a flow that
+  needs the session (sign-in, checkout) opens on the app's own site.
 - A request that changes something (not GET, HEAD, OPTIONS) must carry the
   app's own `:origin`, or it's refused with 403.
 - `:data` keys are shaped `:entity/field`, like every json key.
