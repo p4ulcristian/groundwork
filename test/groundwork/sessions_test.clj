@@ -33,6 +33,12 @@
                      :embeddable true}]
    ["/widget/login" {:access :public :post       (fn [request] (sessions/sign-in request {:status 200} peter))
                      :embeddable true}]
+   ["/robot-login" {:server-to-server true
+                    :post             (fn [request]
+                                        (if (= "let-me-in" (get-in request [:headers "x-robot-secret"]))
+                                          (sessions/sign-in (sessions/on-request request (gw/sessions (gw/current)))
+                                                            {:status 200 :body "in"} peter)
+                                          {:status 404 :body "Not found"}))}]
    ["/me"     {:access :public :get (fn [request]
                       {:status 200
                        :body   (pr-str [(some-> (sessions/person request) str)
@@ -85,6 +91,19 @@
       (let [out (request "POST" "/logout" :cookie cookie :origin origin)]
         (is (str/includes? (:set-cookie out) "Max-Age=0")))
       (is (= [nil #{} {}] (me cookie))))))
+
+(deftest a-server-to-server-route-can-sign-someone-in
+  (testing "no Origin, no session read: the route proves the caller itself"
+    (is (= 404 (:status (request "POST" "/robot-login"))))
+    (let [response (.send client
+                          (-> (HttpRequest/newBuilder (URI. (str "http://127.0.0.1:" (gw/port *app*) "/robot-login")))
+                              (.header "x-robot-secret" "let-me-in")
+                              (.method "POST" (HttpRequest$BodyPublishers/noBody))
+                              (.build))
+                          (HttpResponse$BodyHandlers/ofString))
+          cookie   (first (str/split (first (.allValues (.headers response) "set-cookie")) #";"))]
+      (is (= 200 (.statusCode response)))
+      (is (= (str peter) (first (me cookie)))))))
 
 (deftest signing-in-ends-the-session-the-request-had
   (let [{old :cookie} (login)

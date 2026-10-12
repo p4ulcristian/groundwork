@@ -248,6 +248,15 @@
                                      :hours             hours})
      (add-cookie response (cookie (:settings sessions) key (* 3600 hours))))))
 
+(defn on-request
+  "The request with the sessions part on it, for a server-to-server route
+   that signs someone in itself (an app's own test login, proven by a secret):
+   (sign-in (on-request request (gw/sessions (gw/current))) response person-id). Such a
+   route reads no session and checks no Origin, so what it is sent has to
+   prove itself."
+  [request sessions]
+  (assoc request ::sessions sessions))
+
 (defn sign-out
   "The response, ending this request's session and clearing its cookie."
   [request response]

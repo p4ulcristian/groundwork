@@ -175,6 +175,12 @@
   [app]
   (part app :groundwork/permissions))
 
+(defn sessions
+  "The app's sessions part, for groundwork.sessions (sign-out-everywhere!,
+   on-request)."
+  [app]
+  (part app :groundwork/sessions))
+
 (defn jobs
   "The app's jobs part, for groundwork.jobs (queued, dead, retry!), or nil."
   [app]

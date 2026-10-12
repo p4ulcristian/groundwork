@@ -584,6 +584,9 @@ resources/migrations/
   bytes; the table keeps only their SHA-256.
 - The cookie is HttpOnly and SameSite=Lax, Secure when `:secure?`.
 - Signing in ends the session the request already had.
+- A server-to-server route has no session part. One that signs someone in
+  itself (an app's own test login, proven by a secret) puts it on:
+  `(sessions/sign-in (sessions/on-request request (gw/sessions (gw/current))) response person-id)`.
 - **Visitors** (not signed in) get a session the first time the app keeps
   something with `put-data`, like a cart; reading makes nothing, so crawlers
   cost no rows. It ends after `:visitor-hours` unseen (24 is a good start);
