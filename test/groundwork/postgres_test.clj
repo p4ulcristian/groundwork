@@ -20,7 +20,8 @@
    :user     (env "GROUNDWORK_TEST_USER" "groundwork")
    :password (env "GROUNDWORK_TEST_PASSWORD" nil)
    :pool-size 2
-   :statement-timeout-ms 5000})
+   :statement-timeout-ms 5000
+   :time-zone "UTC"})
 
 (def schema
   "DROP TABLE IF EXISTS posts, authors;
@@ -33,7 +34,8 @@
      post__title      text NOT NULL,
      post__published  boolean NOT NULL DEFAULT false,
      post__created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-     post__meta       jsonb);")
+     post__meta       jsonb,
+     post__tags       text[]);")
 
 (def ^:dynamic *db* nil)
 (def ^:private queries (atom []))
@@ -67,6 +69,13 @@
 (pg/defsql many-rows)
 (pg/defsql sleep)
 (pg/defsql timeout-setting)
+(pg/defsql time-zone-setting)
+(pg/defsql local-time-as-timestamptz)
+(pg/defsql posts-by-ids)
+(pg/defsql count-by-ids)
+(pg/defsql get-tags)
+(pg/defsql set-tags)
+(pg/defsql echo)
 
 (defn- author! [name]
   (pg/row *db* insert-author {:author/name name}))
@@ -118,8 +127,19 @@
 (deftest unusual-columns
   (testing "count(*) is a plain keyword"
     (is (= {:count 0} (pg/row *db* count-posts))))
-  (testing "a name outside the rules stays a string instead of failing"
-    (is (= {"?column?" 1} (pg/row *db* unnamed-column)))))
+  (testing "a name outside the rules throws, naming the file and the column"
+    (let [e (try (pg/row *db* unnamed-column) (catch clojure.lang.ExceptionInfo e e))]
+      (is (= {:type ::pg/bad-column :column "?column?" :file "groundwork/unnamed_column.sql"}
+             (ex-data e)))
+      (is (re-find #"AS entity__field" (ex-message e))))))
+
+(deftest row-reads-at-most-two-rows
+  (let [seen (atom nil)]
+    (with-redefs-fn {#'pg/read-rows (let [read-rows @#'pg/read-rows]
+                                      (fn [rs path] (reset! seen (read-rows rs path))))}
+      #(is (thrown-with-msg? clojure.lang.ExceptionInfo #"more than one row"
+                             (pg/row *db* many-rows {:count 1000}))))
+    (is (= 2 (count @seen)))))
 
 (deftest row-and-execute
   (let [ana (author! "Ana")
@@ -143,6 +163,41 @@
       (is (= {:author/name  "Ana"
               :author/posts [{:post/id (str (:post/id p)) :post/title "Hi"}]}
              (pg/row *db* author-with-posts ana))))))
+
+(deftest lists
+  (let [ana (author! "Ana")
+        a   (post! ana "A")
+        b   (post! ana "B")
+        ids (fn [rows] (mapv :post/id rows))]
+    (testing "a list goes into ANY as the array Postgres expects"
+      (is (= (ids [a b]) (ids (pg/rows *db* posts-by-ids {:post/ids [(:post/id a) (:post/id b)]}))))
+      (is (= [] (pg/rows *db* posts-by-ids {:post/ids []})) "an empty list needs no cast")
+      (is (= (ids [a]) (ids (pg/rows *db* posts-by-ids {:post/ids (map :post/id [a])}))) "a lazy seq")
+      (is (= (ids [b]) (ids (pg/rows *db* posts-by-ids {:post/ids #{(:post/id b)}}))) "a set"))
+    (testing "a list goes into jsonb as json"
+      (let [p (post! ana "J" [1 "two" {:post/deep 3}])]
+        (is (= [1 "two" {:post/deep 3}] (:post/meta (pg/row *db* get-post p))))))
+    (testing "a row with an array column goes straight back in"
+      (is (= 1 (pg/execute! *db* set-tags {:post/id (:post/id a) :post/tags ["x" "y"]})))
+      (let [row (pg/row *db* get-tags a)]
+        (is (= ["x" "y"] (:post/tags row)))
+        (is (= 1 (pg/execute! *db* set-tags row)))
+        (is (= row (pg/row *db* get-tags a)))))
+    (testing "a list where Postgres can't tell the type throws, naming the param and file"
+      (let [e (try (pg/row *db* echo {:x [1 2]}) (catch clojure.lang.ExceptionInfo e e))]
+        (is (= {:type ::pg/list-param :param :x :expects "text" :file "groundwork/echo.sql"}
+               (ex-data e)))
+        (is (re-find #"Cast it in the file, e.g. :x::int\[\]" (ex-message e)))))
+    (testing "Postgres is asked once per file, and only when a list comes"
+      (let [asked (atom 0)
+            ask   @#'pg/ask-param-types]
+        (with-redefs-fn {#'pg/ask-param-types (fn [conn sql] (swap! asked inc) (ask conn sql))}
+          (fn []
+            (pg/row *db* get-post a)
+            (is (= 0 @asked) "no list, no question")
+            (dotimes [_ 3]
+              (is (= {:count 1} (pg/row *db* count-by-ids {:post/ids [(:post/id a)]}))))
+            (is (= 1 @asked))))))))
 
 (deftest params
   (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing param :limit for groundwork/list_recent.sql"
@@ -219,6 +274,23 @@
   (let [db (pg/start (merge config settings))]
     (try (f db) (finally (pg/stop db)))))
 
+(deftest time-zone
+  (testing "the session's zone is the setting, not the JVM's"
+    (doseq [zone ["UTC" "America/New_York"]]
+      (with-db {:time-zone zone}
+        (fn [db]
+          (is (= {:time-zone/value zone} (pg/row db time-zone-setting)))
+          (testing "a time without an offset is read in that zone"
+            (is (= (.toInstant (java.time.ZonedDateTime/of (java.time.LocalDateTime/of 2026 3 29 1 30)
+                                                           (java.time.ZoneId/of zone)))
+                   (.toInstant ^java.time.OffsetDateTime
+                               (:moment/at (pg/row db local-time-as-timestamptz
+                                                   {:at (java.time.LocalDateTime/of 2026 3 29 1 30)}))))))))))
+  (testing "a name that can't be a zone throws at start"
+    (is (= ::pg/bad-setting
+           (:type (ex-data (try (pg/start (assoc config :time-zone "UTC -c x=1"))
+                                (catch clojure.lang.ExceptionInfo e e))))))))
+
 (deftest statement-timeout
   (testing "Postgres cancels a statement that runs past the limit"
     (with-db {:statement-timeout-ms 100}
@@ -227,6 +299,20 @@
         (let [e (try (pg/row db sleep {:seconds 1}) (catch clojure.lang.ExceptionInfo e e))]
           (is (= ::pg/query-canceled (:type (ex-data e))))
           (is (= "groundwork/sleep.sql" (:file (ex-data e))))))))
+  (testing "a transaction can get more time; the db's limit is back after it"
+    (with-db {:pool-size 1 :statement-timeout-ms 100}
+      (fn [db]
+        (is (= 1 (pg/with-transaction [tx db {:statement-timeout-ms 5000}]
+                   (is (= {:statement-timeout/value "5s"} (pg/row tx timeout-setting)))
+                   (pg/execute! tx sleep {:seconds 0.3}))))
+        (is (= {:statement-timeout/value "100ms"} (pg/row db timeout-setting))
+            "the same connection, its one limit again")
+        (is (= {:statement-timeout/value "0"}
+               (pg/with-transaction [tx db {:statement-timeout-ms :none}]
+                 (pg/row tx timeout-setting))))
+        (is (= ::pg/bad-setting
+               (:type (ex-data (try (pg/with-transaction [_ db {:statement-timeout-ms "10min"}])
+                                    (catch clojure.lang.ExceptionInfo e e)))))))))
   (testing ":none is no limit, whatever the database role says"
     (with-db {:statement-timeout-ms :none}
       (fn [db]

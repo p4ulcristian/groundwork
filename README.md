@@ -15,7 +15,7 @@ keywords → postgres → parquery → re-frame → reagent
 | re-frame |                       |        |
 | Reagent  |                       |        |
 
-Every decision and its reason: [`decisions/`](decisions/).
+Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
 
 ---
 
@@ -95,7 +95,8 @@ WHERE post__id = :post/id AND NOT post__published
                    :user                 "app"
                    :password             nil      ; nil for none
                    :pool-size            10
-                   :statement-timeout-ms 30000})) ; or :none
+                   :statement-timeout-ms 30000    ; or :none
+                   :time-zone            "UTC"}))
 (pg/stop db)
 ```
 
@@ -105,6 +106,8 @@ WHERE post__id = :post/id AND NOT post__published
 - `:statement-timeout-ms` 30000 is the recommendation: Postgres cancels a
   statement that never finishes, before a proxy gives up on the request.
   Find slow queries with `:on-query`'s `:ms`, not with this.
+- `:time-zone` is the session's zone, whatever machine the app runs on. It
+  decides how a time without an offset is read.
 
 ### In the REPL
 
@@ -116,9 +119,29 @@ WHERE post__id = :post/id AND NOT post__published
 ```
 
 - A missing param throws. `nil` means `NULL`.
+- A map goes in as jsonb. `(pg/json x)` makes anything jsonb.
 - Values come back as real types: UUID, `java.time`, `BigDecimal`.
+- Every result column needs a name: `count(*)` is `:count`, but an unnamed
+  expression (`?column?`) throws, naming the file. Write `… AS post__total`.
 - Column names become keywords once per query, not once per row.
 - jsonb keys shaped `entity__field` become `:entity/field`; other keys stay strings.
+
+### Lists
+
+```sql
+-- posts_by_ids.sql
+SELECT post__id, post__title FROM posts WHERE post__id = ANY(:post/ids)
+```
+
+```clojure
+(pg/rows db posts-by-ids {:post/ids [id1 id2]})   ; a vector, seq or set
+```
+
+- A list goes in as the type Postgres expects in that place: a SQL array
+  (`uuid[]`, `text[]`…) or json.
+- An empty list works, no cast needed.
+- Postgres is asked once per file, the first time it gets a list.
+- With nothing around it to tell its type (`SELECT :x`), cast it: `:x::int[]`.
 
 ### Transactions
 
@@ -131,6 +154,13 @@ WHERE post__id = :post/id AND NOT post__published
 
 - Any exception rolls back and rethrows.
 - A nested `with-transaction` joins the outer one.
+
+Work that is slow on purpose gets its own limit, until the transaction ends:
+
+```clojure
+(pg/with-transaction [tx db {:statement-timeout-ms 600000}]   ; or :none
+  (pg/rows tx yearly-report {:year 2026}))
+```
 
 ### Hooks
 
@@ -149,13 +179,3 @@ WHERE post__id = :post/id AND NOT post__published
 `check-violation`, `not-null-violation`, `serialization-failure`,
 `deadlock`, `query-canceled` (past the time limit), else `error`, all under
 `:groundwork.postgres/`.
-
----
-
-## Open
-
-- [ ] A vector as a param: SQL array or jsonb? (now: maps are jsonb, `(pg/json x)` makes anything jsonb)
-- [ ] `row` with more than one row: throw (now) or first?
-- [ ] Odd column names like `?column?`: string (now) or throw?
-- [ ] Lowest Java version
-- [ ] How one long query gets more time than `:statement-timeout-ms`
