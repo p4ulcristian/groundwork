@@ -66,10 +66,12 @@
          (let [sockets     (atom [])
                changed     (atom [])
                reconnected (atom 0)
+               statuses    (atom [])
                jobs        ["jobs/list" {:shop/id (str shop-id)}]]
            (reset! websocket/make-socket (fake-socket sockets))
            (websocket/start! {:url "ws://test/parquery" :min-wait-ms 5
-                              :on-changed #(swap! changed conj %) :on-reconnected #(swap! reconnected inc)})
+                              :on-changed #(swap! changed conj %) :on-reconnected #(swap! reconnected inc)
+                              :on-status #(swap! statuses conj %)})
            (websocket/watch! [jobs])
            (let [^js first-socket (first @sockets)]
              (open! first-socket)
@@ -84,6 +86,7 @@
                   (open! second-socket)
                   (is (= [{:watch [jobs]}] (map wire/read-json (.-sent second-socket))) "and said again what's on screen")
                   (is (= 1 @reconnected) "bells may have been missed")
+                  (is (= [:open :closed :open] @statuses) "the line's status, as it comes and goes")
                   (websocket/stop!)
                   (done)))
               30)))))

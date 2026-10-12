@@ -3,7 +3,8 @@
    /parquery for the whole visit. It tells the server which reads are on
    screen and hears which of them changed.
 
-     (websocket/start! {:on-changed (fn [forms] …) :on-reconnected (fn [] …)})
+     (websocket/start! {:on-changed (fn [forms] …) :on-reconnected (fn [] …)
+                        :on-status  (fn [status] …)})          ; :open or :closed
      (websocket/watch! [[\"jobs/list\" {:shop/id \"…\"}] …])   ; the whole list, each time
 
    A dropped line comes back by itself, waiting a little longer each time
@@ -38,7 +39,7 @@
       (js/setTimeout open! wait))))
 
 (defn- open! []
-  (let [{:keys [url on-changed on-reconnected]} (:options @state)
+  (let [{:keys [url on-changed on-reconnected on-status]} (:options @state)
         socket (@make-socket (or url (default-url)))]
     (swap! state assoc :socket socket)
     (set! (.-onopen socket)
@@ -46,6 +47,7 @@
             (let [again? (:reconnecting? @state)]
               (swap! state assoc :wait 0 :reconnecting? false)
               (send-watches!)
+              (when on-status (on-status :open))
               (when (and again? on-reconnected) (on-reconnected)))))
     (set! (.-onmessage socket)
           (fn [event]
@@ -54,11 +56,13 @@
     (set! (.-onclose socket)
           (fn [_]
             (swap! state assoc :socket nil)
+            (when on-status (on-status :closed))
             (reconnect-later!)))))
 
 (defn start!
   "Open the line. on-changed gets the changed reads as [endpoint params]
-   forms; on-reconnected is called when a dropped line is back."
+   forms; on-reconnected is called when a dropped line is back; on-status,
+   when given, hears :open and :closed as the line comes and goes."
   [options]
   (swap! state assoc :options options :stopped? false :wait 0 :reconnecting? false)
   (open!))
