@@ -16,18 +16,18 @@
 (def peter (UUID/randomUUID))
 
 (def routes
-  [["/login"  {:post (fn [request]
+  [["/login"  {:access :public :post (fn [request]
                        (sessions/sign-in request {:status 200 :body "in"} peter
                                          {:flags #{:impersonated} :data {:login/via "test"}}))}]
-   ["/logout" {:post (fn [request] (sessions/sign-out request {:status 200 :body "out"}))}]
-   ["/cart"   {:post (fn [request]
+   ["/logout" {:access :public :post (fn [request] (sessions/sign-out request {:status 200 :body "out"}))}]
+   ["/cart"   {:access :public :post (fn [request]
                        (sessions/put-data request {:status 200 :body "kept"} {:cart/items ["rim" "frame"]}))}]
-   ["/widget/cart"  {:post       (fn [request]
+   ["/widget/cart"  {:access :public :post       (fn [request]
                                    (sessions/put-data request {:status 200 :body "kept"} {:cart/items ["hood"]}))
                      :embeddable true}]
-   ["/widget/login" {:post       (fn [request] (sessions/sign-in request {:status 200} peter))
+   ["/widget/login" {:access :public :post       (fn [request] (sessions/sign-in request {:status 200} peter))
                      :embeddable true}]
-   ["/me"     {:get (fn [request]
+   ["/me"     {:access :public :get (fn [request]
                       {:status 200
                        :body   (pr-str [(some-> (sessions/person request) str)
                                         (sessions/flags request)

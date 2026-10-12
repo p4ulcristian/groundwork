@@ -15,17 +15,17 @@
 (def ^:dynamic *app* nil)
 
 (def routes
-  [["/api/hello" {:get (fn [_] {:status 200 :body "hi"})}]
-   ["/api/thread" {:get (fn [_] {:status 200 :body (str (.isVirtual (Thread/currentThread)))})}]
-   ["/api/echo" {:post (fn [_] {:status 200 :body "changed"})}]
-   ["/customize" {:get web/page :embeddable true}]
-   ["/partner-widget" {:get web/page :embeddable ["https://shop.example" "https://other.example"]}]
+  [["/api/hello" {:access :public :get (fn [_] {:status 200 :body "hi"})}]
+   ["/api/thread" {:access :public :get (fn [_] {:status 200 :body (str (.isVirtual (Thread/currentThread)))})}]
+   ["/api/echo" {:access :public :post (fn [_] {:status 200 :body "changed"})}]
+   ["/customize" {:access :public :get web/page :embeddable true}]
+   ["/partner-widget" {:access :public :get web/page :embeddable ["https://shop.example" "https://other.example"]}]
    ["/payments/webhook" {:post             (fn [request]
                                              {:status 200
                                               :body   (pr-str [(sessions/person request)
                                                                (contains? request ::sessions/sessions)])})
                          :server-to-server true}]
-   ["/coaters/:slug" {:get  web/page
+   ["/coaters/:slug" {:access :public :get  web/page
                       :page (fn [request]
                               (let [slug (get-in request [:path-params :slug])]
                                 {:title       (str "Coater " slug)
@@ -35,9 +35,9 @@
                                  :stylesheets ["/coaters.css"]
                                  :scripts     ["/js/map.js"]
                                  :body        (str "<h1>" slug "</h1>")}))}]
-   ["/about" {:get web/page :page {:title "About us"}}]
-   ["/api/form" {:post (fn [request] {:status 200 :body (pr-str (:form-params request))})}]
-   ["/api/upload" {:post           (fn [request]
+   ["/about" {:access :public :get web/page :page {:title "About us"}}]
+   ["/api/form" {:access :public :post (fn [request] {:status 200 :body (pr-str (:form-params request))})}]
+   ["/api/upload" {:access :public :post           (fn [request]
                                      {:status 200
                                       :body   (pr-str (-> (get-in request [:multipart-params "file"])
                                                           (select-keys [:filename :content-type :real-type :size])))})
@@ -108,7 +108,8 @@
 
 (deftest a-route-declares-embeddable-properly
   (is (= ::web/bad-route
-         (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :embeddable ["shop.example"]}]] :max-body-bytes 1000 :content-security-policy {}
+         (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :access :public :embeddable ["shop.example"]}]]
+                                            :max-body-bytes 1000 :content-security-policy {} :login-path "/login"
                                             :page (fn [_]) :sessions {} :environment :test})
                               (catch Exception e e)))))))
 
@@ -207,7 +208,8 @@
       (is (str/includes? body "<div id=\"app\"></div>"))))
   (testing "a route's page keys are checked when the router is built"
     (is (= ::page/bad-route
-           (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :page {:titel "x"}}]] :max-body-bytes 1000 :content-security-policy {}
+           (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :access :public :page {:titel "x"}}]]
+                                              :max-body-bytes 1000 :content-security-policy {} :login-path "/login"
                                               :page (fn [_]) :sessions {} :environment :test})
                                 (catch Exception e e))))))))
 

@@ -19,6 +19,17 @@
    Every other route is a browser route: it gets the session, and a request
    that changes something must come from the app's own pages.
 
+   Every route declares who may use it, or the app doesn't start:
+
+     :access :public       anyone
+     :access :signed-in    someone signed in; a signed-out browser asking for
+                           a page goes to :login-path?next=…, anything else 401
+     :access {:action :orders/see :record [:order :order-id]}
+                           a permission on the record whose id is the path
+                           parameter (or form/query parameter) :order-id;
+                           not allowed answers 404, like a record that isn't there
+     :server-to-server true    instead of :access: the handler checks the call
+
    Request bodies: none may be larger than :max-body-bytes, or a route's own
    [\"/uploads\" {:post upload :max-body-bytes 104857600}]; a larger one is
    refused with 413. A browser route's form body is parsed into :form-params,
@@ -41,6 +52,7 @@
    [clojure.string :as str]
    [clojure.walk :as walk]
    [groundwork.page :as page]
+   [groundwork.permissions :as permissions]
    [groundwork.sessions :as sessions]
    [reitit.ring :as ring]
    [ring.middleware.multipart-params :refer [wrap-multipart-params]]
@@ -183,6 +195,99 @@
                 #(sessions/wrap-sessions % sessions (some? embeddable))))})
 
 ;; =============================================================================
+;; Access
+;; =============================================================================
+
+(defn- wants-page?
+  "A browser asking for a page: GET or HEAD that accepts HTML."
+  [{:keys [request-method headers]}]
+  (and (#{:get :head} request-method)
+       (str/includes? (get headers "accept" "") "text/html")))
+
+(defn- plain [status body]
+  {:status status :headers {"Content-Type" "text/plain; charset=utf-8"} :body body})
+
+(defn- signed-out
+  "No one is signed in: a browser asking for a page goes to the login page,
+   with where it was going; anything else gets 401."
+  [{:keys [uri query-string] :as request} login-path]
+  (if (wants-page? request)
+    {:status  302
+     :headers {"Location" (str login-path "?next="
+                               (java.net.URLEncoder/encode (str uri (when query-string (str "?" query-string)))
+                                                           "UTF-8"))}
+     :body    ""}
+    (plain 401 "Sign in first")))
+
+(defn- param-value
+  "A request's value for a declared parameter: the path's, then the form's
+   or query's."
+  [request k]
+  (or (get-in request [:path-params k])
+      (get-in request [:params (subs (str k) 1)])))
+
+(defn- record-id
+  "An id as the database has it: a UUID, a number, or the text itself."
+  [s]
+  (when (string? s)
+    (or (parse-uuid s) (parse-long s) s)))
+
+(defn- check-access [path access permissions]
+  (cond
+    (#{:public :signed-in} access)
+    access
+
+    (and (map? access) (= #{:action :record} (set (keys access)))
+         (keyword? (:action access))
+         (vector? (:record access)) (= 2 (count (:record access)))
+         (every? keyword? (:record access)))
+    (let [{:keys [action] [kind _] :record} access]
+      (when-not (permissions/declared? permissions action kind)
+        (throw (ex-info (str "Route " path ": no permission rule for " action " on " kind)
+                        {:type ::bad-route :path path :access access})))
+      access)
+
+    :else
+    (throw (ex-info (str "Route " path " must declare :access: :public, :signed-in, "
+                         "or {:action … :record [kind param]}")
+                    {:type ::undeclared-route :path path :access access}))))
+
+(defn- access-middleware
+  "Every route says who may use it; a route without a declaration stops the
+   start."
+  [permissions login-path]
+  {:name    ::access
+   :compile (fn [{:keys [access server-to-server]} {::keys [path]}]
+              (if server-to-server
+                (when (some? access)
+                  (throw (ex-info (str "Route " path ": a server-to-server route checks the call itself; "
+                                       "it has no :access")
+                                  {:type ::bad-route :path path :access access})))
+                (let [access (check-access path access permissions)]
+                  (when-not (= :public access)
+                    (fn [handler]
+                      (fn [request]
+                        (let [person (sessions/person request)]
+                          (cond
+                            (nil? person)
+                            (signed-out request login-path)
+
+                            (= :signed-in access)
+                            (handler request)
+
+                            :else
+                            (let [{:keys [action] [kind param] :record} access
+                                  id (record-id (param-value request param))]
+                              (if (and (some? id)
+                                       (permissions/allowed? permissions
+                                                             {:person person
+                                                              :flags  (sessions/flags request)
+                                                              :action action
+                                                              :record [kind id]}))
+                                (handler request)
+                                (plain 404 "Not found")))))))))))})
+
+;; =============================================================================
 ;; Request bodies
 ;; =============================================================================
 
@@ -287,12 +392,6 @@
     (when-let [response (handler request)]
       (assoc-in response [:headers "Cache-Control"] "no-cache"))))
 
-(defn- wants-page?
-  "A browser asking for a page: GET or HEAD that accepts HTML."
-  [{:keys [request-method headers]}]
-  (and (#{:get :head} request-method)
-       (str/includes? (get headers "accept" "") "text/html")))
-
 (defn page
   "A Ring handler answering with the page shell, for a route of the app's own:
    [\"/customize\" {:get web/page :embeddable true}]."
@@ -300,14 +399,14 @@
   ((::page request) request))
 
 (defn- not-found [_request]
-  {:status 404 :headers {"Content-Type" "text/plain; charset=utf-8"} :body "Not found"})
+  (plain 404 "Not found"))
 
 (defn groundwork-routes
   "Groundwork's own routes, mounted next to the app's."
   []
   [])
 
-(def ^:private settings [:routes :max-body-bytes :content-security-policy])
+(def ^:private settings [:routes :max-body-bytes :content-security-policy :login-path])
 
 (defn- check-settings [opts]
   (when-not (map? opts)
@@ -322,11 +421,14 @@
     (when-not (pos-int? max-body-bytes)
       (throw (ex-info ":max-body-bytes must be a positive integer"
                       {:type ::bad-setting :setting :max-body-bytes :value max-body-bytes})))
-    (check-csp (:content-security-policy opts))))
+    (check-csp (:content-security-policy opts))
+    (when-not (and (string? (:login-path opts)) (str/starts-with? (:login-path opts) "/"))
+      (throw (ex-info ":login-path must be a path like \"/login\""
+                      {:type ::bad-setting :setting :login-path :value (:login-path opts)})))))
 
 (defn handler
   "The app's Ring handler, for settings already checked."
-  [{:keys [routes max-body-bytes content-security-policy page sessions environment]}]
+  [{:keys [routes max-body-bytes content-security-policy login-path page sessions permissions environment]}]
   (let [files  (-> (ring/create-resource-handler {:path "/" :root "public"})
                    wrap-file-caching
                    wrap-not-modified)
@@ -334,7 +436,8 @@
                             {:data    {:middleware [page-middleware
                                                     embeddable-middleware
                                                     (body-middleware max-body-bytes)
-                                                    (sessions-middleware sessions)]}
+                                                    (sessions-middleware sessions)
+                                                    (access-middleware permissions login-path)]}
                              ;; the path, for errors in a route's data
                              :compile (fn [[path data] opts]
                                         (ring/compile-result [path data] (assoc opts ::path path)))})
@@ -349,7 +452,8 @@
 (defn start
   "The router part: {:handler … :max-body-bytes …}, the most any route
    accepts, which the server reads at most."
-  [{:keys [settings environment page sessions]}]
+  [{:keys [settings environment page sessions permissions]}]
   (check-settings settings)
-  {:handler        (handler (assoc settings :page page :sessions sessions :environment environment))
+  {:handler        (handler (assoc settings :page page :sessions sessions :permissions permissions
+                                   :environment environment))
    :max-body-bytes (largest-body (:routes settings) (:max-body-bytes settings))})

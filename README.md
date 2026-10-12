@@ -37,9 +37,10 @@ Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
                     :page        {:lang "en" :title "Acme Coating" :description nil
                                   :icon "/icon.svg" :stylesheets ["/app.css"]
                                   :script "/js/main.js" :head []}
-                    :web         {:routes                  [["/orders" {:get web/page}]]
+                    :web         {:routes                  [["/orders" {:get web/page :access :signed-in}]]
                                   :max-body-bytes          1048576
-                                  :content-security-policy {}}  ; see Server, routes and the page
+                                  :content-security-policy {}
+                                  :login-path              "/login"}  ; see Server, routes and the page
                     :server      {:ip "0.0.0.0" :port 8080}
                     :sessions    {:cookie-name "acme_session" :max-age-days 30 :visitor-hours 24
                                   :secure? true :origin "https://app.acme.example"}
@@ -242,8 +243,23 @@ resources/migrations/
 
 - **Server:** http-kit; every request runs on its own virtual thread.
 - **Routes:** the app's `:web :routes` are reitit data, next to Groundwork's own.
+- **Every route declares who may use it,** or the app doesn't start:
+
+```clojure
+["/pricing"          {:get web/page :access :public}]
+["/orders"           {:get web/page :access :signed-in}]   ; signed out: a page goes to :login-path?next=…, else 401
+["/orders/:order-id/photos"
+                     {:post upload-photo
+                      :access {:action :orders/edit :record [:order :order-id]}}]   ; not allowed: 404
+["/payments/webhook" {:post handle-webhook :server-to-server true}]   ; checks the call itself
+```
+
+  A permission names the action and the record whose id is the path
+  parameter (or form or query parameter); it's checked like an endpoint's,
+  through the record's own scope. A record that isn't the person's answers
+  404, the same as one that isn't there.
 - **Request bodies:** none larger than `:max-body-bytes`, or a route's own
-  (`["/uploads" {:post upload :max-body-bytes 104857600}]`); larger is 413,
+  (`["/uploads" {:post upload :access :signed-in :max-body-bytes 104857600}]`); larger is 413,
   and the server never reads more than the largest any route accepts. A
   browser route's form is parsed into `:form-params`, multipart into
   `:multipart-params`: each file a temporary file (deleted after an hour)
@@ -263,7 +279,8 @@ resources/migrations/
   `<div id="app">` for search engines and the first paint.
 
 ```clojure
-["/coaters/:slug" {:get  web/page
+["/coaters/:slug" {:get    web/page
+                   :access :public
                    :page (fn [request] {:title (str "Coater " …) :body (render-coater …)})}]
 ```
 
@@ -279,8 +296,8 @@ resources/migrations/
   build needs.
 
 ```clojure
-["/customize"        {:get web/page :embeddable true}]                     ; any https site may frame it
-["/partner-widget"   {:get web/page :embeddable ["https://shop.example"]}] ; only these sites
+["/customize"        {:get web/page :access :public :embeddable true}]                     ; any https site may frame it
+["/partner-widget"   {:get web/page :access :public :embeddable ["https://shop.example"]}] ; only these sites
 ["/payments/webhook" {:post handle-webhook :server-to-server true}]
 ```
 

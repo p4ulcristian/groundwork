@@ -94,6 +94,11 @@
 (defn- rule [{:keys [rules]} action kind]
   (get rules [action kind]))
 
+(defn declared?
+  "Whether the description has a rule for an action on a kind of record."
+  [perms action kind]
+  (some? (rule perms action kind)))
+
 (defn- record-spec [{:keys [description]} kind]
   (or (get-in description [:records kind])
       (throw (ex-info (str "No record kind " kind) {:type ::unknown-kind :kind kind}))))
