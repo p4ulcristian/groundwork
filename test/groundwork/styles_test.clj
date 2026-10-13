@@ -159,6 +159,12 @@
   (testing "styling another namespace's element"
     (is (= ["styles/areas/flex/job-card.css:6 \".job-card__card .badge__badge\" styles an element that carries no .job-card__… class: a stylesheet paints only its own; change another look through a state or a variable it offers"]
            (found (adding "styles/areas/flex/job-card.css" ".job-card__card .badge__badge { color: red; }\n")))))
+  (testing "a class in the wrong stylesheet: said where it is, where it is missing, and where it is used"
+    (is (= ["src/app/card.cljs:3 :css.card/ribbon: card's stylesheet has no .card__ribbon"
+            "styles/areas/flex/job-card.css:6 \".card__ribbon\" styles an element that carries no .job-card__… class: a stylesheet paints only its own; change another look through a state or a variable it offers"
+            "styles/areas/flex/job-card.css:6 .card__ribbon is mentioned here, but card's stylesheet doesn't define it"]
+           (found (merge (adding "styles/areas/flex/job-card.css" ".card__ribbon { color: red; }\n")
+                         (adding "src/app/card.cljs" "(def ribbon :css.card/ribbon)\n"))))))
   (testing "nested, too: the element styled is the inner one"
     (is (one? (found (adding "styles/areas/flex/job-card.css" ".job-card__card {\n  .card__title { color: red; }\n}\n"))
               #"job-card.css:7 \"\.card__title\" styles an element that carries no")))
