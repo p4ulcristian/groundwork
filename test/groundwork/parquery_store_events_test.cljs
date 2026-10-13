@@ -117,6 +117,29 @@
                                                (is (= :ready (:status (answer jobs))) "old data showed meanwhile")
                                                (done)))))))))
 
+(deftest a-bell-while-the-question-is-out-asks-again-after-the-answer
+  (async done
+         (fresh!)
+         ;; a slow server: the answer takes 400 ms
+         (reset! http/transport (fn [body on-text _]
+                                  (let [asks (wire/read-json body)]
+                                    (swap! requests conj asks)
+                                    (js/setTimeout #(on-text (wire/write-json (mapv answer-for asks))) 400))))
+         (rf/dispatch-sync [::store/ensure :board [jobs]])
+         (later 20 (fn []
+                     (let [^js s (first @sockets)]
+                       ((.-onmessage s) #js {:data (wire/write-json {:changed [jobs-form]})}))
+                     (later 300 (fn []
+                                  (is (= [["jobs/list"]] (asked)) "not asked twice at once")
+                                  (is (:stale? (entry jobs-key)) "but remembered as changed")
+                                  (later 450 (fn []
+                                               (is (= [["jobs/list"] ["jobs/list"]] (asked))
+                                                   "the answer may be from before the change: asked again")
+                                               (later 450 (fn []
+                                                            (is (not (:stale? (entry jobs-key))))
+                                                            (is (= 2 (count @requests)) "and then it rests")
+                                                            (done)))))))))))
+
 (deftest the-newest-answer-counts
   (async done
          (fresh!)

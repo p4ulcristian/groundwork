@@ -910,7 +910,8 @@ Then the store, under the screens:
   says what it needs when it opens and lets go when it closes; showing
   never fetches. Old data stays while a fresh answer loads; only the newest
   answer counts; bells are gathered for 200 ms and only what's on screen is
-  asked again; an entry nothing needs goes after five minutes. Writes are
+  asked again (once more after the answer when the bell rang while the
+  question was out); an entry nothing needs goes after five minutes. Writes are
   sent once, with a one-time key.
 - "Can I?" reads `:groundwork/grants`.
 - Dates come back as js-joda values, decimals as big.js (exact; trailing

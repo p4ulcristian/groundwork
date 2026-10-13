@@ -20,7 +20,9 @@
    - Only the newest answer counts; a late answer to an older request is
      dropped.
    - When the bells say something on screen changed, it's asked again,
-     gathered for a moment (200 ms), and only what's on screen.
+     gathered for a moment (200 ms), and only what's on screen. A bell
+     that rings while the question is out asks once more after the answer:
+     that answer may be from before the change.
    - An entry nothing needs is kept 5 minutes, then dropped.
    - Writes are sent once, with a one-time key, and never kept; their
      effect reaches screens through the bells.
@@ -202,9 +204,15 @@
                    (let [store (collect (release-owner (store-of db) owner now) now)]
                      {:db (assoc db :groundwork/parquery-store store) ::watch (watched store)})))
 
-(rf/reg-event-db ::-answered
-                 (fn [db [_ k n answer]]
-                   (assoc db :groundwork/parquery-store (answered (store-of db) k n answer))))
+(rf/reg-event-fx ::-answered
+                 ;; A bell that rang while the question was out left the entry stale:
+                 ;; this answer may be from before the change, so it's asked again.
+                 (fn [{:keys [db]} [_ k n answer]]
+                   (let [store  (answered (store-of db) k n answer)
+                         again? (and (not (:refresh-pending? store)) (seq (stale-on-screen store)))]
+                     (cond-> {:db (assoc db :groundwork/parquery-store
+                                         (cond-> store again? (assoc :refresh-pending? true)))}
+                       again? (assoc :dispatch-later [{:ms gather-ms :dispatch [::-refresh]}])))))
 
 (rf/reg-event-fx ::-changed
                  (fn [{:keys [db]} [_ forms]]
