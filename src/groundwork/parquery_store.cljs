@@ -39,8 +39,11 @@
      {:status :too-many :limit :per-minute|:per-day :retry-after-seconds n};
      the store doesn't ask again by itself, and a write is never repeated.
    - \"Can I?\" reads the person's grants: ensure
-     {:endpoint :groundwork/grants :params {}} for a signed-in person."
+     {:endpoint :groundwork/grants :params {}} for a signed-in person.
+   - An id is text here, in params, answers and keys; a UUID value given in
+     params counts as its text."
   (:require
+   [clojure.walk :as walk]
    [groundwork.parquery.http :as http]
    [groundwork.parquery.websocket :as websocket]
    [re-frame.core :as rf]))
@@ -52,8 +55,14 @@
 
 (def empty-store {:entries {} :seq 0 :refresh-pending? false :tags {} :tag-order []})
 
+(defn- ids-as-text
+  "Params with every UUID value as its text: an id is text in the browser,
+   so one question has one key however its ids were given."
+  [params]
+  (walk/postwalk #(if (uuid? %) (str %) %) params))
+
 (defn- key-of [{:keys [endpoint params]}]
-  [endpoint (or params {})])
+  [endpoint (ids-as-text (or params {}))])
 
 ;; =============================================================================
 ;; The rules, as plain functions over the store
@@ -215,7 +224,7 @@
 (defn can?
   "Whether the person holds an action in a scope, from their grants."
   [store action scope-id]
-  (boolean (some #(and (= action (:grant/action %)) (= scope-id (:grant/scope-id %)))
+  (boolean (some #(and (= action (:grant/action %)) (= (str scope-id) (:grant/scope-id %)))
                  (get-in store [:entries [:groundwork/grants {}] :data]))))
 
 ;; =============================================================================

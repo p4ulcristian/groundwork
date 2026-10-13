@@ -6,7 +6,7 @@
    [re-frame.db :as rf-db]))
 
 (deftest the-page-shell-says-who-is-here
-  (is (= {:person   #uuid "6f1c2c40-0000-4000-8000-000000000001"
+  (is (= {:person   "6f1c2c40-0000-4000-8000-000000000001"
           :flags    #{:impersonated}
           :language "de"}
          (gb/read-initial "{\"person\":\"6f1c2c40-0000-4000-8000-000000000001\",\"flags\":[\"impersonated\"],\"language\":\"de\"}")))

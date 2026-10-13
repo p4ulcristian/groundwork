@@ -823,8 +823,11 @@ The transport between browser and server, at one address, `/parquery`:
   others. At most `:max-asks` per request; at most `:max-running` running
   across the server.
 - `parquery/wire`: the message format, the same on both sides. JSON, typed
-  by the endpoint's shapes: ids, dates (`:time/local-date` …) and decimals
-  (`:decimal`) travel as text and come back as what they are.
+  by the endpoint's shapes: dates (`:time/local-date` …) and decimals
+  (`:decimal`) travel as text and come back as what they are. An id
+  (`:uuid`) is a real UUID on the server, strictly checked when it arrives,
+  and text in the browser: there it is a name tag, the same whether it came
+  from an answer, the address or a form control.
 - `parquery/websocket`: the bells. A browser opens one line to
   `/parquery` and sends the reads it shows, `{"watch": [[endpoint params] …]}`;
   each is checked like an ask. When something it shows changes, it hears
@@ -937,6 +940,8 @@ Then the store, under the screens:
   what no change in the database announces (a "try again" button, a refresh,
   a timer); out already, it's asked once more when its answer lands.
 - "Can I?" reads `:groundwork/grants`.
+- An id is text in the browser: in params, answers and the store's keys. A
+  UUID value given in params counts as its text.
 - Dates come back as js-joda values, decimals as big.js (exact; trailing
   zeros aren't kept). An app's build needs the npm packages in
   `src/deps.cljs`.

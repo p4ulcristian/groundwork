@@ -65,13 +65,20 @@
         (is (contains? (:entries (store/collect s (+ 1000 store/gc-ms 1))) jobs-key))))))
 
 (deftest can-i
-  (let [shop  #uuid "7f3c1e2a-0000-4000-8000-000000000001"
+  (let [shop  "7f3c1e2a-0000-4000-8000-000000000001"
         [s _] (ensured store/empty-store :groundwork {:endpoint :groundwork/grants :params {}})
         [s n] (store/start-fetch s [:groundwork/grants {}])
         s     (store/answered s [:groundwork/grants {}] n
                               {:status :ok :data [{:grant/scope-id shop :grant/action :jobs/move}]})]
     (is (store/can? s :jobs/move shop))
+    (is (store/can? s :jobs/move (uuid shop)) "a UUID value counts as its text")
     (is (not (store/can? s :money/move shop)))))
+
+(deftest one-question-however-its-ids-were-given
+  (let [id    "7f3c1e2a-0000-4000-8000-000000000001"
+        [s _] (ensured store/empty-store :board {:endpoint :jobs/list :params {:shop/id id}})
+        [s _] (ensured s :panel {:endpoint :jobs/list :params {:shop/id (uuid id)}})]
+    (is (= [[:jobs/list {:shop/id id}]] (keys (:entries s))) "one entry, its id as text")))
 
 (deftest too-many-is-kept-as-the-error
   (let [[s _] (ensured store/empty-store :board jobs)

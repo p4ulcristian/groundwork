@@ -31,10 +31,11 @@
    [reitit.frontend.easy :as rfe]))
 
 (defn read-initial
-  "The page shell's JSON, as {:person uuid-or-nil :flags #{…} :language …}."
+  "The page shell's JSON, as {:person id-or-nil :flags #{…} :language …}.
+   The person's id is text, like every id in the browser."
   [text]
   (let [data (when (seq text) (js->clj (js/JSON.parse text)))]
-    {:person   (some-> (get data "person") parse-uuid)
+    {:person   (get data "person")
      :flags    (into #{} (map keyword) (get data "flags"))
      :language (get data "language")}))
 

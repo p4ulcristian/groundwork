@@ -32,7 +32,7 @@
                   "params went out as text")
               (let [[ok missing] @answers]
                 (is (= :ok (:status ok)))
-                (is (uuid? (get-in ok [:data 0 :job/id])) "the id came back a UUID")
+                (is (= (str shop-id) (get-in ok [:data 0 :job/id])) "the id came back as text")
                 (is (= "2026-11-15" (str (get-in ok [:data 0 :job/due]))) "the day came back a day")
                 (is (= {:status :not-found} missing)))
               (done))

@@ -2,11 +2,18 @@
   "What travels over parquery, the same rules on both sides.
 
    JSON on the wire; the endpoint's shapes (malli) give the types back.
-   Keys like :post/title travel as \"post/title\". A UUID, a date, a decimal
-   and a number too big for JavaScript travel as text and come back as what
-   they are: java.time on the server, js-joda in the browser (the :time/…
+   Keys like :post/title travel as \"post/title\". A date, a decimal and a
+   number too big for JavaScript travel as text and come back as what they
+   are: java.time on the server, js-joda in the browser (the :time/…
    schemas, like :time/local-date); BigDecimal on the server, big.js in the
    browser (:decimal). Money travels as whole cents, an :int.
+
+   An id (:uuid) travels as text and is text in the browser: a name tag,
+   compared and passed along, the same whether it came from an answer, the
+   address or a form control. On the server it is a real UUID, and every id
+   that arrives is checked strictly against its shape. In the browser the
+   shape checks that the text is an id's; a UUID value given there goes
+   out as its text.
 
    An ask:     {\"endpoint\": \"jobs/list\", \"params\": {…}, \"key\": \"…\"}   (key: writes)
    An answer:  {\"status\": \"ok\", \"data\": …}
@@ -49,10 +56,23 @@
                      :type-properties {:gen/schema :int
                                        :gen/fmap   (fn [n] #?(:clj (BigDecimal. (str n ".00")) :cljs (Big. (str n))))}}))
 
+#?(:cljs
+   (def ^:private id-text-pattern
+     #"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))
+
+#?(:cljs
+   (def id-text-schema
+     "An id in the browser: text shaped like a UUID. Its type isn't :uuid, so
+      malli's JSON transformer leaves the text alone."
+     (m/-simple-schema {:type            :groundwork/id-text
+                        :pred            #(and (string? %) (some? (re-matches id-text-pattern %)))
+                        :type-properties {:error/message "should be an id"}})))
+
 (def registry
   "The schemas an endpoint's shapes may use: malli's own, the :time/…
-   schemas and :decimal."
+   schemas and :decimal. In the browser :uuid is an id as text."
   (mr/composite-registry
+   #?(:cljs {:uuid id-text-schema} :clj {})
    (m/default-schemas)
    (time/schemas)
    {:decimal decimal-schema}))
@@ -82,11 +102,20 @@
     :encoders {:int (fn [x] #?(:clj (if (and (integer? x) (> (abs x) 9007199254740991)) (str x) x)
                                :cljs x))}}))
 
+#?(:cljs
+   (def ^:private id-text-transformer
+     "A UUID value given in the browser becomes its text, both ways."
+     (let [text (fn [x] (if (uuid? x) (str x) x))]
+       (mt/transformer {:name     :id-text
+                        :decoders {:groundwork/id-text text}
+                        :encoders {:groundwork/id-text text}}))))
+
 (def transformer
   (mt/transformer (mt/json-transformer)
                   (time-transform/time-transformer)
                   decimal-transformer
-                  big-integer-transformer))
+                  big-integer-transformer
+                  #?(:cljs id-text-transformer)))
 
 (defn decode
   "A value from JSON, given its shape: {:value …} when it fits, or
