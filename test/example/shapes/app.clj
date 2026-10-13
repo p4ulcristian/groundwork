@@ -56,6 +56,17 @@
                        :permission {:action :catalogue/see :record [:package :package/id]}
                        :input      [:map [:package/id :uuid]]
                        :answer     [:maybe package-shape]}
+   ;; a shop's catalogue as its page shows it: its own published packages and
+   ;; the shared ones the platform owns, in one read
+   :catalogue/for-shop {:read       (fn [{:keys [db]} params] (pg/rows db packages-of-shop params))
+                        :permission {:action :catalogue/see :scope [:shop :shop/id] :and-scope [:shop platform]}
+                        :input      [:map [:shop/id :uuid]]
+                        :answer     [:vector package-shape]}
+   ;; the same for an action people hold: both scopes must verify
+   :catalogue/workbench {:read       (fn [{:keys [db]} params] (pg/rows db packages-of-shop params))
+                         :permission {:action :catalogue/edit :scope [:shop :shop/id] :and-scope [:shop platform]}
+                         :input      [:map [:shop/id :uuid]]
+                         :answer     [:vector package-shape]}
    ;; the same open action, with SQL that reaches for the shop's orders: the
    ;; wall shows a stranger none
    :catalogue/busy?   {:read       (fn [{:keys [db]} params] (:orders/count (pg/row db count-orders params)))

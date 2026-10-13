@@ -33,6 +33,15 @@
                          {:action … :scope [kind #uuid \"…\"]}  one fixed scope, for an
                                                            app-wide area (an admin
                                                            area every member shares)
+                         {:action … :scope [kind param]
+                          :and-scope [kind #uuid \"…\"]}   the scope in the request,
+                                                           and always also this fixed
+                                                           one: a shop's own rows and
+                                                           the shared rows the
+                                                           platform's scope owns, in
+                                                           one read. Both must verify
+                                                           for the action, or the ask
+                                                           is not found
                          {:action … :list kind}            every record of a kind the
                                                            person may
                        An open action (the description's :open) needs no
@@ -177,13 +186,23 @@
       (#{:public :signed-in} permission) permission
 
       (not (and (map? permission) (keyword? (:action permission))
-                (= 2 (count permission))
+                (= (if (contains? permission :and-scope) 3 2) (count permission))
                 (some #{:record :scope :list} (keys permission))))
       (bad k ":permission must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param]} or {:action … :list kind}")
 
       :else
-      (let [{:keys [action record scope list]} permission
+      (let [{:keys [action record scope list and-scope]} permission
             team? (= rules/team-action action)]
+        (when and-scope
+          (let [[kind id] and-scope]
+            (when-not (and scope (keyword? (second scope)))
+              (bad k ":and-scope goes with a :scope whose id is in the params: the scope in the request, and always also the fixed one"))
+            (when-not (and (scopes kind) (uuid? id))
+              (bad k (str ":and-scope must be [scope-kind #uuid \"…\"], and " kind " isn't a scope kind")))
+            (when team?
+              (bad k (str rules/team-action " is about one scope")))
+            (when (and (permissions/open-level perms action) (not= kind (permissions/action-kind perms action)))
+              (bad k (str action " is open in a " (permissions/action-kind perms action) ", not in a " kind)))))
         (when (and team? (not (and scope (= :groundwork/any (first scope)))))
           (bad k (str rules/team-action " goes with {:scope [:groundwork/any param]}: it is held in any kind of scope")))
         (when-not (or team? (permissions/action-kind perms action))
@@ -348,19 +367,17 @@
           record (permissions/check! perms {:person person :flags flags :action action
                                             :record [(first record) (as-id (get params (second record)))]
                                             :also   also})
-          (and scope open?)
-                 (let [scopes (permissions/open-scope perms {:person person :flags flags :action action
-                                                             :scope  (scope-of permission params)})]
-                   (when (empty? scopes)
+          ;; the scope in the request, and the fixed one that always comes
+          ;; along when the endpoint names one: each must verify for the action
+          scope  (let [verify (if open? permissions/open-scope permissions/scopes-under)
+                       each   (for [id (cond-> [(scope-of permission params)]
+                                         (:and-scope permission) (conj (second (:and-scope permission))))]
+                                (verify perms {:person person :flags flags :action action :scope id}))]
+                   (when (some empty? each)
                      (throw (ex-info "Not found" {:type ::permissions/not-found :scope scope})))
-                   (also-belongs! perms scopes also)
-                   scopes)
-          scope  (let [scopes (permissions/scopes-under perms {:person person :flags flags :action action
-                                                               :scope  (scope-of permission params)})]
-                   (when (empty? scopes)
-                     (throw (ex-info "Not found" {:type ::permissions/not-found :scope scope})))
-                   (also-belongs! perms scopes also)
-                   scopes)
+                   (let [scopes (reduce into #{} each)]
+                     (also-belongs! perms scopes also)
+                     scopes))
           list   (let [scopes (permissions/scopes-listed perms {:person person :flags flags :action action :kind list})]
                    (also-belongs! perms scopes also)
                    scopes))))))

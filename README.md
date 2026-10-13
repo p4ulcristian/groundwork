@@ -724,6 +724,21 @@ The app describes its places, actions, roles and records once:
   start. A watch on such a read holds the scope, so a visitor on one shop's
   page hears that shop's bell, for the tables the action reaches, and no
   other shop's.
+- **Shared rows have an owner.** A row every scope reads (the platform's
+  own categories next to each shop's) belongs to a real scope, the one
+  whose people keep it, never to no scope: an empty scope column means
+  "nobody's yet" everywhere. Its people edit it as members, through the
+  wall; everyone else reads it through an open action in that scope. An
+  endpoint names "the scope in the request, and always also this fixed
+  one", and one read returns both:
+
+  ```clojure
+  :permission {:action :catalogue/see :scope [:shop :shop/id] :and-scope [:shop platform-id]}
+  ```
+
+  Both scopes must verify for the action (for an open action both do; for
+  one people hold, the person must hold it in both), or the ask is not
+  found. The watch holds both.
 - **Team:** `create-scope!`, `invite!`, `accept-invitation!`,
   `change-role!`, `create-role!`, `set-role-actions!`, `remove-member!`,
   `grant-extra!`, `revoke-extra!`. Managing needs `:groundwork/team`, and

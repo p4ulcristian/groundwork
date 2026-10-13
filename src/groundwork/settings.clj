@@ -208,11 +208,16 @@
 
 (def ^:private permission
   (pred ":public, :signed-in or {:action … :record|:scope|:list …}"
-        "must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param-or-id]} or {:action … :list kind}"
+        "must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param-or-id]} (with :and-scope [kind id] for a fixed scope that always comes along) or {:action … :list kind}"
         (fn [p]
           (or (#{:public :signed-in} p)
-              (and (map? p) (qualified-keyword? (:action p)) (= 2 (count p))
-                   (let [[k v] (first (dissoc p :action))]
+              (and (map? p) (qualified-keyword? (:action p))
+                   (if (contains? p :and-scope)
+                     (and (= 3 (count p)) (contains? p :scope)
+                          (let [v (:and-scope p)]
+                            (and (vector? v) (= 2 (count v)) (keyword? (first v)) (uuid? (second v)))))
+                     (= 2 (count p)))
+                   (let [[k v] (first (dissoc p :action :and-scope))]
                      (case k
                        :record (and (vector? v) (= 2 (count v)) (every? keyword? v))
                        :scope  (and (vector? v) (= 2 (count v)) (keyword? (first v))

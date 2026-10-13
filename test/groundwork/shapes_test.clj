@@ -33,6 +33,7 @@
 ;; records
 (def gloss (id)) (def acme-secret (id)) (def zinc-matte (id)) (def zinc-secret (id))
 (def acme-order (id)) (def zinc-order (id))
+(def shared (id)) (def shared-draft (id))   ; the platform's own packages
 
 (def ^:dynamic *app* nil)
 
@@ -53,6 +54,8 @@
   (system! perms (str "INSERT INTO sh_packages VALUES (?, ?, 'Gloss', true), (?, ?, 'Secret', false),"
                       " (?, ?, 'Zinc Matte', true), (?, ?, 'Zinc Secret', false)")
            gloss acme acme-secret acme zinc-matte zinc zinc-secret zinc)
+  (system! perms "INSERT INTO sh_packages VALUES (?, ?, 'Shared Primer', true), (?, ?, 'Shared Draft', false)"
+           shared shapes/platform shared-draft shapes/platform)
   (system! perms "INSERT INTO sh_orders VALUES (?, ?, ?, 'a'), (?, ?, NULL, 'z')"
            acme-order acme vic zinc-order zinc))
 
@@ -211,7 +214,7 @@
 
 (deftest the-leak-test-covers-open-actions
   (let [part   (gw/endpoints *app*)
-        sealed #{acme-secret zinc-secret acme-order zinc-order}
+        sealed #{acme-secret zinc-secret shared-draft acme-order zinc-order}
         report (leaks/check part {:person  stella
                                   :foreign {:shop zinc :package zinc-secret :order zinc-order}
                                   :sealed  sealed})]
@@ -228,7 +231,7 @@
                                      :permissions  perms
                                      :app-settings {}})]
         (try
-          (is (= #{:catalogue/package :catalogue/of-shop}
+          (is (= #{:catalogue/package :catalogue/of-shop :catalogue/for-shop}
                  (set (keep :endpoint (:leaked (leaks/check part {:person  stella
                                                                   :foreign {:shop zinc :package zinc-secret
                                                                             :order zinc-order}
@@ -236,6 +239,64 @@
           (finally
             ;; the app's own wall back
             (perm/start {:settings shapes/description :db (gw/db *app*)})))))))
+
+;; =============================================================================
+;; Shared rows have an owner
+;; =============================================================================
+
+(deftest a-read-brings-the-shops-rows-and-the-shared-ones
+  (testing "nobody signed in: the shop's published packages and the platform's, no other shop's, no drafts"
+    (is (= ["Gloss" "Shared Primer"] (names (call nil :catalogue/for-shop {:shop/id acme}))))
+    (is (= ["Shared Primer" "Zinc Matte"] (names (call nil :catalogue/for-shop {:shop/id zinc})))))
+  (testing "the platform's rows are an ordinary scope's: its people edit them as members, through the wall"
+    (is (= "Shared Primer!" (get-in (call pat :catalogue/rename {:package/id shared :package/name "Shared Primer!"})
+                                    [:data :package/name])))
+    (is (= {:status :not-found} (call stella :catalogue/rename {:package/id shared :package/name "Mine"}))
+        "Acme's staff don't")
+    (as-system! "UPDATE sh_packages SET package__name = 'Shared Primer' WHERE package__id = ?" shared))
+  (testing "an action people hold: both scopes must verify, or the ask is not found"
+    (is (= {:status :not-found} (call stella :catalogue/workbench {:shop/id acme}))
+        "Stella holds it in Acme, not in the platform's scope")
+    (is (= {:status :not-found} (call pat :catalogue/workbench {:shop/id acme}))
+        "the platform's owner doesn't hold it in Acme")
+    (perm/grant-extra! (gw/permissions *app*) {:by pat :scope shapes/platform :person stella :action :catalogue/edit})
+    (try
+      (is (= ["Gloss" "Secret" "Shared Draft" "Shared Primer"]
+             (names (call stella :catalogue/workbench {:shop/id acme})))
+          "holding it in both: every row of both")
+      (finally
+        (perm/revoke-extra! (gw/permissions *app*)
+                            {:by pat :scope shapes/platform :person stella :action :catalogue/edit}))))
+  (testing "the fixed scope goes with a scope from the request, and an open action's must be of its kind"
+    (let [start (fn [permission]
+                  (error #(endpoints/start {:settings     (assoc (get-in (settings shapes/description {}) [:parquery])
+                                                                 :endpoints [{:x/y {:read (fn [_ _] nil) :permission permission
+                                                                                    :input [:map [:package/id :uuid]]
+                                                                                    :answer :nil}}])
+                                            :db           (gw/db *app*)
+                                            :permissions  (gw/permissions *app*)
+                                            :app-settings {}})))]
+      (is (= :groundwork.settings/invalid
+             (:type (start {:action :catalogue/see :record [:package :package/id] :and-scope [:shop shapes/platform]}))))
+      (is (= ::endpoints/bad-endpoint
+             (:type (start {:action :catalogue/see :scope [:shop shapes/platform] :and-scope [:shop shapes/platform]})))))))
+
+(deftest a-watch-holds-both-scopes
+  (ask! nil "catalogue/for-shop" {:shop/id (str acme)})
+  (let [line (open-line nil)
+        list ["catalogue/for-shop" {:shop/id (str acme)}]]
+    (try
+      (watch! line list)
+      (testing "the shop's own package"
+        (as-system! "UPDATE sh_packages SET package__name = 'Gloss' WHERE package__id = ?" gloss)
+        (is (= [list] (next-bell line 3000))))
+      (testing "a shared one: everyone showing a catalogue shows that row"
+        (as-system! "UPDATE sh_packages SET package__name = 'Shared Primer' WHERE package__id = ?" shared)
+        (is (= [list] (next-bell line 3000))))
+      (testing "another shop's: nothing"
+        (as-system! "UPDATE sh_packages SET package__name = 'Zinc Matte' WHERE package__id = ?" zinc-matte)
+        (is (nil? (next-bell line 500))))
+      (finally (close! line)))))
 
 (deftest a-visitor-hears-its-shops-bell
   (ask! nil "catalogue/of-shop" {:shop/id (str acme)})
