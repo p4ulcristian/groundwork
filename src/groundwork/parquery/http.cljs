@@ -9,7 +9,8 @@
 
    An answer is {:status :ok :data …} or another status (see
    groundwork.parquery.wire); a request that never reached the server gives
-   {:status :error :message …} to each of its asks."
+   {:status :error :message … :reached? false} to each of its asks, so an
+   app can tell \"no connection\" from an error the server answered with."
   (:require
    [groundwork.parquery.wire :as wire]))
 
@@ -50,7 +51,7 @@
 
 (defn- fetch-transport
   "POST the asks' JSON to /parquery; on-text gets the answer's text,
-   on-failure a message."
+   on-failure a message, and true when the server did answer."
   [body on-text on-failure]
   (-> (js/fetch "/parquery" #js {:method      "POST"
                                  :credentials "same-origin"
@@ -59,7 +60,7 @@
       (.then (fn [response]
                (if (.-ok response)
                  (.then (.text response) on-text)
-                 (on-failure (str "The server answered " (.-status response))))))
+                 (on-failure (str "The server answered " (.-status response)) true))))
       (.catch (fn [_] (on-failure "No connection to the server")))))
 
 (defonce ^{:doc "How a request travels; tests replace it."} transport (atom fetch-transport))
@@ -72,9 +73,10 @@
                 (let [answers (wire/read-json text)]
                   (doseq [[{:keys [ask on-answer]} answer] (map vector batch answers)]
                     (on-answer (decode-answer (:endpoint ask) answer)))))
-              (fn [message]
+              (fn [message & [reached?]]
                 (doseq [{:keys [on-answer]} batch]
-                  (on-answer {:status :error :message message})))))
+                  (on-answer (cond-> {:status :error :message message}
+                               (not reached?) (assoc :reached? false)))))))
 
 (defn- send-waiting! []
   (let [batch @waiting]

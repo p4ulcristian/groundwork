@@ -45,8 +45,15 @@
            (http/ask! {:endpoint :jobs/list :params {:shop/id shop-id}} #(swap! answers conj %))
            (js/setTimeout
             (fn []
-              (is (= [{:status :error :message "No connection to the server"}] @answers))
-              (done))
+              (is (= [{:status :error :message "No connection to the server" :reached? false}] @answers))
+              ;; the server did answer, with an error of its own
+              (reset! http/transport (fn [_ _ on-failure] (on-failure "The server answered 502" true)))
+              (http/ask! {:endpoint :jobs/list :params {:shop/id shop-id}} #(swap! answers conj %))
+              (js/setTimeout
+               (fn []
+                 (is (= {:status :error :message "The server answered 502"} (last @answers)))
+                 (done))
+               20))
             20))))
 
 (defn- fake-socket [sockets]
