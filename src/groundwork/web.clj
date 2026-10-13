@@ -156,7 +156,10 @@
                       (or (= :script-src directive)
                           (and (= :style-src directive) (not (inline? :style-src)))) (conj nonce-src)
                       ;; the development build loads code with eval
-                      (and (= :script-src directive) (= :development environment)) (conj "'unsafe-eval'")))]
+                      (and (= :script-src directive) (= :development environment)) (conj "'unsafe-eval'")
+                      ;; and hears from its watcher (new code, a changed
+                      ;; stylesheet) over a websocket on the watcher's own port
+                      (and (= :connect-src directive) (= :development environment)) (conj "ws:" "wss:")))]
     (str/join "; " (concat (for [directive (keys csp-directives)]
                              (str (name directive) " " (str/join " " (sources directive))))
                            ["style-src-attr 'unsafe-inline'"

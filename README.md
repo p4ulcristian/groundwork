@@ -570,8 +570,9 @@ resources/migrations/
   `:body` included; `web/nonce` for a handler writing its own HTML). Style
   attributes stay allowed, since components set them. The app adds sources
   per directive: `:content-security-policy {:script-src ["https://js.payments.example"]
-  :frame-src […] :connect-src […]}`. Development also allows eval, which its
-  build needs.
+  :frame-src […] :connect-src […]}`. Development also allows eval and
+  websockets, which its build needs (code arrives as text, and the watcher
+  tells the page about a save over a websocket on its own port).
 
 ```clojure
 ["/customize"        {:get web/page :access :public :embeddable true}]                     ; any https site may frame it
@@ -1125,7 +1126,8 @@ styles/
   library's own class as text; `groundwork.browser/start!` installs it.
 - **A namespace is one stylesheet,** named after it (`job-card.css`),
   anywhere under `looks/`, `areas/` or `vendor/`. A large one is several
-  files named `job-card.<part>.css`. Two files of one name are refused.
+  files named `job-card.<part>.css`, side by side or in a folder of their
+  own. Two files of one name are refused.
 - **A stylesheet paints only its own:** the element a rule styles carries
   one of its namespace's classes. Around that element the selector may look
   at anything: where it sits, what it holds (`:has()`), its states. Another
@@ -1185,6 +1187,11 @@ The styles have 3 problems:
   shell reads; production starts from the manifest and reads no code.
 - In development a saved stylesheet is in the open page without a reload
   (the bundles are rewritten, and the build's watcher swaps them in).
+- Tests: every check on small trees (`groundwork.styles-test`), the door on
+  node (`groundwork.css-test`), and in headless Chrome
+  (`groundwork.browser-routing-test`): a release's page loads the
+  fingerprinted bundles, a screen loaded on demand brings its own, and in
+  development a save shows in the open page.
 
 ---
 

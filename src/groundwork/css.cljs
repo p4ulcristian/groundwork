@@ -99,6 +99,14 @@
       (make-element [this argv component jsprops first-child]
         (tmpl/make-element this argv component jsprops first-child)))))
 
+(defn- linked?
+  "Whether the page links a stylesheet already, whatever was added to its
+   address since (the development build swaps a saved one in under ?r=…)."
+  [href]
+  (let [path (.-pathname (js/URL. href js/document.baseURI))]
+    (boolean (some #(= path (.-pathname (js/URL. (.-href %))))
+                   (array-seq (js/document.querySelectorAll "link[rel=\"stylesheet\"]"))))))
+
 (defn ensure-module!
   "The stylesheets of a module loaded on demand, in the page before its
    screen shows: a promise. Nothing to do for a module the page loaded
@@ -107,7 +115,7 @@
   (let [href (when module (get @module-styles (name module)))]
     (if (or (nil? href)
             (not (exists? js/document))
-            (js/document.querySelector (str "link[rel=\"stylesheet\"][href=\"" href "\"]")))
+            (linked? href))
       (js/Promise.resolve nil)
       (js/Promise.
        (fn [resolve _]

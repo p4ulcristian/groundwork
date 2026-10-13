@@ -268,6 +268,15 @@
       (is (str/includes? policy "style-src 'self' 'unsafe-inline';"))
       (is (str/includes? policy "script-src 'self' 'nonce-N1'") "scripts keep theirs"))))
 
+(deftest development-lets-the-build-in
+  (let [policy (#'web/csp-header {} :development "N1" nil)]
+    (is (str/includes? policy "script-src 'self' 'nonce-N1' 'unsafe-eval';") "its code arrives as text")
+    (is (str/includes? policy "connect-src 'self' ws: wss:;") "its watcher talks over a websocket on another port"))
+  (doseq [environment [:test :production]]
+    (let [policy (#'web/csp-header {} environment "N1" nil)]
+      (is (str/includes? policy "connect-src 'self';"))
+      (is (not (str/includes? policy "unsafe-eval"))))))
+
 (deftest inline-tags-get-the-nonce
   (let [page (page/start {:settings (assoc (:page app-settings)
                                            :head ["<script>window.x=1</script>" "<style>a{}</style>"

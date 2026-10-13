@@ -2,7 +2,9 @@
   "Routing in a real browser: the example app (test/example), compiled,
    served, and driven in headless Chrome over its debugging protocol. What
    the node tests can't see is checked here: the browser's own history,
-   links, titles, and unsaved changes holding Back.
+   links, titles, and unsaved changes holding Back; and the styles: the
+   bundles a page loads, a screen loaded on demand bringing its own, and in
+   development a saved stylesheet showing in the open page.
 
    Needs Chrome: GROUNDWORK_CHROME names it, else the usual places are tried.
    Without one the test says so and passes."
@@ -14,6 +16,7 @@
    [example.hello.settings :as example]
    [groundwork.build :as build]
    [groundwork.core :as gw]
+   [groundwork.repl :as repl]
    [groundwork.styles :as styles]
    [groundwork.test-support :refer [app-settings]]
    [groundwork.web :as web]
@@ -111,13 +114,14 @@
               [:result :value]))))
 
 (defn- eventually
-  "Whether (check) comes true within a few seconds."
-  [check]
-  (loop [tries 60]
-    (cond
-      (try (check) (catch Exception _ false)) true
-      (zero? tries)                           false
-      :else                                   (do (Thread/sleep 100) (recur (dec tries))))))
+  "Whether (check) comes true within a few seconds (or tries tenths of one)."
+  ([check] (eventually 60 check))
+  ([tries check]
+   (loop [tries tries]
+     (cond
+       (try (check) (catch Exception _ false)) true
+       (zero? tries)                           false
+       :else                                   (do (Thread/sleep 100) (recur (dec tries)))))))
 
 ;; -----------------------------------------------------------------------------
 
@@ -216,4 +220,67 @@
           (doseq [^File f (reverse (file-seq (io/file profile)))] (.delete f))
           (gw/stop app)
           (clean!))))
+    (println "groundwork.browser-routing-test: no Chrome found (GROUNDWORK_CHROME), skipped")))
+
+(deftest styles-while-developing
+  (if-let [path (chrome)]
+    (let [;; a copy of the example's styles, since the test saves into it
+          tree     (str (Files/createTempDirectory "groundwork-styles-dev" (make-array FileAttribute 0)))
+          _        (doseq [^File f (file-seq (io/file (:dir styles))) :when (.isFile f)]
+                     (let [to (io/file tree (subs (.getPath f) (inc (count (:dir styles)))))]
+                       (io/make-parents to)
+                       (io/copy f to)))
+          browser  (assoc browser :build :example-styles-dev :watch? true
+                          :output-dir "test/public/example-styles-dev" :asset-path "/example-styles-dev")
+          styles   (assoc (example/styles "example-styles-dev-css") :dir tree)
+          dir      (str (Files/createTempDirectory "groundwork-dev" (make-array FileAttribute 0)))
+          ;; the development start: the app, the build's watcher, the styles' watcher
+          dev      (repl/start! (-> app-settings
+                                    (assoc :environment :development)
+                                    (assoc-in [:server :port] 0)
+                                    (assoc :browser browser :styles styles)
+                                    (assoc-in [:page :stylesheets] [])
+                                    (assoc-in [:web :routes] (web/page-routes routes/routes)))
+                                {:dir dir :mcp-json? false})
+          origin   (str "http://127.0.0.1:" (gw/port (:app dev)))
+          profile  (str (Files/createTempDirectory "groundwork-chrome" (make-array FileAttribute 0)))
+          {:keys [^Process process address]} (launch path profile)]
+      (try
+        (is (some? address) "Chrome started")
+        (when address
+          (let [js      (open-page (connect address) (str origin "/"))
+                padding #(js "getComputedStyle(document.querySelector('#screen')).paddingTop")
+                sheets  #(js (str "Array.from(document.querySelectorAll('link[rel=stylesheet]'))"
+                                  ".map(l => new URL(l.href).pathname).join(' ')"))
+                panel   (io/file tree "looks/panel.css")]
+            (testing "the bundles under their plain names, and every class told to the page"
+              (is (eventually 300 #(= "8px" (padding))))
+              (is (= "/example-styles-dev-css/base.css /example-styles-dev-css/main.css" (sheets)))
+              (is (= "nav__bar panel__frame reports__screen"
+                     (js "JSON.parse(document.getElementById('groundwork').textContent).classes.join(' ')"))))
+            (testing "a saved stylesheet shows in the open page, which is not loaded again"
+              (js "window.stillHere = true")
+              (spit panel (str/replace (slurp panel) "8px" "31px"))
+              (is (eventually 300 #(= "31px" (padding))))
+              (is (true? (js "window.stillHere"))))
+            (testing "a screen loaded on demand brings its module's stylesheet, once each"
+              (js "document.querySelector('#nav-reports').click()")
+              (is (eventually #(= "Reports" (js "(document.querySelector('#screen') || {}).textContent"))))
+              (is (= "rgb(1, 2, 3)" (js "getComputedStyle(document.querySelector('#screen')).color")))
+              (is (= "20px" (padding)))
+              (is (= (str "/example-styles-dev-css/base.css /example-styles-dev-css/main.css "
+                          "/example-styles-dev-css/reports.css")
+                     (sheets))))
+            (testing "a mistake saved is reported, with its file and line"
+              (spit panel (str (slurp panel) ".panel__ghost { color: red; }\n"))
+              (is (eventually 100 #(str/includes? (slurp (io/file dir ".groundwork" "dev.log"))
+                                                  (str tree "/looks/panel.css:3  .panel__ghost is named by no code"))))
+              (is (str/starts-with? (repl/styles-report (:app dev)) "The styles have 1 problem:")))))
+        (finally
+          (.destroy process)
+          (.waitFor process 5 TimeUnit/SECONDS)
+          (repl/stop! dev)
+          (doseq [folder [profile tree dir (:output-dir browser) (:output-dir styles)]
+                  ^File f (reverse (file-seq (io/file folder)))]
+            (.delete f)))))
     (println "groundwork.browser-routing-test: no Chrome found (GROUNDWORK_CHROME), skipped")))
