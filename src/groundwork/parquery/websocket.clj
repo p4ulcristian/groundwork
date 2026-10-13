@@ -53,6 +53,7 @@
    [jsonista.core :as json]
    [next.jdbc :as jdbc]
    [next.jdbc.connection :as connection]
+   [next.jdbc.result-set :as rs]
    [org.httpkit.server :as http])
   (:import
    (java.lang System$Logger System$Logger$Level)
@@ -122,11 +123,27 @@
       (throw (ex-info problem {:type ::tables-not-declared :twice (vec twice) :missing (vec missing)
                                :undeclared (vec unsaid)})))))
 
+(def ^:private stale-bells
+  "The app's tables that carry a ring trigger: [{:trigger/table … :trigger/name …}]."
+  (str "SELECT c.relname AS trigger__table, t.tgname AS trigger__name"
+       " FROM pg_catalog.pg_trigger t"
+       " JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid"
+       " JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace"
+       " WHERE n.nspname = 'public' AND NOT t.tgisinternal"
+       "   AND t.tgname IN ('groundwork_ring_insert', 'groundwork_ring_update', 'groundwork_ring_delete')"))
+
 (defn- install-bells!
   "A trigger per table and kind of change, calling groundwork.ring. Safe to
-   run again."
+   run again. A table that rang under an earlier start and is silent now
+   loses its triggers: left on, it would go on ringing in a database that
+   was there before, and stay quiet only in a new one."
   [db tables]
   (pg/with-transaction [tx db]
+    (doseq [{trigger_table :trigger__table trigger_name :trigger__name}
+            (jdbc/execute! (::pg/conn tx) [stale-bells] {:builder-fn rs/as-unqualified-lower-maps})
+            :when (not (contains? tables trigger_table))]
+      (jdbc/execute! (::pg/conn tx)
+                     [(str "DROP TRIGGER IF EXISTS " trigger_name " ON " (rules/quote-table trigger_table))]))
     (doseq [[t {:keys [id scopes people]}] tables
             [op referencing] [["INSERT" "NEW TABLE AS new_rows"]
                               ["UPDATE" "NEW TABLE AS new_rows OLD TABLE AS old_rows"]

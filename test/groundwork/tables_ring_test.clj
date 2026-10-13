@@ -61,3 +61,20 @@
   (testing "an empty reason too"
     (let [problem (start-with {:global {:tr_colours ""} :personal {} :silent (others)})]
       (is (= :groundwork.settings/invalid (:type problem)) (pr-str problem)))))
+
+(defn- ring-triggers [table]
+  (count (sql! (str "SELECT t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid"
+                    " WHERE c.relname = '" table "' AND t.tgname LIKE 'groundwork_ring_%'"))))
+
+(deftest a-table-that-turns-silent-stops-ringing
+  (testing "it rings while it is global"
+    (is (= :started (start-with {:global   {:tr_colours "reference data"}
+                                 :personal {:tr_notices :tr-notice/person-id}
+                                 :silent   (assoc (others) :tr_import_log "…")})))
+    (is (= 3 (ring-triggers "tr_colours"))))
+  (testing "declared silent at a later start, in the same database, its triggers are gone"
+    (is (= :started (start-with {:global   {}
+                                 :personal {:tr_notices :tr-notice/person-id}
+                                 :silent   (assoc (others) :tr_import_log "…" :tr_colours "nothing shows it any more")})))
+    (is (zero? (ring-triggers "tr_colours")))
+    (is (= 3 (ring-triggers "tr_notices")) "the others keep theirs")))
