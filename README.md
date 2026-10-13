@@ -483,7 +483,12 @@ resources/migrations/
 - A failing file rolls back and the app doesn't start. A file that ran and
   then changed or disappeared stops the start: a fix is a new file.
 - In development the whole schema is written to `:schema-snapshot`
-  (`nil` for none), when `pg_dump` is on the PATH.
+  (`nil` for none), when `pg_dump` is on the PATH. It is written when the
+  whole start is done, after everything Groundwork installs in the database
+  (the wall's policies, the rules that fill a row's scope, the bells'
+  triggers): it shows the database as it runs, a changed permission rule
+  shows as a difference in it, and a database's first start writes the same
+  file as every later one.
 - Groundwork's tables live in the `groundwork` schema; every connection's
   search path is only `public`, so the two never mix.
 

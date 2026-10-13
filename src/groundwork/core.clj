@@ -148,11 +148,24 @@
         (try (ig/halt! system) (catch Throwable _ nil)))
       (throw (or (ex-cause e) e)))))
 
+(defn- snapshot!
+  "The schema snapshot, when the start is done: everything Groundwork
+   installs in the database is in it. A snapshot that can't be written stops
+   the app again and throws."
+  [settings system fakes]
+  (when-not (some #{:groundwork/db :groundwork/migrations} fakes)
+    (try (migrations/snapshot! settings)
+         (catch Throwable e
+           (try (ig/halt! system (remove (set fakes) (keys system))) (catch Throwable _ nil))
+           (throw e)))))
+
 (defn start
   "Start an app from its settings. Returns the running app; give it to stop."
   [settings]
   (settings/check! settings)
-  (reset! current-app {::system (init (config settings))}))
+  (let [system (init (config settings))]
+    (snapshot! settings system #{})
+    (reset! current-app {::system system})))
 
 (defn start-with
   "Start an app with some parts replaced by fakes, for tests:
@@ -168,8 +181,10 @@
                             (assoc config k {::fake fake}))
                           (config settings)
                           fakes)]
-    (reset! current-app {::system (init config)
-                         ::fakes  (set (keys fakes))})))
+    (let [system (init config)]
+      (snapshot! settings system (set (keys fakes)))
+      (reset! current-app {::system system
+                           ::fakes  (set (keys fakes))}))))
 
 (defn stop
   "Stop a running app, its parts in reverse order."

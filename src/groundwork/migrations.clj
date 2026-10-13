@@ -15,7 +15,11 @@
    - A file that ran and is gone stops the start too: the database and the
      files disagree.
    - In development, a snapshot of the whole schema is written to one file
-     after migrating, when pg_dump is on the PATH."
+     when the whole start is done (groundwork.core calls snapshot!), when
+     pg_dump is on the PATH: after everything Groundwork installs in the
+     database, the wall's policies, the fill rules and the bells' triggers,
+     so it shows the database as it runs and comes out the same on a
+     database's first start as on every later one."
   (:require
    [clojure.java.io :as io]
    [clojure.string :as str]
@@ -225,12 +229,18 @@
 ;; =============================================================================
 
 (defn start
-  "The migrations part: migrate, then in development write the snapshot.
+  "The migrations part: migrate.
 
-     :schema-snapshot  the file the snapshot goes to in development, or nil for none"
-  [{:keys [settings environment db db-settings]}]
+     :schema-snapshot  the file the snapshot goes to in development, or nil for none;
+                       written when the whole start is done, see snapshot!"
+  [{:keys [settings db]}]
   (settings/check-part! :migrations settings)
-  (let [ran (migrate! db)]
-    (when (and (= :development environment) (:schema-snapshot settings))
-      (write-snapshot! db-settings (:schema-snapshot settings)))
-    {:ran ran}))
+  {:ran (migrate! db)})
+
+(defn snapshot!
+  "In development, write the schema snapshot the app's settings name. Called
+   when every part has started, so the file holds what the start installed
+   too. Returns true when it wrote one."
+  [{:keys [environment migrations db]}]
+  (boolean (when (and (= :development environment) (:schema-snapshot migrations))
+             (write-snapshot! db (:schema-snapshot migrations)))))
