@@ -33,6 +33,7 @@
    [groundwork.postgres :as pg]
    [groundwork.sessions :as sessions]
    [groundwork.settings :as settings]
+   [groundwork.styles :as styles]
    [jsonista.core :as json]
    [next.jdbc :as jdbc]
    [next.jdbc.result-set :as rs])
@@ -149,7 +150,7 @@
             _      (when mcp-json? (write-mcp-json! dir (:port nrepl)))
             shadow (when (get-in settings [:browser :watch?])
                      (needs 'shadow.cljs.devtools.server/start! "thheller/shadow-cljs")
-                     (build/watch! (:browser settings)))
+                     (build/watch! (styles/with-watch-dir (:styles settings) (:browser settings))))
             app    (gw/start settings)]
         (println (str "Groundwork is running: port " (gw/port app) ", nREPL " (:port nrepl)
                       (when shadow (str ", watching " shadow)) ", log " log))
@@ -420,3 +421,40 @@
   "Run a dead job again now."
   [app id]
   (jobs/retry! (gw/jobs app) id))
+
+;; =============================================================================
+;; Styles
+;; =============================================================================
+
+(defn- styles-now
+  "The app's styles as they are on disk now, read again: the tree, the code
+   and the bundles' plan."
+  [app]
+  (let [{:keys [settings browser]} (or (gw/part app :groundwork/styles)
+                                       (throw (ex-info "This app has no :styles" {:type ::no-styles})))
+        read (styles/analysis settings)]
+    (assoc read :plan (styles/plan settings browser read) :browser browser)))
+
+(defn explain-class
+  "Where a class is defined, which code uses it (file:line), which bundles
+   carry it and which other stylesheets look at it.
+   (explain-class app :css.job-card/title)"
+  [app class-key]
+  (styles/explain-class (styles-now app) class-key))
+
+(defn page-styles
+  "What a page loads and why: the base files in order, then each module's
+   stylesheets with the code that uses them. A page is named by its build
+   module, or nil for one that names none. (page-styles app :main)"
+  ([app] (page-styles app nil))
+  ([app module]
+   (let [read (styles-now app)]
+     (styles/page-loads read (:browser read) module))))
+
+(defn styles-report
+  "Every problem with the app's styles now, each a line with its file and
+   line, or \"No problems.\""
+  [app]
+  (let [read  (styles-now app)
+        found (styles/problems (:styles read) read)]
+    (if (seq found) (styles/report found) "No problems.")))

@@ -10,7 +10,9 @@
      :head         []                extra tags, as HTML text, placed at the end of <head>
 
    The app's compiled browser code is the build's own (see groundwork.build):
-   after a release, its fingerprinted file from the build's manifest.
+   after a release, its fingerprinted file from the build's manifest. An app
+   with :styles (groundwork.styles) gets its stylesheets the same way: the
+   base bundle and the bundles of the page's modules, before :stylesheets.
 
    A route can give its own page, a map or a function of the request
    returning one, merged over these:
@@ -53,6 +55,7 @@
    [groundwork.build :as build]
    [groundwork.sessions :as sessions]
    [groundwork.settings :as settings]
+   [groundwork.styles :as styles]
    [jsonista.core :as json]))
 
 (def ^:private route-keys
@@ -89,17 +92,22 @@
 
 (defn- initial-data
   "What the browser start reads first, as JSON safe inside a <script>."
-  [{:keys [person flags lang languages]}]
+  [{:keys [person flags lang languages module-styles known-classes]}]
   (str/replace (json/write-value-as-string (cond-> {"person"   (some-> person str)
                                                     "flags"    (mapv name (sort flags))
                                                     "language" lang}
-                                             languages (assoc "languages" {"supported" (:supported languages)
-                                                                           "default"   (:default languages)})))
+                                             languages     (assoc "languages" {"supported" (:supported languages)
+                                                                               "default"   (:default languages)})
+                                             module-styles (assoc "styles" module-styles)
+                                             known-classes (assoc "classes" known-classes)))
                "</" "<\\/"))
 
 (defn html
   "The page as HTML text; nonce, when given, goes on its scripts and styles."
-  [{:keys [lang title description icon canonical alternates stylesheets head module-scripts scripts body] :as page} nonce]
+  [{:keys [lang title description icon canonical alternates style-links stylesheets head loader-info module-scripts
+           scripts body]
+    :as   page}
+   nonce]
   (str "<!doctype html>\n"
        "<html lang=\"" (escape lang) "\">\n"
        "<head>\n"
@@ -111,13 +119,19 @@
        (when canonical (str "<link rel=\"canonical\" href=\"" (escape canonical) "\">\n"))
        (apply str (for [{:keys [lang href]} alternates]
                     (str "<link rel=\"alternate\" hreflang=\"" (escape lang) "\" href=\"" (escape href) "\">\n")))
-       (apply str (for [href stylesheets]
+       (apply str (for [href (concat style-links stylesheets)]
                     (str "<link rel=\"stylesheet\" href=\"" (escape href) "\">\n")))
        (apply str (for [tag head] (str (stamp-nonce tag nonce) "\n")))
        "</head>\n"
        "<body>\n"
        "<div id=\"app\">" (stamp-nonce body nonce) "</div>\n"
        (stamp-nonce (str "<script type=\"application/json\" id=\"groundwork\">" (initial-data page) "</script>\n") nonce)
+       ;; after a release, where the module loader finds a module it loads on demand
+       (when loader-info
+         (stamp-nonce (str "<script>window.shadow$modules="
+                           (str/replace (json/write-value-as-string loader-info) "</" "<\\/")
+                           ";</script>\n")
+                      nonce))
        (apply str (for [src (concat module-scripts scripts)]
                     (stamp-nonce (str "<script src=\"" (escape src) "\" defer></script>\n") nonce)))
        "</body>\n"
@@ -141,16 +155,26 @@
    own page (::route-page on the request) merged over the app's. The build's
    script is looked up on every page in development, where it changes, and
    once otherwise."
-  [{:keys [settings app-settings environment]}]
+  [{:keys [settings app-settings environment] styles-part :styles}]
   (settings/check-part! :page settings)
-  (let [browser (:browser app-settings)
-        for*    (fn [module]
-                  (if module
-                    (build/scripts browser module)
-                    (into [] (comp (mapcat #(build/scripts browser %)) (distinct)) (build/roots browser))))
-        cached  (memoize for*)
+  (let [browser  (:browser app-settings)
+        styles   (:settings styles-part)
+        dev?     (= :development environment)
+        for*     (fn [module]
+                   (if module
+                     (build/scripts browser module)
+                     (into [] (comp (mapcat #(build/scripts browser %)) (distinct)) (build/roots browser))))
+        cached   (memoize for*)
         ;; in development the build changes while the app runs
-        scripts (if (= :development environment) for* cached)]
+        scripts  (if dev? for* cached)
+        loader*  (fn [] (build/loader-info browser))
+        loader   (if dev? loader* (memoize loader*))
+        links*   (fn [module] (when styles (styles/links styles browser module)))
+        links    (if dev? links* (memoize links*))
+        modules* (fn [] (when styles (styles/module-links styles)))
+        modules  (if dev? modules* (memoize modules*))
+        ;; what the browser's own check knows, in development only
+        known    (fn [] (when (and styles dev?) (some-> styles-part :state deref styles/known-classes)))]
     (fn [request]
       (let [page (merged (cond-> (assoc settings
                                         :person    (sessions/person request)
@@ -162,5 +186,10 @@
         {:status  200
          :headers {"Content-Type"  "text/html; charset=utf-8"
                    "Cache-Control" "no-store"}
-         :body    (html (assoc page :module-scripts (scripts (:module page)))
+         :body    (html (assoc page
+                               :module-scripts (scripts (:module page))
+                               :loader-info    (loader)
+                               :style-links    (links (:module page))
+                               :module-styles  (modules)
+                               :known-classes  (known))
                         (::nonce request))}))))

@@ -13,6 +13,7 @@
    [example.hello.routes :as routes]
    [groundwork.build :as build]
    [groundwork.core :as gw]
+   [groundwork.styles :as styles]
    [groundwork.test-support :refer [app-settings]]
    [groundwork.web :as web]
    [jsonista.core :as json])
@@ -29,7 +30,19 @@
    :entry      'example.hello.browser/start
    :output-dir "test/public/example-routing"
    :asset-path "/example-routing"
-   :watch?     false})
+   :watch?     false
+   ;; the reports screen in a module of its own, loaded on arrival
+   :modules    {:main    {:init-fn 'example.hello.browser/start}
+                :reports {:entries ['example.hello.reports] :depends-on #{:main}}}
+   :loader?    true})
+
+(def ^:private styles
+  {:dir        "test/example/styles"
+   :sources    ["test/example"]
+   :base       ["base/base.css"]
+   :vendor     []
+   :output-dir "test/public/example-routing-css"
+   :asset-path "/example-routing-css"})
 
 (defn- chrome
   "The Chrome to drive, or nil."
@@ -115,15 +128,20 @@
 ;; -----------------------------------------------------------------------------
 
 (defn- clean! []
-  (doseq [f (reverse (file-seq (io/file (:output-dir browser))))]
+  (doseq [dir [(:output-dir browser) (:output-dir styles)]
+          f   (reverse (file-seq (io/file dir)))]
     (io/delete-file f true)))
 
 (deftest routing-in-a-real-browser
   (if-let [path (chrome)]
     (let [;; a release: one file, as production serves it, under the strict policy
           _       (build/release! browser)
+          _       (styles/release! {:styles styles :browser browser})
           app     (gw/start (-> app-settings
-                                (assoc :browser browser)
+                                (assoc :environment :production)
+                                (assoc-in [:web :test-sign-in] nil)
+                                (assoc :browser browser :styles styles)
+                                (assoc-in [:page :stylesheets] [])
                                 (assoc-in [:web :hashed-files] "(?i)\\.[0-9a-f]{8,}\\.")
                                 (assoc-in [:web :routes] (web/page-routes routes/routes))))
           origin  (str "http://127.0.0.1:" (gw/port app))
@@ -137,6 +155,11 @@
                 click!   #(js (str "document.querySelector('" % "').click()"))
                 location #(js "location.pathname + location.search")
                 at?      (fn [address screen] (eventually #(and (= address (location)) (= screen (text "#screen")))))]
+            (testing "the page loads the base bundle and its module's, fingerprinted, and not the reports module's"
+              (let [sheets (fn [] (js "Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(l => l.getAttribute('href')).join(' ')"))]
+                (is (eventually #(= "flex" (js "(n => n && getComputedStyle(n).display)(document.querySelector('nav'))")))
+                    "a class keyword in the code is the class the stylesheet styles")
+                (is (re-find #"^/example-routing-css/base\.[0-9A-F]{8}\.css /example-routing-css/main\.[0-9A-F]{8}\.css$" (sheets)))))
             (testing "the page's own address is the first route, with its query and title"
               (is (eventually #(= "stage: curing" (text "#query"))))
               (is (= "Orders" (js "document.title")) "the server's title and the route's agree"))
@@ -159,7 +182,13 @@
             (testing "a screen whose code loads on demand shows its placeholder first"
               (click! "#nav-reports")
               (is (at? "/reports" "Loading"))
-              (is (eventually #(= "Reports" (text "#screen")))))
+              (is (eventually #(= "Reports" (text "#screen"))))
+              (testing "and brings its module's stylesheets with it"
+                (is (re-find #"/example-routing-css/reports\.[0-9A-F]{8}\.css"
+                             (js "Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(l => l.getAttribute('href')).join(' ')")))
+                (is (eventually #(= "rgb(1, 2, 3)" (js "getComputedStyle(document.querySelector('#screen')).color"))))
+                (is (= "20px" (js "getComputedStyle(document.querySelector('#screen')).paddingTop"))
+                    "it sets the shared look's own variable")))
             (testing "unsaved changes hold a link"
               (click! "#nav-form")
               (is (eventually #(= "/form" (location))))

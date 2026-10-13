@@ -18,8 +18,8 @@
 
    Groundwork then, in order: reads what the page shell put in the page (the
    person signed in, their session's flags, the language and the app's
-   languages); sets up re-frame with the store, which opens the /parquery
-   websocket; asks for the person's grants, so \"can I?\" answers; starts
+   languages); teaches Reagent class keywords (groundwork.css); sets up
+   re-frame with the store, which opens the /parquery websocket; asks for the person's grants, so \"can I?\" answers; starts
    routing at the page's address; and mounts :root into <div id=\"app\">
    with Reagent. A save reloads the code and renders again.
 
@@ -49,9 +49,12 @@
      (gb/stay!)                     ; stay
      (gb/unsaved! false)            ; saved"
   (:require
+   [groundwork.css :as css]
+   [groundwork.loader]
    [groundwork.parquery-store :as store]
    [groundwork.routing :as routing]
    [re-frame.core :as rf]
+   [reagent.core :as r]
    [reagent.dom.client :as rdc]))
 
 (defn read-initial
@@ -65,7 +68,9 @@
      :flags     (into #{} (map keyword) (get data "flags"))
      :language  (get data "language")
      :languages (when languages
-                  {:supported (vec (get languages "supported")) :default (get languages "default")})}))
+                  {:supported (vec (get languages "supported")) :default (get languages "default")})
+     :styles    (get data "styles")
+     :classes   (get data "classes")}))
 
 (rf/reg-event-db ::-init
                  (fn [db [_ initial]]
@@ -119,7 +124,10 @@
    splash); :store adds to the store's start (:on-read-failed, :line)."
   [{:keys [root routes shapes max-asks mount store] :as options}]
   (let [initial (read-initial (some-> (js/document.getElementById "groundwork") .-textContent))]
-    (rf/dispatch-sync [::-init initial])
+    (css/start! initial)
+    ;; class keywords in every element's :class, for whatever renders with Reagent
+    (r/set-default-compiler! css/compiler)
+    (rf/dispatch-sync [::-init (dissoc initial :styles :classes)])
     (rf/dispatch-sync [::store/start (merge {:shapes shapes :max-asks max-asks} store)])
     (when (:person initial)
       (rf/dispatch [::store/ensure ::session [{:endpoint :groundwork/grants :params {}}]]))

@@ -1,0 +1,3 @@
+/* The example app's foundation: one token, one element style. */
+:root { --ink: rgb(34, 34, 34); }
+body { color: var(--ink); font-family: system-ui, sans-serif; }

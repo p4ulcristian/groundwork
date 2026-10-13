@@ -5,7 +5,7 @@
      (gw/stop app)
 
    The settings map holds what is the app's own, one key per part; every key
-   is required and an unknown key throws, so a typo can't go unnoticed. Every
+   but :styles is required and an unknown key throws, so a typo can't go unnoticed. Every
    problem is reported at once, with its place (see groundwork.settings, and
    docs/example-settings.edn for every key with an example):
 
@@ -13,6 +13,7 @@
      :db           the database, see groundwork.postgres/start
      :migrations   see groundwork.migrations/start
      :page         see groundwork.page
+     :styles       the app's stylesheets, or left out; see groundwork.styles
      :web          the app's routes and how requests are handled; see groundwork.web
      :server       see groundwork.server
      :sessions     see groundwork.sessions
@@ -36,6 +37,7 @@
    [groundwork.server :as server]
    [groundwork.sessions :as sessions]
    [groundwork.settings :as settings]
+   [groundwork.styles :as styles]
    [groundwork.web :as web]
    [integrant.core :as ig]))
 
@@ -78,8 +80,12 @@
                            :needs    [:groundwork/db :groundwork/endpoints :groundwork/sessions]
                            :start    parquery/start
                            :stop     parquery/stop}
-   :groundwork/page       {:settings :page
+   :groundwork/styles     {:settings :styles
                            :needs    []
+                           :start    styles/start
+                           :stop     styles/stop}
+   :groundwork/page       {:settings :page
+                           :needs    [:groundwork/styles]
                            :start    page/start}
    :groundwork/router     {:settings :web
                            :needs    [:groundwork/migrations :groundwork/sessions :groundwork/permissions

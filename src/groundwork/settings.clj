@@ -359,6 +359,23 @@
               {:js-options {:js-provider :shadow}}
               [:map {:error/message "must be a map of shadow-cljs build options" :doc/type "map"}])]
 
+   :styles
+   [:maybe
+    [:map {:closed true}
+     (entry :dir "The styles tree: base/, vendor/, looks/ and areas/ under it" "styles" text)
+     (entry :sources "Where the browser code is: the class keywords in it are read from here" ["src"] texts)
+     (entry :base "The base files (tokens, fonts, resets, themes), in loading order" ["base/tokens.css" "base/reset.css"] texts)
+     (entry :vendor "Outside libraries' stylesheets: the file, how its classes start, and the one namespace that wraps it"
+            [{:file "vendor/calendar.vendor.css" :prefixes ["vc-"] :wrapper "calendar"}]
+            [:vector {:error/message "must be a list of {:file :prefixes :wrapper}" :doc/type "list of libraries"}
+             [:map {:closed true}
+              [:file text]
+              [:prefixes [:vector {:min 1} text]]
+              [:wrapper name-text]]])
+     (entry :output-dir "Where the bundles go, a folder whose public/ is served" "resources/public/css" text)
+     (entry :asset-path "Where the browser fetches them" "/css"
+            [:re {:error/message "must be a path like \"/css\"" :doc/type "path"} #"^/.*"])]]
+
    :web
    [:map {:closed true}
     (entry :routes "The app's routes, reitit data; each route's data is checked like below"
@@ -490,10 +507,14 @@
                       [:map-of {:error/message "must map tables to the reason they are silent" :doc/type "table → reason"}
                        :keyword text])])]))
 
+(def ^:private optional-parts
+  "Parts an app may leave out, with what leaving them out means."
+  #{:styles})
+
 (def settings
-  "gw/start's settings: one key per part, every one required."
+  "gw/start's settings: one key per part, every one required, but :styles."
   (into [:map {:closed true}]
-        (map (fn [[k s]] [k {} s]))
+        (map (fn [[k s]] [k (if (optional-parts k) {:optional true} {}) s]))
         parts))
 
 (def ^:private part-descriptions
@@ -502,6 +523,7 @@
    :migrations  "The schema's changes, run at start"
    :page        "The page shell every screen loads into"
    :browser     "The app's browser code and its build"
+   :styles      "The app's stylesheets, checked against its code and bundled; nil or left out when the app brings its own through :page :stylesheets"
    :web         "Requests: the app's routes, limits, hooks, languages"
    :server      "The web server"
    :sessions    "Who is signed in"

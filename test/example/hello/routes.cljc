@@ -12,5 +12,7 @@
                          #?@(:cljs [:view views/order :title views/order-title])}]
    ["/form" {:name :form :access :public :title "Form"
              #?@(:cljs [:view views/form])}]
-   ["/reports" {:name :reports :access :public :title "Reports"
+   ;; its screen is in the build's :reports module when there is one: its code
+   ;; and its stylesheets load on arrival
+   ["/reports" {:name :reports :access :public :title "Reports" :page {:module :reports}
                 #?@(:cljs [:load views/load-reports :placeholder views/loading])}]])

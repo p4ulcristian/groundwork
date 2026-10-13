@@ -13,7 +13,10 @@
                    They are the store's for the owner :groundwork/route: ones
                    the next route shares are kept, the rest let go
      :load         instead of :view, for a screen whose code loads on demand:
-                   (fn [] promise-of-the-view); :placeholder shows meanwhile
+                   (fn [] promise-of-the-view); :placeholder shows meanwhile.
+                   When the record's :page names the :module that code is
+                   in, the module's stylesheets (groundwork.styles) are in
+                   the page before the screen shows
      :placeholder  a component, for this route (else the app's)
 
    and whatever the server reads from the same record (:access, :page…; see
@@ -41,6 +44,7 @@
    asks the browser's own question."
   (:require
    [clojure.string :as str]
+   [groundwork.css :as css]
    [groundwork.parquery-store :as store]
    [re-frame.core :as rf]
    [reitit.frontend :as rfr]
@@ -180,9 +184,10 @@
 (defn- load-view! [{:keys [data] route-name :name}]
   (when-let [load (:load data)]
     (when-not (contains? (:loaded @state) route-name)
-      (-> (load)
-          (.then (fn [view]
-                   (swap! state assoc-in [:loaded route-name] view)
+      ;; the module's stylesheets with its code, so the screen never shows unstyled
+      (-> (js/Promise.all #js [(load) (css/ensure-module! (get-in data [:page :module]))])
+          (.then (fn [loaded]
+                   (swap! state assoc-in [:loaded route-name] (aget loaded 0))
                    (rf/dispatch [::-loaded route-name])))))))
 
 (defn- reads-of [{:keys [data] :as route}]

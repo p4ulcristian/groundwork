@@ -24,7 +24,8 @@
    watcher; compile! builds the same once, without watching. A release (release!, before packaging the app) compiles with
    fingerprinted names, like main.3F2A9C.js, and writes manifest.edn next to
    them; the page shell reads it, so a page and the build can't disagree, and
-   a fingerprinted file can be cached a year.
+   a fingerprinted file can be cached a year. The release for clojure -X
+   also checks the app's styles and writes their bundles (groundwork.styles).
 
    Groundwork's own browser libraries are in its deps.cljs; shadow-cljs
    installs them for the app. The app's package.json holds only its own.
@@ -100,6 +101,8 @@
   "release! for clojure -X: clojure -X:build groundwork.build/release :settings app.settings/production"
   [{:keys [settings]}]
   (let [settings (if (symbol? settings) @(requiring-resolve settings) settings)]
+    ;; the styles first: a problem there stops the release before anything is built
+    ((requiring-resolve 'groundwork.styles/release!) settings)
     (release! (:browser settings))
     (shutdown-agents)))
 
@@ -121,7 +124,24 @@
             slurp
             edn/read-string)))
 
-(defn- chain
+(defn loader-info
+  "What the module loader needs to fetch a module on demand after a release:
+   {\"uris\" {module [addresses]} \"infos\" {module [modules it needs]}},
+   as shadow-cljs wrote it next to the fingerprinted files; nil without
+   :loader? true, or before a release (a development build knows by itself)."
+  [{:keys [output-dir asset-path loader?] :as browser}]
+  (when (and loader?
+             (some (fn [{:keys [module-id output-name]}] (not= output-name (str (name module-id) ".js")))
+                   (manifest browser)))
+    (let [file (io/file output-dir "module-loader.edn")]
+      (when-let [{:keys [module-uris module-infos]}
+                 (some-> (if (.exists file) file (io/resource (str "public" asset-path "/module-loader.edn")))
+                         slurp
+                         edn/read-string)]
+        {"uris"  (into {} (for [[m uris] module-uris] [(name m) (vec uris)]))
+         "infos" (into {} (for [[m needs] module-infos] [(name m) (some->> needs (mapv name))]))}))))
+
+(defn chain
   "A module after everything it depends on, each once, in loading order."
   [all module]
   (when-not (contains? all module)

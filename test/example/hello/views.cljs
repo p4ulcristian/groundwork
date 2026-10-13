@@ -3,17 +3,18 @@
    clicks or reads."
   (:require
    [groundwork.browser :as gb]
-   [re-frame.core :as rf]))
+   [re-frame.core :as rf]
+   [shadow.lazy :as lazy]))
 
 (defn nav []
-  [:nav
+  [:nav {:class :css.nav/bar}
    [:a#nav-home {:href (gb/href :home)} "Home"] " "
    [:a#nav-orders {:href (gb/href :orders)} "Orders"] " "
    [:a#nav-form {:href (gb/href :form)} "Form"] " "
    [:a#nav-reports {:href (gb/href :reports)} "Reports"]])
 
 (defn home []
-  [:p#screen "Hello, " (or @(rf/subscribe [::gb/person]) "visitor") "."])
+  [:p#screen {:class :css.panel/frame} "Hello, " (or @(rf/subscribe [::gb/person]) "visitor") "."])
 
 (defn orders []
   [:div#screen
@@ -40,13 +41,16 @@
 (defn loading []
   [:p#screen "Loading"])
 
-(defn reports []
-  [:p#screen "Reports"])
+(def ^:private reports-screen
+  "The reports screen, in whatever module the build puts example.hello.reports."
+  (lazy/loadable example.hello.reports/screen))
 
 (defn load-reports
-  "Stands in for code that loads on demand: the screen, a moment later."
+  "The reports screen's code, loaded on demand, a moment later so the
+   placeholder is seen."
   []
-  (js/Promise. (fn [resolve] (js/setTimeout #(resolve reports) 300))))
+  (js/Promise. (fn [resolve reject]
+                 (js/setTimeout #(-> (lazy/load reports-screen) (.then resolve reject)) 300))))
 
 (defn not-found []
   [:p#screen "No such page"])
