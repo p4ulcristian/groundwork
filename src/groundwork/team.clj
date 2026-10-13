@@ -61,7 +61,8 @@
                                        (mapv #(update % :member/extra-actions (partial mapv keyword))
                                              (pg/rows tx members-sql params)))))
             :answer [:vector [:map [:member/person-id :uuid] [:member/role :string] [:member/owner :boolean]
-                              [:member/extra-actions [:vector :keyword]]]]})
+                              [:member/extra-actions [:vector :keyword]]]]
+            :reads  [:groundwork.memberships :groundwork.roles :groundwork.extra_actions]})
 
     :groundwork.team/roles
     (merge (team [:map scope-param])
@@ -69,7 +70,8 @@
                       (in-system ctx (fn [tx]
                                        (mapv #(update % :role/actions (partial mapv keyword))
                                              (pg/rows tx roles-sql params)))))
-            :answer [:vector [:map [:role/name :string] [:role/owner :boolean] [:role/actions [:vector :keyword]]]]})
+            :answer [:vector [:map [:role/name :string] [:role/owner :boolean] [:role/actions [:vector :keyword]]]]
+            :reads  [:groundwork.roles :groundwork.role_actions]})
 
     :groundwork.team/invite
     (merge (team [:map scope-param [:invitation/email :string] [:invitation/role :string]

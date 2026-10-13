@@ -76,10 +76,13 @@
                    token (see call-with-token), or nil
      :on-answer    (fn [{:keys [endpoint status ms person request-id]}] …)
                    after every ask over HTTP, for counters and alerts, or nil
-     :bells        {:global #{:table …} :personal {:table :entity/person-column}}
-                   tables outside the permission description that ring too:
+     :bells        {:global #{:table …} :personal {:table :entity/person-column}
+                    :silent {:table \"the reason\"}}
+                   how the tables outside the permission description ring:
                    global ones every watcher of them, personal ones only
-                   their person (see groundwork.parquery.websocket)"
+                   their person, silent ones nothing, on purpose. Every table
+                   of the app is in the description or here, or the start
+                   refuses (see groundwork.parquery.websocket)"
   (:require
    [clojure.set :as set]
    [clojure.string :as str]
@@ -250,7 +253,10 @@
                                              (pg/rows db grants-sql {:actions actions :person (str person)})))
                          :permission :signed-in
                          :input      [:map]
-                         :answer     [:vector [:map [:grant/scope-id :uuid] [:grant/action :keyword]]]}}))
+                         :answer     [:vector [:map [:grant/scope-id :uuid] [:grant/action :keyword]]]
+                         ;; its SQL calls a function; these are what it reads
+                         :reads      [:groundwork.memberships :groundwork.role_actions
+                                      :groundwork.extra_actions :groundwork.roles]}}))
 
 (defn- gather
   "The app's endpoint maps as one, refusing a name twice."

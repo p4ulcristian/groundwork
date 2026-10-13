@@ -301,3 +301,31 @@
         (is (= #{:status :data} (set (keys (ask! cookie "notes/add" {:shop/id (str acme) :note/id (str (UUID/randomUUID))
                                                                     :note/text "plain"}))))))
       (finally (close! line)))))
+
+(deftest the-team-tables-ring
+  (let [perms  (gw/permissions *app*)
+        kim    (UUID/randomUUID)
+        lee    (UUID/randomUUID)
+        cookie (sign-in kim)
+        line   (open-line cookie)
+        grants ["groundwork/grants" {}]]
+    (try
+      (ask! cookie "groundwork/grants" {})
+      (watch! line grants)
+      (testing "an extra action for the person rings their grants"
+        (perm/grant-extra! perms {:by paul :scope acme :person kim :action :notes/see})
+        (is (= [grants] (next-bell line 3000))))
+      (testing "a role's actions changing rings the people who hold the role"
+        (perm/create-role! perms {:by paul :scope acme :role "Bell reader" :actions #{}})
+        (perm/as-system perms (fn [tx] (jdbc/execute! (::pg/conn tx)
+                                                      ["INSERT INTO groundwork.memberships
+                                                        SELECT ?, ?, role__id FROM groundwork.roles
+                                                        WHERE role__scope_id = ? AND role__name = 'Bell reader'"
+                                                       kim acme acme])))
+        (is (= [grants] (next-bell line 3000)) "joining the scope")
+        (perm/set-role-actions! perms {:by paul :scope acme :role "Bell reader" :actions #{:notes/add}})
+        (is (= [grants] (next-bell line 3000))))
+      (testing "someone else's change rings nothing here"
+        (perm/grant-extra! perms {:by ana :scope zinc :person lee :action :notes/see})
+        (is (nil? (next-bell line 700))))
+      (finally (close! line)))))

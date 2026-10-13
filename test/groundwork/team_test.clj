@@ -40,7 +40,7 @@
           (perm/create-scope! perms {:kind :shop :id acme :parent nil :owner paul})
           (perm/create-scope! perms {:kind :shop :id zinc :parent nil :owner ana})
           (binding [*part* (endpoints/start {:settings     {:endpoints [team/endpoints] :max-asks 50 :max-running 4
-                                                            :bearer nil :on-answer nil :bells {:global #{} :personal {}}}
+                                                            :bearer nil :on-answer nil :bells {:global #{} :personal {} :silent {:groundwork/every-other-table "the test database is shared by every test"}}}
                                              :db db :permissions perms :app-settings {}})]
             (t)))
         (finally (pg/stop db))))))

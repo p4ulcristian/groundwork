@@ -226,10 +226,13 @@
   ;; After every ask over HTTP: (fn [{:keys [endpoint status ms person request-id]}] …), or nil
   :on-answer app.metrics/on-answer
 
-  ;; Tables outside the permission description that ring too
+  ;; How the tables outside the permission description ring
   :bells
   {;; Tables every watcher of them hears about
    :global #{:powder_colours}
 
    ;; Tables only their person hears about: table → person column
-   :personal {:notifications :notification/person-id}}}}
+   :personal {:notifications :notification/person-id}
+
+   ;; Tables that ring nothing, on purpose: table → the reason. Every table of the app says how it rings, here or in the permission description, or the start refuses; :groundwork/every-other-table covers the rest of a database the app shares with something else (optional)
+   :silent {:import_log "written once by the nightly import, shown nowhere"}}}}

@@ -130,11 +130,23 @@
   []
   @current-app)
 
+(defn- init
+  "Start the parts. When one refuses, the parts started before it are
+   stopped again and the part's own error is thrown, not Integrant's around
+   it: the message says what to change."
+  [config]
+  (try
+    (ig/init config)
+    (catch clojure.lang.ExceptionInfo e
+      (when-let [system (:system (ex-data e))]
+        (try (ig/halt! system) (catch Throwable _ nil)))
+      (throw (or (ex-cause e) e)))))
+
 (defn start
   "Start an app from its settings. Returns the running app; give it to stop."
   [settings]
   (settings/check! settings)
-  (reset! current-app {::system (ig/init (config settings))}))
+  (reset! current-app {::system (init (config settings))}))
 
 (defn start-with
   "Start an app with some parts replaced by fakes, for tests:
@@ -150,7 +162,7 @@
                             (assoc config k {::fake fake}))
                           (config settings)
                           fakes)]
-    (reset! current-app {::system (ig/init config)
+    (reset! current-app {::system (init config)
                          ::fakes  (set (keys fakes))})))
 
 (defn stop

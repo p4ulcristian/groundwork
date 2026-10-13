@@ -67,5 +67,7 @@
    :limits      {:public nil :on-limit nil}
    :jobs        nil
    :parquery    {:endpoints [] :max-asks 50 :max-running 4 :bearer nil
-                 :bells {:global #{} :personal {}}
+                 ;; every test namespace leaves its tables in the one test database
+                 :bells {:global #{} :personal {}
+                         :silent {:groundwork/every-other-table "the test database is shared by every test"}}
                  :on-answer nil}})

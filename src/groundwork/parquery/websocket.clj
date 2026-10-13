@@ -10,6 +10,13 @@
    that write's tag, {\"changed\": […], \"tag\": \"…\"}: the browser that wrote
    got the same news with its answer (changed-for) and doesn't ask twice.
 
+   Every table of the app says how it rings, or the start refuses, naming
+   the ones that don't: it is in the permission description (:records), or in
+   the :bells setting as :global, :personal or :silent, with the reason it
+   rings nothing. Groundwork's own team tables ring too (memberships, roles,
+   a role's actions, extra actions, invitations), under their schema's name,
+   \"groundwork.memberships\".
+
    Postgres rings: at start, every table in the permission description, and
    the :global and :personal tables of the :bells setting, gets a trigger
    (groundwork.ring) that announces, after a statement commits, the table,
@@ -74,6 +81,36 @@
          (:records description))
    (into {} (map (fn [t] [(name t) {:id nil :scopes [] :people [] :global? true}])) global)
    (into {} (map (fn [[t col]] [(name t) {:id nil :scopes [] :people [(column col)]}])) personal)))
+
+(pg/defsql app-tables "groundwork/parquery/app_tables.sql")
+
+(def every-other-table
+  "In :bells :silent: every table not named anywhere is silent, with the
+   reason given. For a database the app shares with something else (tests);
+   an app's own database names its tables."
+  :groundwork/every-other-table)
+
+(defn- check-every-table-rings!
+  "Every table of the app says how it rings: in the permission description
+   (:records), or in :bells as :global, :personal or :silent. Throws naming
+   every table that doesn't, a table named twice, and a table named that
+   isn't there."
+  [db ringing {:keys [silent]}]
+  (let [quiet   (into #{} (map name) (keys (dissoc silent every-other-table)))
+        rest?   (contains? silent every-other-table)
+        actual  (into #{} (map :table/name) (pg/rows db app-tables))
+        twice   (sort (filter quiet (keys ringing)))
+        missing (sort (remove actual (into quiet (keys ringing))))
+        unsaid  (when-not rest? (sort (remove (into quiet (keys ringing)) actual)))
+        problem (cond
+                  (seq twice)   (str "These tables ring and are :silent too: " (str/join ", " twice))
+                  (seq missing) (str "These tables are named but aren't in the database: " (str/join ", " missing))
+                  (seq unsaid)  (str "These tables don't say how they ring: " (str/join ", " unsaid)
+                                     ". Each belongs in the permission description (:records), or in"
+                                     " :parquery :bells as :global, :personal or :silent (with the reason)"))]
+    (when problem
+      (throw (ex-info problem {:type ::tables-not-declared :twice (vec twice) :missing (vec missing)
+                               :undeclared (vec unsaid)})))))
 
 (defn- install-bells!
   "A trigger per table and kind of change, calling groundwork.ring. Safe to
@@ -393,6 +430,7 @@
                      :lines       (atom {})
                      :recent      (atom [])
                      :stopped     (atom false)}]
+    (check-every-table-rings! db tables (:bells settings))
     (install-bells! db tables)
     (assoc part
            :listener (Thread/startVirtualThread #(listen! part))

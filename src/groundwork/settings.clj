@@ -472,7 +472,7 @@
            function-or-nil)
     (entry :on-answer "After every ask over HTTP: (fn [{:keys [endpoint status ms person request-id]}] …), or nil"
            'app.metrics/on-answer function-or-nil)
-    (entry :bells "Tables outside the permission description that ring too"
+    (entry :bells "How the tables outside the permission description ring"
            {:global #{:powder_colours} :personal {:notifications :notification/person-id}}
            [:map {:closed true}
             (entry :global "Tables every watcher of them hears about" #{:powder_colours}
@@ -480,7 +480,15 @@
             (entry :personal "Tables only their person hears about: table → person column"
                    {:notifications :notification/person-id}
                    [:map-of {:error/message "must map tables to person columns" :doc/type "table → column"}
-                    :keyword column])])]))
+                    :keyword column])
+            (optional :silent
+                      (str "Tables that ring nothing, on purpose: table → the reason. "
+                           "Every table of the app says how it rings, here or in the permission description, "
+                           "or the start refuses; :groundwork/every-other-table covers the rest of a database "
+                           "the app shares with something else")
+                      {:import_log "written once by the nightly import, shown nowhere"}
+                      [:map-of {:error/message "must map tables to the reason they are silent" :doc/type "table → reason"}
+                       :keyword text])])]))
 
 (def settings
   "gw/start's settings: one key per part, every one required."

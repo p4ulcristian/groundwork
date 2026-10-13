@@ -67,7 +67,7 @@ the JVM tests against Postgres 18, clj-kondo, the browser half's tests on node.
                     :parquery    {:endpoints [app.jobs/endpoints …]   ; see Endpoints
                                   :max-asks 50 :max-running 16
                                   :bearer nil
-                                  :bells {:global #{} :personal {}}}}))
+                                  :bells {:global #{} :personal {} :silent {}}}}))
 (gw/stop app)
 ```
 
@@ -244,9 +244,10 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:parquery :max-running` | positive whole number | The most asks running at once across the server; keep it below the pool size | `16` |
 | `:parquery :bearer` | function or nil | Whose token a tool calls with: (fn [token] person-id-or-nil), or nil | `app.tools/token->person` |
 | `:parquery :on-answer` | function or nil | After every ask over HTTP: (fn [{:keys [endpoint status ms person request-id]}] …), or nil | `app.metrics/on-answer` |
-| `:parquery :bells` | map | Tables outside the permission description that ring too | `{:global #{:powder_colours}, :personal {:notifications :n…` |
+| `:parquery :bells` | map | How the tables outside the permission description ring | `{:global #{:powder_colours}, :personal {:notifications :n…` |
 | `:parquery :bells :global` | set of tables | Tables every watcher of them hears about | `#{:powder_colours}` |
 | `:parquery :bells :personal` | table → column | Tables only their person hears about: table → person column | `{:notifications :notification/person-id}` |
+| `:parquery :bells :silent` (optional) | table → reason | Tables that ring nothing, on purpose: table → the reason. Every table of the app says how it rings, here or in the permission description, or the start refuses; :groundwork/every-other-table covers the rest of a database the app shares with something else | `{:import_log "written once by the nightly import, shown n…` |
 
 #### A route's data (in `:web :routes`)
 
@@ -836,6 +837,15 @@ The transport between browser and server, at one address, `/parquery`:
   the tables its read's SQL uses (Postgres plans each file it ran; `:reads`
   adds what the plan can't see), in its verified scopes. A read about one
   record rings only when that record changed.
+- **Every table of the app says how it rings, or the start refuses,** naming
+  every one that doesn't: it's in the permission description, or in `:bells`
+  as `:global` (everyone watching it), `:personal` (only its person) or
+  `:silent` (nothing, on purpose, with the reason). No table is quiet by
+  accident. Groundwork's own team tables ring too (memberships, roles, a
+  role's actions, extra actions, invitations), so a team screen and
+  "can I?" follow a change.
+- When a part refuses at start, the parts started before it are stopped and
+  the part's own error is thrown, with the message saying what to change.
 - A line lives as long as its session. A session that ends (signed out,
   signed out everywhere, deleted) rings on the same channel, and every
   server closes its lines; each watch message checks the session first; a
