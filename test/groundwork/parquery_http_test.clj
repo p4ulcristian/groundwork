@@ -23,6 +23,7 @@
   {:scopes         {:shop {:actions #{:notes/see :notes/add} :roles {} :parent nil}}
    :records        {:note {:table :notes :id :note/id :in [:shop :note/shop-id]}}
    :links          []
+   :open {:anyone #{} :signed-in #{}}
    :session-blocks {}})
 
 (pg/defsql pq-notes-of-shop)

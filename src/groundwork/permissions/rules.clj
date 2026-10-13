@@ -22,7 +22,15 @@
                   :to    [:shop :agreement/shop-id]
                   :when  [:= :agreement/status \"active\"]
                   :grants {:orders/see :agreements/see}}]  ; agreements/see in the partner gives orders/see in the shop
+      :open     {:anyone #{:catalogue/see} :signed-in #{:shops/name}}   ; the open actions, one list
       :session-blocks {:impersonated #{:money/move}}}
+
+   An open action is a reading action anyone (or anyone signed in) may do,
+   without a membership. It reaches only the record kinds that list it,
+   :open #{:catalogue/see} on the kind, as its :only-when allows there; no
+   role holds it and nothing grants it. A request for it is about the scope
+   it names: that scope is verified, and the wall shows the caller those
+   kinds' rows of it and nothing else of the scope.
 
    Every record names its scope through its own column, however deep it
    sits: a job keeps its shop, not only its order. A record under another
@@ -73,6 +81,19 @@
                          (assoc m action kind))
                        m actions))
              {} scopes))
+
+(defn open-level
+  "Who an action is open to, :anyone or :signed-in, or nil when it is held
+   through roles like any other."
+  [{:keys [open]} action]
+  (cond
+    (contains? (:anyone open) action)    :anyone
+    (contains? (:signed-in open) action) :signed-in))
+
+(defn open-actions
+  "Every open action of a description."
+  [{:keys [open]}]
+  (into (set (:anyone open)) (:signed-in open)))
 
 (defn- ancestors-of
   "The kinds above a scope kind, nearest first."
@@ -144,7 +165,7 @@
   "Throws on the first thing wrong in a description, apart from the
    database: see columns-needed for that. Returns the description."
   [{:keys [scopes records links session-blocks] :as description}]
-  (when-let [missing (seq (remove #(contains? description %) [:scopes :records :links :session-blocks]))]
+  (when-let [missing (seq (remove #(contains? description %) [:scopes :records :links :open :session-blocks]))]
     (problem (str ":permissions needs " (str/join " " missing)) {:missing (vec missing)}))
   (doseq [[kind spec] scopes]
     (when-let [missing (seq (remove #(contains? spec %) [:actions :roles :parent]))]
@@ -155,13 +176,24 @@
     (doseq [action (:actions spec)]
       (when-not (qualified-keyword? action)
         (problem (str "Action " action " must be namespaced, like :orders/edit") {:action action}))))
-  (let [kinds (action-kinds description)]
+  (let [kinds (action-kinds description)
+        opens (open-actions description)]
     (doseq [kind (keys scopes)] (ancestors-of description kind))
+    (when-let [missing (seq (remove #(contains? (:open description) %) [:anyone :signed-in]))]
+      (problem (str ":permissions :open needs " (str/join " " missing)) {:missing (vec missing)}))
+    (doseq [action opens]
+      (when-not (kinds action)
+        (problem (str ":open names " action ", which isn't an action of any scope kind") {:action action}))
+      (when (and (contains? (:anyone (:open description)) action) (contains? (:signed-in (:open description)) action))
+        (problem (str action " is open to :anyone and to :signed-in; it is one or the other") {:action action})))
     (doseq [[kind {:keys [roles]}] scopes
             [role actions] roles
             action actions
             :when (not= team-action action)]
       (let [action-kind (kinds action)]
+        (when (opens action)
+          (problem (str "Role " role " of " kind " holds " action ", which is open: no role holds an open action")
+                   {:kind kind :role role :action action}))
         (when-not (and action-kind (under? description action-kind kind))
           (problem (str "Role " role " of " kind " holds " action ", which isn't an action of " kind " or below")
                    {:kind kind :role role :action action}))))
@@ -189,7 +221,19 @@
                      {:kind kind}))))
       (doseq [action (concat (keys people) (keys only-when))]
         (when-not (kinds action)
-          (problem (str "Record kind " kind " names an unknown action " action) {:kind kind :action action}))))
+          (problem (str "Record kind " kind " names an unknown action " action) {:kind kind :action action})))
+      (doseq [action (:open record)]
+        (when-not (opens action)
+          (problem (str "Record kind " kind " lists " action " under :open, which isn't in the description's :open")
+                   {:kind kind :action action}))
+        (when-not (some #(under? description (end-kind description kind %) (kinds action)) (arrows record))
+          (problem (str "Record kind " kind " lists the open action " action ", but isn't in a " (kinds action)
+                        " or below")
+                   {:kind kind :action action})))
+      (doseq [action (keys people)
+              :when  (opens action)]
+        (problem (str "Record kind " kind " gives the open action " action " to a person; it is everyone's already")
+                 {:kind kind :action action})))
     (doseq [{:keys [from to grants] :as link} links]
       (doseq [k [:table :from :to :when :grants]]
         (when-not (contains? link k)
@@ -198,6 +242,10 @@
         (when-not (contains? scopes kind)
           (problem (str "A link's " side " must be a scope kind, not " kind) {:link link})))
       (doseq [[given needed] grants]
+        (when (or (opens given) (opens needed))
+          (problem (str "A link names the open action " (if (opens given) given needed)
+                        "; an open action is neither granted nor needed")
+                   {:link link}))
         (when-not (and (kinds given) (under? description (first to) (kinds given)))
           (problem (str "A link grants " given ", which isn't an action of " (first to) " or above") {:link link}))
         (when-not (and (kinds needed) (under? description (first from) (kinds needed)))
@@ -287,14 +335,27 @@
   "The rule for an action on a kind of record, as {:sql … :params […]}: a
    condition over the record's table under `alias` (r unless given). Params
    name the person as :person, everything else is a value. nil when nothing
-   can grant it."
+   can grant it.
+
+   An open action's rule is the kind's own: the row's scope (of the action's
+   kind) was verified for the transaction, and the kind's :only-when for it.
+   With :writing? true the rule is the one a write is held to: what only
+   reads (an open action) grants nothing."
   ([description action kind] (compile-rule description action kind "r"))
-  ([{:keys [records links] :as description} action kind alias]
+  ([description action kind alias] (compile-rule description action kind alias {}))
+  ([{:keys [records links] :as description} action kind alias {:keys [writing?]}]
    (let [{:keys [people only-when] :as record} (records kind)
          kinds                                 (action-kinds description)
          action-kind                           (kinds action)
+         open?                                 (some? (open-level description action))
          holding                               "IN (SELECT groundwork.scopes_holding(CAST(? AS uuid), ?))"
          clauses
+         (if open?
+           ;; everyone's, on the kinds that list it; never for a write
+           (when (and (not writing?) (contains? (:open record) action))
+             (for [arrow (arrows record)
+                   :when (under? description (end-kind description kind arrow) action-kind)]
+               [(str "groundwork.wall_allows(" (scope-sql alias arrow) ")") []]))
          (concat
           ;; the record's own scope, or one below the action's kind
           (for [arrow (arrows record)
@@ -311,7 +372,7 @@
              [:person (action-name needed)]])
           ;; a person on the record
           (when-let [col (get people action)]
-            [[(str alias "." (quote-id (column col)) " = CAST(? AS uuid)") [:person]]]))]
+            [[(str alias "." (quote-id (column col)) " = CAST(? AS uuid)") [:person]]])))]
      (when (seq clauses)
        (let [granted        [(str "(" (str/join " OR " (map first clauses)) ")") (vec (mapcat second clauses))]
              [sql params]   (if-let [condition (get only-when action)]
@@ -387,7 +448,9 @@
 
    A writing transaction leaves only-when out: its own record was checked
    with it before the write, and the changed row (which Postgres checks
-   against this too when the write returns it) needn't fit it any more. A
+   against this too when the write returns it) needn't fit it any more.
+   What only reads grants a writing transaction nothing: an open action's
+   kinds show it only what a member sees. A
    new or changed row must be in a verified scope, and of the kind the
    action is about or one the person is a member for. The system sees and
    writes everything."
@@ -401,8 +464,12 @@
         about-this (str "coalesce(current_setting('groundwork.kind', true), '') IN ('', "
                         (sql-literal (action-name kind)) ")")
         member     (str "(" (member-wall-sql description kind) ")")
-        rule-sql   (fn [d a] (str "(" (inline (compile-rule d a kind base)) ")"))
         without-ow (update-in description [:records kind] dissoc :only-when)
+        read-rule  (fn [a] (str "(" (inline (compile-rule description a kind base)) ")"))
+        ;; what a write is held to: no only-when, and nothing that only reads
+        write-rule (fn [a] (if-let [rule (compile-rule without-ow a kind base {:writing? true})]
+                             (str "(" (inline rule) ")")
+                             member))
         ;; actions whose rule comes out the same share one branch: an app
         ;; with dozens of actions on a kind would otherwise carry dozens of
         ;; identical branches in every query's plan
@@ -418,10 +485,10 @@
                             " ELSE " member " END)")))]
     {:using (str "CASE WHEN " bypass " THEN TRUE ELSE (" (wall-sql description kind) ") AND "
                  (by-action (fn [a]
-                              (if (get-in records [kind :only-when a])
-                                (str "(CASE WHEN " writing " THEN " (rule-sql without-ow a)
-                                     " ELSE " (rule-sql description a) " END)")
-                                (rule-sql description a))))
+                              (let [reading (read-rule a), changing (write-rule a)]
+                                (if (= reading changing)
+                                  reading
+                                  (str "(CASE WHEN " writing " THEN " changing " ELSE " reading " END)")))))
                  " END")
      :check (str "(" (wall-sql description kind) ") AND " (by-action (constantly "TRUE")))}))
 
@@ -472,10 +539,12 @@
   (boolean (some #(contains? (get session-blocks %) action) flags)))
 
 (defn allowed-in-role?
-  "The actions a role of this kind may hold."
+  "The actions a role of this kind may hold: its kind's and those of the
+   kinds below it, but the open ones, which nobody holds."
   [description kind]
-  (let [kinds (action-kinds description)]
-    (conj (set (filter #(under? description (kinds %) kind) (keys kinds))) team-action)))
+  (let [kinds (action-kinds description)
+        opens (open-actions description)]
+    (conj (set (filter #(and (not (opens %)) (under? description (kinds %) kind)) (keys kinds))) team-action)))
 
 (defn bind
   "A rule's params with the person filled in."

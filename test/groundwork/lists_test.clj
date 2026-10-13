@@ -36,6 +36,7 @@
               :to     [:shop :lst-agreement/shop-id]
               :when   link-condition
               :grants {:orders/see :agreements/see}}]
+   :open {:anyone #{} :signed-in #{}}
    :session-blocks {}})
 
 (def sealed (description [:= :lst-agreement/status "active"]))
@@ -70,7 +71,7 @@
                          :answer     [:maybe :uuid]}})
 
 (def settings {:endpoints [endpoint-map] :max-asks 50 :max-running 4 :bearer nil :on-answer nil
-               :bells {:global #{} :personal {} :silent {:groundwork/every-other-table "the test database is shared by every test"}}})
+               :bells {:global {} :personal {} :silent {:groundwork/every-other-table "the test database is shared by every test"}}})
 
 (def ^:dynamic *db* nil)
 

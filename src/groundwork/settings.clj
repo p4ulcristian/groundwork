@@ -167,7 +167,9 @@
    (optional :only-when "An action allowed only when the record matches: action → condition"
              {:orders/edit [:= :order/status "open"]}
              [:map-of {:error/message "must map actions to conditions" :doc/type "action → condition"}
-              qualified condition])])
+              qualified condition])
+   (optional :open "The open actions that reach this kind (each is in the description's :open); its :only-when for them still holds"
+             #{:catalogue/see} actions)])
 
 (def link
   [:map {:closed true :doc/key "[…]"}
@@ -191,6 +193,11 @@
            kind-name record-kind])
    (entry :links "Scopes reaching other scopes through a linking record" []
           [:vector {:error/message "must be a list of links" :doc/type "list of links"} link])
+   (entry :open "The open actions, the one list of them: reading actions anyone, or anyone signed in, may do without a membership. No role holds one; each reaches only the record kinds that list it"
+          {:anyone #{:catalogue/see} :signed-in #{:shops/name}}
+          [:map {:closed true}
+           (entry :anyone "Open to everyone, signed in or not" #{:catalogue/see} actions)
+           (entry :signed-in "Open to everyone who is signed in" #{:shops/name} actions)])
    (entry :session-blocks "A session flag blocks actions: flag → actions" {:impersonated #{:money/move}}
           [:map-of {:error/message "must map session flags to sets of actions" :doc/type "flag → actions"}
            kind-name actions])])
@@ -492,10 +499,16 @@
     (entry :on-answer "After every ask over HTTP: (fn [{:keys [endpoint status ms person request-id]}] …), or nil"
            'app.metrics/on-answer function-or-nil)
     (entry :bells "How the tables outside the permission description ring"
-           {:global #{:powder_colours} :personal {:notifications :notification/person-id}}
+           {:global {:powder_colours "reference data only the platform's staff change"}
+            :personal {:notifications :notification/person-id}}
            [:map {:closed true}
-            (entry :global "Tables every watcher of them hears about" #{:powder_colours}
-                   [:set {:error/message "must be a set of table keywords" :doc/type "set of tables"} :keyword])
+            (entry :global
+                   (str "Tables every watcher of them hears about: table → the reason. A global table is one "
+                        "whose rows belong to nobody, or whose every row is read by everyone; "
+                        "a table whose rows belong to a scope goes in the permission description")
+                   {:powder_colours "reference data only the platform's staff change"}
+                   [:map-of {:error/message "must map tables to the reason they are global" :doc/type "table → reason"}
+                    :keyword text])
             (entry :personal "Tables only their person hears about: table → person column"
                    {:notifications :notification/person-id}
                    [:map-of {:error/message "must map tables to person columns" :doc/type "table → column"}

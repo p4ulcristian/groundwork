@@ -29,6 +29,7 @@
              :job     {:table :jobs :id :job/id :in [:shop :job/shop-id] :parent [:order :job/order-id]}
              :machine {:table :machines :id :machine/id :in [:shop :machine/shop-id]}}
    :links   []
+   :open {:anyone #{} :signed-in #{}}
    :session-blocks {:impersonated #{:jobs/move}}})
 
 (def tables
@@ -116,7 +117,7 @@
    :max-running 4
    :bearer      (fn [token] (when (= "peters-token" token) peter))
    :on-answer   nil
-   :bells       {:global #{} :personal {}}})
+   :bells       {:global {} :personal {}}})
 
 (def ^:dynamic *part* nil)
 

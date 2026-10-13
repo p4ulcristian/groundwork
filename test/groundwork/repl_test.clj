@@ -37,6 +37,7 @@
               :to     [:shop :rpl-agreement/shop-id]
               :when   [:= :rpl-agreement/status "active"]
               :grants {:orders/see :agreements/see}}]
+   :open {:anyone #{} :signed-in #{}}
    :session-blocks {:impersonated #{:money/move}}})
 
 (pg/defsql rpl-orders-of-shop)

@@ -25,11 +25,26 @@
    A list carries no ids: it's called as it is, and its answer must hold
    none of the foreign ids, anywhere in it.
 
+   An open action (the description's :open) is everyone's, so its endpoints
+   are called as a stranger: nobody for one open to anyone, a person who
+   belongs nowhere for one open to the signed-in. They may answer; what
+   they answer must hold none of the :sealed ids (give the ids no stranger
+   may see: an unpublished row, a row of a kind the action doesn't reach).
+   And the wall itself is asked, for every open action and every kind of
+   record, what a stranger behind it sees of each foreign scope (open-wall):
+   only the rows the action's rule allows, and nothing of any other kind.
+
    Generating needs org.clojure/test.check on the test classpath."
   (:require
+   [clojure.set :as set]
+   [clojure.string :as str]
    [clojure.walk :as walk]
    [groundwork.endpoints :as endpoints]
-   [groundwork.parquery.wire :as wire]))
+   [groundwork.parquery.wire :as wire]
+   [groundwork.permissions :as permissions]
+   [groundwork.permissions.rules :as rules]
+   [groundwork.postgres :as pg]
+   [next.jdbc :as jdbc]))
 
 (defn- generate [shape]
   (require 'malli.experimental.time.generator)
@@ -68,15 +83,91 @@
     (walk/postwalk (fn [x] (when (contains? ids x) (vreset! found true)) x) data)
     @found))
 
+(defn- ids-seen
+  "The ids of a kind's rows a transaction sees, as text."
+  [tx {t :table id :id} where params]
+  (into #{}
+        (map (comp str val first))
+        (jdbc/execute! (::pg/conn tx)
+                       (into [(str "SELECT r." (rules/quote-column id) "::text AS id FROM " (rules/quote-table t) " r"
+                                   (when where (str " WHERE " where)))]
+                             params))))
+
+(defn open-wall
+  "What a stranger sees behind the wall, for every open action in every
+   scope given ({scope-kind scope-id}), of every kind of record: the rows
+   that show and shouldn't, [{:action :kind :ids}]. A row should show only
+   when its kind lists the action, the row is in that scope, and the kind's
+   :only-when for the action holds."
+  [perms scopes]
+  (let [description (:description perms)
+        arrows      (fn [{:keys [in]}] (if (keyword? (first in)) [in] in))]
+    (vec
+     (for [action (sort (rules/open-actions description))
+           :let   [scope (get scopes (permissions/action-kind perms action))]
+           :when  scope
+           [kind record] (sort-by key (:records description))
+           :let   [stranger (when (= :signed-in (rules/open-level description action)) (random-uuid))
+                   seen     (apply set/union
+                                   (for [about [nil kind]]
+                                     (permissions/in-wall perms {:person stranger :scopes #{scope} :action action
+                                                                 :kind about :read-only? true}
+                                                          #(ids-seen % record nil []))))
+                   allowed  (if (contains? (:open record) action)
+                              (let [[c ps] (if-let [condition (get-in record [:only-when action])]
+                                             (rules/condition-sql "r" condition)
+                                             ["TRUE" []])
+                                    mine   (str "(" (str/join
+                                                     " OR " (for [arrow (arrows record)]
+                                                              (str (rules/scope-sql "r" arrow) " = CAST(? AS uuid)")))
+                                                ")")]
+                                (permissions/as-system
+                                 perms #(ids-seen % record (str mine " AND " c)
+                                                  (into (vec (repeat (count (arrows record)) (str scope))) ps))))
+                              #{})
+                   extra    (set/difference seen allowed)]
+           :when  (seq extra)]
+       {:action action :kind kind :ids (vec (sort extra))}))))
+
 (defn check
   "Call every endpoint with another scope's ids. Returns {:checked [names]
-   :skipped {name reason} :leaked [{:endpoint :params :answer}]}."
-  [part {:keys [person flags foreign]}]
+   :skipped {name reason} :leaked [{:endpoint :params :answer}]}. Open
+   actions are called as a stranger and must show none of the :sealed ids;
+   a row the wall shows a stranger that it shouldn't is in :leaked as
+   {:open-wall {:action :kind :ids}}."
+  [part {:keys [person flags foreign sealed]}]
   (reduce (fn [report [k entry]]
-            (let [permission (:permission entry)]
+            (let [permission (:permission entry)
+                  open       (when (map? permission) (permissions/open-level (:perms part) (:action permission)))]
               (cond
                 (#{:public :signed-in} permission)
                 (assoc-in report [:skipped k] "carries no ids")
+
+                open
+                (let [generated (try (generate (:input entry)) (catch Exception e e))
+                      params    (when-not (instance? Exception generated)
+                                  (foreign-ids entry generated foreign (keys (get-in part [:perms :description :scopes]))))]
+                  (cond
+                    (instance? Exception generated)
+                    (assoc-in report [:skipped k] (str "its input can't be generated: " (ex-message generated)))
+
+                    (nil? params)
+                    (assoc-in report [:skipped k] "no foreign id given for a kind it carries")
+
+                    :else
+                    (let [answer (endpoints/call part {:endpoint k :params params
+                                                       :person   (when (= :signed-in open) (random-uuid))
+                                                       :flags    #{} :request-id "leak-test"})]
+                      (cond
+                        (= :invalid (:status answer))
+                        (assoc-in report [:skipped k] (str "the generated params don't fit its input: "
+                                                           (pr-str (:errors answer))))
+                        (and (= :ok (:status answer)) (holds-any? (:data answer) (set sealed)))
+                        (update report :leaked conj {:endpoint k :params params :answer answer})
+                        (#{:ok :not-found} (:status answer))
+                        (update report :checked conj k)
+                        :else
+                        (update report :leaked conj {:endpoint k :params params :answer answer})))))
 
                 (and (:list permission) (empty? (:ids entry)))
                 (let [generated (try (generate (:input entry)) (catch Exception e e))]
@@ -102,5 +193,8 @@
                                                                         (pr-str (:errors answer))))
                           (update report :leaked conj {:endpoint k :params params :answer answer})))
                       (assoc-in report [:skipped k] "no foreign id given for a kind it carries")))))))
-          {:checked [] :skipped {} :leaked []}
+          {:checked [] :skipped {}
+           :leaked  (mapv (fn [leak] {:open-wall leak})
+                          (open-wall (:perms part)
+                                     (select-keys foreign (keys (get-in part [:perms :description :scopes])))))}
           (sort-by key (:endpoints part))))

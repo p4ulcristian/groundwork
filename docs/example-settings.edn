@@ -203,6 +203,14 @@
   ;; Scopes reaching other scopes through a linking record
   :links []
 
+  ;; The open actions, the one list of them: reading actions anyone, or anyone signed in, may do without a membership. No role holds one; each reaches only the record kinds that list it
+  :open
+  {;; Open to everyone, signed in or not
+   :anyone #{:catalogue/see}
+
+   ;; Open to everyone who is signed in
+   :signed-in #{:shops/name}}
+
   ;; A session flag blocks actions: flag → actions
   :session-blocks {:impersonated #{:money/move}}}
 
@@ -250,8 +258,8 @@
 
   ;; How the tables outside the permission description ring
   :bells
-  {;; Tables every watcher of them hears about
-   :global #{:powder_colours}
+  {;; Tables every watcher of them hears about: table → the reason. A global table is one whose rows belong to nobody, or whose every row is read by everyone; a table whose rows belong to a scope goes in the permission description
+   :global {:powder_colours "reference data only the platform's staff change"}
 
    ;; Tables only their person hears about: table → person column
    :personal {:notifications :notification/person-id}

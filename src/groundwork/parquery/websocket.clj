@@ -12,8 +12,11 @@
 
    Every table of the app says how it rings, or the start refuses, naming
    the ones that don't: it is in the permission description (:records), or in
-   the :bells setting as :global, :personal or :silent, with the reason it
-   rings nothing. Groundwork's own team tables ring too (memberships, roles,
+   the :bells setting as :global (with the reason it is nobody's, or why
+   every row is read by everyone), :personal or :silent (with the reason it
+   rings nothing). A table whose rows belong to a scope is never global: it
+   is in the permission description, where who is rung comes from who may
+   see. Groundwork's own team tables ring too (memberships, roles,
    a role's actions, extra actions, invitations), under their schema's name,
    \"groundwork.memberships\".
 
@@ -79,7 +82,7 @@
    (into {} (map (fn [[kind {t :table id :id}]]
                    [(name t) (assoc (columns-of description kind) :id (column id))]))
          (:records description))
-   (into {} (map (fn [t] [(name t) {:id nil :scopes [] :people [] :global? true}])) global)
+   (into {} (map (fn [t] [(name t) {:id nil :scopes [] :people [] :global? true}])) (keys global))
    (into {} (map (fn [[t col]] [(name t) {:id nil :scopes [] :people [(column col)]}])) personal)))
 
 (pg/defsql app-tables "groundwork/parquery/app_tables.sql")
@@ -107,7 +110,7 @@
                   (seq missing) (str "These tables are named but aren't in the database: " (str/join ", " missing))
                   (seq unsaid)  (str "These tables don't say how they ring: " (str/join ", " unsaid)
                                      ". Each belongs in the permission description (:records), or in"
-                                     " :parquery :bells as :global, :personal or :silent (with the reason)"))]
+                                     " :parquery :bells as :global (with the reason it is nobody's), :personal or :silent (with the reason)"))]
     (when problem
       (throw (ex-info problem {:type ::tables-not-declared :twice (vec twice) :missing (vec missing)
                                :undeclared (vec unsaid)})))))
@@ -220,11 +223,13 @@
   [{:keys [endpoints]} {:keys [person flags]} asks]
   (let [tables (get-in endpoints [:perms :description :records])]
     (vec (keep (fn [[endpoint params]]
-                 (when-let [{:keys [scopes record]} (endpoints/watch endpoints {:endpoint endpoint :params params
-                                                                                :person person :flags flags})]
+                 (when-let [{:keys [scopes record] only :tables}
+                            (endpoints/watch endpoints {:endpoint endpoint :params params
+                                                        :person person :flags flags})]
                    {:ask          [(wire/endpoint-name endpoint) params]
                     :endpoint     endpoint
                     :scopes       (set (map str scopes))
+                    :only-tables  only
                     :record-table (some-> record first tables :table name)
                     :record-id    (some-> record second str)}))
                asks))))
@@ -267,13 +272,14 @@
 
 (defn- rings?
   "Whether a bell concerns a watch."
-  [part person {:keys [endpoint scopes record-table record-id]} {:keys [t s p i]}]
+  [part person {:keys [endpoint scopes record-table record-id only-tables]} {:keys [t s p i]}]
   (let [ringing (get (:tables part) t)
         tables  (tables-of-endpoint part endpoint)]
     (and (or (nil? tables) (contains? tables t))
          (or (:global? ringing)
-             (nil? s)
-             (seq (set/intersection scopes (set s)))
+             ;; a scope's bell reaches an open action's watch only for the tables it reaches
+             (and (or (nil? only-tables) (contains? only-tables t))
+                  (or (nil? s) (seq (set/intersection scopes (set s)))))
              (and person (or (nil? p) (some #{(str person)} p))))
          (or (not= t record-table) (nil? i) (some #{record-id} i)))))
 

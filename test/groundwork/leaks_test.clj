@@ -28,6 +28,7 @@
               :to     [:shop :partner-link/shop-id]
               :when   link-condition
               :grants {:notes/see :links/see}}]
+   :open {:anyone #{} :signed-in #{}}
    :session-blocks {}})
 
 (def sealed (description [:= :partner-link/status "active"]))
@@ -64,7 +65,7 @@
                    :answer     :string}})
 
 (def settings {:endpoints [endpoint-map] :max-asks 50 :max-running 4 :bearer nil :on-answer nil
-               :bells {:global #{} :personal {} :silent {:groundwork/every-other-table "the test database is shared by every test"}}})
+               :bells {:global {} :personal {} :silent {:groundwork/every-other-table "the test database is shared by every test"}}})
 
 (def ^:dynamic *db* nil)
 

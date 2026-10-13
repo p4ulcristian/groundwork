@@ -25,6 +25,7 @@
   {:scopes         {:shop {:actions #{:notes/see} :roles {} :parent nil}}
    :records        {:note {:table :notes :id :note/id :in [:shop :note/shop-id]}}
    :links          []
+   :open {:anyone #{} :signed-in #{}}
    :session-blocks {}})
 
 (defn- ok [_] {:status 200 :body "ok"})

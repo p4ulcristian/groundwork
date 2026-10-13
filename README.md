@@ -69,7 +69,7 @@ the JVM tests against Postgres 18, clj-kondo, the browser half's tests on node.
                     :parquery    {:endpoints [app.jobs/endpoints …]   ; see Endpoints
                                   :max-asks 50 :max-running 16
                                   :bearer nil
-                                  :bells {:global #{} :personal {} :silent {}}}}))
+                                  :bells {:global {} :personal {} :silent {}}}}))
 (gw/stop app)
 ```
 
@@ -222,12 +222,16 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:permissions :records <record kind> :parent` (optional) | [kind column] | The record it hangs under: [record-kind its-column] | `[:order :job/order-id]` |
 | `:permissions :records <record kind> :people` (optional) | action → column | An action a person on the record holds: action → their column | `#:orders{:see :order/customer-id}` |
 | `:permissions :records <record kind> :only-when` (optional) | action → condition | An action allowed only when the record matches: action → condition | `#:orders{:edit [:= :order/status "open"]}` |
+| `:permissions :records <record kind> :open` (optional) | set of actions | The open actions that reach this kind (each is in the description's :open); its :only-when for them still holds | `#{:catalogue/see}` |
 | `:permissions :links` | list of links | Scopes reaching other scopes through a linking record | `[]` |
 | `:permissions :links […] :table` | keyword | The linking record's table | `:agreements` |
 | `:permissions :links […] :from` | [kind column] | The scope the person is in: [kind column] | `[:partner :agreement/partner-id]` |
 | `:permissions :links […] :to` | [kind column] | The scope the link reaches: [kind column] | `[:shop :agreement/shop-id]` |
 | `:permissions :links […] :when` | condition | While this holds | `[:= :agreement/status "active"]` |
 | `:permissions :links […] :grants` | action → action | What it gives in :to: given action → the action needed in :from | `#:orders{:see :agreements/see}` |
+| `:permissions :open` | map | The open actions, the one list of them: reading actions anyone, or anyone signed in, may do without a membership. No role holds one; each reaches only the record kinds that list it | `{:anyone #{:catalogue/see}, :signed-in #{:shops/name}}` |
+| `:permissions :open :anyone` | set of actions | Open to everyone, signed in or not | `#{:catalogue/see}` |
+| `:permissions :open :signed-in` | set of actions | Open to everyone who is signed in | `#{:shops/name}` |
 | `:permissions :session-blocks` | flag → actions | A session flag blocks actions: flag → actions | `{:impersonated #{:money/move}}` |
 
 #### `:limits`: How often a caller may ask
@@ -261,8 +265,8 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:parquery :max-running` | positive whole number | The most asks running at once across the server; keep it below the pool size | `16` |
 | `:parquery :bearer` | function or nil | Whose token a tool calls with: (fn [token] person-id-or-nil), or nil | `app.tools/token->person` |
 | `:parquery :on-answer` | function or nil | After every ask over HTTP: (fn [{:keys [endpoint status ms person request-id]}] …), or nil | `app.metrics/on-answer` |
-| `:parquery :bells` | map | How the tables outside the permission description ring | `{:global #{:powder_colours}, :personal {:notifications :n…` |
-| `:parquery :bells :global` | set of tables | Tables every watcher of them hears about | `#{:powder_colours}` |
+| `:parquery :bells` | map | How the tables outside the permission description ring | `{:global {:powder_colours "reference data only the platfo…` |
+| `:parquery :bells :global` | table → reason | Tables every watcher of them hears about: table → the reason. A global table is one whose rows belong to nobody, or whose every row is read by everyone; a table whose rows belong to a scope goes in the permission description | `{:powder_colours "reference data only the platform's staf…` |
 | `:parquery :bells :personal` | table → column | Tables only their person hears about: table → person column | `{:notifications :notification/person-id}` |
 | `:parquery :bells :silent` (optional) | table → reason | Tables that ring nothing, on purpose: table → the reason. Every table of the app says how it rings, here or in the permission description, or the start refuses; :groundwork/every-other-table covers the rest of a database the app shares with something else | `{:import_log "written once by the nightly import, shown n…` |
 
@@ -652,6 +656,7 @@ The app describes its places, actions, roles and records once:
                    :parent [:order :job/order-id]}}                    ; the record it hangs under
  :links   [{:table :agreements :from [:partner :agreement/partner-id] :to [:shop :agreement/shop-id]
             :when [:= :agreement/status "active"] :grants {:orders/see :agreements/see}}]
+ :open    {:anyone #{:catalogue/see} :signed-in #{}}                ; the open actions, one list
  :session-blocks {:impersonated #{:money/move}}}
 ```
 
@@ -696,6 +701,29 @@ The app describes its places, actions, roles and records once:
   out for the rows it changes: its own record was checked before it ran.
   Links are read through functions Groundwork installs at start, so the
   database's rules never loop through the tables behind them.
+- **An action can be open:** to anyone, or to anyone signed in. It needs
+  no membership and only reads. The description's `:open` is the one list of
+  them, and a record kind lists the open actions that reach it:
+
+  ```clojure
+  :open    {:anyone #{:catalogue/see} :signed-in #{}}
+  :records {:package {:table :packages :id :package/id :in [:shop :package/shop-id]
+                      :open      #{:catalogue/see}
+                      :only-when {:catalogue/see [:= :package/published true]}}}
+  ```
+
+  An endpoint declares it like any action, about a `:scope` or a `:record`
+  (`{:action :catalogue/see :scope [:shop :shop/id]}`), and must be a
+  `:read`; open to anyone, it is asked signed out too. The scope it names is
+  verified for that one request, and the wall shows the caller only the
+  kinds that list the action, as their `:only-when` allows: the shop's
+  published packages, none of its orders. A member of the shop still sees
+  the other kinds as a member, and a person their own records. No role holds
+  an open action and it can't be granted; a write, a `:list` of every
+  scope's, a link or an id field of a kind it doesn't reach refuses the
+  start. A watch on such a read holds the scope, so a visitor on one shop's
+  page hears that shop's bell, for the tables the action reaches, and no
+  other shop's.
 - **Team:** `create-scope!`, `invite!`, `accept-invitation!`,
   `change-role!`, `create-role!`, `set-role-actions!`, `remove-member!`,
   `grant-extra!`, `revoke-extra!`. Managing needs `:groundwork/team`, and
@@ -862,9 +890,17 @@ The transport between browser and server, at one address, `/parquery`:
   record rings only when that record changed.
 - **Every table of the app says how it rings, or the start refuses,** naming
   every one that doesn't: it's in the permission description, or in `:bells`
-  as `:global` (everyone watching it), `:personal` (only its person) or
-  `:silent` (nothing, on purpose, with the reason). No table is quiet by
-  accident. Groundwork's own team tables ring too (memberships, roles, a
+  as `:global` (everyone watching it, with the reason), `:personal` (only
+  its person) or `:silent` (nothing, on purpose, with the reason). No table
+  is quiet by accident.
+- **Who is rung comes from who may see.** A table whose rows belong to a
+  scope is in the permission description, behind the wall, and its bell
+  reaches the people the description lets see the row. A `:global` table is
+  one whose rows belong to nobody (reference data the app's own staff keep),
+  or whose every row is read by everyone; its declaration says which. There
+  is no way to ring by a scope column without the wall: a bell aimed by the
+  column alone misses the readers outside the scope, and ringing everyone
+  for a scope's rows grows with the square of the scopes online. Groundwork's own team tables ring too (memberships, roles, a
   role's actions, extra actions, invitations), so a team screen and
   "can I?" follow a change.
 - When a part refuses at start, the parts started before it are stopped and
@@ -1060,6 +1096,13 @@ Then the store, under the screens:
   too much, like a link whose condition forgot the status.
 - A list that carries no ids is called as it is; its answer must hold none
   of the foreign ids, anywhere in it.
+- **Open actions** are called as a stranger (nobody, or a person who
+  belongs nowhere): they may answer, and what they answer must hold none of
+  the `:sealed` ids you give (`:sealed #{an-unpublished-package an-order}`):
+  the ids no stranger may see. The wall itself is asked too, for every open
+  action and every kind of record, what a stranger behind it sees of each
+  foreign scope (`leaks/open-wall`): only the rows the action's rule allows,
+  and nothing of any other kind.
 - Public and signed-in endpoints are skipped, and so is one that needs a
   foreign id nobody gave; the report says which and why.
 - Generating needs `org.clojure/test.check` on the test classpath.

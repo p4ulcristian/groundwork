@@ -33,6 +33,7 @@
    :records        {:note {:table :notes :id :note/id :in [:shop :note/shop-id]}
                     :tag  {:table :tags :id :tag/id :in [:shop :tag/shop-id]}}
    :links          []
+   :open {:anyone #{} :signed-in #{}}
    :session-blocks {}})
 
 (pg/defsql ws-notes-of-shop)
@@ -74,7 +75,7 @@
                             (assoc :permissions description)
                             (assoc-in [:parquery :endpoints] [endpoints-map])
                             ;; a table of no shop: everyone watching it hears
-                            (assoc-in [:parquery :bells :global] #{:colours})))]
+                            (assoc-in [:parquery :bells :global] {:colours "reference data nobody owns"})))]
       (try
         (perm/create-scope! (gw/permissions app) {:kind :shop :id acme :parent nil :owner paul})
         (perm/create-scope! (gw/permissions app) {:kind :shop :id zinc :parent nil :owner ana})

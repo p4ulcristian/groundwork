@@ -33,23 +33,31 @@
 
 (deftest every-table-says-how-it-rings
   (testing "tables nothing names stop the start, all of them in one error"
-    (let [problem (start-with {:global #{:tr_colours} :personal {} :silent (others)})]
+    (let [problem (start-with {:global {:tr_colours "reference data"} :personal {} :silent (others)})]
       (is (= ::websocket/tables-not-declared (:type problem)))
       (is (= ["tr_import_log" "tr_notices"] (:undeclared problem)))))
   (testing "global, personal, or silent with its reason: the app starts"
-    (is (= :started (start-with {:global   #{:tr_colours}
+    (is (= :started (start-with {:global   {:tr_colours "reference data"}
                                  :personal {:tr_notices :tr-notice/person-id}
                                  :silent   (assoc (others) :tr_import_log "written by the import, shown nowhere")}))))
   (testing "a table that rings can't be silent too"
     (is (= ["tr_colours"]
-           (:twice (start-with {:global   #{:tr_colours}
+           (:twice (start-with {:global   {:tr_colours "reference data"}
                                 :personal {:tr_notices :tr-notice/person-id}
                                 :silent   (assoc (others) :tr_import_log "…" :tr_colours "…")})))))
   (testing "a table named that isn't there"
     (is (= ["tr_gone"]
-           (:missing (start-with {:global   #{:tr_colours}
+           (:missing (start-with {:global   {:tr_colours "reference data"}
                                   :personal {:tr_notices :tr-notice/person-id}
                                   :silent   (assoc (others) :tr_import_log "…" :tr_gone "…")})))))
   (testing "a database shared with something else: the rest is silent, said once"
-    (is (= :started (start-with {:global #{} :personal {}
+    (is (= :started (start-with {:global {} :personal {}
                                  :silent {websocket/every-other-table "shared with other tests"}})))))
+
+(deftest a-global-table-says-why
+  (testing "a set of tables, with no reasons, is refused by the settings check"
+    (let [problem (start-with {:global #{:tr_colours} :personal {} :silent (others)})]
+      (is (= :groundwork.settings/invalid (:type problem)) (pr-str problem))))
+  (testing "an empty reason too"
+    (let [problem (start-with {:global {:tr_colours ""} :personal {} :silent (others)})]
+      (is (= :groundwork.settings/invalid (:type problem)) (pr-str problem)))))

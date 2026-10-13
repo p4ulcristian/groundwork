@@ -138,13 +138,19 @@
   [id-col id]
   (str "r." (rules/quote-column id-col) (if (string? id) "::text = ?" " = ?")))
 
+(defn open-level
+  "Who an action is open to, :anyone or :signed-in, or nil."
+  [perms action]
+  (rules/open-level (:description perms) action))
+
 (defn allowed?
-  "Whether a person may do an action on one record: [kind id]."
+  "Whether a person may do an action on one record: [kind id]. Nobody
+   signed in may do only what is open to anyone."
   [perms {:keys [person flags action] [kind id] :record}]
   (let [id                    (as-id id)
         {t :table id-col :id} (record-spec perms kind)
         {:keys [sql params]}  (rule perms action kind)]
-    (and (some? person)
+    (and (or (some? person) (= :anyone (open-level perms action)))
          (some? sql)
          (not (rules/blocked? (:description perms) action flags))
          (as-system perms
@@ -226,6 +232,29 @@
                                         (apply str (map #(str " OR " (first %)) links)))
                                 (into [(str scope) (str person) (rules/action-name action)]
                                       (mapcat #(rules/bind (second %) person) links)))))))))
+
+(defn open-scope
+  "For an open action asked about a scope: that scope alone, when it exists
+   and is of the action's own kind; else nothing. No membership is looked
+   at, and nothing below the scope comes with it."
+  [perms {:keys [person flags action scope]}]
+  (let [level (open-level perms action)]
+    (if (or (nil? level) (nil? scope) (blocked? perms action flags)
+            (and (= :signed-in level) (nil? person)))
+      #{}
+      (as-system perms
+                 (fn [tx]
+                   (into #{}
+                         (map (comp val first))
+                         (query tx "SELECT scope__id FROM groundwork.scopes WHERE scope__id = CAST(? AS uuid) AND scope__kind = ?"
+                                [(str scope) (name (action-kind perms action))])))))))
+
+(defn open-tables
+  "The tables an open action reaches: those of the record kinds that list it."
+  [perms action]
+  (into #{}
+        (keep (fn [[_ {t :table opens :open}]] (when (contains? opens action) (name t))))
+        (get-in perms [:description :records])))
 
 (defn scopes-listed
   "The scopes of every record of a kind the person may do the action on
