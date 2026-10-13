@@ -190,6 +190,23 @@
           {:orders/see :agreements/see}
           [:map-of {:error/message "must map actions to actions" :doc/type "action → action"} qualified qualified])])
 
+(def pass
+  [:map {:closed true :doc/key "[…]"}
+   (entry :table "The passing row's table; it is a record kind itself, in the giving and the receiving scope" :handoffs kind-name)
+   (entry :record "The one record it gives: [record-kind column]" [:order :handoff/order-id] arrow)
+   (entry :from "The giving scope, the record's own: [kind column]" [:shop :handoff/from-shop-id] arrow)
+   (optional :to "The receiving scope: [kind column]" [:shop :handoff/to-shop-id] arrow)
+   (optional :to-person "Or the receiving person's column" :handoff/driver-id column)
+   (entry :when "While this holds" [:= :handoff/status "open"] condition)
+   (entry :grants "The reading actions it gives on the record → the action needed in :to; for :to-person, a set of given actions"
+          {:orders/see :handoffs/work}
+          (pred "action → action, or a set of actions"
+                "must map given actions to needed actions, or be a set of given actions for :to-person"
+                #(or (and (map? %) (seq %) (every? qualified-keyword? (keys %)) (every? qualified-keyword? (vals %)))
+                     (and (set? %) (seq %) (every? qualified-keyword? %)))))
+   (entry :under "The record kinds right under the record that come with it" #{:job}
+          [:set {:error/message "must be a set of record kinds" :doc/type "set of kinds"} :keyword])])
+
 (def permission-description
   [:map {:closed true}
    (entry :scopes "The kinds of scope: where data belongs and people are members"
@@ -202,6 +219,9 @@
            kind-name record-kind])
    (entry :links "Scopes reaching other scopes through a linking record" []
           [:vector {:error/message "must be a list of links" :doc/type "list of links"} link])
+   (entry :passes "Rows that are a pass to one record: a reading action on the record a row names, for the receiving scope's people or one person, while a condition holds"
+          []
+          [:vector {:error/message "must be a list of passes" :doc/type "list of passes"} pass])
    (entry :open "The open actions, the one list of them: reading actions anyone, or anyone signed in, may do without a membership. No role holds one; each reaches only the record kinds that list it"
           {:anyone #{:catalogue/see} :signed-in #{:shops/name}}
           [:map {:closed true}

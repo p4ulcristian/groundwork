@@ -203,6 +203,9 @@
   ;; Scopes reaching other scopes through a linking record
   :links []
 
+  ;; Rows that are a pass to one record: a reading action on the record a row names, for the receiving scope's people or one person, while a condition holds
+  :passes []
+
   ;; The open actions, the one list of them: reading actions anyone, or anyone signed in, may do without a membership. No role holds one; each reaches only the record kinds that list it
   :open
   {;; Open to everyone, signed in or not

@@ -69,11 +69,17 @@
 (defn- column [k]
   (names/key->column k))
 
-(defn- columns-of [description kind]
-  (let [{:keys [in people]} (get-in description [:records kind])
-        arrows              (if (keyword? (first in)) [in] in)]
+(defn- columns-of
+  "A record kind's scope columns and person columns; a pass to a person
+   kept in its table counts as a person on it, so its bell reaches them."
+  [description kind]
+  (let [{:keys [in people] t :table} (get-in description [:records kind])
+        arrows                       (if (keyword? (first in)) [in] in)
+        receivers                    (for [{pt :table :keys [to-person]} (:passes description)
+                                           :when (and to-person (= (name pt) (name t)))]
+                                       to-person)]
     {:scopes (mapv (comp column second) arrows)
-     :people (vec (distinct (map column (vals people))))}))
+     :people (vec (distinct (map column (concat (vals people) receivers))))}))
 
 (defn- ringing-tables
   "Every table that rings: {table {:id col :scopes [cols] :people [cols]}}."
@@ -275,7 +281,9 @@
   [part person {:keys [endpoint scopes record-table record-id only-tables]} {:keys [t s p i]}]
   (let [ringing (get (:tables part) t)
         tables  (tables-of-endpoint part endpoint)]
-    (and (or (nil? tables) (contains? tables t))
+    (and (or (nil? tables) (contains? tables t)
+             ;; a pass made or ended changes who sees the records it gives
+             (some tables (get (:pass-tables part) t)))
          (or (:global? ringing)
              ;; a scope's bell reaches an open action's watch only for the tables it reaches
              (and (or (nil? only-tables) (contains? only-tables t))
@@ -303,7 +311,8 @@
    :any: everything it shows that it may ask."
   [part {:keys [person flags]} watching rang]
   (let [asks    (vec (keep read-watch watching))
-        rung    (when-not (= :any rang) (set (map :t rang)))
+        rung    (when-not (= :any rang)
+                  (into (set (map :t rang)) (mapcat #(get (:pass-tables part) (:t %))) rang))
         maybe   (if rung
                   (filterv (fn [[endpoint _]]
                              (let [tables (tables-of-endpoint part endpoint)]
@@ -432,6 +441,7 @@
                      :db          db
                      :db-settings db-settings
                      :tables      tables
+                     :pass-tables (rules/pass-tables description)
                      :plans       (atom {})
                      :lines       (atom {})
                      :recent      (atom [])

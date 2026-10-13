@@ -38,6 +38,9 @@
 (def piet (id))   ; Pine's owner
 (def acme-pine (id)) (def zinc-pine (id))   ; agreements
 (def zinc-price (id)) (def zinc-service (id))
+(def petra (id))  ; Pine's production
+(def paulus (id)) ; Pine's bookkeeper
+(def acme-order-2 (id)) (def acme-job (id)) (def acme-job-2 (id)) (def zinc-job (id)) (def zinc-handoff (id)) (def zinc-pine-handoff (id))
 (def uma (id))    ; signed in, a member nowhere, like Vic
 (def talk (id)) (def later-talk (id)) (def zinc-talk (id)) (def zinc-message (id))
 
@@ -64,6 +67,16 @@
            shared shapes/platform shared-draft shapes/platform)
   (system! perms "INSERT INTO sh_orders VALUES (?, ?, ?, 'a'), (?, ?, NULL, 'z')"
            acme-order acme vic zinc-order zinc)
+  (system! perms "INSERT INTO sh_orders VALUES (?, ?, NULL, 'b')" acme-order-2 acme)
+  (system! perms "INSERT INTO sh_jobs VALUES (?, ?, ?, 'blast'), (?, ?, ?, 'coat'), (?, ?, ?, 'zinc job')"
+           acme-job acme-order acme acme-job-2 acme-order-2 acme zinc-job zinc-order zinc)
+  ;; a handoff that is done: a pass that gives nothing any more
+  (system! perms (str "INSERT INTO sh_handoffs (handoff__id, handoff__order_id, handoff__from_shop_id,"
+                      " handoff__to_shop_id, handoff__status) VALUES (?, ?, ?, ?, 'done')")
+           zinc-handoff zinc-order zinc acme)
+  (system! perms (str "INSERT INTO sh_handoffs (handoff__id, handoff__order_id, handoff__from_shop_id,"
+                      " handoff__to_shop_id, handoff__status) VALUES (?, ?, ?, ?, 'done')")
+           zinc-pine-handoff zinc-order zinc pine)
   (system! perms "INSERT INTO sh_agreements VALUES (?, ?, ?), (?, ?, ?)" acme-pine acme pine zinc-pine zinc pine)
   (system! perms "INSERT INTO sh_price_sheets (price_sheet__id, price_sheet__agreement_id, price_sheet__cents) VALUES (?, ?, 900)"
            zinc-price zinc-pine)
@@ -90,6 +103,8 @@
           (perm/create-scope! perms {:kind :shop :id shapes/platform :parent nil :owner pat})
           (perm/create-scope! perms {:kind :shop :id pine :parent nil :owner piet})
           (join! perms sam acme stella "Staff")
+          (join! perms piet pine petra "Production")
+          (join! perms piet pine paulus "Bookkeeper")
           (seed! perms))
         (binding [*app* app] (t))
         (finally
@@ -186,7 +201,7 @@
     (is (= {:status :ok :data 0} (call nil :catalogue/busy? {:shop/id acme})))
     (is (= {:status :ok :data 0} (call olga :catalogue/busy? {:shop/id acme})) "another shop's owner too"))
   (testing "a member of the shop sees its orders, as a member"
-    (is (= {:status :ok :data 1} (call stella :catalogue/busy? {:shop/id acme}))))
+    (is (= {:status :ok :data 2} (call stella :catalogue/busy? {:shop/id acme}))))
   (testing "a person's own record stays theirs: Vic's order in Acme"
     (is (= {:status :ok :data 1} (call vic :catalogue/busy? {:shop/id acme})))))
 
@@ -238,13 +253,24 @@
                                   :foreign {:shop zinc :package zinc-secret :order zinc-order
                                             :agreement zinc-pine :price-sheet zinc-price
                                             :order-service zinc-service
-                                            :conversation zinc-talk :message zinc-message}
+                                            :conversation zinc-talk :message zinc-message
+                                            :job zinc-job :handoff zinc-pine-handoff}
                                   :sealed  sealed})]
     (is (= [] (:leaked report)))
     (is (every? (set (:checked report)) [:catalogue/of-shop :catalogue/package :catalogue/busy? :shop/card
                                          :catalogue/rename :orders/of-shop :prices/of-agreement :prices/add
                                          :services/mine :services/add :orders/note
-                                         :talk/messages :talk/say]))
+                                         :talk/messages :talk/say :handoffs/give :handoffs/set-status
+                                         :orders/incoming :jobs/of-order :jobs/one :orders/stamp]))
+    (testing "as the holder of a pass on one order, asking for the giving shop's other records"
+      (let [handoff (:data (call sam :handoffs/give {:order/id acme-order :handoff/to-shop-id pine
+                                                     :handoff/driver-id nil}))]
+        (try
+          (is (= [] (:leaked (leaks/check part {:person  petra
+                                                :foreign {:shop acme :order acme-order-2 :job acme-job-2
+                                                          :package acme-secret}
+                                                :sealed  sealed}))))
+          (finally (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff)))))
     (testing "the wall, asked directly: a stranger sees nothing it shouldn't, of any kind"
       (is (= [] (leaks/open-wall (gw/permissions *app*) {:shop acme}))))
     (testing "a kind that forgot its condition shows its unpublished rows, and the test says so"
@@ -338,6 +364,149 @@
         (finally
           (sql! "DROP TABLE IF EXISTS sh_loose")
           (perm/start {:settings shapes/description :db (gw/db *app*)}))))))
+
+;; =============================================================================
+;; A row can be a pass to one record
+;; =============================================================================
+
+(defn- in-wall! [person scopes sql & params]
+  (perm/in-wall (gw/permissions *app*) {:person person :scopes scopes}
+                (fn [tx] (jdbc/execute! (::pg/conn tx) (into [sql] params)))))
+
+(deftest a-handoff-is-a-pass-to-one-order
+  (testing "a handoff that is done gives nothing: Zinc's old one to Acme"
+    (is (= {:status :not-found} (call stella :orders/note {:order/id zinc-order}))))
+  (testing "before any handoff, the other shop's people see none of Acme's orders"
+    (is (= {:status :not-found} (call petra :orders/note {:order/id acme-order})))
+    (is (= {:status :ok :data []} (call petra :orders/incoming {}))))
+  (let [handoff (:data (call sam :handoffs/give {:order/id acme-order :handoff/to-shop-id pine :handoff/driver-id nil}))]
+    (is (uuid? handoff))
+    (try
+      (testing "the receiving shop's production sees that order, and its jobs"
+        (is (= {:status :ok :data "a"} (call petra :orders/note {:order/id acme-order})))
+        (is (= {:status :ok :data ["blast"]} (call petra :jobs/of-order {:order/id acme-order})))
+        (is (= {:status :ok :data "blast"} (call petra :jobs/one {:job/id acme-job})))
+        (is (= {:status :ok :data ["a"]} (call petra :orders/incoming {}))))
+      (testing "a pass names one record: Acme's other order isn't there, with the right id"
+        (is (= {:status :not-found} (call petra :orders/note {:order/id acme-order-2})))
+        (is (= {:status :not-found} (call petra :jobs/one {:job/id acme-job-2})))
+        (is (= {:status :not-found} (call petra :orders/of-shop {:shop/id acme})) "nor the shop as a whole"))
+      (testing "the receiving shop's own roles decide who uses it"
+        (is (= {:status :not-found} (call paulus :orders/note {:order/id acme-order})) "the bookkeeper doesn't")
+        (is (= {:status :ok :data "a"} (call piet :orders/note {:order/id acme-order})) "its owner does"))
+      (testing "nobody else"
+        (is (= {:status :not-found} (call olga :orders/note {:order/id acme-order})))
+        (is (= {:status :not-found} (call uma :orders/note {:order/id acme-order}))))
+      (testing "a pass only reads: a write that declares the given action gets nothing from it"
+        (is (= {:status :not-found} (call petra :orders/stamp {:order/id acme-order :order/note "mine"})))
+        (is (= {:status :ok :data "a"} (call stella :orders/stamp {:order/id acme-order :order/note "a"}))))
+      (testing "the receiver reports on the handoff itself; done, the order is gone for it, nothing to clean up"
+        (is (= {:status :ok :data "done"} (call petra :handoffs/set-status {:handoff/id handoff :handoff/status "done"})))
+        (is (= {:status :not-found} (call petra :orders/note {:order/id acme-order})))
+        (is (= {:status :not-found} (call petra :jobs/one {:job/id acme-job})))
+        (is (= {:status :ok :data []} (call petra :orders/incoming {}))))
+      (testing "the receiver can't open it again: that would be writing itself a pass"
+        (is (= :error (:status (call petra :handoffs/set-status {:handoff/id handoff :handoff/status "open"}))))
+        (is (= {:status :not-found} (call petra :orders/note {:order/id acme-order}))))
+      (testing "the giving shop can"
+        (is (= {:status :ok :data "open"} (call stella :handoffs/set-status {:handoff/id handoff :handoff/status "open"})))
+        (is (= {:status :ok :data "a"} (call petra :orders/note {:order/id acme-order}))))
+      (finally
+        (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff)))))
+
+(deftest a-scope-cant-write-itself-a-pass
+  (testing "the receiving shop's person, behind their own shop's wall, storing a pass from Acme: refused"
+    (is (thrown-with-msg? org.postgresql.util.PSQLException #"Only the giving scope may create a pass"
+                          (in-wall! petra #{pine}
+                                    (str "INSERT INTO sh_handoffs (handoff__order_id, handoff__from_shop_id,"
+                                         " handoff__to_shop_id) VALUES (?, ?, ?)")
+                                    acme-order-2 acme pine))))
+  (testing "a pass 'from Pine' for Acme's order: the database ties the giver to the order's own shop"
+    (is (thrown? org.postgresql.util.PSQLException
+                 (as-system! (str "INSERT INTO sh_handoffs (handoff__order_id, handoff__from_shop_id,"
+                                  " handoff__to_shop_id) VALUES (?, ?, ?)")
+                             acme-order-2 pine pine))))
+  (testing "nor through the endpoint: giving needs the giving action on the order"
+    (is (= {:status :not-found}
+           (call petra :handoffs/give {:order/id acme-order-2 :handoff/to-shop-id pine :handoff/driver-id nil}))))
+  (testing "pointing an existing pass at another order, or at another receiver, is creating one"
+    (let [handoff (:data (call sam :handoffs/give {:order/id acme-order :handoff/to-shop-id pine :handoff/driver-id nil}))]
+      (try
+        (is (thrown-with-msg? org.postgresql.util.PSQLException #"Only the giving scope may create a pass"
+                              (in-wall! petra #{pine acme}
+                                        "UPDATE sh_handoffs SET handoff__order_id = ? WHERE handoff__id = ?"
+                                        acme-order-2 handoff)))
+        (finally (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff))))))
+
+(deftest a-pass-to-one-person
+  (let [handoff (:data (call sam :handoffs/give {:order/id acme-order :handoff/to-shop-id nil :handoff/driver-id uma}))]
+    (try
+      (is (= {:status :ok :data "a"} (call uma :orders/note {:order/id acme-order})) "the driver")
+      (is (= {:status :not-found} (call uma :orders/note {:order/id acme-order-2})) "that order alone")
+      (is (= {:status :not-found} (call uma :jobs/one {:job/id acme-job})) "and nothing under it: this pass lists none")
+      (is (= {:status :not-found} (call petra :orders/note {:order/id acme-order})) "nobody else")
+      (as-system! "UPDATE sh_handoffs SET handoff__status = 'done' WHERE handoff__id = ?" handoff)
+      (is (= {:status :not-found} (call uma :orders/note {:order/id acme-order})))
+      (finally (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff)))))
+
+(deftest the-start-checks-a-pass
+  (let [pass  (first (:passes shapes/description))
+        check (fn [f] (:type (error #(rules/check (update shapes/description :passes (fn [ps] [(f (first ps))]))))))]
+    (is (= ::rules/bad-description (check #(assoc % :table :sh_packages)))
+        "its table is a record kind in the giving and the receiving scope")
+    (is (= ::rules/bad-description (check #(assoc % :under #{:message}))) "what comes with it hangs right under the record")
+    (is (= ::rules/bad-description (check #(assoc % :grants {:catalogue/see :handoffs/work}))) "an open action isn't given")
+    (is (= ::rules/bad-description (check #(assoc % :to-person :handoff/driver-id))) "one receiver")
+    (testing "the database must tie the giver to the record's own scope; the error carries the SQL"
+      (sql! "DROP TABLE IF EXISTS sh_loose_passes;
+             CREATE TABLE sh_loose_passes (loose_pass__id uuid PRIMARY KEY, loose_pass__order_id uuid NOT NULL,
+               loose_pass__from_id uuid NOT NULL, loose_pass__to_id uuid, loose_pass__status text NOT NULL)")
+      (try
+        (let [problem (error #(perm/start
+                               {:settings (-> shapes/description
+                                              (assoc-in [:records :loose-pass]
+                                                        {:table :sh_loose_passes :id :loose-pass/id
+                                                         :in [[:shop :loose-pass/from-id] [:shop :loose-pass/to-id]]})
+                                              (update :passes conj
+                                                      (assoc pass :table :sh_loose_passes
+                                                             :record [:order :loose-pass/order-id]
+                                                             :from [:shop :loose-pass/from-id]
+                                                             :to [:shop :loose-pass/to-id]
+                                                             :when [:= :loose-pass/status "open"])))
+                                :db (gw/db *app*)}))]
+          (is (= ::perm/bad-description (:type problem)))
+          (is (str/includes? (str (:sql problem)) "ADD FOREIGN KEY (loose_pass__order_id, loose_pass__from_id)")))
+        (finally
+          (sql! "DROP TABLE IF EXISTS sh_loose_passes")
+          (perm/start {:settings shapes/description :db (gw/db *app*)}))))))
+
+(deftest a-pass-rings-who-holds-it
+  (let [cookie   (sign-in petra)
+        _        (ask! cookie "orders/incoming" {})
+        line     (open-line cookie)
+        incoming ["orders/incoming" {}]
+        note     ["orders/note" {:order/id (str acme-order)}]]
+    (try
+      (watch! line incoming)
+      (testing "a pass given to her shop: her list of incoming orders is asked again"
+        (let [handoff (:data (call sam :handoffs/give {:order/id acme-order :handoff/to-shop-id pine
+                                                       :handoff/driver-id nil}))]
+          (try
+            (is (= [incoming] (next-bell line 3000)))
+            (ask! cookie "orders/note" {:order/id (str acme-order)})
+            (watch! line incoming note)
+            (testing "the order she holds a pass on changes: both her reads of it"
+              (as-system! "UPDATE sh_orders SET order__note = 'a' WHERE order__id = ?" acme-order)
+              (is (= #{incoming note} (set (next-bell line 3000)))))
+            (testing "Acme's other order: her list hears of the shop it now reads from, her one order doesn't"
+              (as-system! "UPDATE sh_orders SET order__note = 'b' WHERE order__id = ?" acme-order-2)
+              (is (= [incoming] (next-bell line 3000))))
+            (testing "the pass ends: both are asked again, and answer without the order"
+              (as-system! "UPDATE sh_handoffs SET handoff__status = 'done' WHERE handoff__id = ?" handoff)
+              (is (= #{incoming note} (set (next-bell line 3000))))
+              (is (= "not-found" (:status (ask! cookie "orders/note" {:order/id (str acme-order)})))))
+            (finally (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff)))))
+      (finally (close! line)))))
 
 ;; =============================================================================
 ;; A record between fixed sides carries them

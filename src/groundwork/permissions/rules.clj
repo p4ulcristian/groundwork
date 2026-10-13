@@ -27,6 +27,13 @@
                   :to    [:shop :agreement/shop-id]
                   :when  [:= :agreement/status \"active\"]
                   :grants {:orders/see :agreements/see}}]  ; agreements/see in the partner gives orders/see in the shop
+      :passes   [{:table  :handoffs                       ; a row that is a pass to one record
+                  :record [:order :handoff/order-id]      ; the record it names
+                  :from   [:shop :handoff/from-shop-id]   ; the giving scope: the record's own
+                  :to     [:shop :handoff/to-shop-id]     ; who receives: a scope (or :to-person <column>)
+                  :when   [:= :handoff/status \"open\"]
+                  :grants {:orders/see :handoffs/work}    ; given on the record → needed in :to
+                  :under  #{:job}}]                       ; kinds right under the record that come with it
       :open     {:anyone #{:catalogue/see} :signed-in #{:shops/name}}   ; the open actions, one list
       :session-blocks {:impersonated #{:money/move}}}
 
@@ -36,6 +43,16 @@
    role holds it and nothing grants it. A request for it is about the scope
    it names: that scope is verified, and the wall shows the caller those
    kinds' rows of it and nothing else of the scope.
+
+   A pass gives a reading action on the one record its row names, and on
+   the kinds listed :under it, while its condition holds: to the people of
+   the receiving scope who hold the needed action there (:grants is given →
+   needed), or to one person (:to-person; :grants is then a set of actions).
+   A link gives an action in the whole linked scope; a pass on one record.
+   The pass's table is a record kind of its own, in the giving and the
+   receiving scope. Only the giving scope's people create a pass, the
+   database sees to it, and the giving scope must be the record's own. A
+   pass only reads.
 
    Every record names its scope through its own column, however deep it
    sits: a job keeps its shop, not only its order. A record under another
@@ -154,7 +171,7 @@
 
 (defn columns-needed
   "Every table the description names, with the columns it needs."
-  [{:keys [records links]}]
+  [{:keys [records links passes]}]
   (merge-with into
               (into {}
                     (map (fn [[_ {:keys [id people only-when parent] t :table :as record}]]
@@ -169,7 +186,14 @@
                     (map (fn [{t :table condition :when :keys [from to]}]
                            [(table t) (set (map column (concat [(second from) (second to)]
                                                                (condition-columns condition))))]))
-                    links)))
+                    links)
+              (into {}
+                    (map (fn [{t :table condition :when :keys [record from to to-person]}]
+                           [(table t) (set (map column (concat [(second record) (second from)]
+                                                               (when to [(second to)])
+                                                               (when to-person [to-person])
+                                                               (condition-columns condition))))]))
+                    passes)))
 
 (defn carried-columns
   "What a record kind carries from its parent, {its column → the parent's}:
@@ -184,7 +208,7 @@
   "Throws on the first thing wrong in a description, apart from the
    database: see columns-needed for that. Returns the description."
   [{:keys [scopes records links session-blocks] :as description}]
-  (when-let [missing (seq (remove #(contains? description %) [:scopes :records :links :open :session-blocks]))]
+  (when-let [missing (seq (remove #(contains? description %) [:scopes :records :links :passes :open :session-blocks]))]
     (problem (str ":permissions needs " (str/join " " missing)) {:missing (vec missing)}))
   (doseq [[kind spec] scopes]
     (when-let [missing (seq (remove #(contains? spec %) [:actions :roles :parent]))]
@@ -287,6 +311,54 @@
           (problem (str "A link grants " given ", which isn't an action of " (first to) " or above") {:link link}))
         (when-not (and (kinds needed) (under? description (first from) (kinds needed)))
           (problem (str "A link needs " needed ", which isn't an action of " (first from) " or above") {:link link}))))
+    (doseq [{:keys [record from to to-person grants under] t :table :as pass} (:passes description)]
+      (doseq [k [:table :record :from :when :grants :under]]
+        (when-not (contains? pass k)
+          (problem (str "A pass needs " k) {:pass pass})))
+      (when-not (= 1 (count (filter #(contains? pass %) [:to :to-person])))
+        (problem "A pass names who receives it: :to [scope-kind column], or :to-person <column>" {:pass pass}))
+      (let [[record-kind _] record
+            named           (records record-kind)
+            own             (some (fn [[kind spec]] (when (= (table t) (table (:table spec))) [kind spec])) records)]
+        (when-not named
+          (problem (str "A pass names an unknown record kind " record-kind) {:pass pass}))
+        (when-not (= 1 (count (filter #(= (first from) (end-kind description record-kind %)) (arrows named))))
+          (problem (str "A pass's :from is the record's own scope: " record-kind " must be in exactly one "
+                        (first from))
+                   {:pass pass}))
+        (when-not own
+          (problem (str "A pass's table " t " must be a record kind itself (in :records), in the giving and the"
+                        " receiving scope: it is walled and rings like any record")
+                   {:pass pass}))
+        (let [own-columns (set (map second (arrows (second own))))]
+          (when-not (contains? own-columns (second from))
+            (problem (str "The pass's :from column " (second from) " must be a scope column of " (first own))
+                     {:pass pass}))
+          (when (and to (not (contains? own-columns (second to))))
+            (problem (str "The pass's :to column " (second to) " must be a scope column of " (first own))
+                     {:pass pass})))
+        (when (and to (not (contains? scopes (first to))))
+          (problem (str "A pass's :to must be a scope kind, not " (first to)) {:pass pass}))
+        (when-not (if to-person (set? grants) (map? grants))
+          (problem (str "A pass's :grants is given action → the action needed in :to; for :to-person, a set of"
+                        " given actions")
+                   {:pass pass}))
+        (doseq [given (if to-person grants (keys grants))]
+          (when (opens given)
+            (problem (str "A pass gives the open action " given "; it is everyone's already") {:pass pass}))
+          (when-not (and (kinds given) (under? description (first from) (kinds given)))
+            (problem (str "A pass gives " given ", which isn't an action of " (first from) " or above") {:pass pass})))
+        (when to
+          (doseq [needed (vals grants)]
+            (when (opens needed)
+              (problem (str "A pass needs the open action " needed "; everyone holds it") {:pass pass}))
+            (when-not (and (kinds needed) (under? description (first to) (kinds needed)))
+              (problem (str "A pass needs " needed ", which isn't an action of " (first to) " or above")
+                       {:pass pass}))))
+        (doseq [kind under]
+          (when-not (= record-kind (first (:parent (records kind))))
+            (problem (str "A pass's :under names " kind ", which doesn't hang right under " record-kind)
+                     {:pass pass})))))
     (doseq [[flag actions] session-blocks
             action actions]
       (when-not (kinds action)
@@ -368,6 +440,127 @@
          "  PERFORM set_config('groundwork.bypass', before, true);\n"
          "END $$")))
 
+(defn- pass-hash [{t :table :keys [record from to to-person] condition :when}]
+  (format "%08x" (hash [(table t) record from to to-person condition])))
+
+(defn pass-function
+  "The name of the database function a pass is read through: (person,
+   needed action) → the ids of the records it gives them, or (person) for a
+   pass to a person. Read inside it, the pass's own table isn't walled."
+  [{t :table :as pass}]
+  (str "groundwork." (quote-id (str "pass_records__" (table t) "__" (pass-hash pass)))))
+
+(defn- pass-record
+  "The named record's table, id column and the scope column the pass's
+   :from is tied to."
+  [{:keys [records] :as description} {:keys [record from]}]
+  (let [named (records (first record))]
+    {:table  (table (:table named))
+     :id     (column (:id named))
+     :scope  (column (second (first (filter #(= (first from) (end-kind description (first record) %))
+                                            (arrows named)))))}))
+
+(defn pass-link
+  "The matching link a pass's table must have: its (record column, :from
+   column) references the record's (id, scope column)."
+  [description {t :table :keys [record from] :as pass}]
+  (let [{rt :table rid :id rscope :scope} (pass-record description pass)]
+    {:table (table t) :record-column (column (second record)) :from-column (column (second from))
+     :record-table rt :record-id rid :record-scope rscope}))
+
+(defn pass-sql
+  "The statements that install a pass: the function it is read through, and
+   the guard on its table. The function gives a record only while the
+   pass's condition holds and its giving scope is the record's own. The
+   guard lets only the giving scope's people (or the system) create a pass:
+   insert its row, name another record, giver or receiver on it, or make
+   its condition hold again. Safe to run again."
+  [description {t :table :keys [record from to to-person] condition :when :as pass}]
+  (let [{rt :table rid :id rscope :scope} (pass-record description pass)
+        literal    (fn [alias] (let [[c ps] (condition-sql alias condition)] (fill c ps sql-literal)))
+        from-col   (quote-id (column (second from)))
+        record-col (quote-id (column (second record)))
+        to-col     (quote-id (column (or to-person (second to))))
+        guard      (str "groundwork." (quote-id (str "pass_guard__" (table t) "__" (pass-hash pass))))
+        refuse     "RAISE EXCEPTION 'Only the giving scope may create a pass' USING ERRCODE = '42501';"]
+    [(str "CREATE OR REPLACE FUNCTION " (pass-function pass)
+          (if to-person "(person uuid)" "(person uuid, action text)") "\n"
+          ;; STABLE: within one statement it answers the same, so a query asks
+          ;; it once and looks each row up in what it answered, instead of
+          ;; asking again for every row. It changes nothing: the bypass it
+          ;; switches on to read the passes is back as it was when it returns
+          "RETURNS SETOF uuid LANGUAGE plpgsql STABLE AS $$\n"
+          "DECLARE before text := coalesce(current_setting('groundwork.bypass', true), '');\n"
+          ;; the receiving scopes first, as values: the passes are then found
+          ;; by their receiver (an index on that column), and each one's record
+          ;; by its id, however many passes and records there are
+          (when-not to-person
+            "        held uuid[] := ARRAY(SELECT groundwork.scopes_holding(person, action));\n")
+          "BEGIN\n"
+          "  PERFORM set_config('groundwork.bypass', 'on', true);\n"
+          "  RETURN QUERY SELECT gwp." record-col " FROM " (quote-id (table t)) " gwp\n"
+          "    WHERE " (literal "gwp") "\n"
+          (if to-person
+            (str "      AND gwp." to-col " = person\n")
+            (str "      AND gwp." to-col " = ANY (held)\n"))
+          "      AND EXISTS (SELECT 1 FROM " (quote-id rt) " gwr WHERE gwr." (quote-id rid) " = gwp." record-col
+          " AND gwr." (quote-id rscope) " = gwp." from-col ");\n"
+          "  PERFORM set_config('groundwork.bypass', before, true);\n"
+          "END $$")
+     (str "CREATE OR REPLACE FUNCTION " guard "() RETURNS trigger LANGUAGE plpgsql AS $$\n"
+          "BEGIN\n"
+          "  IF coalesce(current_setting('groundwork.bypass', true), '') = 'on' OR NEW." from-col " IS NULL THEN\n"
+          "    RETURN NEW;\n"
+          "  END IF;\n"
+          "  IF TG_OP = 'INSERT' THEN\n"
+          "    IF groundwork.wall_member(NEW." from-col ") IS NOT TRUE THEN " refuse " END IF;\n"
+          "  ELSIF (NEW." record-col " IS DISTINCT FROM OLD." record-col
+          " OR NEW." from-col " IS DISTINCT FROM OLD." from-col
+          " OR NEW." to-col " IS DISTINCT FROM OLD." to-col "\n"
+          "         OR ((" (literal "NEW") ") IS TRUE AND (" (literal "OLD") ") IS NOT TRUE))\n"
+          "        AND groundwork.wall_member(NEW." from-col ") IS NOT TRUE THEN\n"
+          "    " refuse "\n"
+          "  END IF;\n"
+          "  RETURN NEW;\n"
+          "END $$")
+     (str "CREATE OR REPLACE TRIGGER " (quote-id (str "groundwork_pass_guard__" (pass-hash pass)))
+          " BEFORE INSERT OR UPDATE ON " (quote-id (table t))
+          " FOR EACH ROW EXECUTE FUNCTION " guard "()")]))
+
+(defn- pass-clauses
+  "What passes give an action on a kind: [[sql params] …] over `alias`. The
+   named record by its id, a kind under it by its column to that record."
+  [{:keys [records passes]} action kind alias]
+  (for [{:keys [record to-person grants under] :as pass} passes
+        :let  [given? (contains? grants action)
+               col    (cond
+                        (= kind (first record))  (:id (records kind))
+                        (contains? under kind)   (second (:parent (records kind))))]
+        :when (and given? col)]
+    (if to-person
+      [(str alias "." (quote-id (column col)) " IN (SELECT " (pass-function pass) "(CAST(? AS uuid)))")
+       [:person]]
+      [(str alias "." (quote-id (column col)) " IN (SELECT " (pass-function pass) "(CAST(? AS uuid), ?))")
+       [:person (action-name (grants action))]])))
+
+(defn pass-tables
+  "For the bells: {a pass's table → the tables whose rows it gives}, since a
+   pass made or ended changes who sees those."
+  [{:keys [records passes]}]
+  (reduce (fn [m {t :table :keys [record under]}]
+            (update m (table t) (fnil into #{})
+                    (map #(table (:table (records %))) (cons (first record) under))))
+          {}
+          passes))
+
+(defn pass-needs
+  "The actions that, held in a scope, bring records of this kind for the
+   action through a pass: the receiving scopes' side of the rule."
+  [{:keys [passes]} action kind]
+  (set (for [{:keys [record to grants under]} passes
+             :when (and to (contains? grants action) (or (= kind (first record)) (contains? under kind)))]
+         (grants action))))
+
 (defn compile-rule
   "The rule for an action on a kind of record, as {:sql … :params […]}: a
    condition over the record's table under `alias` (r unless given). Params
@@ -377,7 +570,9 @@
    An open action's rule is the kind's own: the row's scope (of the action's
    kind) was verified for the transaction, and the kind's :only-when for it.
    With :writing? true the rule is the one a write is held to: what only
-   reads (an open action) grants nothing."
+   reads (an open action, a pass) grants nothing. :clauses are the ways it
+   is granted, each [sql params], and :condition its only-when or nil: a
+   list of scopes asks each way on its own, so each can use an index."
   ([description action kind] (compile-rule description action kind "r"))
   ([description action kind alias] (compile-rule description action kind alias {}))
   ([{:keys [records links] :as description} action kind alias {:keys [writing?]}]
@@ -409,14 +604,18 @@
              [:person (action-name needed)]])
           ;; a person on the record
           (when-let [col (get people action)]
-            [[(str alias "." (quote-id (column col)) " = CAST(? AS uuid)") [:person]]])))]
+            [[(str alias "." (quote-id (column col)) " = CAST(? AS uuid)") [:person]]])
+          ;; a pass to this record, or to the record it hangs under: last, so
+          ;; a row granted another way never asks for the passes
+          (when-not writing?
+            (pass-clauses description action kind alias))))]
      (when (seq clauses)
        (let [granted        [(str "(" (str/join " OR " (map first clauses)) ")") (vec (mapcat second clauses))]
-             [sql params]   (if-let [condition (get only-when action)]
-                              (let [[c ps] (condition-sql alias condition)]
-                                [(str (first granted) " AND " c) (into (second granted) ps)])
+             condition      (when-let [condition (get only-when action)] (condition-sql alias condition))
+             [sql params]   (if-let [[c ps] condition]
+                              [(str (first granted) " AND " c) (into (second granted) ps)]
                               granted)]
-         {:sql sql :params params})))))
+         {:sql sql :params params :clauses (vec clauses) :condition condition})))))
 
 (defn linked-scope-clauses
   "Conditions on a scope id (the SQL `scope`) that hold when a link gives the
@@ -510,15 +709,30 @@
         ;; actions whose rule comes out the same share one branch: an app
         ;; with dozens of actions on a kind would otherwise carry dozens of
         ;; identical branches in every query's plan
+        ;; a transaction about a record a pass names also sees, of the kinds
+        ;; under it, the rows that pass gives; never when it writes
+        about-other (fn [a]
+                      (let [given (for [{:keys [record under] :as pass} (:passes description)
+                                        :when (contains? under kind)
+                                        :let  [clauses (pass-clauses (assoc description :passes [pass]) a kind base)]
+                                        :when (seq clauses)]
+                                    (str "(coalesce(current_setting('groundwork.kind', true), '') = "
+                                         (sql-literal (action-name (first record))) " AND NOT " writing " AND ("
+                                         (str/join " OR " (map #(inline {:sql (first %) :params (second %)}) clauses))
+                                         "))"))]
+                        (if (seq given)
+                          (str "(" member " OR " (str/join " OR " given) ")")
+                          member)))
         by-action  (fn [branch]
                      (if (empty? actions)
                        member
                        (str "(CASE"
-                            (apply str (for [[rule same] (sort-by (comp first val) (group-by branch actions))]
+                            (apply str (for [[[rule other] same] (sort-by (comp first val)
+                                                                          (group-by (juxt branch about-other) actions))]
                                          (str " WHEN " action-now " IN ("
                                               (str/join ", " (map (comp sql-literal action-name) same))
                                               ") THEN (CASE WHEN " about-this " THEN " rule
-                                              " ELSE " member " END)")))
+                                              " ELSE " other " END)")))
                             " ELSE " member " END)")))]
     {:using (str "CASE WHEN " bypass " THEN TRUE ELSE (" (wall-sql description kind) ") AND "
                  (by-action (fn [a]

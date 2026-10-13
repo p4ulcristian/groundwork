@@ -63,7 +63,7 @@
    :server      {:ip "127.0.0.1" :port port}
    :sessions    {:cookie-name "gw_session" :max-age-days 30 :visitor-hours 24 :secure? false
                  :origin (str "http://127.0.0.1:" port)}
-   :permissions {:scopes {} :records {} :links [] :open {:anyone #{} :signed-in #{}} :session-blocks {}}
+   :permissions {:scopes {} :records {} :links [] :passes [] :open {:anyone #{} :signed-in #{}} :session-blocks {}}
    :limits      {:public nil :on-limit nil}
    :jobs        nil
    :parquery    {:endpoints [] :max-asks 50 :max-running 4 :bearer nil

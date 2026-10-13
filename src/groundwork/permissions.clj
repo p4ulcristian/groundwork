@@ -113,8 +113,12 @@
 ;; Checking
 ;; =============================================================================
 
-(defn- rule [{:keys [rules]} action kind]
-  (get rules [action kind]))
+(defn- rule
+  "The rule for an action on a kind; for a write, the one a write is held
+   to: what only reads (a pass, an open action) grants it nothing."
+  ([perms action kind] (rule perms action kind false))
+  ([{:keys [rules write-rules]} action kind writing?]
+   (get (if writing? write-rules rules) [action kind])))
 
 (defn declared?
   "Whether the description has a rule for an action on a kind of record."
@@ -145,11 +149,12 @@
 
 (defn allowed?
   "Whether a person may do an action on one record: [kind id]. Nobody
-   signed in may do only what is open to anyone."
-  [perms {:keys [person flags action] [kind id] :record}]
+   signed in may do only what is open to anyone. With :writing? true, held
+   to what a write may: a pass gives nothing then."
+  [perms {:keys [person flags action writing?] [kind id] :record}]
   (let [id                    (as-id id)
         {t :table id-col :id} (record-spec perms kind)
-        {:keys [sql params]}  (rule perms action kind)]
+        {:keys [sql params]}  (rule perms action kind writing?)]
     (and (or (some? person) (= :anyone (open-level perms action)))
          (some? sql)
          (not (rules/blocked? (:description perms) action flags))
@@ -262,22 +267,44 @@
    listing them may see. Records that are the person's own (a person column)
    don't count, the wall shows those by the person. Empty when nothing is
    granted."
-  [perms {:keys [person flags action kind]}]
+  [perms {:keys [person flags action kind writing?]}]
   (let [description (update-in (:description perms) [:records kind] dissoc :people)
-        rule        (rules/compile-rule description action kind)
+        rule        (rules/compile-rule description action kind "r" {:writing? writing?})
         {t :table :as spec} (record-spec perms kind)
-        arrows      (let [in (:in spec)] (if (keyword? (first in)) [in] in))]
+        arrows      (let [in (:in spec)] (if (keyword? (first in)) [in] in))
+        scopes      (str/join ", " (map-indexed (fn [i arrow] (str (rules/scope-sql "r" arrow) " AS s" i)) arrows))]
     (if (or (nil? person) (nil? rule) (blocked? perms action flags))
       #{}
       (as-system perms
                  (fn [tx]
+                   ;; each way the rule is granted asks on its own, so each
+                   ;; can use an index: its scope column, or the ids a pass gives
+                   (let [[c cps] (:condition rule)]
+                     (into #{}
+                           (comp (mapcat vals) (remove nil?))
+                           (query tx (str/join " UNION "
+                                               (for [[clause _] (:clauses rule)]
+                                                 (str "SELECT DISTINCT " scopes " FROM " (rules/quote-table t)
+                                                      " r WHERE " clause (when c (str " AND " c)))))
+                                  (rules/bind (vec (mapcat (fn [[_ ps]] (into (vec ps) cps)) (:clauses rule)))
+                                              person)))))))))
+
+(defn pass-scopes
+  "The scopes where the person holds an action that, there, brings records
+   of this kind for the action through a pass: where a new pass would reach
+   them."
+  [perms {:keys [person action kind]}]
+  (let [needs (rules/pass-needs (:description perms) action kind)]
+    (if (or (nil? person) (empty? needs))
+      #{}
+      (as-system perms
+                 (fn [tx]
                    (into #{}
-                         (comp (mapcat vals) (remove nil?))
-                         (query tx (str "SELECT DISTINCT "
-                                        (str/join ", " (map-indexed (fn [i arrow] (str (rules/scope-sql "r" arrow) " AS s" i))
-                                                                    arrows))
-                                        " FROM " (rules/quote-table t) " r WHERE " (:sql rule))
-                                (rules/bind (:params rule) person))))))))
+                         (map (comp val first))
+                         (query tx (str/join " UNION "
+                                             (repeat (count needs)
+                                                     "SELECT groundwork.scopes_holding(CAST(? AS uuid), ?)"))
+                                (vec (mapcat (fn [needed] [(str person) (rules/action-name needed)]) needs)))))))))
 
 (defn holds?
   "Whether a person holds an action in a scope, or in one above it."
@@ -559,6 +586,28 @@
              (str "-- drop the existing foreign key (" parent-column ", " c "), then:\n"
                   (link-sql link one)))))))
 
+(defn- check-pass-links!
+  "Every pass's table is tied to the record it names: its (record column,
+   :from column) references the record's (id, scope column), so a pass for
+   a record its giver doesn't own can't be stored."
+  [db description]
+  (doseq [pass (:passes description)
+          :let [{t :table :keys [record-column from-column record-table record-id record-scope]}
+                (rules/pass-link description pass)
+                wanted   #{[record-column record-id] [from-column record-scope]}
+                not-null (into {} (map (juxt :column/name :column/not-null)) (pg/rows db columns-of {:table t}))
+                found    (some (fn [k] (let [ps (set (map vector (:link/child-columns k) (:link/parent-columns k)))]
+                                         (and (every? ps wanted)
+                                              (or (= wanted ps) (every? not-null (:link/child-columns k))))))
+                               (pg/rows db links-between {:child t :parent record-table}))]
+          :when (not found)]
+    (bad (str "The pass in " t " needs a link to " record-table " that keeps its giver the record's own scope: "
+              "a foreign key (" record-column ", " from-column ") → " record-table " (" record-id ", " record-scope ")")
+         {:table t :parent record-table}
+         (str "ALTER TABLE " record-table " ADD UNIQUE (" record-id ", " record-scope ");  -- if it has none\n"
+              "ALTER TABLE " t " ADD FOREIGN KEY (" record-column ", " from-column ")\n"
+              "  REFERENCES " record-table " (" record-id ", " record-scope ");"))))
+
 (defn- check-database!
   "Every table and column the description names must exist; every record
    table names its scope; every record under another is tied to it."
@@ -574,7 +623,8 @@
               :when (not (have c))]
         (throw (ex-info (str "Permissions name a column " t "." c " that doesn't exist")
                         {:type ::bad-description :table t :column c})))))
-  (check-parent-links! db description))
+  (check-parent-links! db description)
+  (check-pass-links! db description))
 
 (defn install-wall!
   "Row-level security on every record kind's table: its own rows are
@@ -586,6 +636,9 @@
   (pg/with-transaction [tx db]
     (doseq [link (:links description)]
       (jdbc/execute! (::pg/conn tx) [(rules/link-sql link)]))
+    (doseq [pass      (:passes description)
+            statement (rules/pass-sql description pass)]
+      (jdbc/execute! (::pg/conn tx) [statement]))
     (doseq [[kind {t :table}] (:records description)
             :let [table                 (rules/quote-table t)
                   {:keys [using check]} (rules/policy-sql description rules kind)]]
@@ -611,7 +664,14 @@
   [{:keys [settings db]}]
   (let [description (rules/check (settings/check-part! :permissions settings))]
     (check-database! db description)
-    (let [perms {:db db :description description :rules (rules/rules-of description)}]
+    (let [rules (rules/rules-of description)
+          perms {:db db :description description :rules rules
+                 ;; what a write is held to: nothing a pass or an open action gives
+                 :write-rules (into {}
+                                    (keep (fn [[[action kind] _]]
+                                            (when-let [rule (rules/compile-rule description action kind "r" {:writing? true})]
+                                              [[action kind] rule])))
+                                    rules)}]
       (install-wall! perms)
       (install-fill! perms)
       perms)))

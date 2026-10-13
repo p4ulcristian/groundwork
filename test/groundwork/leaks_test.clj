@@ -28,6 +28,7 @@
               :to     [:shop :partner-link/shop-id]
               :when   link-condition
               :grants {:notes/see :links/see}}]
+   :passes []
    :open {:anyone #{} :signed-in #{}}
    :session-blocks {}})
 

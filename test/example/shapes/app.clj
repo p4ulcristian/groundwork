@@ -14,13 +14,26 @@
   #uuid "00000000-0000-4000-8000-000000000001")
 
 (def tables
-  "DROP TABLE IF EXISTS sh_packages, sh_price_sheets, sh_agreements, sh_order_services, sh_orders,
-                        sh_messages, sh_conversations;
+  "DROP TABLE IF EXISTS sh_packages, sh_price_sheets, sh_agreements, sh_order_services, sh_handoffs, sh_jobs,
+                        sh_orders, sh_messages, sh_conversations;
    CREATE TABLE sh_packages (package__id uuid PRIMARY KEY, package__shop_id uuid NOT NULL,
                              package__name text NOT NULL, package__published boolean NOT NULL);
    CREATE TABLE sh_orders (order__id uuid PRIMARY KEY, order__shop_id uuid NOT NULL,
                            order__customer_id uuid, order__note text NOT NULL,
                            UNIQUE (order__id, order__shop_id));
+   CREATE TABLE sh_jobs (job__id uuid PRIMARY KEY, job__order_id uuid NOT NULL, job__shop_id uuid NOT NULL,
+                         job__name text NOT NULL,
+                         FOREIGN KEY (job__order_id, job__shop_id)
+                           REFERENCES sh_orders (order__id, order__shop_id) ON UPDATE CASCADE);
+   -- a handoff is a pass: while it is open, the receiving shop (or the driver) sees the one order it names.
+   -- Its giver is tied to the order's own shop, so nobody stores a pass for an order that isn't theirs
+   CREATE TABLE sh_handoffs (handoff__id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                             handoff__order_id uuid NOT NULL,
+                             handoff__from_shop_id uuid NOT NULL, handoff__to_shop_id uuid,
+                             handoff__driver_id uuid, handoff__status text NOT NULL DEFAULT 'open',
+                             FOREIGN KEY (handoff__order_id, handoff__from_shop_id)
+                               REFERENCES sh_orders (order__id, order__shop_id));
+   CREATE INDEX sh_handoffs_to ON sh_handoffs (handoff__to_shop_id);
    -- between two scopes: a shop and the partner it works with
    CREATE TABLE sh_agreements (agreement__id uuid PRIMARY KEY, agreement__shop_id uuid NOT NULL,
                                agreement__partner_id uuid NOT NULL,
@@ -62,14 +75,18 @@
                                ON UPDATE CASCADE);")
 
 (def drop-tables
-  "DROP TABLE IF EXISTS sh_packages, sh_price_sheets, sh_agreements, sh_order_services, sh_orders,
-                        sh_messages, sh_conversations")
+  "DROP TABLE IF EXISTS sh_packages, sh_price_sheets, sh_agreements, sh_order_services, sh_handoffs, sh_jobs,
+                        sh_orders, sh_messages, sh_conversations")
 
 (def description
   {:scopes  {:shop {:actions #{:catalogue/see :catalogue/edit :shop/card :orders/see :orders/edit
-                               :prices/see :prices/edit :services/see :talk/read :talk/write}
-                    :roles   {"Staff" #{:catalogue/edit :orders/see :orders/edit :prices/see :prices/edit
-                                        :services/see :talk/read :talk/write}}
+                               :prices/see :prices/edit :services/see :talk/read :talk/write
+                               :handoffs/give :handoffs/work}
+                    :roles   {"Staff"      #{:catalogue/edit :orders/see :orders/edit :prices/see :prices/edit
+                                             :services/see :talk/read :talk/write :handoffs/give :handoffs/work}
+                              ;; who in a receiving shop may use a pass is that shop's own roles' matter
+                              "Production" #{:handoffs/work}
+                              "Bookkeeper" #{:prices/see}}
                     :parent  nil}}
    :records {:package {:table :sh_packages :id :package/id :in [:shop :package/shop-id]
                        ;; the public reads a shop's published packages, and nothing else of the shop
@@ -78,6 +95,9 @@
                                    :shop/card     [:= :package/published true]}}
              :order   {:table :sh_orders :id :order/id :in [:shop :order/shop-id]
                        :people {:orders/see :order/customer-id}}
+             :job     {:table :sh_jobs :id :job/id :in [:shop :job/shop-id] :parent [:order :job/order-id]}
+             :handoff {:table :sh_handoffs :id :handoff/id
+                       :in [[:shop :handoff/from-shop-id] [:shop :handoff/to-shop-id]]}
              ;; a record of two scopes, and the records under it
              :agreement   {:table :sh_agreements :id :agreement/id
                            :in [[:shop :agreement/shop-id] [:shop :agreement/partner-id]]}
@@ -105,6 +125,22 @@
                                       :message/staff-id    :conversation/staff-id
                                       :message/customer-id :conversation/customer-id}]}}
    :links   []
+   ;; an open handoff gives its receiving shop's production people the one order it
+   ;; names, with its jobs; or a driver, one person, the order alone
+   :passes  [{:table  :sh_handoffs
+              :record [:order :handoff/order-id]
+              :from   [:shop :handoff/from-shop-id]
+              :to     [:shop :handoff/to-shop-id]
+              :when   [:= :handoff/status "open"]
+              :grants {:orders/see :handoffs/work}
+              :under  #{:job}}
+             {:table     :sh_handoffs
+              :record    [:order :handoff/order-id]
+              :from      [:shop :handoff/from-shop-id]
+              :to-person :handoff/driver-id
+              :when      [:= :handoff/status "open"]
+              :grants    #{:orders/see}
+              :under     #{}}]
    :open    {:anyone #{:catalogue/see} :signed-in #{:shop/card}}
    :session-blocks {}})
 
@@ -119,6 +155,12 @@
 (pg/defsql services)
 (pg/defsql add-service)
 (pg/defsql order-note)
+(pg/defsql give-handoff)
+(pg/defsql set-handoff-status)
+(pg/defsql order-notes)
+(pg/defsql jobs-of-order)
+(pg/defsql job)
+(pg/defsql stamp-order)
 (pg/defsql messages)
 (pg/defsql say)
 
@@ -185,6 +227,36 @@
    :orders/note         {:read       (fn [{:keys [db]} params] (:order/note (pg/row db order-note params)))
                          :permission {:action :orders/see :record [:order :order/id]}
                          :input      [:map [:order/id :uuid]]
+                         :answer     [:maybe :string]}
+   ;; a handoff is a pass to one order
+   :handoffs/give       {:write      (fn [{:keys [db]} params] (:handoff/id (pg/row db give-handoff params)))
+                         :permission {:action :handoffs/give :record [:order :order/id]}
+                         :input      [:map [:order/id :uuid]
+                                      [:handoff/to-shop-id {:groundwork/record false} [:maybe :uuid]]
+                                      [:handoff/driver-id {:groundwork/record false} [:maybe :uuid]]]
+                         :answer     :uuid}
+   ;; the receiver reports on the handoff itself, which it co-owns
+   :handoffs/set-status {:write      (fn [{:keys [db]} params] (:handoff/status (pg/row db set-handoff-status params)))
+                         :permission {:action :handoffs/work :record [:handoff :handoff/id]}
+                         :input      [:map [:handoff/id :uuid] [:handoff/status [:enum "open" "done"]]]
+                         :answer     :string}
+   :orders/incoming     {:read       (fn [{:keys [db]} _] (mapv :order/note (pg/rows db order-notes {})))
+                         :permission {:action :orders/see :list :order}
+                         :input      [:map]
+                         :answer     [:vector :string]}
+   ;; about the order: the jobs under it come with a pass that lists them
+   :jobs/of-order       {:read       (fn [{:keys [db]} params] (mapv :job/name (pg/rows db jobs-of-order params)))
+                         :permission {:action :orders/see :record [:order :order/id]}
+                         :input      [:map [:order/id :uuid]]
+                         :answer     [:vector :string]}
+   :jobs/one            {:read       (fn [{:keys [db]} params] (:job/name (pg/row db job params)))
+                         :permission {:action :orders/see :record [:job :job/id]}
+                         :input      [:map [:job/id :uuid]]
+                         :answer     [:maybe :string]}
+   ;; a write that declares the action a pass gives: a pass gives a write nothing
+   :orders/stamp        {:write      (fn [{:keys [db]} params] (:order/note (pg/row db stamp-order params)))
+                         :permission {:action :orders/see :record [:order :order/id]}
+                         :input      [:map [:order/id :uuid] [:order/note :string]]
                          :answer     [:maybe :string]}
    ;; every side of a conversation reads it and writes into it
    :talk/messages       {:read       (fn [{:keys [db]} params] (mapv :message/text (pg/rows db messages params)))

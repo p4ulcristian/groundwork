@@ -33,6 +33,7 @@
    :records        {:note {:table :notes :id :note/id :in [:shop :note/shop-id]}
                     :tag  {:table :tags :id :tag/id :in [:shop :tag/shop-id]}}
    :links          []
+   :passes []
    :open {:anyone #{} :signed-in #{}}
    :session-blocks {}})
 

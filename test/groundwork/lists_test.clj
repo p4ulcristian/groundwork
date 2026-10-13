@@ -36,6 +36,7 @@
               :to     [:shop :lst-agreement/shop-id]
               :when   link-condition
               :grants {:orders/see :agreements/see}}]
+   :passes []
    :open {:anyone #{} :signed-in #{}}
    :session-blocks {}})
 

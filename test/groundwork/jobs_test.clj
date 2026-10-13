@@ -58,7 +58,7 @@
                             (assoc :jobs job-settings)
                             (assoc :permissions {:scopes  {:shop {:actions #{:notes/see} :roles {} :parent nil}}
                                                  :records {:note {:table :jb_notes :id :note/id :in [:shop :note/shop-id]}}
-                                                 :links [] :open {:anyone #{} :signed-in #{}} :session-blocks {}})
+                                                 :links [] :passes [] :open {:anyone #{} :signed-in #{}} :session-blocks {}})
                             (assoc-in [:parquery :endpoints] [note-endpoints])))]
       (try
         (sql! "TRUNCATE groundwork.jobs, groundwork.job_schedules")

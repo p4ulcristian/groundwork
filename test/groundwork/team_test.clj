@@ -25,6 +25,7 @@
                     :parent  nil}}
    :records {}
    :links   []
+   :passes []
    :open {:anyone #{} :signed-in #{}}
    :session-blocks {}})
 

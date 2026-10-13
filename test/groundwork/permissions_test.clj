@@ -52,6 +52,7 @@
               :to     [:shop :agreement/shop-id]
               :when   [:= :agreement/status "active"]
               :grants {:orders/see :agreements/see}}]
+   :passes []
    :open {:anyone #{} :signed-in #{}}
    :session-blocks {:impersonated #{:money/move}}})
 

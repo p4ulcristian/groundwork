@@ -349,9 +349,11 @@
       (throw (ex-info "Not found" {:type ::permissions/not-found :record [kind id]})))))
 
 (defn- verified-scopes
-  "The scopes a request may see, or throws not-found."
-  [perms {:keys [permission ids]} {:keys [person flags]} params]
-  (let [also (ids-in ids params)]
+  "The scopes a request may see, or throws not-found. A write is held to
+   what a write may: a pass to a record gives it nothing."
+  [perms {:keys [permission ids read?]} {:keys [person flags]} params]
+  (let [also     (ids-in ids params)
+        writing? (not read?)]
     (case permission
       (:public :signed-in) #{}
       (let [{:keys [action record scope list]} permission
@@ -364,7 +366,7 @@
             (when-not (permissions/allowed? perms {:person person :flags flags :action action :record [kind id]})
               (throw (ex-info "Not found" {:type ::permissions/not-found :record [kind id]})))))
         (cond
-          record (permissions/check! perms {:person person :flags flags :action action
+          record (permissions/check! perms {:person person :flags flags :action action :writing? writing?
                                             :record [(first record) (as-id (get params (second record)))]
                                             :also   also})
           ;; the scope in the request, and the fixed one that always comes
@@ -378,7 +380,8 @@
                    (let [scopes (reduce into #{} each)]
                      (also-belongs! perms scopes also)
                      scopes))
-          list   (let [scopes (permissions/scopes-listed perms {:person person :flags flags :action action :kind list})]
+          list   (let [scopes (permissions/scopes-listed perms {:person person :flags flags :action action :kind list
+                                                                :writing? writing?})]
                    (also-belongs! perms scopes also)
                    scopes))))))
 
@@ -542,7 +545,10 @@
             action           (when (map? (:permission entry)) (:action (:permission entry)))]
         (when decoded
           (try
-            {:scopes (verified-scopes perms entry {:person person :flags (or flags #{})} decoded)
+            {:scopes (into (verified-scopes perms entry {:person person :flags (or flags #{})} decoded)
+                           ;; a list also hears of the scopes a new pass would reach it through
+                           (when-let [kind (and action (get-in entry [:permission :list]))]
+                             (permissions/pass-scopes perms {:person person :action action :kind kind})))
              :record (when-let [[kind param] (get-in entry [:permission :record])]
                        [kind (get decoded param)])
              ;; an open action hears of its scope only through the tables it reaches

@@ -229,6 +229,15 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:permissions :links […] :to` | [kind column] | The scope the link reaches: [kind column] | `[:shop :agreement/shop-id]` |
 | `:permissions :links […] :when` | condition | While this holds | `[:= :agreement/status "active"]` |
 | `:permissions :links […] :grants` | action → action | What it gives in :to: given action → the action needed in :from | `#:orders{:see :agreements/see}` |
+| `:permissions :passes` | list of passes | Rows that are a pass to one record: a reading action on the record a row names, for the receiving scope's people or one person, while a condition holds | `[]` |
+| `:permissions :passes […] :table` | keyword | The passing row's table; it is a record kind itself, in the giving and the receiving scope | `:handoffs` |
+| `:permissions :passes […] :record` | [kind column] | The one record it gives: [record-kind column] | `[:order :handoff/order-id]` |
+| `:permissions :passes […] :from` | [kind column] | The giving scope, the record's own: [kind column] | `[:shop :handoff/from-shop-id]` |
+| `:permissions :passes […] :to` (optional) | [kind column] | The receiving scope: [kind column] | `[:shop :handoff/to-shop-id]` |
+| `:permissions :passes […] :to-person` (optional) | column keyword | Or the receiving person's column | `:handoff/driver-id` |
+| `:permissions :passes […] :when` | condition | While this holds | `[:= :handoff/status "open"]` |
+| `:permissions :passes […] :grants` | action → action, or a set of actions | The reading actions it gives on the record → the action needed in :to; for :to-person, a set of given actions | `#:orders{:see :handoffs/work}` |
+| `:permissions :passes […] :under` | set of kinds | The record kinds right under the record that come with it | `#{:job}` |
 | `:permissions :open` | map | The open actions, the one list of them: reading actions anyone, or anyone signed in, may do without a membership. No role holds one; each reaches only the record kinds that list it | `{:anyone #{:catalogue/see}, :signed-in #{:shops/name}}` |
 | `:permissions :open :anyone` | set of actions | Open to everyone, signed in or not | `#{:catalogue/see}` |
 | `:permissions :open :signed-in` | set of actions | Open to everyone who is signed in | `#{:shops/name}` |
@@ -656,6 +665,9 @@ The app describes its places, actions, roles and records once:
                    :parent [:order :job/order-id]}}                    ; the record it hangs under
  :links   [{:table :agreements :from [:partner :agreement/partner-id] :to [:shop :agreement/shop-id]
             :when [:= :agreement/status "active"] :grants {:orders/see :agreements/see}}]
+ :passes  [{:table :handoffs :record [:order :handoff/order-id]     ; a row that is a pass to one record
+            :from [:shop :handoff/from-shop-id] :to [:shop :handoff/to-shop-id]
+            :when [:= :handoff/status "open"] :grants {:orders/see :handoffs/work} :under #{:job}}]
  :open    {:anyone #{:catalogue/see} :signed-in #{}}                ; the open actions, one list
  :session-blocks {:impersonated #{:money/move}}}
 ```
@@ -775,6 +787,35 @@ The app describes its places, actions, roles and records once:
   Both scopes must verify for the action (for an open action both do; for
   one people hold, the person must hold it in both), or the ask is not
   found. The watch holds both.
+- **A row can be a pass to one record.** A link gives an action in the
+  whole linked scope; a pass gives a reading action on the one record its
+  row names, while its condition holds:
+
+  ```clojure
+  :passes [{:table  :handoffs                      ; the row is the pass; nothing else is stored
+            :record [:order :handoff/order-id]     ; the one record it gives
+            :from   [:shop :handoff/from-shop-id]  ; the giving scope: the record's own
+            :to     [:shop :handoff/to-shop-id]    ; the receiving scope, or :to-person <column>
+            :when   [:= :handoff/status "open"]
+            :grants {:orders/see :handoffs/work}   ; given on the record → needed in :to
+            :under  #{:job}}]                      ; kinds right under the record that come with it
+  ```
+
+  The receiving scope's own roles decide who uses it (the needed action);
+  for `:to-person`, `:grants` is a set of actions. The holder's other
+  requests for the giving scope's records answer not-found, and when the
+  condition stops holding, or the row is gone, so is the access. **A pass
+  only reads:** a write that declares the given action gets nothing from
+  it. **A scope can't write itself a pass:** the pass's table is a record
+  kind of its own, in the giving and the receiving scope; a foreign key
+  ties its (record, giver) to the record's own (id, scope), checked at
+  start; and a guard Groundwork installs lets only the giving scope's
+  people (or the system) insert a pass, point one at another record, giver
+  or receiver, or make its condition hold again. A transaction about the
+  record also sees the `:under` kinds' rows the pass gives. Bells: a change
+  to the record rings its own scope and whoever holds a pass on it, and a
+  pass made or ended rings the reads of the records it gives. Index the
+  pass table's receiver column: passes are found by it.
 - **Team:** `create-scope!`, `invite!`, `accept-invitation!`,
   `change-role!`, `create-role!`, `set-role-actions!`, `remove-member!`,
   `grant-extra!`, `revoke-extra!`. Managing needs `:groundwork/team`, and
@@ -1154,6 +1195,9 @@ Then the store, under the screens:
   action and every kind of record, what a stranger behind it sees of each
   foreign scope (`leaks/open-wall`): only the rows the action's rule allows,
   and nothing of any other kind.
+- **Passes:** run it once more as the holder of a pass on one record, with
+  the giving scope's other records as the foreign ids: a pass on one must
+  answer not-found for another.
 - Public and signed-in endpoints are skipped, and so is one that needs a
   foreign id nobody gave; the report says which and why.
 - Generating needs `org.clojure/test.check` on the test classpath.

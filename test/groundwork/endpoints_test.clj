@@ -29,6 +29,7 @@
              :job     {:table :jobs :id :job/id :in [:shop :job/shop-id] :parent [:order :job/order-id]}
              :machine {:table :machines :id :machine/id :in [:shop :machine/shop-id]}}
    :links   []
+   :passes []
    :open {:anyone #{} :signed-in #{}}
    :session-blocks {:impersonated #{:jobs/move}}})
 
