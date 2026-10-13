@@ -1,18 +1,18 @@
 (ns example.hello.browser
-  "A tiny app's browser entry, for groundwork.build-test: it compiles with
-   Groundwork's browser half and starts it."
+  "A tiny app's browser entry, for groundwork.build-test and
+   groundwork.browser-routing-test: it compiles with Groundwork's browser
+   half and starts it."
   (:require
-   [groundwork.browser :as gb]
-   [re-frame.core :as rf]))
-
-(defn- home []
-  [:p "Hello, " (or (some-> @(rf/subscribe [::gb/person]) str) "visitor") "."])
+   [example.hello.routes :as routes]
+   [example.hello.views :as views]
+   [groundwork.browser :as gb]))
 
 (defn- root []
-  (let [{:keys [data]} @(rf/subscribe [::gb/route])]
-    [:main (when-let [view (:view data)] [view])]))
+  [:main [views/nav] [gb/screen]])
 
 (defn start []
-  (gb/start! {:root   root
-              :routes [["/" {:name :home :view home}]]
-              :shapes {}}))
+  (gb/start! {:root        root
+              :routes      routes/routes
+              :shapes      {}
+              :unknown     views/not-found
+              :placeholder views/loading}))

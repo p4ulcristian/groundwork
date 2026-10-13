@@ -871,21 +871,92 @@ The app's browser entry (the `:browser` settings' `:entry`) makes one call:
 
 ```clojure
 (ns app.browser
-  (:require [groundwork.browser :as gb] [app.views :as views] [app.shapes :as shapes]))
+  (:require [groundwork.browser :as gb] [app.routes :as routes] [app.views :as views] [app.shapes :as shapes]))
+
+(defn root [] [:main [views/nav] [gb/screen]])   ; gb/screen: the current route's screen
 
 (defn start []
-  (gb/start! {:root   views/root
-              :routes [["/"                 {:name :home  :view views/home}]
-                       ["/orders/:order-id" {:name :order :view views/order}]]
-              :shapes shapes/answers}))   ; the same shapes as the server's (.cljc)
+  (gb/start! {:root        root
+              :routes      routes/routes       ; route records, below
+              :shapes      shapes/answers      ; the same shapes as the server's (.cljc)
+              :unknown     views/not-found     ; for an address no route has
+              :placeholder views/loading       ; while a screen's code loads on demand
+              :on-move     (fn [{:keys [from to]}] …)}))   ; after every move
 ```
 
 - Groundwork reads what the page shell put in the page (the person signed
-  in, their session's flags, the language), starts the store and its
-  websocket, asks for the person's grants, starts the browser's routing
-  (reitit; the match under `(rf/subscribe [::gb/route])`), and mounts
-  `:root` into `<div id="app">` with Reagent. `@(rf/subscribe [::gb/person])`,
-  `[::gb/flags]`, `[::gb/language]`; `(gb/navigate! :order {:order-id id})`.
+  in, their session's flags, the language and the app's languages), starts
+  the store and its websocket, asks for the person's grants, starts routing
+  at the page's address, and mounts `:root` into `<div id="app">` with
+  Reagent. `@(rf/subscribe [::gb/person])` (the id, as text), `[::gb/flags]`,
+  `[::gb/language]`, `[::gb/route]`, `[::gb/query]`.
+
+**Routing is Groundwork's, and a route is a record.** An app writes its
+pages once, in a `.cljc` file the server and the browser both read:
+
+```clojure
+(ns app.routes
+  #?(:cljs (:require [app.views :as views])))
+
+(def routes
+  [["/orders" {:name   :orders
+               :access {:action :orders/see :scope [:shop :shop/id]}   ; who may open it (the server)
+               :title  "Orders"                                        ; the tab's title, on both sides
+               :page   {:description "Every order of the shop"}        ; the page shell's details (the server)
+               #?@(:cljs [:view  views/orders                          ; its screen
+                          :reads (fn [route] [{:endpoint :orders/list :params {…}}])])}]   ; its data, asked on arrival
+   ["/orders/:order-id" {:name :order :access …
+                         #?@(:cljs [:view views/order :title (fn [route] …) :reads …])}]
+   ["/reports" {:name :reports :access … :title "Reports"
+                #?@(:cljs [:load        #(shadow.lazy/load views/reports-loadable)   ; code that loads on demand
+                           :placeholder views/reports-skeleton])}]])
+```
+
+```clojure
+;; the server's settings: its pages come from the same records
+:routes (into (web/page-routes app.routes/routes)
+              [["/webhooks/payments" {:post payments/webhook :server-to-server true}]])
+```
+
+- **What every route gets:** an address leads to its screen, with the
+  address's values (`:path-params`) and query; Back and Forward work; the
+  title is set on every move; a new page starts at the top, an `#anchor` is
+  scrolled to, a change of the query alone doesn't scroll, and Back puts the
+  page where it was; **its `:reads` are asked on arrival** (the store's, for
+  the owner `:groundwork/route`: what the next route shares is kept, the
+  rest let go); an address no route has shows `:unknown`; `:on-move` hears
+  every move.
+- **One door:** an app moves and makes links only through Groundwork, never
+  by building or reading addresses by hand. `(gb/href :order {:order-id id})`
+  for an `<a>` (plain links move in-app); `(gb/navigate! :order {:order-id id})`
+  or by address, `(gb/navigate! "/orders/5")`; `{:replace? true}` for no
+  step in Back's history. An address no route has is loaded from the server.
+- **Filters live in the address:** `@(rf/subscribe [::gb/query])` reads the
+  query; `(gb/push-query! {:stage "curing"})` changes it as a step Back
+  undoes, `(gb/replace-query! {…})` without one. A link to a filtered list
+  can be shared.
+- **Languages** (the `:web :languages` setting; the page shell tells the
+  browser): `/de/orders` is the same route in German, `[::gb/language]` says
+  which, and links keep the language the visit is in; the default language
+  has no prefix. `(gb/href :orders nil nil {:language "de"})` for a language
+  switch.
+- **Declared, only where a route says so:** `:load`, a function returning a
+  promise of the screen, for code that loads on demand (`:placeholder` shows
+  meanwhile; see `:browser :modules`); and **unsaved changes**: a screen
+  says `(gb/unsaved! true)` when its form is dirty. While it holds, a move
+  by link, by `navigate!` or by Back and Forward waits under
+  `@(rf/subscribe [::gb/held-move])` (the route someone tried to go to) for
+  `(gb/continue-move!)` (discard and go) or `(gb/stay!)`, and closing the
+  tab asks the browser's own question. `(gb/unsaved! false)` once saved.
+- `web/page-routes` makes each record the page shell under its `:access`,
+  with its `:page`; a `:title` that is text is the first load's title too.
+  What only the browser reads (`:view`, `:reads`, `:load`, `:placeholder`, a
+  title function) is left out; records in a group keep their group.
+- Tests: the engine on node with the browser replaced, and
+  `groundwork.browser-routing-test` in headless Chrome over its debugging
+  protocol (the browser's own history, links, titles, unsaved changes
+  holding Back). `GROUNDWORK_CHROME` names the Chrome; without one it's
+  skipped.
 - **The build is Groundwork's** (`groundwork.build`): it makes the
   shadow-cljs build from the `:browser` settings, so an app keeps no build
   config. In development the one start (`repl/start!`) watches it; a save
@@ -913,6 +984,7 @@ Then the store, under the screens:
 (rf/dispatch [::store/ensure :jobs-page [{:endpoint :jobs/list :params {:shop/id id}}]])
 @(rf/subscribe [::store/answer {:endpoint :jobs/list :params {:shop/id id}}])   ;=> {:status :ready :data […]}
 (rf/dispatch [::store/release :jobs-page])
+(rf/dispatch [::store/own :jobs-page [asks…]])   ; exactly these now: shared ones kept, the rest let go
 (rf/dispatch [::store/ask-again {:endpoint :jobs/list :params {:shop/id id}}])   ; a "try again" button
 (rf/dispatch [::store/write {:endpoint :jobs/move :params {…}} [:jobs/moved]])
 @(rf/subscribe [::store/can? :jobs/move shop-id])

@@ -784,6 +784,41 @@
   ([request page]
    ((::page request) (assoc request ::page/route-page page))))
 
+(def ^:private browser-only
+  "What only the browser reads in a route record (see groundwork.routing)."
+  #{:view :reads :load :placeholder})
+
+(defn page-routes
+  "The server's routes for route records the browser shares. An app writes
+   its pages once, in a .cljc file both sides read:
+
+     [[\"/orders/:order-id\" {:name   :order
+                              :access {:action :orders/see :record [:order :order-id]}
+                              :title  \"Order\"
+                              :page   {:module :orders}
+                              #?@(:cljs [:view views/order :reads views/order-reads])}]]
+
+   and the server's settings take them, with the routes only the server has:
+
+     :routes (into (web/page-routes app.routes/routes)
+                   [[\"/webhooks/payments\" {:post payments/webhook :server-to-server true}]])
+
+   Each record becomes a page: the page shell under the record's :access,
+   with its :page details; a :title that is text is the page's own title
+   on the first load too. What only the browser reads (:view, :reads, :load,
+   :placeholder, a :title that is a function) is left out. Records in a
+   group keep their group."
+  [records]
+  (walk/postwalk
+   (fn [x]
+     (if (and (vector? x) (string? (first x)) (map? (second x)))
+       (update x 1 (fn [{:keys [title] page-details :page :as data}]
+                     (cond-> (assoc (apply dissoc data :title browser-only) :get page)
+                       (and (string? title) (or (nil? page-details) (map? page-details)))
+                       (assoc :page (merge {:title title} page-details)))))
+       x))
+   records))
+
 (defn- not-found [_request]
   (plain 404 "Not found"))
 
