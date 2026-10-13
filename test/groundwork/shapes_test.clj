@@ -547,6 +547,9 @@
     (testing "saving without a session makes a visitor's session: its cookie goes out with the answer"
       (is (string? anna)) (is (uuid? rim))
       (is (not= anna bela)))
+    (testing "a read makes no session: only the write that keeps something does"
+      (let [[set-cookie _] (post! nil "/parquery" (wire/write-json [{:endpoint "designs/mine" :params {}}]))]
+        (is (nil? set-cookie))))
     (testing "saving again in that session makes no new one"
       (let [[again _] (save-design! anna "Rim 2")]
         (is (nil? again))))

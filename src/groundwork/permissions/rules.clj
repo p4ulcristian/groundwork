@@ -608,7 +608,11 @@
            (when (and (not writing?) (contains? (:open record) action))
              (for [arrow (arrows record)
                    :when (under? description (end-kind description kind arrow) action-kind)]
-               [(str "groundwork.wall_allows(" (scope-sql alias arrow) ")") []]))
+               (if (= :signed-in (open-level description action))
+                 ;; open to the signed-in: the wall asks for a person too
+                 [(str "(groundwork.wall_allows(" (scope-sql alias arrow) ") AND CAST(? AS uuid) IS NOT NULL)")
+                  [:person]]
+                 [(str "groundwork.wall_allows(" (scope-sql alias arrow) ")") []])))
          (concat
           ;; the record's own scope, or one below the action's kind
           (for [arrow (arrows record)

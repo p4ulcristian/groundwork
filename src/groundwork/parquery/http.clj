@@ -89,12 +89,12 @@
       (let [read    (mapv #(when (map? %) (wire/read-ask %)) asks)
             ;; a write that keeps something for a visitor: someone with no
             ;; session gets one now, and its cookie goes out with the answer
-            made    (when (and (nil? (sessions/person request)) (nil? (sessions/visitor request))
-                               (some #(:keeps-for-visitor (endpoints/endpoint (:endpoints part) (:endpoint %)))
-                                     (remove nil? read)))
-                      (sessions/visitor-session! request))
+            ;; the endpoint makes it, once, when the ask is past its limit
+            made    (delay (sessions/visitor-session! request))
             about   {:person       (sessions/person request)
-                     :visitor      (or (:id made) (sessions/visitor request))
+                     :visitor      (sessions/visitor request)
+                     :make-visitor (when (and (nil? (sessions/person request)) (nil? (sessions/visitor request)))
+                                     (fn [] (:id @made)))
                      :flags        (sessions/flags request)
                      :session-data (sessions/data request)
                      :request      request
@@ -103,6 +103,7 @@
             run     (fn [ask]
                       (if ask
                         (run-one part ask about)
-                        {:status :invalid :errors {:ask ["isn't an ask: {\"endpoint\": …, \"params\": {…}}"]}}))]
-        (cond-> (json 200 (run-all part run read))
-          made (assoc-in [:headers "Set-Cookie"] (:cookie made)))))))
+                        {:status :invalid :errors {:ask ["isn't an ask: {\"endpoint\": …, \"params\": {…}}"]}}))
+            response (json 200 (run-all part run read))]
+        (cond-> response
+          (realized? made) (assoc-in [:headers "Set-Cookie"] (:cookie @made)))))))

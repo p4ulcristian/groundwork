@@ -507,6 +507,12 @@
                                                                                   :read?   (:read? entry)})
                                                :about    {:person person :scopes scopes :client-ip client-ip}}))]
                 (answer :too-many :limit limit :retry-after-seconds retry-after-seconds)
+                ;; a write that keeps something for a visitor: someone with no
+                ;; session gets one now, once the ask is past its limit
+                (let [visitor (or visitor
+                                  (when (and (nil? person) (:keeps-for-visitor entry) (:make-visitor ask))
+                                    ((:make-visitor ask))))
+                      ask     (-> ask (assoc :visitor visitor) (dissoc :make-visitor))]
                 (if (own-transaction? entry)
                   (let [data ((:handler entry) (assoc ask :perms perms :scopes scopes :flags flags :params decoded)
                                                decoded)]
@@ -540,7 +546,7 @@
                   (when (:read? entry) (remember-files! part endpoint @files))
                   (run-after-commit! part @after about)
                   (cond-> (answer :ok :data data)
-                    rang (with-meta {::bell {:tag tag :rang rang}}))))))
+                    rang (with-meta {::bell {:tag tag :rang rang}})))))))
             (catch clojure.lang.ExceptionInfo e
               (case (:type (ex-data e))
                 ::permissions/not-found (answer :not-found)
