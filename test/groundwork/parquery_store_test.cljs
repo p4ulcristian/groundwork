@@ -80,3 +80,19 @@
         s     (store/answered s jobs-key n limit)]
     (is (= :error (get-in s [:entries jobs-key :status])))
     (is (= limit (get-in s [:entries jobs-key :error])) "which limit, and when to come back")))
+
+(deftest asking-again
+  (let [[s _] (ensured store/empty-store :board jobs)
+        [s n] (store/start-fetch s jobs-key)]
+    (testing "a question that is out is asked once more when its answer lands"
+      (let [[s fetch] (store/ask-again s jobs)]
+        (is (= [] fetch))
+        (let [s         (store/answered s jobs-key n {:status :ok :data [:jobs]})
+              [s fetch] (store/asked-again s jobs-key)]
+          (is (= [jobs-key] fetch))
+          (is (= [] (second (store/asked-again s jobs-key))) "once"))))
+    (testing "a question at rest is asked now"
+      (let [s (store/answered s jobs-key n {:status :ok :data [:jobs]})]
+        (is (= [jobs-key] (second (store/ask-again s jobs))))))
+    (testing "a question nothing has ensured isn't asked"
+      (is (= [] (second (store/ask-again s machines)))))))

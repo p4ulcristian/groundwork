@@ -174,3 +174,20 @@
                        (is (= [:ok] (map :status @answers)) "its answer went to the given event")
                        (is (nil? (entry [:jobs/move {:job/id "j1"}])) "and the store kept nothing")
                        (done))))))
+
+(deftest asking-again-now-and-once-more-when-the-answer-lands
+  (async done
+         (fresh!)
+         (rf/dispatch-sync [::store/ensure :board [jobs]])
+         ;; out: asked once more when the answer lands
+         (rf/dispatch-sync [::store/ask-again jobs])
+         (rf/dispatch-sync [::store/ask-again machines])
+         (later 30 (fn []
+                     (is (= [["jobs/list"] ["jobs/list"]] (asked)) "nothing for a question nobody ensured")
+                     (later 30 (fn []
+                                 ;; at rest: asked now
+                                 (rf/dispatch-sync [::store/ask-again jobs])
+                                 (later 30 (fn []
+                                             (is (= 3 (count @requests)))
+                                             (is (= :ready (:status (answer jobs))))
+                                             (done)))))))))

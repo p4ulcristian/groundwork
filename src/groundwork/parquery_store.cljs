@@ -10,6 +10,7 @@
      ;=> {:status :ready :data […]} or :loading, :error (with :error), and
      ;   :refresh-error when a refresh failed while the old data still shows
      (rf/dispatch [::store/release :jobs-page])
+     (rf/dispatch [::store/ask-again {:endpoint :jobs/list :params {:shop/id id}}])
      (rf/dispatch [::store/write {:endpoint :jobs/move :params {…}} [:jobs/moved]])
      @(rf/subscribe [::store/can? :jobs/move shop-id])
 
@@ -23,6 +24,11 @@
      gathered for a moment (200 ms), and only what's on screen. A bell
      that rings while the question is out asks once more after the answer:
      that answer may be from before the change.
+   - A question can be asked again now (ask-again), for what no change in the
+     database announces: a \"try again\" button on a failed page, a refresh
+     button, a timer, putting a screen back after a refused write. If the
+     question is out, it's asked once more when its answer lands. Asking
+     again a question nothing has ensured does nothing.
    - An entry nothing needs is kept 5 minutes, then dropped.
    - Writes are sent once, with a one-time key, and never kept; their
      effect reaches screens through the bells.
@@ -90,6 +96,26 @@
                        (= :ok status)          (-> entry (assoc :status :ready :data data) (dissoc :error :refresh-error))
                        (contains? entry :data) (assoc entry :refresh-error answer)
                        :else                   (assoc entry :status :error :error answer))))))))
+
+(defn ask-again
+  "Ask a question again now: [store keys-to-fetch]. A question that is out
+   is asked once more when its answer lands (:again?); one nothing has
+   ensured isn't asked."
+  [store ask]
+  (let [k     (key-of ask)
+        entry (get-in store [:entries k])]
+    (cond
+      (nil? entry)       [store []]
+      (:fetching? entry) [(assoc-in store [:entries k :again?] true) []]
+      :else              [store [k]])))
+
+(defn asked-again
+  "After an answer: the question itself, when it was asked again meanwhile:
+   [store keys-to-fetch]."
+  [store k]
+  (if (and (get-in store [:entries k :again?]) (not (get-in store [:entries k :fetching?])))
+    [(update-in store [:entries k] dissoc :again?) [k]]
+    [store []]))
 
 (defn release-owner
   "An owner doesn't need its asks anymore; entries nothing needs are marked
@@ -208,11 +234,21 @@
                  ;; A bell that rang while the question was out left the entry stale:
                  ;; this answer may be from before the change, so it's asked again.
                  (fn [{:keys [db]} [_ k n answer]]
-                   (let [store  (answered (store-of db) k n answer)
-                         again? (and (not (:refresh-pending? store)) (seq (stale-on-screen store)))]
+                   (let [store           (answered (store-of db) k n answer)
+                         ;; asked again while it was out: once more, now
+                         [store ks]      (asked-again store k)
+                         [store fetches] (fetching store ks)
+                         again?          (and (not (:refresh-pending? store)) (seq (stale-on-screen store)))]
                      (cond-> {:db (assoc db :groundwork/parquery-store
                                          (cond-> store again? (assoc :refresh-pending? true)))}
-                       again? (assoc :dispatch-later [{:ms gather-ms :dispatch [::-refresh]}])))))
+                       (seq fetches) (assoc ::fetch fetches)
+                       again?        (assoc :dispatch-later [{:ms gather-ms :dispatch [::-refresh]}])))))
+
+(rf/reg-event-fx ::ask-again
+                 (fn [{:keys [db]} [_ ask]]
+                   (let [[store ks]      (ask-again (store-of db) ask)
+                         [store fetches] (fetching store ks)]
+                     {:db (assoc db :groundwork/parquery-store store) ::fetch fetches})))
 
 (rf/reg-event-fx ::-changed
                  (fn [{:keys [db]} [_ forms]]

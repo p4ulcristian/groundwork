@@ -900,6 +900,7 @@ Then the store, under the screens:
 (rf/dispatch [::store/ensure :jobs-page [{:endpoint :jobs/list :params {:shop/id id}}]])
 @(rf/subscribe [::store/answer {:endpoint :jobs/list :params {:shop/id id}}])   ;=> {:status :ready :data […]}
 (rf/dispatch [::store/release :jobs-page])
+(rf/dispatch [::store/ask-again {:endpoint :jobs/list :params {:shop/id id}}])   ; a "try again" button
 (rf/dispatch [::store/write {:endpoint :jobs/move :params {…}} [:jobs/moved]])
 @(rf/subscribe [::store/can? :jobs/move shop-id])
 ```
@@ -915,7 +916,9 @@ Then the store, under the screens:
   answer counts; bells are gathered for 200 ms and only what's on screen is
   asked again (once more after the answer when the bell rang while the
   question was out); an entry nothing needs goes after five minutes. Writes are
-  sent once, with a one-time key.
+  sent once, with a one-time key. `ask-again` asks a question again now, for
+  what no change in the database announces (a "try again" button, a refresh,
+  a timer); out already, it's asked once more when its answer lands.
 - "Can I?" reads `:groundwork/grants`.
 - Dates come back as js-joda values, decimals as big.js (exact; trailing
   zeros aren't kept). An app's build needs the npm packages in
