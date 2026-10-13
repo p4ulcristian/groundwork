@@ -12,6 +12,7 @@
      (rf/dispatch [::store/release :jobs-page])
      (rf/dispatch [::store/own :jobs-page [asks…]])   ; exactly these now: shared ones kept, the rest let go
      (rf/dispatch [::store/ask-again {:endpoint :jobs/list :params {:shop/id id}}])
+     (rf/dispatch [::store/once-answered {:endpoint :jobs/list :params {:shop/id id}} [:jobs/loaded]])
      (rf/dispatch [::store/write {:endpoint :jobs/move :params {…}} [:jobs/moved]])
      @(rf/subscribe [::store/can? :jobs/move shop-id])
 
@@ -30,8 +31,17 @@
      button, a timer, putting a screen back after a refused write. If the
      question is out, it's asked once more when its answer lands. Asking
      again a question nothing has ensured does nothing.
+   - An ask may say how long its answer stays fresh, :fresh-ms: ensuring it
+     again within that time asks nothing. Without it every ensure asks.
+   - Something can wait for a question's answer once (once-answered): its
+     event gets the data now when the answer is there and nothing is out,
+     else when the answer lands; a failed answer tells it nothing.
+   - The app can hear of every read that failed (::start's :on-read-failed,
+     an event that gets the ask and the answer), to say so its own way.
    - An entry nothing needs is kept 5 minutes, then dropped.
    - Writes are sent once, with a one-time key, and never kept. A write
+     that brings its own :key keeps it: a form holds one until it is saved,
+     so saving again after a lost answer can't save twice. A write
      says what is on screen, and its answer says which of that it changed:
      those are asked again at once, without waiting for the websocket. The
      websocket's bell for the same write carries the same tag, so nothing
@@ -69,24 +79,37 @@
 ;; The rules, as plain functions over the store
 ;; =============================================================================
 
+(defn- fresh?
+  "Whether an entry's answer is still fresh for an ask's :fresh-ms."
+  [{:keys [status stale? answered-at]} fresh-ms now]
+  (and fresh-ms now answered-at
+       (= :ready status)
+       (not stale?)
+       (< (- now answered-at) fresh-ms)))
+
 (defn ensure-asks
   "An owner needs these asks: [store keys-to-fetch]. A question asked
-   already and still loading isn't asked again."
-  [store owner asks]
-  (reduce (fn [[store fetch] ask]
-            (let [k     (key-of ask)
-                  entry (get-in store [:entries k])
-                  store (if entry
-                          (-> store
-                              (update-in [:entries k :owners] conj owner)
-                              (update-in [:entries k] dissoc :released-at))
-                          (assoc-in store [:entries k] {:ask    (assoc ask :params (second k))
-                                                        :form   (http/form ask)
-                                                        :owners #{owner}
-                                                        :status :loading}))]
-              [store (if (get-in store [:entries k :fetching?]) fetch (conj fetch k))]))
-          [store []]
-          asks))
+   already and still loading isn't asked again, nor one whose answer is
+   fresh by the ask's :fresh-ms (given the time, `now`)."
+  ([store owner asks] (ensure-asks store owner asks nil))
+  ([store owner asks now]
+   (reduce (fn [[store fetch] ask]
+             (let [k     (key-of ask)
+                   entry (get-in store [:entries k])
+                   store (if entry
+                           (-> store
+                               (update-in [:entries k :owners] conj owner)
+                               (update-in [:entries k] dissoc :released-at))
+                           (assoc-in store [:entries k] {:ask    (assoc ask :params (second k))
+                                                         :form   (http/form ask)
+                                                         :owners #{owner}
+                                                         :status :loading}))]
+               [store (if (or (get-in store [:entries k :fetching?])
+                              (fresh? entry (:fresh-ms ask) now))
+                        fetch
+                        (conj fetch k))]))
+           [store []]
+           asks)))
 
 (defn start-fetch
   "Mark an entry as being asked: [store request-id]."
@@ -94,23 +117,60 @@
   (let [n (inc (:seq store))]
     [(-> store
          (assoc :seq n)
-         (update-in [:entries k] assoc :fetching? true :request-id n :stale? false))
+         (update-in [:entries k]
+                    (fn [entry]
+                      (cond-> (assoc entry :fetching? true :request-id n :stale? false)
+                        ;; asking again after a failed first load reads as
+                        ;; loading, not as the old error
+                        (not (contains? entry :data)) (-> (assoc :status :loading) (dissoc :error))))))
      n]))
 
 (defn answered
   "An answer arrived for a request. Only the newest request's answer
-   counts."
-  [store k request-id {:keys [status data] :as answer}]
-  (let [entry (get-in store [:entries k])]
-    (if (or (nil? entry) (not= request-id (:request-id entry)))
-      store
-      (update-in store [:entries k]
-                 (fn [entry]
-                   (let [entry (dissoc entry :fetching?)]
-                     (cond
-                       (= :ok status)          (-> entry (assoc :status :ready :data data) (dissoc :error :refresh-error))
-                       (contains? entry :data) (assoc entry :refresh-error answer)
-                       :else                   (assoc entry :status :error :error answer))))))))
+   counts. With the time, `now`, a good answer is stamped for :fresh-ms."
+  ([store k request-id answer] (answered store k request-id answer nil))
+  ([store k request-id {:keys [status data] :as answer} now]
+   (let [entry (get-in store [:entries k])]
+     (if (or (nil? entry) (not= request-id (:request-id entry)))
+       store
+       (update-in store [:entries k]
+                  (fn [entry]
+                    (let [entry (dissoc entry :fetching?)]
+                      (cond
+                        (= :ok status)          (-> entry
+                                                    (assoc :status :ready :data data)
+                                                    (cond-> now (assoc :answered-at now))
+                                                    (dissoc :error :refresh-error))
+                        (contains? entry :data) (assoc entry :refresh-error answer)
+                        :else                   (assoc entry :status :error :error answer)))))))))
+
+(defn once-answered
+  "Something waits for a question's answer, once: [store data-now?]. With
+   the answer there and nothing out, data-now? is true and the caller tells
+   it at once; with a request out, its event waits for that answer; a
+   question nothing ensured, or one that failed, tells it nothing."
+  [store ask event]
+  (let [k     (key-of ask)
+        entry (get-in store [:entries k])]
+    (cond
+      (nil? entry)                                           [store false]
+      (:fetching? entry)                                     [(update-in store [:listeners k] (fnil conj []) event) false]
+      (and (= :ready (:status entry)) (contains? entry :data)) [store true]
+      :else                                                  [store false])))
+
+(defn heard
+  "After an answer: [store events-to-tell]. A good answer that is the last
+   word (not about to be asked once more) goes to whoever waited for it; a
+   failed one drops them."
+  [store k {:keys [status]}]
+  (let [waiting (get-in store [:listeners k])
+        entry   (get-in store [:entries k])]
+    (cond
+      (empty? waiting)                         [store []]
+      (:fetching? entry)                       [store []]
+      (and (= :ok status) (not (:again? entry))) [(update store :listeners dissoc k) waiting]
+      (= :ok status)                           [store []]
+      :else                                    [(update store :listeners dissoc k) []])))
 
 (defn ask-again
   "Ask a question again now: [store keys-to-fetch]. A question that is out
@@ -274,7 +334,7 @@
 
 (rf/reg-fx ::send-write
            (fn [[ask watching on-answer]]
-             (http/ask! (assoc ask :key (str (random-uuid)) :watching watching)
+             (http/ask! (assoc ask :key (or (:key ask) (str (random-uuid))) :watching watching)
                         #(rf/dispatch [::-written watching on-answer %]))))
 
 (rf/reg-fx ::start-line
@@ -286,16 +346,17 @@
 (rf/reg-cofx ::now (fn [cofx] (assoc cofx :now (js/Date.now))))
 
 (rf/reg-event-fx ::start
-                 (fn [{:keys [db]} [_ {:keys [shapes max-asks line]}]]
+                 (fn [{:keys [db]} [_ {:keys [shapes max-asks line on-read-failed]}]]
                    (http/set-shapes! shapes)
                    (when max-asks (http/set-max-asks! max-asks))
-                   {:db          (assoc db :groundwork/parquery-store empty-store)
+                   {:db          (assoc db :groundwork/parquery-store
+                                        (cond-> empty-store on-read-failed (assoc :on-read-failed on-read-failed)))
                     ::start-line (or line {})}))
 
 (rf/reg-event-fx ::ensure
                  [(rf/inject-cofx ::now)]
                  (fn [{:keys [db now]} [_ owner asks]]
-                   (let [[store ks]      (ensure-asks (collect (store-of db) now) owner asks)
+                   (let [[store ks]      (ensure-asks (collect (store-of db) now) owner asks now)
                          [store fetches] (fetching store ks)]
                      {:db     (assoc db :groundwork/parquery-store store)
                       ::fetch fetches
@@ -319,16 +380,31 @@
 (rf/reg-event-fx ::-answered
                  ;; A bell that rang while the question was out left the entry stale:
                  ;; this answer may be from before the change, so it's asked again.
-                 (fn [{:keys [db]} [_ k n answer]]
-                   (let [store           (answered (store-of db) k n answer)
+                 [(rf/inject-cofx ::now)]
+                 (fn [{:keys [db now]} [_ k n answer]]
+                   (let [before          (store-of db)
+                         current?        (= n (get-in before [:entries k :request-id]))
+                         store           (answered before k n answer now)
+                         [store told]    (if current? (heard store k answer) [store []])
                          ;; asked again while it was out: once more, now
                          [store ks]      (asked-again store k)
                          [store fetches] (fetching store ks)
-                         again?          (and (not (:refresh-pending? store)) (seq (stale-on-screen store)))]
+                         again?          (and (not (:refresh-pending? store)) (seq (stale-on-screen store)))
+                         failed          (when (and current? (not= :ok (:status answer)))
+                                           (:on-read-failed store))
+                         tell            (cond-> (mapv #(conj % (:data answer)) told)
+                                           failed (conj (conj failed (get-in store [:entries k :ask]) answer)))]
                      (cond-> {:db (assoc db :groundwork/parquery-store
                                          (cond-> store again? (assoc :refresh-pending? true)))}
                        (seq fetches) (assoc ::fetch fetches)
+                       (seq tell)    (assoc :fx (mapv (fn [event] [:dispatch event]) tell))
                        again?        (assoc :dispatch-later [{:ms gather-ms :dispatch [::-refresh]}])))))
+
+(rf/reg-event-fx ::once-answered
+                 (fn [{:keys [db]} [_ ask event]]
+                   (let [[store now?] (once-answered (store-of db) ask event)]
+                     (cond-> {:db (assoc db :groundwork/parquery-store store)}
+                       now? (assoc :dispatch (conj event (get-in store [:entries (key-of ask) :data])))))))
 
 (rf/reg-event-fx ::ask-again
                  (fn [{:keys [db]} [_ ask]]

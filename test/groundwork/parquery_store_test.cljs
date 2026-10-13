@@ -143,3 +143,50 @@
     (let [[s _] (store/own-asks s :route [] 3000)]
       (is (= 3000 (get-in s [:entries [:shop/get {}] :released-at])) "nothing needs it: let go, with the time")
       (is (nil? (get-in s [:entries [:orders/list {}] :released-at]))))))
+
+(deftest fresh-for-a-while
+  (let [ask            (assoc jobs :fresh-ms 60000)
+        [store ks]     (store/ensure-asks store/empty-store :page [ask] 1000)
+        [store n]      (store/start-fetch store (first ks))
+        store          (store/answered store jobs-key n {:status :ok :data [1]} 2000)]
+    (testing "ensured again within its time, nothing is asked"
+      (is (= [] (second (store/ensure-asks store :panel [ask] 30000)))))
+    (testing "past its time it is asked"
+      (is (= [jobs-key] (second (store/ensure-asks store :panel [ask] 62000)))))
+    (testing "a bell makes it stale whatever its age"
+      (is (= [jobs-key] (second (store/ensure-asks (store/changed store [(:form (get-in store [:entries jobs-key]))])
+                                                   :panel [ask] 30000)))))
+    (testing "without :fresh-ms every ensure asks"
+      (is (= [jobs-key] (second (store/ensure-asks store :panel [jobs] 3000)))))))
+
+(deftest asking-again-after-a-failed-first-load-reads-as-loading
+  (let [[store ks] (store/ensure-asks store/empty-store :page [jobs])
+        [store n]  (store/start-fetch store (first ks))
+        store      (store/answered store jobs-key n {:status :error :message "down"})
+        _          (is (= :error (get-in store [:entries jobs-key :status])))
+        [store _]  (store/start-fetch store jobs-key)]
+    (is (= :loading (get-in store [:entries jobs-key :status])))
+    (is (nil? (get-in store [:entries jobs-key :error])))))
+
+(deftest waiting-once-for-an-answer
+  (let [[store ks] (store/ensure-asks store/empty-store :page [jobs])
+        [store n]  (store/start-fetch store (first ks))]
+    (testing "a question nothing ensured tells nothing"
+      (is (= false (second (store/once-answered store/empty-store jobs [:loaded])))))
+    (testing "with the request out, the event waits for the answer"
+      (let [[store now?] (store/once-answered store jobs [:loaded])
+            store        (store/answered store jobs-key n {:status :ok :data [1]})
+            [store told] (store/heard store jobs-key {:status :ok :data [1]})]
+        (is (= false now?))
+        (is (= [[:loaded]] told))
+        (is (= [] (second (store/heard store jobs-key {:status :ok})))
+            "once")))
+    (testing "a failed answer drops it"
+      (let [[store _]    (store/once-answered store jobs [:loaded])
+            store        (store/answered store jobs-key n {:status :error})
+            [store told] (store/heard store jobs-key {:status :error})]
+        (is (= [] told))
+        (is (empty? (:listeners store)))))
+    (testing "with the answer there and nothing out, it is told at once"
+      (let [store (store/answered store jobs-key n {:status :ok :data [1]})]
+        (is (= true (second (store/once-answered store jobs [:loaded]))))))))

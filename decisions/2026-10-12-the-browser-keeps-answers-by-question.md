@@ -11,3 +11,13 @@
 **Why:** pages revisit instantly instead of blanking, nothing fetches by accident on a redraw, and a late answer can't overwrite fresher data.
 
 **Instead of:** each screen fetching on its own, which repeats requests and shows spinners on every visit.
+
+**Added 2026-10-14, for an app that moved its own store onto this one:**
+
+- An ask may say how long its answer stays fresh (`:fresh-ms`): ensuring it again within that time asks nothing. Without it every ensure asks, as decided.
+- Something can wait once for a question's answer (`once-answered`): a form filled from what the server last said. A failed answer tells it nothing.
+- The app can hear of every read that failed (`:on-read-failed`), to say so its own way (a toast, the login).
+- Asking again after a failed first load reads as loading, not as the old error.
+- A write that brings its own key keeps it: a form holds one until it is saved.
+- The browser start can mount into another element than `<div id="app">` (`:mount`), for a page that keeps a splash there.
+

@@ -13,7 +13,8 @@
                    :shapes      shapes/answers
                    :unknown     views/not-found    ; for an address no route has
                    :placeholder views/loading      ; while a screen's code loads on demand
-                   :on-move     (fn [{:keys [from to]}] …)}))   ; after every move
+                   :on-move     (fn [{:keys [from to]}] …)   ; after every move
+                   :mount       \"screen\"}))                ; another element than <div id=\"app\"> (optional)
 
    Groundwork then, in order: reads what the page shell put in the page (the
    person signed in, their session's flags, the language and the app's
@@ -113,11 +114,13 @@
 (defn start!
   "Start the app in the browser: {:root :routes :shapes}, with :unknown,
    :placeholder and :on-move when wanted, and :max-asks when the server's is
-   lower than 50."
-  [{:keys [root routes shapes max-asks] :as options}]
+   lower than 50. :mount names another element than \"app\" to mount into,
+   for a page that keeps something of its own in <div id=\"app\"> (a
+   splash); :store adds to the store's start (:on-read-failed, :line)."
+  [{:keys [root routes shapes max-asks mount store] :as options}]
   (let [initial (read-initial (some-> (js/document.getElementById "groundwork") .-textContent))]
     (rf/dispatch-sync [::-init initial])
-    (rf/dispatch-sync [::store/start {:shapes shapes :max-asks max-asks}])
+    (rf/dispatch-sync [::store/start (merge {:shapes shapes :max-asks max-asks} store)])
     (when (:person initial)
       (rf/dispatch [::store/ensure ::session [{:endpoint :groundwork/grants :params {}}]]))
     (routing/start! (assoc (select-keys options [:on-move :unknown :placeholder])
@@ -125,7 +128,7 @@
                            :languages (:languages initial)
                            :language  (:language initial)))
     (when-not @mounted
-      (reset! mounted {:react-root (rdc/create-root (js/document.getElementById "app"))}))
+      (reset! mounted {:react-root (rdc/create-root (js/document.getElementById (or mount "app")))}))
     (swap! mounted assoc :root root)
     (render!)))
 

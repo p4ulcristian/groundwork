@@ -214,3 +214,45 @@
                                    (later 300 (fn []
                                                 (is (= 3 (count @requests)) "not asked twice for one change")
                                                 (done))))))))))
+
+(deftest a-write-that-brings-its-key-keeps-it
+  (async done
+         (fresh!)
+         (rf/dispatch-sync [::store/write {:endpoint :jobs/move :params {:job/id "j1"} :key "the-forms-key"}])
+         (later 30 (fn []
+                     (is (= "the-forms-key" (:key (ffirst @requests))))
+                     (done)))))
+
+(deftest waiting-for-an-answer-and-hearing-of-a-failed-read
+  (async done
+         (fresh!)
+         (let [told (atom [])]
+           (rf/reg-event-db ::loaded (fn [db [_ data]] (swap! told conj [:loaded data]) db))
+           (rf/reg-event-db ::failed (fn [db [_ ask answer]] (swap! told conj [:failed (:endpoint ask) (:status answer)]) db))
+           (rf/dispatch-sync [::store/start {:shapes         {}
+                                             :line           {:url "ws://test/parquery" :min-wait-ms 5}
+                                             :on-read-failed [::failed]}])
+           (rf/dispatch-sync [::store/ensure :board [jobs {:endpoint :nothing/here :params {}}]])
+           (rf/dispatch-sync [::store/once-answered jobs [::loaded]])
+           (later 30 (fn []
+                       (is (= #{[:loaded [{:job/id "j1"}]] [:failed :nothing/here :not-found]} (set @told)))
+                       ;; the answer is there and nothing is out: told at once
+                       (rf/dispatch-sync [::store/once-answered jobs [::loaded]])
+                       (later 5 (fn []
+                                  (is (= 2 (count (filter #(= :loaded (first %)) @told))))
+                                  (done))))))))
+
+(deftest fresh-for-a-while-asks-nothing
+  (async done
+         (fresh!)
+         (let [ask (assoc jobs :fresh-ms 60000)]
+           (rf/dispatch-sync [::store/ensure :board [ask]])
+           (later 30 (fn []
+                       (rf/dispatch-sync [::store/ensure :panel [ask]])
+                       (later 30 (fn []
+                                   (is (= [["jobs/list"]] (asked)) "still fresh: not asked again")
+                                   (swap! now + 61000)
+                                   (rf/dispatch-sync [::store/ensure :sheet [ask]])
+                                   (later 30 (fn []
+                                               (is (= 2 (count @requests)) "past its time: asked")
+                                               (done))))))))))
