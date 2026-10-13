@@ -870,7 +870,9 @@ The app's browser entry (the `:browser` settings' `:entry`) makes one call:
 - **The build is Groundwork's** (`groundwork.build`): it makes the
   shadow-cljs build from the `:browser` settings, so an app keeps no build
   config. In development the one start (`repl/start!`) watches it; a save
-  recompiles and renders again. Before packaging, a release:
+  recompiles and renders again; `groundwork.build/compile` builds the same
+  once, without watching (a second copy of the app on one checkout, a check
+  before a commit). Before packaging, a release:
   `clojure -X:build groundwork.build/release :settings app.settings/production`
   compiles with fingerprinted names (`main.3F2A….js`) and a manifest the
   page shell reads, so the page and the build can't disagree and the file

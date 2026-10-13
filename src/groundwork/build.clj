@@ -21,7 +21,7 @@
      :options {…}        extra shadow-cljs build options, merged over these
 
    In development (groundwork.repl/start!), starting the app also starts the
-   watcher. A release (release!, before packaging the app) compiles with
+   watcher; compile! builds the same once, without watching. A release (release!, before packaging the app) compiles with
    fingerprinted names, like main.3F2A9C.js, and writes manifest.edn next to
    them; the page shell reads it, so a page and the build can't disagree, and
    a fingerprinted file can be cached a year.
@@ -31,6 +31,7 @@
 
    Needs thheller/shadow-cljs on the classpath (an app's :dev or :build
    alias), and the npm packages installed."
+  (:refer-clojure :exclude [compile])
   (:require
    [clojure.edn :as edn]
    [clojure.java.io :as io]))
@@ -74,6 +75,16 @@
   ((shadow 'shadow.cljs.devtools.api/stop-worker) (:build browser))
   ((shadow 'shadow.cljs.devtools.server/stop!)))
 
+(defn compile!
+  "Compile the app's browser code once, as the watcher would, without
+   watching: for a second copy of the app on one checkout (two watchers
+   would write the same files), or a check before a commit."
+  [browser]
+  (shadow 'shadow.cljs.devtools.api/compile*)
+  (eval `(shadow.cljs.devtools.api/with-runtime
+           (shadow.cljs.devtools.api/compile* '~(config browser) {})))
+  (:build browser))
+
 (defn release!
   "Compile the app's browser code for production: optimized, fingerprinted,
    with the manifest the page shell reads."
@@ -90,6 +101,13 @@
   [{:keys [settings]}]
   (let [settings (if (symbol? settings) @(requiring-resolve settings) settings)]
     (release! (:browser settings))
+    (shutdown-agents)))
+
+(defn compile
+  "compile! for clojure -X: clojure -X:dev groundwork.build/compile :settings app.settings/dev"
+  [{:keys [settings]}]
+  (let [settings (if (symbol? settings) @(requiring-resolve settings) settings)]
+    (compile! (:browser settings))
     (shutdown-agents)))
 
 (defn- manifest

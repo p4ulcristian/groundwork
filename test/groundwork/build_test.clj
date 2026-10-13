@@ -106,6 +106,19 @@
              (scripts "/admin")))
       (finally (gw/stop app)))))
 
+(deftest a-build-once-without-watching
+  (build/compile! browser)
+  (testing "the development build's file, under its plain name"
+    (is (.exists (io/file (:output-dir browser) "main.js"))))
+  (let [app (gw/start (-> app-settings
+                          (assoc :browser browser)
+                          (assoc-in [:web :routes] [["/" {:get web/page :access :public}]])))]
+    (try
+      (testing "the page loads it"
+        (is (str/includes? (:body (get-text app "/")) "src=\"/example-hello/main.js\" defer")))
+      (finally (gw/stop app))))
+  (clean!))
+
 (deftest a-release-is-what-the-page-loads
   (build/release! browser)
   (let [manifest (edn/read-string (slurp (io/file (:output-dir browser) "manifest.edn")))
