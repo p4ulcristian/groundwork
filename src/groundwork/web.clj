@@ -773,9 +773,16 @@
 
 (defn page
   "A Ring handler answering with the page shell, for a route of the app's own:
-   [\"/customize\" {:get web/page :embeddable true}]."
-  [request]
-  ((::page request) request))
+   [\"/customize\" {:get web/page :embeddable true}].
+
+   With a page (a map of a route's :page keys), the shell with that page,
+   for a handler that has to look before it knows what to show; the answer
+   is a Ring response the handler may change:
+   (assoc (web/page request {:title \"No such coater\"}) :status 404)."
+  ([request]
+   ((::page request) request))
+  ([request page]
+   ((::page request) (assoc request ::page/route-page page))))
 
 (defn- not-found [_request]
   (plain 404 "Not found"))

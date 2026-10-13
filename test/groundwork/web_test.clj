@@ -41,6 +41,13 @@
                                  :scripts     ["/js/map.js"]
                                  :body        (str "<h1>" slug "</h1>")}))}]
    ["/about" {:access :public :get web/page :page {:title "About us"}}]
+   ["/shops/:slug/menu" {:access :public
+                         :get    (fn [request]
+                                   (let [slug (get-in request [:path-params :slug])]
+                                     (case slug
+                                       "acme"  (web/page request {:title "Acme's menu" :body "<ul><li>Zinc</li></ul>"})
+                                       "typo"  (web/page request {:titel "x"})
+                                       (assoc (web/page request {:title "No such shop"}) :status 404))))}]
    ["/api/form" {:access :public :post (fn [request] {:status 200 :body (pr-str (:form-params request))})}]
    ["/api/upload" {:access :public :post           (fn [request]
                                      {:status 200
@@ -221,6 +228,16 @@
     (let [body (:body (request "/about" {:headers html}))]
       (is (str/includes? body "<title>About us</title>"))
       (is (str/includes? body "<div id=\"app\"></div>"))))
+  (testing "a handler that looks first gives the page itself, and may change the answer"
+    (let [{:keys [status body]} (request "/shops/acme/menu" {:headers html})]
+      (is (= 200 status))
+      (is (str/includes? body "<title>Acme&#39;s menu</title>"))
+      (is (str/includes? body "<div id=\"app\"><ul><li>Zinc</li></ul></div>"))
+      (is (re-find #"<script nonce=\"[^\"]+\" src=\"/js/main.js\" defer></script>" body)))
+    (let [{:keys [status body]} (request "/shops/gone/menu" {:headers html})]
+      (is (= 404 status))
+      (is (str/includes? body "<title>No such shop</title>")))
+    (is (= 500 (:status (request "/shops/typo/menu" {:headers html}))) "its keys are checked too"))
   (testing "a route's page keys are checked when the router is built"
     (is (= ::page/bad-route
            (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :access :public :page {:titel "x"}}]]

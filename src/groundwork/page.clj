@@ -18,6 +18,14 @@
      [\"/coaters/:slug\" {:get web/page
                          :page (fn [request] {:title … :description … :body …})}]
 
+   A handler that has to look first (a record that may not exist) gives the
+   page itself and may change the answer:
+
+     (fn [request]
+       (if-let [coater (find-coater request)]
+         (web/page request {:title (:name coater) :body …})
+         (assoc (web/page request {:title \"No such coater\"}) :status 404)))
+
      :lang :title :description   replace the app's
      :canonical  \"https://…\"     <link rel=canonical>
      :alternates [{:lang \"de\" :href \"https://…/de/…\"}]   <link rel=alternate hreflang>
@@ -113,17 +121,17 @@
        "</html>\n"))
 
 (defn- route-page
-  "A route's page for this request: its map, or what its function returns."
+  "The page for this request: the route's map (or a handler's own, see
+   groundwork.web/page), or what the route's function returns."
   [request]
   (let [page (::route-page request)]
-    (cond
-      (nil? page) {}
-      (map? page) page
-      :else       (let [result (page request)]
-                    (when-not (and (map? result) (every? route-keys (keys result)))
-                      (throw (ex-info "A route's :page function must return a map of page keys"
-                                      {:type ::bad-page :page result})))
-                    result))))
+    (if (nil? page)
+      {}
+      (let [result (if (map? page) page (page request))]
+        (when-not (and (map? result) (every? route-keys (keys result)))
+          (throw (ex-info (str "A page must be a map of " (str/join " " (sort route-keys)))
+                          {:type ::bad-page :page result})))
+        result))))
 
 (defn start
   "The page part: a Ring handler that answers with the page, the route's

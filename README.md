@@ -536,6 +536,9 @@ resources/migrations/
                    :page (fn [request] {:title (str "Coater " …) :body (render-coater …)})}]
 ```
 
+- **A handler that has to look first** (a record that may not exist) gives
+  the page itself, and may change the answer:
+  `(assoc (web/page request {:title "No such coater"}) :status 404)`.
 - **Security headers** on every answer: no sniffing, no framing, a strict
   referrer; in production also Strict-Transport-Security.
 - **A strict Content-Security-Policy:** scripts and styles only from the
