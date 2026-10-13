@@ -479,65 +479,85 @@
                   (assoc data :type ::bad-description :sql sql))))
 
 (defn- link-sql
-  "The SQL that adds a parent link: the parent's unique pair, if it has
-   none, and the child's foreign key."
-  [{t :table :keys [scope-column parent-column parent-table parent-id parent-scope]}]
-  (str "ALTER TABLE " parent-table " ADD UNIQUE (" parent-id ", " parent-scope ");  -- if it has none\n"
-       "ALTER TABLE " t " ADD FOREIGN KEY (" parent-column ", " scope-column ")\n"
-       "  REFERENCES " parent-table " (" parent-id ", " parent-scope ") ON UPDATE CASCADE;"))
+  "The SQL that adds a parent link for one carried column: the parent's
+   unique pair, if it has none, and the child's foreign key."
+  [{t :table :keys [parent-column parent-table parent-id]} {c :column p :parent-column}]
+  (str "ALTER TABLE " parent-table " ADD UNIQUE (" parent-id ", " p ");  -- if it has none\n"
+       "ALTER TABLE " t " ADD FOREIGN KEY (" parent-column ", " c ")\n"
+       "  REFERENCES " parent-table " (" parent-id ", " p ") ON UPDATE CASCADE;"))
 
 (defn- check-scope-columns!
-  "Every record table has its scope columns. A record under another record,
-   and a record others hang under, keep them NOT NULL: their matching link
-   holds only then. A record on its own may leave one empty: the row is in
-   no scope through it yet, and only its people and the system see it."
+  "Every record table has its scope columns. A scope column a record
+   carries from its parent, and the parent's column it is carried from, are
+   NOT NULL: their matching link holds only then. A record on its own, and
+   a column that is a record's own beside what it carries, may be empty:
+   the row is in no scope through it yet, and only its people and the
+   system see it."
   [db description]
-  (let [parents     (into {} (map (juxt :kind identity)) (rules/parent-links description))
-        above       (set (keep (comp first :parent val) (:records description)))
-        must-fill?  (fn [kind] (or (contains? parents kind) (contains? above kind)))]
-    (doseq [{:keys [kind table column]} (rules/scope-columns description)]
-      (let [have (into {} (map (juxt :column/name :column/not-null)) (pg/rows db columns-of {:table table}))
-            link (parents kind)]
+  (let [links      (rules/parent-links description)
+        carried    (into {} (for [{:keys [table carried] :as link} links
+                                  {:keys [column person?] :as c} carried
+                                  :when (not person?)]
+                              [[table column] [link c]]))
+        handed     (into #{} (for [{:keys [parent-table carried]} links
+                                   {:keys [parent-column person?]} carried
+                                   :when (not person?)]
+                               [parent-table parent-column]))]
+    (doseq [{:keys [table column]} (rules/scope-columns description)]
+      (let [have     (into {} (map (juxt :column/name :column/not-null)) (pg/rows db columns-of {:table table}))
+            [link c] (carried [table column])]
         (cond
           (not (contains? have column))
           (bad (str "Table " table " needs its own scope column " column)
                {:table table :column column}
                (str "ALTER TABLE " table " ADD COLUMN " column " uuid;\n"
                     (if link
-                      (str "UPDATE " table " c SET " column " = p." (:parent-scope link)
+                      (str "UPDATE " table " c SET " column " = p." (:parent-column c)
                            " FROM " (:parent-table link) " p WHERE p." (:parent-id link)
-                           " = c." (:parent-column link) ";\n")
-                      (str "-- fill " column " for the rows already there\n"))
-                    "ALTER TABLE " table " ALTER COLUMN " column " SET NOT NULL;"))
+                           " = c." (:parent-column link) ";\n"
+                           "ALTER TABLE " table " ALTER COLUMN " column " SET NOT NULL;")
+                      (str "-- fill " column " for the rows already there\n"
+                           "ALTER TABLE " table " ALTER COLUMN " column " SET NOT NULL;"))))
 
-          (and (must-fill? kind) (not (have column)))
+          (and (or link (handed [table column])) (not (have column)))
           (bad (str "Scope column " table "." column " must be NOT NULL: records hang under " table
                     ", or it hangs under another")
                {:table table :column column}
                (str "ALTER TABLE " table " ALTER COLUMN " column " SET NOT NULL;")))))))
 
 (defn- check-parent-links!
-  "Every record under another record is tied to it by its matching link."
+  "Every record under another record is tied to it by a matching link, for
+   each column it carries: a foreign key that holds its (parent column,
+   column) to the parent's (id, column) and cascades. A key with more
+   columns in it counts only while none of them can be empty, since one
+   empty column switches a whole key off; a column that may be empty (a
+   person) has a key of its own two."
   [db description]
-  (doseq [{t :table :keys [scope-column parent-column parent-table parent-id parent-scope] :as link}
-          (rules/parent-links description)]
-    (let [wanted #{[parent-column parent-id] [scope-column parent-scope]}
-          found  (first (filter #(= wanted (set (map vector (:link/child-columns %) (:link/parent-columns %))))
-                                (pg/rows db links-between {:child t :parent parent-table})))]
+  (doseq [{t :table :keys [parent-column parent-table parent-id carried] :as link} (rules/parent-links description)
+          :let [not-null (into {} (map (juxt :column/name :column/not-null)) (pg/rows db columns-of {:table t}))
+                keys     (pg/rows db links-between {:child t :parent parent-table})]
+          {c :column p :parent-column :as one} carried]
+    (let [wanted  #{[parent-column parent-id] [c p]}
+          pairs   (fn [k] (set (map vector (:link/child-columns k) (:link/parent-columns k))))
+          holding (filter (fn [k] (let [ps (pairs k)]
+                                    (and (every? ps wanted)
+                                         (or (= wanted ps) (every? not-null (:link/child-columns k))))))
+                          keys)
+          found   (or (first (filter :link/cascades holding)) (first holding))]
       (cond
         (nil? found)
-        (bad (str "Table " t " needs a link to " parent-table " that keeps its scope its parent's: "
-                  "a foreign key (" parent-column ", " scope-column ") → " parent-table
-                  " (" parent-id ", " parent-scope ") ON UPDATE CASCADE")
-             {:table t :parent parent-table}
-             (link-sql link))
+        (bad (str "Table " t " needs a link to " parent-table " that keeps its " c " its parent's: "
+                  "a foreign key (" parent-column ", " c ") → " parent-table
+                  " (" parent-id ", " p ") ON UPDATE CASCADE")
+             {:table t :parent parent-table :column c}
+             (link-sql link one))
 
         (not (:link/cascades found))
         (bad (str "The link from " t " to " parent-table " must be ON UPDATE CASCADE, so "
                   t " follows its parent when the parent moves to another scope")
-             {:table t :parent parent-table}
-             (str "-- drop the existing foreign key (" parent-column ", " scope-column "), then:\n"
-                  (link-sql link)))))))
+             {:table t :parent parent-table :column c}
+             (str "-- drop the existing foreign key (" parent-column ", " c "), then:\n"
+                  (link-sql link one)))))))
 
 (defn- check-database!
   "Every table and column the description names must exist; every record

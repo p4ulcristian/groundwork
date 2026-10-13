@@ -219,7 +219,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:permissions :records <record kind> :table` | keyword | Its table | `:orders` |
 | `:permissions :records <record kind> :id` | column keyword | Its id column | `:order/id` |
 | `:permissions :records <record kind> :in` | [kind column] or a list of them | Its scope column: [scope-kind column], or a list of them for a record shared by scopes | `[:shop :order/shop-id]` |
-| `:permissions :records <record kind> :parent` (optional) | [kind column] | The record it hangs under: [record-kind its-column] | `[:order :job/order-id]` |
+| `:permissions :records <record kind> :parent` (optional) | [kind column] or [kind column {column column}] | The record it hangs under: [record-kind its-column], and what it carries from it when either has more than one scope, or a person: [record-kind its-column {its column → the parent's}] | `[:order :job/order-id]` |
 | `:permissions :records <record kind> :people` (optional) | action → column | An action a person on the record holds: action → their column | `#:orders{:see :order/customer-id}` |
 | `:permissions :records <record kind> :only-when` (optional) | action → condition | An action allowed only when the record matches: action → condition | `#:orders{:edit [:= :order/status "open"]}` |
 | `:permissions :records <record kind> :open` (optional) | set of actions | The open actions that reach this kind (each is in the description's :open); its :only-when for them still holds | `#{:catalogue/see}` |
@@ -682,6 +682,30 @@ The app describes its places, actions, roles and records once:
   from the parent when a row is inserted without one, and refuses to start
   when a scope column is missing or may be empty, or a link is missing or
   doesn't cascade; the error carries the SQL to add.
+- **A record of two scopes may have a parent and children.** What a record
+  carries from its parent is a map, its column → the parent's (left out
+  when both have one scope):
+
+  ```clojure
+  ;; both scopes from the parent: a price sheet under an agreement between a shop and a partner
+  :price-sheet {:table :price_sheets :id :price-sheet/id
+                :in [[:shop :price-sheet/shop-id] [:partner :price-sheet/partner-id]]
+                :parent [:agreement :price-sheet/agreement-id
+                         {:price-sheet/shop-id    :agreement/shop-id
+                          :price-sheet/partner-id :agreement/partner-id}]}
+  ;; one from the parent, one of its own: a service on an order names the partner who does it
+  :order-service {:table :order_services :id :order-service/id
+                  :in [[:shop :order-service/shop-id] [:partner :order-service/partner-id]]
+                  :parent [:order :order-service/order-id {:order-service/shop-id :order/shop-id}]}
+  ```
+
+  Every carried column is filled from the parent at insert, tied to it by
+  a matching link and follows it; a carried scope column is NOT NULL on
+  both sides. A scope column that is the record's own may wait empty.
+  Either side sees the row and is rung for it, and nobody else; seeing it
+  gives nothing else (the partner who sees a service on an order doesn't
+  see the order). A foreign key holding several carried columns counts
+  while none of them can be empty.
 - A membership in a parent scope counts in its children; an owner holds
   everything; a link gives access while its condition holds; a person on
   the record, a condition on its own columns and session flags are part of

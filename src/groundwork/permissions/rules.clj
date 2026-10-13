@@ -15,6 +15,11 @@
                  :job     {:table :jobs :id :job/id
                            :in [:shop :job/shop-id]                      ; its own scope column
                            :parent [:order :job/order-id]}               ; and the record it hangs under
+                 :price-sheet {:table :price_sheets :id :price-sheet/id  ; under a record of two scopes
+                               :in [[:shop :price-sheet/shop-id] [:partner :price-sheet/partner-id]]
+                               :parent [:agreement :price-sheet/agreement-id
+                                        {:price-sheet/shop-id    :agreement/shop-id      ; what it carries:
+                                         :price-sheet/partner-id :agreement/partner-id}]} ; its column → the parent's
                  :agreement {:table :agreements :id :agreement/id
                              :in [[:shop :agreement/shop-id] [:partner :agreement/partner-id]]}}
       :links    [{:table :agreements
@@ -35,7 +40,11 @@
    Every record names its scope through its own column, however deep it
    sits: a job keeps its shop, not only its order. A record under another
    record names that parent too; the database must tie the two with a
-   matching link (see parent-links).
+   matching link (see parent-links). What it carries from its parent is a
+   map, its column → the parent's: scope columns, and person columns (a
+   message carries its conversation's customer). When both have one scope,
+   the map can be left out. A scope column it doesn't carry is its own (a
+   service on an order names the partner who does it), and may wait empty.
 
    Every action belongs to one kind of scope. A role may hold its kind's
    actions and those of the kinds below it, plus :groundwork/team (managing
@@ -152,6 +161,7 @@
                            [(table t) (set (map column (concat [id]
                                                                (map second (arrows record))
                                                                (when parent [(second parent)])
+                                                               (when parent (keys (nth parent 2 nil)))
                                                                (vals people)
                                                                (mapcat condition-columns (vals only-when)))))]))
                     records)
@@ -160,6 +170,15 @@
                            [(table t) (set (map column (concat [(second from) (second to)]
                                                                (condition-columns condition))))]))
                     links)))
+
+(defn carried-columns
+  "What a record kind carries from its parent, {its column → the parent's}:
+   as written, or its one scope column from its parent's one."
+  [{:keys [records]} kind]
+  (let [{[parent-kind _ carried] :parent :as record} (records kind)]
+    (when parent-kind
+      (or carried
+          {(second (first (arrows record))) (second (first (arrows (records parent-kind))))}))))
 
 (defn check
   "Throws on the first thing wrong in a description, apart from the
@@ -212,13 +231,31 @@
             (problem (str "Record kind " kind " has an unknown parent " parent-kind) {:kind kind}))
           (when-not (qualified-keyword? col)
             (problem (str "Record kind " kind ": :parent's column must be like :job/order-id") {:kind kind}))
-          (when (or (< 1 (count (arrows record))) (< 1 (count (arrows above))))
-            (problem (str "Record kind " kind " and its parent " parent-kind " must each belong to one scope")
+          (when (and (= 2 (count parent)) (or (< 1 (count (arrows record))) (< 1 (count (arrows above)))))
+            (problem (str "Record kind " kind " or its parent " parent-kind " belongs to more than one scope: say what "
+                          kind " carries, :parent [" parent-kind " " col " {<its column> <the parent's column> …}]")
                      {:kind kind}))
-          (when-not (= (ffirst (arrows record)) (ffirst (arrows above)))
-            (problem (str "Record kind " kind " is in " (ffirst (arrows record)) ", but its parent "
-                          parent-kind " is in " (ffirst (arrows above)))
-                     {:kind kind}))))
+          (let [carried   (carried-columns description kind)
+                own       (into {} (map (fn [[k c]] [c k])) (arrows record))
+                theirs    (into {} (map (fn [[k c]] [c k])) (arrows above))
+                my-people (set (vals people))
+                people-up (set (vals (:people above)))]
+            (when-not (some #(contains? own (key %)) carried)
+              (problem (str "Record kind " kind " must carry a scope from its parent " parent-kind) {:kind kind}))
+            (doseq [[mine parents] carried]
+              (cond
+                (and (own mine) (theirs parents))
+                (when-not (= (own mine) (theirs parents))
+                  (problem (str "Record kind " kind " carries " mine " (a " (own mine) ") from " parents
+                                " (a " (theirs parents) ")")
+                           {:kind kind}))
+
+                (and (my-people mine) (people-up parents)) nil
+
+                :else
+                (problem (str "Record kind " kind " carries " mine " from " parents
+                              ": both must be scope columns (in :in) or both person columns (in :people)")
+                         {:kind kind}))))))
       (doseq [action (concat (keys people) (keys only-when))]
         (when-not (kinds action)
           (problem (str "Record kind " kind " names an unknown action " action) {:kind kind :action action})))
@@ -501,37 +538,73 @@
 
 (defn parent-links
   "For every record kind under another record: the matching link the
-   database must have, as plain names. The child's (parent column, scope
-   column) must reference the parent's (id, scope column), ON UPDATE CASCADE,
-   so a child's scope can't differ from its parent's and follows it when the
-   parent moves."
-  [{:keys [records]}]
+   database must have, as plain names. For each column the child carries,
+   its (parent column, column) must reference the parent's (id, column), ON
+   UPDATE CASCADE, so it can't differ from its parent's and follows it when
+   the parent changes. :carried is [{:column :parent-column :person?}];
+   :scope-column and :parent-scope are the first carried scope's."
+  [{:keys [records] :as description}]
   (for [[kind {t :table [parent-kind parent-col] :parent :as record}] records
         :when parent-kind
-        :let  [{pt :table pid :id :as above} (records parent-kind)]]
+        :let  [{pt :table pid :id} (records parent-kind)
+               scope-cols          (set (map second (arrows record)))
+               carried             (vec (for [[mine parents] (sort-by (comp str key) (carried-columns description kind))]
+                                          {:column        (column mine)
+                                           :parent-column (column parents)
+                                           :person?       (not (contains? scope-cols mine))}))
+               first-scope         (first (remove :person? carried))]]
     {:kind          kind
      :table         (table t)
-     :scope-column  (column (second (first (arrows record))))
+     :scope-column  (:column first-scope)
      :parent-column (column parent-col)
      :parent-table  (table pt)
      :parent-id     (column pid)
-     :parent-scope  (column (second (first (arrows above))))}))
+     :parent-scope  (:parent-column first-scope)
+     :carried       carried}))
 
 (defn fill-sql
   "The statements that install a link's fill rule: a row inserted without
-   its scope takes its parent's. Safe to run again."
-  [{t :table :keys [scope-column parent-column parent-table parent-id parent-scope]}]
-  (let [function (str "groundwork." (quote-id (str "fill_scope__" t)))]
-    [(str "CREATE OR REPLACE FUNCTION " function "() RETURNS trigger LANGUAGE plpgsql AS $$\n"
-          "BEGIN\n"
-          "  IF NEW." (quote-id scope-column) " IS NULL THEN\n"
-          "    SELECT p." (quote-id parent-scope) " INTO NEW." (quote-id scope-column)
-          " FROM " (quote-id parent-table) " p WHERE p." (quote-id parent-id) " = NEW." (quote-id parent-column) ";\n"
-          "  END IF;\n"
-          "  RETURN NEW;\n"
-          "END $$")
-     (str "CREATE OR REPLACE TRIGGER groundwork_fill_scope BEFORE INSERT ON " (quote-id t)
-          " FOR EACH ROW EXECUTE FUNCTION " function "()")]))
+   what it carries takes its parent's. And for a person it carries, a rule
+   on the parent that hands a person named there later down to the rows
+   under it (the link itself only follows a change from one person to
+   another). Safe to run again."
+  [{t :table :keys [parent-column parent-table parent-id carried]}]
+  (let [function (str "groundwork." (quote-id (str "fill_scope__" t)))
+        people   (filter :person? carried)
+        carry    (str "groundwork." (quote-id (str "carry_person__" t)))]
+    (concat
+     [(str "CREATE OR REPLACE FUNCTION " function "() RETURNS trigger LANGUAGE plpgsql AS $$\n"
+           "BEGIN\n"
+           (apply str
+                  (for [{c :column p :parent-column} carried]
+                    (str "  IF NEW." (quote-id c) " IS NULL THEN\n"
+                         "    SELECT p." (quote-id p) " INTO NEW." (quote-id c)
+                         " FROM " (quote-id parent-table) " p WHERE p." (quote-id parent-id)
+                         " = NEW." (quote-id parent-column) ";\n"
+                         "  END IF;\n")))
+           "  RETURN NEW;\n"
+           "END $$")
+      (str "CREATE OR REPLACE TRIGGER groundwork_fill_scope BEFORE INSERT ON " (quote-id t)
+           " FOR EACH ROW EXECUTE FUNCTION " function "()")]
+     (when (seq people)
+       ;; the bypass is on only while the rows under the parent are written,
+       ;; then back to what it was
+       [(str "CREATE OR REPLACE FUNCTION " carry "() RETURNS trigger LANGUAGE plpgsql AS $$\n"
+             "DECLARE before text := coalesce(current_setting('groundwork.bypass', true), '');\n"
+             "BEGIN\n"
+             "  PERFORM set_config('groundwork.bypass', 'on', true);\n"
+             (apply str
+                    (for [{c :column p :parent-column} people]
+                      (str "  IF NEW." (quote-id p) " IS DISTINCT FROM OLD." (quote-id p) " THEN\n"
+                           "    UPDATE " (quote-id t) " c SET " (quote-id c) " = NEW." (quote-id p)
+                           " WHERE c." (quote-id parent-column) " = NEW." (quote-id parent-id)
+                           " AND c." (quote-id c) " IS DISTINCT FROM NEW." (quote-id p) ";\n"
+                           "  END IF;\n")))
+             "  PERFORM set_config('groundwork.bypass', before, true);\n"
+             "  RETURN NULL;\n"
+             "END $$")
+        (str "CREATE OR REPLACE TRIGGER " (quote-id (str "groundwork_carry__" t)) " AFTER UPDATE ON "
+             (quote-id parent-table) " FOR EACH ROW EXECUTE FUNCTION " carry "()")]))))
 
 (defn blocked?
   "Whether a session's flags block an action."

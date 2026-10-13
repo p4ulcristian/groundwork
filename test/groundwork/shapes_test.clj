@@ -34,6 +34,10 @@
 (def gloss (id)) (def acme-secret (id)) (def zinc-matte (id)) (def zinc-secret (id))
 (def acme-order (id)) (def zinc-order (id))
 (def shared (id)) (def shared-draft (id))   ; the platform's own packages
+(def pine (id))   ; a partner: a scope like a shop
+(def piet (id))   ; Pine's owner
+(def acme-pine (id)) (def zinc-pine (id))   ; agreements
+(def zinc-price (id)) (def zinc-service (id))
 
 (def ^:dynamic *app* nil)
 
@@ -57,7 +61,13 @@
   (system! perms "INSERT INTO sh_packages VALUES (?, ?, 'Shared Primer', true), (?, ?, 'Shared Draft', false)"
            shared shapes/platform shared-draft shapes/platform)
   (system! perms "INSERT INTO sh_orders VALUES (?, ?, ?, 'a'), (?, ?, NULL, 'z')"
-           acme-order acme vic zinc-order zinc))
+           acme-order acme vic zinc-order zinc)
+  (system! perms "INSERT INTO sh_agreements VALUES (?, ?, ?), (?, ?, ?)" acme-pine acme pine zinc-pine zinc pine)
+  (system! perms "INSERT INTO sh_price_sheets (price_sheet__id, price_sheet__agreement_id, price_sheet__cents) VALUES (?, ?, 900)"
+           zinc-price zinc-pine)
+  (system! perms (str "INSERT INTO sh_order_services (order_service__id, order_service__order_id, order_service__name)"
+                      " VALUES (?, ?, 'Zinc blasting')")
+           zinc-service zinc-order))
 
 (use-fixtures :once
   (fn [t]
@@ -70,6 +80,7 @@
           (perm/create-scope! perms {:kind :shop :id acme :parent nil :owner sam})
           (perm/create-scope! perms {:kind :shop :id zinc :parent nil :owner olga})
           (perm/create-scope! perms {:kind :shop :id shapes/platform :parent nil :owner pat})
+          (perm/create-scope! perms {:kind :shop :id pine :parent nil :owner piet})
           (join! perms sam acme stella "Staff")
           (seed! perms))
         (binding [*app* app] (t))
@@ -216,11 +227,14 @@
   (let [part   (gw/endpoints *app*)
         sealed #{acme-secret zinc-secret shared-draft acme-order zinc-order}
         report (leaks/check part {:person  stella
-                                  :foreign {:shop zinc :package zinc-secret :order zinc-order}
+                                  :foreign {:shop zinc :package zinc-secret :order zinc-order
+                                            :agreement zinc-pine :price-sheet zinc-price
+                                            :order-service zinc-service}
                                   :sealed  sealed})]
     (is (= [] (:leaked report)))
     (is (every? (set (:checked report)) [:catalogue/of-shop :catalogue/package :catalogue/busy? :shop/card
-                                         :catalogue/rename :orders/of-shop]))
+                                         :catalogue/rename :orders/of-shop :prices/of-agreement :prices/add
+                                         :services/mine :services/add :orders/note]))
     (testing "the wall, asked directly: a stranger sees nothing it shouldn't, of any kind"
       (is (= [] (leaks/open-wall (gw/permissions *app*) {:shop acme}))))
     (testing "a kind that forgot its condition shows its unpublished rows, and the test says so"
@@ -239,6 +253,81 @@
           (finally
             ;; the app's own wall back
             (perm/start {:settings shapes/description :db (gw/db *app*)})))))))
+
+;; =============================================================================
+;; A record of two scopes may have a parent and children
+;; =============================================================================
+
+(deftest a-record-under-two-scopes-carries-both
+  (testing "a price added under an agreement: the SQL names no scope, both are the agreement's"
+    (let [price (:data (call sam :prices/add {:agreement/id acme-pine :price-sheet/cents 1200}))]
+      (is (uuid? price))
+      (is (= [{:sh_price_sheets/price_sheet__shop_id acme :sh_price_sheets/price_sheet__partner_id pine}]
+             (as-system! "SELECT price_sheet__shop_id, price_sheet__partner_id FROM sh_price_sheets WHERE price_sheet__id = ?"
+                         price)))))
+  (testing "either side reads and writes it; nobody else sees it"
+    (is (= {:status :ok :data [1200]} (call piet :prices/of-agreement {:agreement/id acme-pine})) "the partner")
+    (is (uuid? (:data (call piet :prices/add {:agreement/id acme-pine :price-sheet/cents 1500}))))
+    (is (= {:status :ok :data [1200 1500]} (call stella :prices/of-agreement {:agreement/id acme-pine})) "the shop")
+    (is (= {:status :not-found} (call olga :prices/of-agreement {:agreement/id acme-pine})) "another shop")
+    (is (= {:status :ok :data [900]} (call piet :prices/of-agreement {:agreement/id zinc-pine}))
+        "the partner's other agreement, and only its own prices"))
+  (testing "the database refuses a row whose scopes aren't its parent's"
+    (is (thrown? org.postgresql.util.PSQLException
+                 (as-system! (str "INSERT INTO sh_price_sheets (price_sheet__agreement_id, price_sheet__shop_id,"
+                                  " price_sheet__partner_id, price_sheet__cents) VALUES (?, ?, ?, 1)")
+                             acme-pine zinc pine))))
+  (testing "the agreement moving to another partner takes its prices along"
+    (as-system! "UPDATE sh_agreements SET agreement__partner_id = ? WHERE agreement__id = ?" zinc acme-pine)
+    (is (= {:status :not-found} (call piet :prices/of-agreement {:agreement/id acme-pine})))
+    (is (= {:status :ok :data [1200 1500]} (call olga :prices/of-agreement {:agreement/id acme-pine})))
+    (as-system! "UPDATE sh_agreements SET agreement__partner_id = ? WHERE agreement__id = ?" pine acme-pine)
+    (is (= {:status :ok :data [1200 1500]} (call piet :prices/of-agreement {:agreement/id acme-pine})))))
+
+(deftest one-scope-from-the-parent-and-one-of-its-own
+  (testing "a service on Acme's order, for Pine to do: the shop comes from the order"
+    (is (uuid? (:data (call sam :services/add {:order/id acme-order :order-service/name "Blasting"
+                                               :order-service/partner-id pine}))))
+    (is (uuid? (:data (call sam :services/add {:order/id acme-order :order-service/name "Masking"
+                                               :order-service/partner-id nil})))
+        "a service nobody does yet: its own scope waits empty"))
+  (testing "the order's shop sees both, the partner the one that names it, another shop neither"
+    (is (= {:status :ok :data ["Blasting" "Masking"]} (call stella :services/mine {})))
+    (is (= {:status :ok :data ["Blasting"]} (call piet :services/mine {})))
+    (is (= {:status :ok :data ["Zinc blasting"]} (call olga :services/mine {}))))
+  (testing "seeing the service gives nothing else: the partner doesn't see the order"
+    (is (= {:status :not-found} (call piet :orders/note {:order/id acme-order})))
+    (is (= {:status :ok :data "a"} (call stella :orders/note {:order/id acme-order})))))
+
+(deftest the-start-checks-what-a-record-carries
+  (let [check (fn [f] (:type (error #(rules/check (f shapes/description)))))
+        start (fn [f] (error #(perm/start {:settings (f shapes/description) :db (gw/db *app*)})))]
+    (testing "more than one scope on either side: the description says what is carried"
+      (is (= ::rules/bad-description
+             (check #(assoc-in % [:records :price-sheet :parent] [:agreement :price-sheet/agreement-id])))))
+    (testing "a scope is carried from a scope of the same kind, a person from a person"
+      (is (= ::rules/bad-description
+             (check #(assoc-in % [:records :price-sheet :parent]
+                               [:agreement :price-sheet/agreement-id {:price-sheet/shop-id :agreement/id}])))))
+    (testing "a record under another carries at least one scope"
+      (is (= ::rules/bad-description
+             (check #(assoc-in % [:records :order-service :parent] [:order :order-service/order-id {}])))))
+    (testing "the database must hold the matching link, for every column carried; the error carries the SQL"
+      (sql! "DROP TABLE IF EXISTS sh_loose; CREATE TABLE sh_loose (loose__id uuid PRIMARY KEY, loose__agreement_id uuid NOT NULL,
+               loose__shop_id uuid NOT NULL, loose__partner_id uuid NOT NULL,
+               FOREIGN KEY (loose__agreement_id, loose__shop_id) REFERENCES sh_orders (order__id, order__shop_id))")
+      (try
+        (let [problem (start #(assoc-in % [:records :loose]
+                                        {:table :sh_loose :id :loose/id
+                                         :in [[:shop :loose/shop-id] [:shop :loose/partner-id]]
+                                         :parent [:agreement :loose/agreement-id
+                                                  {:loose/shop-id    :agreement/shop-id
+                                                   :loose/partner-id :agreement/partner-id}]}))]
+          (is (= ::perm/bad-description (:type problem)))
+          (is (str/includes? (:sql problem) "ADD FOREIGN KEY (loose__agreement_id, loose__")))
+        (finally
+          (sql! "DROP TABLE IF EXISTS sh_loose")
+          (perm/start {:settings shapes/description :db (gw/db *app*)}))))))
 
 ;; =============================================================================
 ;; Shared rows have an owner

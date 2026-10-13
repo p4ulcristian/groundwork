@@ -159,7 +159,16 @@
                      (and (vector? %) (seq %) (every? (fn [a] (and (vector? a) (= 2 (count a))
                                                                    (keyword? (first a)) (qualified-keyword? (second a))))
                                                       %)))))
-   (optional :parent "The record it hangs under: [record-kind its-column]" [:order :job/order-id] arrow)
+   (optional :parent "The record it hangs under: [record-kind its-column], and what it carries from it when either has more than one scope, or a person: [record-kind its-column {its column → the parent's}]"
+             [:order :job/order-id]
+             (pred "[kind column] or [kind column {column column}]"
+                   "must be [record-kind column], or [record-kind column {its column → the parent's column}]"
+                   #(and (vector? %) (<= 2 (count %) 3) (keyword? (first %)) (qualified-keyword? (second %))
+                         (or (= 2 (count %))
+                             (let [carried (nth % 2)]
+                               (and (map? carried) (seq carried)
+                                    (every? qualified-keyword? (keys carried))
+                                    (every? qualified-keyword? (vals carried))))))))
    (optional :people "An action a person on the record holds: action → their column"
              {:orders/see :order/customer-id}
              [:map-of {:error/message "must map actions to person columns" :doc/type "action → column"}
