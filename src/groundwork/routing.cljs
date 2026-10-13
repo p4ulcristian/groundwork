@@ -319,9 +319,10 @@
   (query! query {}))
 
 (defn replace-query!
-  "The address's query becomes this map, without a step for Back."
+  "The address's query becomes this map, without a step for Back. Unsaved
+   changes don't hold it: it is the same screen, noting where it is."
   [query]
-  (query! query {:replace? true}))
+  (query! query {:replace? true :force? true}))
 
 (defn start!
   "Start routing: {:routes :languages :on-move :unknown :placeholder}. The

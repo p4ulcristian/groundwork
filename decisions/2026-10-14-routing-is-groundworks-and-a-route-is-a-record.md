@@ -11,3 +11,5 @@ An app's public addresses keep their shape: they are a promise to people's bookm
 **The price:** an app with its own router moves onto Groundwork's. The unsaved-changes guard works on the browser's history and is the delicate part.
 
 **Instead of:** letting an app bring its own router (two routers live on, and it contradicts that apps don't replace parts); a thin router that leaves titles, scrolling, data and languages to each app.
+
+**Added 2026-10-14:** unsaved changes hold every move away from the screen, and a filter that adds a step for Back. They don't hold the screen swapping its own query in place (`replace-query!`): nothing is left, and a screen that notes the open tab or the picked item in the address must be able to do it while its form is half filled.

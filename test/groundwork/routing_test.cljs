@@ -225,6 +225,15 @@
                     (routing/navigate! :home))
                   (fn []
                     (is (= "/orders" (address)) "navigate! waits as well")
+                    (routing/stay!)
+                    (routing/replace-query! {:tab "history"}))
+                  (fn []
+                    (testing "the same screen noting where it is isn't a move away: nothing waits"
+                      (is (= "/orders?tab=history" (address)))
+                      (is (nil? @(rf/subscribe [::routing/held]))))
+                    (routing/push-query! {:tab "open"}))
+                  (fn []
+                    (is (= "/orders?tab=history" (address)) "a new step for Back waits")
                     (routing/unsaved! false))
                   (fn []
                     (is (nil? @(rf/subscribe [::routing/held])) "saved: nothing waits anymore")

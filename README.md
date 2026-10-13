@@ -947,7 +947,9 @@ pages once, in a `.cljc` file the server and the browser both read:
   by link, by `navigate!` or by Back and Forward waits under
   `@(rf/subscribe [::gb/held-move])` (the route someone tried to go to) for
   `(gb/continue-move!)` (discard and go) or `(gb/stay!)`, and closing the
-  tab asks the browser's own question. `(gb/unsaved! false)` once saved.
+  tab asks the browser's own question. `(gb/unsaved! false)` once saved. The screen
+  swapping its own query in place (`gb/replace-query!`) is not a move away
+  and is never held.
 - `web/page-routes` makes each record the page shell under its `:access`,
   with its `:page`; a `:title` that is text is the first load's title too.
   What only the browser reads (`:view`, `:reads`, `:load`, `:placeholder`, a
