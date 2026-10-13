@@ -14,7 +14,8 @@
   #uuid "00000000-0000-4000-8000-000000000001")
 
 (def tables
-  "DROP TABLE IF EXISTS sh_packages, sh_price_sheets, sh_agreements, sh_order_services, sh_orders;
+  "DROP TABLE IF EXISTS sh_packages, sh_price_sheets, sh_agreements, sh_order_services, sh_orders,
+                        sh_messages, sh_conversations;
    CREATE TABLE sh_packages (package__id uuid PRIMARY KEY, package__shop_id uuid NOT NULL,
                              package__name text NOT NULL, package__published boolean NOT NULL);
    CREATE TABLE sh_orders (order__id uuid PRIMARY KEY, order__shop_id uuid NOT NULL,
@@ -38,16 +39,37 @@
                                    order_service__shop_id uuid NOT NULL, order_service__partner_id uuid,
                                    order_service__name text NOT NULL,
                                    FOREIGN KEY (order_service__order_id, order_service__shop_id)
-                                     REFERENCES sh_orders (order__id, order__shop_id) ON UPDATE CASCADE);")
+                                     REFERENCES sh_orders (order__id, order__shop_id) ON UPDATE CASCADE);
+   -- between fixed sides, which all read and write: a shop, a partner, the platform's staff, a customer
+   CREATE TABLE sh_conversations (conversation__id uuid PRIMARY KEY, conversation__shop_id uuid NOT NULL,
+                                  conversation__partner_id uuid NOT NULL, conversation__staff_id uuid NOT NULL,
+                                  conversation__customer_id uuid,
+                                  UNIQUE (conversation__id, conversation__shop_id, conversation__partner_id,
+                                          conversation__staff_id),
+                                  UNIQUE (conversation__id, conversation__customer_id));
+   -- a message carries its conversation's sides: the scopes in one key, the person in a key of its own
+   CREATE TABLE sh_messages (message__id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                             message__conversation_id uuid NOT NULL,
+                             message__shop_id uuid NOT NULL, message__partner_id uuid NOT NULL,
+                             message__staff_id uuid NOT NULL, message__customer_id uuid,
+                             message__text text NOT NULL,
+                             FOREIGN KEY (message__conversation_id, message__shop_id, message__partner_id, message__staff_id)
+                               REFERENCES sh_conversations (conversation__id, conversation__shop_id,
+                                                            conversation__partner_id, conversation__staff_id)
+                               ON UPDATE CASCADE,
+                             FOREIGN KEY (message__conversation_id, message__customer_id)
+                               REFERENCES sh_conversations (conversation__id, conversation__customer_id)
+                               ON UPDATE CASCADE);")
 
 (def drop-tables
-  "DROP TABLE IF EXISTS sh_packages, sh_price_sheets, sh_agreements, sh_order_services, sh_orders")
+  "DROP TABLE IF EXISTS sh_packages, sh_price_sheets, sh_agreements, sh_order_services, sh_orders,
+                        sh_messages, sh_conversations")
 
 (def description
   {:scopes  {:shop {:actions #{:catalogue/see :catalogue/edit :shop/card :orders/see :orders/edit
-                               :prices/see :prices/edit :services/see}
+                               :prices/see :prices/edit :services/see :talk/read :talk/write}
                     :roles   {"Staff" #{:catalogue/edit :orders/see :orders/edit :prices/see :prices/edit
-                                        :services/see}}
+                                        :services/see :talk/read :talk/write}}
                     :parent  nil}}
    :records {:package {:table :sh_packages :id :package/id :in [:shop :package/shop-id]
                        ;; the public reads a shop's published packages, and nothing else of the shop
@@ -67,7 +89,21 @@
              ;; one scope from its parent, one of its own
              :order-service {:table :sh_order_services :id :order-service/id
                              :in [[:shop :order-service/shop-id] [:shop :order-service/partner-id]]
-                             :parent [:order :order-service/order-id {:order-service/shop-id :order/shop-id}]}}
+                             :parent [:order :order-service/order-id {:order-service/shop-id :order/shop-id}]}
+             ;; a record between fixed sides carries them: three scopes and a person,
+             ;; and so does what hangs under it
+             :conversation {:table :sh_conversations :id :conversation/id
+                            :in [[:shop :conversation/shop-id] [:shop :conversation/partner-id]
+                                 [:shop :conversation/staff-id]]
+                            :people {:talk/read :conversation/customer-id :talk/write :conversation/customer-id}}
+             :message      {:table :sh_messages :id :message/id
+                            :in [[:shop :message/shop-id] [:shop :message/partner-id] [:shop :message/staff-id]]
+                            :people {:talk/read :message/customer-id :talk/write :message/customer-id}
+                            :parent [:conversation :message/conversation-id
+                                     {:message/shop-id     :conversation/shop-id
+                                      :message/partner-id  :conversation/partner-id
+                                      :message/staff-id    :conversation/staff-id
+                                      :message/customer-id :conversation/customer-id}]}}
    :links   []
    :open    {:anyone #{:catalogue/see} :signed-in #{:shop/card}}
    :session-blocks {}})
@@ -83,6 +119,8 @@
 (pg/defsql services)
 (pg/defsql add-service)
 (pg/defsql order-note)
+(pg/defsql messages)
+(pg/defsql say)
 
 (def package-shape [:map [:package/id :uuid] [:package/name :string]])
 
@@ -148,6 +186,15 @@
                          :permission {:action :orders/see :record [:order :order/id]}
                          :input      [:map [:order/id :uuid]]
                          :answer     [:maybe :string]}
+   ;; every side of a conversation reads it and writes into it
+   :talk/messages       {:read       (fn [{:keys [db]} params] (mapv :message/text (pg/rows db messages params)))
+                         :permission {:action :talk/read :record [:conversation :conversation/id]}
+                         :input      [:map [:conversation/id :uuid]]
+                         :answer     [:vector :string]}
+   :talk/say            {:write      (fn [{:keys [db]} params] (:message/id (pg/row db say params)))
+                         :permission {:action :talk/write :record [:conversation :conversation/id]}
+                         :input      [:map [:conversation/id :uuid] [:message/text :string]]
+                         :answer     :uuid}
    :orders/of-shop    {:read       (fn [{:keys [db]} params] (mapv :order/id (pg/rows db orders-of-shop params)))
                        :permission {:action :orders/see :scope [:shop :shop/id]}
                        :input      [:map [:shop/id :uuid]]

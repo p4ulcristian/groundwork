@@ -706,6 +706,18 @@ The app describes its places, actions, roles and records once:
   gives nothing else (the partner who sees a service on an order doesn't
   see the order). A foreign key holding several carried columns counts
   while none of them can be empty.
+- **A record between fixed sides carries them.** A record shared by a
+  small, fixed set of sides that all read and write it (a conversation
+  between a customer, a shop, a partner and the platform's staff) has a
+  scope column per scope side and a person column for the person; a side
+  that is "the platform's staff" is the platform's own scope. It is an
+  ordinary record of several scopes. **A person column is carried down
+  like a scope column:** the records under it name the person in what they
+  carry (`{:message/customer-id :conversation/customer-id}`), and it is
+  filled, tied and follows the same way. A person column may be empty (the
+  row is then nobody's through it), in a foreign key of its own two
+  columns; a person named on the parent later reaches the rows already
+  under it.
 - A membership in a parent scope counts in its children; an owner holds
   everything; a link gives access while its condition holds; a person on
   the record, a condition on its own columns and session flags are part of

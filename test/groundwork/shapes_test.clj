@@ -38,6 +38,8 @@
 (def piet (id))   ; Pine's owner
 (def acme-pine (id)) (def zinc-pine (id))   ; agreements
 (def zinc-price (id)) (def zinc-service (id))
+(def uma (id))    ; signed in, a member nowhere, like Vic
+(def talk (id)) (def later-talk (id)) (def zinc-talk (id)) (def zinc-message (id))
 
 (def ^:dynamic *app* nil)
 
@@ -67,7 +69,13 @@
            zinc-price zinc-pine)
   (system! perms (str "INSERT INTO sh_order_services (order_service__id, order_service__order_id, order_service__name)"
                       " VALUES (?, ?, 'Zinc blasting')")
-           zinc-service zinc-order))
+           zinc-service zinc-order)
+  (system! perms "INSERT INTO sh_conversations VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, NULL), (?, ?, ?, ?, NULL)"
+           talk acme pine shapes/platform vic
+           later-talk acme pine shapes/platform
+           zinc-talk zinc pine shapes/platform)
+  (system! perms "INSERT INTO sh_messages (message__id, message__conversation_id, message__text) VALUES (?, ?, 'zinc says')"
+           zinc-message zinc-talk))
 
 (use-fixtures :once
   (fn [t]
@@ -229,12 +237,14 @@
         report (leaks/check part {:person  stella
                                   :foreign {:shop zinc :package zinc-secret :order zinc-order
                                             :agreement zinc-pine :price-sheet zinc-price
-                                            :order-service zinc-service}
+                                            :order-service zinc-service
+                                            :conversation zinc-talk :message zinc-message}
                                   :sealed  sealed})]
     (is (= [] (:leaked report)))
     (is (every? (set (:checked report)) [:catalogue/of-shop :catalogue/package :catalogue/busy? :shop/card
                                          :catalogue/rename :orders/of-shop :prices/of-agreement :prices/add
-                                         :services/mine :services/add :orders/note]))
+                                         :services/mine :services/add :orders/note
+                                         :talk/messages :talk/say]))
     (testing "the wall, asked directly: a stranger sees nothing it shouldn't, of any kind"
       (is (= [] (leaks/open-wall (gw/permissions *app*) {:shop acme}))))
     (testing "a kind that forgot its condition shows its unpublished rows, and the test says so"
@@ -328,6 +338,56 @@
         (finally
           (sql! "DROP TABLE IF EXISTS sh_loose")
           (perm/start {:settings shapes/description :db (gw/db *app*)}))))))
+
+;; =============================================================================
+;; A record between fixed sides carries them
+;; =============================================================================
+
+(deftest every-side-reads-and-writes
+  (testing "the shop, the partner, the platform's staff and the customer each say something"
+    (doseq [[person text] [[stella "1 shop"] [piet "2 partner"] [pat "3 staff"] [vic "4 customer"]]]
+      (is (uuid? (:data (call person :talk/say {:conversation/id talk :message/text text}))) text)))
+  (testing "each of them reads all of it"
+    (doseq [person [stella piet pat vic]]
+      (is (= {:status :ok :data ["1 shop" "2 partner" "3 staff" "4 customer"]}
+             (call person :talk/messages {:conversation/id talk})))))
+  (testing "nobody else: another shop's owner, a signed-in stranger, nobody"
+    (is (= {:status :not-found} (call olga :talk/messages {:conversation/id talk})))
+    (is (= {:status :not-found} (call uma :talk/messages {:conversation/id talk})))
+    (is (= {:status :signed-out} (call nil :talk/messages {:conversation/id talk})))
+    (is (= {:status :not-found} (call uma :talk/say {:conversation/id talk :message/text "let me in"}))))
+  (testing "a message carries its conversation's sides, the person too: the SQL named none"
+    (is (= #{{:sh_messages/message__shop_id acme :sh_messages/message__partner_id pine
+              :sh_messages/message__staff_id shapes/platform :sh_messages/message__customer_id vic}}
+           (set (as-system! (str "SELECT message__shop_id, message__partner_id, message__staff_id, message__customer_id"
+                                 " FROM sh_messages WHERE message__conversation_id = ?")
+                            talk))))))
+
+(deftest a-person-is-carried-down-like-a-scope
+  (is (uuid? (:data (call stella :talk/say {:conversation/id later-talk :message/text "anyone there?"}))))
+  (testing "no customer on the conversation yet: Vic isn't in it"
+    (is (= {:status :not-found} (call vic :talk/messages {:conversation/id later-talk}))))
+  (testing "a customer named on the conversation later reaches the messages already under it"
+    (as-system! "UPDATE sh_conversations SET conversation__customer_id = ? WHERE conversation__id = ?" vic later-talk)
+    (is (= {:status :ok :data ["anyone there?"]} (call vic :talk/messages {:conversation/id later-talk}))))
+  (testing "the conversation going to another person takes its messages along"
+    (as-system! "UPDATE sh_conversations SET conversation__customer_id = ? WHERE conversation__id = ?" uma later-talk)
+    (is (= {:status :not-found} (call vic :talk/messages {:conversation/id later-talk})))
+    (is (= {:status :ok :data ["anyone there?"]} (call uma :talk/messages {:conversation/id later-talk}))))
+  (testing "and nobody's again"
+    (as-system! "UPDATE sh_conversations SET conversation__customer_id = NULL WHERE conversation__id = ?" later-talk)
+    (is (= {:status :not-found} (call uma :talk/messages {:conversation/id later-talk})))
+    (is (= [{:sh_messages/message__customer_id nil}]
+           (as-system! "SELECT message__customer_id FROM sh_messages WHERE message__conversation_id = ?" later-talk))))
+  (testing "the database refuses a message whose person isn't its conversation's"
+    (is (thrown? org.postgresql.util.PSQLException
+                 (as-system! (str "INSERT INTO sh_messages (message__conversation_id, message__customer_id, message__text)"
+                                  " VALUES (?, ?, 'sneaky')")
+                             later-talk uma))))
+  (testing "a person is carried from a person, never from a scope"
+    (is (= ::rules/bad-description
+           (:type (error #(rules/check (assoc-in shapes/description [:records :message :parent 2 :message/customer-id]
+                                                 :conversation/shop-id))))))))
 
 ;; =============================================================================
 ;; Shared rows have an owner
