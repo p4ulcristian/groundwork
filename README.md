@@ -23,6 +23,7 @@ keywords → postgres → parquery → re-frame → reagent
 | sessions          | `groundwork.sessions` | built  |
 | permissions       | `groundwork.permissions` | built  |
 | page shell        | `groundwork.page`     | built  |
+| styles            | `groundwork.styles`, `groundwork.css` (cljs) | built: the check, the bundles |
 | REPL              | `groundwork.repl` (clj and cljs) | built |
 | background jobs   | `groundwork.jobs`     | built ([#1](https://github.com/p4ulcristian/groundwork/issues/1)) |
 
@@ -43,6 +44,7 @@ the JVM tests against Postgres 18, clj-kondo, the browser half's tests on node.
                     :browser     {:build :app :entry 'app.browser/start      ; see In the browser
                                   :output-dir "resources/public/js" :asset-path "/js"
                                   :watch? true}
+                    :styles      {…}                          ; see Styles; nil or left out: the app brings its own CSS
                     :web         {:routes                  [["/orders" {:get web/page :access :signed-in}]]
                                   :max-body-bytes          1048576
                                   :content-security-policy {}
@@ -71,7 +73,8 @@ the JVM tests against Postgres 18, clj-kondo, the browser half's tests on node.
 (gw/stop app)
 ```
 
-- One key per part, every key required; an unknown key throws.
+- One key per part, every key required (but `:styles`, which an app
+  without Groundwork's styles leaves out); an unknown key throws.
 - Every problem is reported at once, each with its place and a plain
   message: `:sessions :visitor-hours must be a positive whole number, got "24"`.
 - [`docs/example-settings.edn`](docs/example-settings.edn) holds every key with
@@ -144,6 +147,20 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:browser :modules … :web-worker` (optional) | true or false |  |  |
 | `:browser :loader?` (optional) | true or false | Whether modules no page names load on demand (shadow-cljs's module loader) | `true` |
 | `:browser :options` (optional) | map | Extra shadow-cljs build options, merged over Groundwork's: JS resolution, build hooks, compiler options | `{:js-options {:js-provider :shadow}}` |
+
+#### `:styles`: The app's stylesheets, checked against its code and bundled; nil or left out when the app brings its own through :page :stylesheets
+
+| Key | Type | What it is | Example |
+|-----|------|------------|---------|
+| `:styles :dir` | text | The styles tree: base/, vendor/, looks/ and areas/ under it | `"styles"` |
+| `:styles :sources` | list of text | Where the browser code is: the class keywords in it are read from here | `["src"]` |
+| `:styles :base` | list of text | The base files (tokens, fonts, resets, themes), in loading order | `["base/tokens.css" "base/reset.css"]` |
+| `:styles :vendor` | list of libraries | Outside libraries' stylesheets: the file, how its classes start, and the one namespace that wraps it | `[{:file "vendor/calendar.vendor.css", :prefixes ["vc-"], …` |
+| `:styles :vendor … :file` | text | The library's own stylesheet, under vendor/; it is never checked | `"vendor/calendar.vendor.css"` |
+| `:styles :vendor … :prefixes` | list of text | How the library's class names start | `["vc-"]` |
+| `:styles :vendor … :wrapper` | name | The one namespace that may style the library's classes, inside its own element | `"calendar"` |
+| `:styles :output-dir` | text | Where the bundles go, a folder whose public/ is served | `"resources/public/css"` |
+| `:styles :asset-path` | path | Where the browser fetches them | `"/css"` |
 
 #### `:web`: Requests: the app's routes, limits, hooks, languages
 
@@ -528,6 +545,8 @@ resources/migrations/
   `<div id="app">`, and is never cached. An app whose pages are all routes
   says what an unknown address gets instead, `:web :unknown-page`, a
   handler: its own 404, `(assoc (web/page request {:title "Not found"}) :status 404)`.
+  With `:styles`, the page loads the stylesheets its code uses (see Styles),
+  before the app's own `:stylesheets`.
 - **A page per route:** a route's `:page`, a map or a function of the
   request, is merged over the app's: its own `:lang :title :description`,
   `:canonical`, `:alternates` (hreflang links), extra `:stylesheets
@@ -974,8 +993,11 @@ pages once, in a `.cljc` file the server and the browser both read:
   the one it starts: `["/admin" {:get web/page :page {:module :admin}}]`.
   The page shell loads that module after the ones it depends on; a page
   that names none loads the module(s) that depend on no other. With
-  `:loader? true`, modules no page names load on demand. `:options` are
-  extra shadow-cljs build options, merged over Groundwork's.
+  `:loader? true`, modules no page names load on demand: as `<script>`
+  tags from the app's own address, which the page's strict policy allows
+  (after a release the page shell tells the loader the fingerprinted
+  names). `:options` are extra shadow-cljs build options, merged over
+  Groundwork's.
 - Groundwork's own npm packages are in its `src/deps.cljs`; the app's
   `package.json` holds only its own. The build needs `thheller/shadow-cljs`
   on the classpath (an app's `:dev` and `:build` aliases).
@@ -1043,7 +1065,130 @@ Then the store, under the screens:
 
 ---
 
-## 9. The REPL
+## 9. Styles
+
+How an app looks is checked like its data: a class has one name from the
+component to the stylesheet, a stylesheet styles only its own elements, and
+a page loads exactly the stylesheets its code uses. The stylesheets are
+plain CSS. The decisions:
+[a class is a namespaced keyword](decisions/2026-10-15-a-class-is-a-namespaced-keyword.md),
+[a stylesheet paints only its own room](decisions/2026-10-15-a-stylesheet-paints-only-its-own-room.md),
+[the styles tree](decisions/2026-10-15-the-styles-tree.md),
+[a page loads the stylesheets its code uses](decisions/2026-10-15-a-page-loads-the-stylesheets-its-code-uses.md).
+
+```clojure
+:styles {:dir        "styles"                 ; the styles tree
+         :sources    ["src"]                  ; where the browser code is
+         :base       ["base/tokens.css" "base/reset.css"]   ; in loading order
+         :vendor     [{:file "vendor/calendar.vendor.css"   ; a library's own file, never checked
+                       :prefixes ["vc-"]                    ; how its classes start
+                       :wrapper "calendar"}]                ; the one namespace that may style them
+         :output-dir "resources/public/css"   ; where the bundles go
+         :asset-path "/css"}                  ; where the browser fetches them
+```
+
+`:styles` is the one part an app may leave out (or set to nil): then it
+brings its stylesheets through `:page :stylesheets` as before and nothing
+below runs. An app that sets it gets all of it, strictly.
+
+```
+styles/
+  base/     tokens, fonts, resets, plain element styles, themes; listed in :base, no classes
+  vendor/   libraries' own files, and the namespaces that wrap them
+  looks/    shared looks:        looks/card.css, looks/badge.css
+  areas/    one area's own:      areas/flex/job-card.css
+```
+
+```clojure
+[:div {:class :css.job-card/card}]                         ; class="job-card__card"
+[:div {:class [:css.card/frame :css.job-card/card          ; a look, made special: both classes
+               (when selected? :css.job-card/selected)]}]  ; nil and false are left out
+[button {:class :css.invoice-toolbar/save} "Save"]         ; one extra class for a component's outer element
+
+(def stage-class {:coating :css.job-card/coating           ; a state that comes from data: a table
+                  :curing  :css.job-card/curing})          ; written out, so the check sees every class
+[:div {:class [:css.job-card/card (css/lookup stage-class (:job/stage job))]}]   ; no entry: throws in development
+```
+
+```css
+/* areas/flex/job-card.css: the job-card namespace */
+.job-card__card { border-color: var(--job-card__group-color, var(--line)); --card__padding: 6px; }
+.job-card__card:has(.badge__warning) { border-color: var(--danger); }   /* looking at others is fine */
+.card__frame .job-card__title { font-weight: 700; }                     /* so is where it sits */
+@container board (min-width: 600px) { .job-card__card { display: grid; } }
+```
+
+- **A class is a keyword** with the marker `css.`: `:css.job-card/title` is
+  the class `job-card__title` (`names/key->class`, `names/class->key`).
+  The marker keeps classes apart from data, endpoints and events. Every
+  element's `:class` takes a class keyword, a collection of them, or a
+  library's own class as text; `groundwork.browser/start!` installs it.
+- **A namespace is one stylesheet,** named after it (`job-card.css`),
+  anywhere under `looks/`, `areas/` or `vendor/`. A large one is several
+  files named `job-card.<part>.css`. Two files of one name are refused.
+- **A stylesheet paints only its own:** the element a rule styles carries
+  one of its namespace's classes. Around that element the selector may look
+  at anything: where it sits, what it holds (`:has()`), its states. Another
+  look is changed through what it offers: a state class of its own, or a
+  variable.
+- **Variables:** a token (`--line`) is defined in base. A namespace's own
+  variable carries its name (`--job-card__group-color`): anyone may set it
+  (a stylesheet, or a component's `:style`), only its own stylesheet reads
+  it, and a read needs a value from somewhere: a fallback, or being set.
+- **Base** is the only place that styles globally (`body`, `a`, `:root`),
+  and has no classes. Its files are listed in `:base`, which is their order.
+- **A library** keeps its own file under `vendor/`, untouched and
+  unchecked. One namespace wraps it (`:wrapper`): only that stylesheet
+  names the library's classes (`:prefixes`), and only inside its own
+  element (`.calendar__root .vc-day`). In the code a library's class is the
+  one kind typed as text.
+- **`data-testid` is for tests:** no selector may use it. `@import` is
+  refused too: what loads is worked out from the code.
+
+**The check** (`styles/problems`, `styles/check!`) reads the code and the
+tree, and reports every problem at once, each with its file and line:
+
+```
+The styles have 3 problems:
+  src/app/board.cljs:14  :css.job-card/titel: job-card's stylesheet has no .job-card__titel
+  styles/areas/flex/job-card.css:22  ".job-card__card .badge__badge" styles an element that carries no .job-card__… class: …
+  styles/looks/card.css:9  .card__ribbon is named by no code (:css.card/ribbon)
+```
+
+- A class keyword no stylesheet defines; a class no code names; a class
+  typed as text (`{:class "card"}`, `[:div.card …]`); a rule that styles
+  another namespace's element; a class or a global rule in the wrong
+  place; a variable defined nowhere, read outside its stylesheet, or set
+  but never read; a library's class outside its wrapper; a selector on
+  `data-testid`; a file outside the tree or a second file for a namespace.
+- It runs when the app starts in development and in tests (the app doesn't
+  start with a problem), on every save while the development start runs
+  (the report is printed), and before a release, which it stops.
+- CSS is read by a small reader of Groundwork's own: rules with their
+  nesting, `@media`, `@container`, `@supports`, `@layer`, `@scope`, and
+  selectors down to `:is()`, `:where()`, `:has()` and `:not()`. Keywords are
+  read from the code as text, so a class keyword is written out, never
+  built from parts.
+
+**What a page loads** is worked out from the code:
+
+- Each browser module (`:browser :modules`; one, `:main`, without them)
+  gets one bundle: the stylesheets its code uses, whole and as written, in
+  the tree's order. A namespace several modules use goes to the module they
+  share.
+- The base files and the libraries' files are one bundle, before the rest.
+- The page shell links the base bundle and the bundles of the page's
+  modules. A module loaded on demand brings its bundle before its screen
+  shows.
+- A release (`groundwork.build/release`) checks, then writes the bundles
+  with fingerprinted names (`main.3F2A91C0.css`) and a manifest the page
+  shell reads; production starts from the manifest and reads no code.
+- In development a saved stylesheet is in the open page without a reload
+  (the bundles are rewritten, and the build's watcher swaps them in).
+
+---
+
+## 10. The REPL
 
 Where a REPL into a running app may exist: development always; previews
 through the eval bridge; stage only over SSH; production off (see
@@ -1062,6 +1207,9 @@ and not saved to a file is gone on the next start.
 (repl/recent-bells (:app dev))   ; the last 50 bells this server heard
 (repl/sessions (:app dev) peter) (repl/sign-out-everywhere! (:app dev) peter)
 (repl/migrations (:app dev))     ; ran, waiting, changed, missing
+(repl/explain-class (:app dev) :css.job-card/title)   ; where it's defined, used (file:line), bundled, looked at
+(repl/page-styles (:app dev) :admin)   ; what a page of that module loads, and which code asks for each stylesheet
+(repl/styles-report (:app dev))  ; every styles problem now, or "No problems."
 (repl/restart! dev)  (repl/stop! dev)
 ```
 

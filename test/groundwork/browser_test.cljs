@@ -10,12 +10,15 @@
   (is (= {:person    "6f1c2c40-0000-4000-8000-000000000001"
           :flags     #{:impersonated}
           :language  "de"
-          :languages {:supported ["en" "de"] :default "en"}}
+          :languages {:supported ["en" "de"] :default "en"}
+          :styles    {"main" "/css/main.css"}
+          :classes   ["card__frame"]}
          (gb/read-initial (str "{\"person\":\"6f1c2c40-0000-4000-8000-000000000001\",\"flags\":[\"impersonated\"],"
-                               "\"language\":\"de\",\"languages\":{\"supported\":[\"en\",\"de\"],\"default\":\"en\"}}"))))
-  (is (= {:person nil :flags #{} :language "en" :languages nil}
+                               "\"language\":\"de\",\"languages\":{\"supported\":[\"en\",\"de\"],\"default\":\"en\"},"
+                               "\"styles\":{\"main\":\"/css/main.css\"},\"classes\":[\"card__frame\"]}"))))
+  (is (= {:person nil :flags #{} :language "en" :languages nil :styles nil :classes nil}
          (gb/read-initial "{\"person\":null,\"flags\":[],\"language\":\"en\"}")))
-  (is (= {:person nil :flags #{} :language nil :languages nil} (gb/read-initial nil))))
+  (is (= {:person nil :flags #{} :language nil :languages nil :styles nil :classes nil} (gb/read-initial nil))))
 
 (deftest the-session-and-the-route-are-subscriptions
   (reset! rf-db/app-db {})

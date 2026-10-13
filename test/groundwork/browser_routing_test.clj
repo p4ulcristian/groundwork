@@ -11,6 +11,7 @@
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
    [example.hello.routes :as routes]
+   [example.hello.settings :as example]
    [groundwork.build :as build]
    [groundwork.core :as gw]
    [groundwork.styles :as styles]
@@ -32,17 +33,10 @@
    :asset-path "/example-routing"
    :watch?     false
    ;; the reports screen in a module of its own, loaded on arrival
-   :modules    {:main    {:init-fn 'example.hello.browser/start}
-                :reports {:entries ['example.hello.reports] :depends-on #{:main}}}
+   :modules    example/modules
    :loader?    true})
 
-(def ^:private styles
-  {:dir        "test/example/styles"
-   :sources    ["test/example"]
-   :base       ["base/base.css"]
-   :vendor     []
-   :output-dir "test/public/example-routing-css"
-   :asset-path "/example-routing-css"})
+(def ^:private styles (example/styles "example-routing-css"))
 
 (defn- chrome
   "The Chrome to drive, or nil."

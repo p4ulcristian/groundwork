@@ -7,6 +7,7 @@
    [clojure.java.io :as io]
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
+   [example.hello.settings :as example]
    [groundwork.build :as build]
    [groundwork.core :as gw]
    [groundwork.test-support :refer [app-settings]]
@@ -21,6 +22,10 @@
    :output-dir "test/public/example-hello"
    :asset-path "/example-hello"
    :watch?     false})
+
+(def ^:private example
+  "The example app as it is built: its reports screen in a module of its own."
+  (assoc browser :modules example/modules :loader? true))
 
 (defn- clean! []
   (doseq [f (reverse (file-seq (io/file (:output-dir browser))))]
@@ -107,11 +112,11 @@
       (finally (gw/stop app)))))
 
 (deftest a-build-once-without-watching
-  (build/compile! browser)
+  (build/compile! example)
   (testing "the development build's file, under its plain name"
     (is (.exists (io/file (:output-dir browser) "main.js"))))
   (let [app (gw/start (-> app-settings
-                          (assoc :browser browser)
+                          (assoc :browser example)
                           (assoc-in [:web :routes] [["/" {:get web/page :access :public}]])))]
     (try
       (testing "the page loads it"
@@ -120,14 +125,14 @@
   (clean!))
 
 (deftest a-release-is-what-the-page-loads
-  (build/release! browser)
+  (build/release! example)
   (let [manifest (edn/read-string (slurp (io/file (:output-dir browser) "manifest.edn")))
         name     (:output-name (first (filter #(= :main (:module-id %)) manifest)))]
     (testing "the release made a fingerprinted file and its manifest"
       (is (re-matches #"main\.[0-9A-F]+\.js" name))
       (is (.exists (io/file (:output-dir browser) name))))
     (let [app (gw/start (-> app-settings
-                            (assoc :browser browser)
+                            (assoc :browser example)
                             ;; shadow-cljs writes the fingerprint in capitals
                             (assoc-in [:web :hashed-files] "(?i)\\.[0-9a-f]{8,}\\.")
                             (assoc-in [:web :routes] [["/" {:get web/page :access :public}]])))]

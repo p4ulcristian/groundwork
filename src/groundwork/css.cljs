@@ -25,6 +25,7 @@
    reported in the console, once, by name."
   (:require
    [clojure.string :as str]
+   [groundwork.loader :as loader]
    [groundwork.names :as names]
    [reagent.impl.protocols :as p]
    [reagent.impl.template :as tmpl]))
@@ -80,7 +81,7 @@
   (if (vector? x)
     (let [tag (nth x 0 nil)]
       (if (keyword? tag)
-        (let [i     (if (or (identical? tag :>) (identical? tag :r>)) 2 1)
+        (let [i     (if (or (keyword-identical? tag :>) (keyword-identical? tag :r>)) 2 1)
               props (nth x i nil)]
           (if (and (map? props) (some? (:class props)) (not (string? (:class props))))
             (assoc x i (assoc props :class (class-names (:class props))))
@@ -117,3 +118,11 @@
            ;; a screen without its styles beats no screen
            (set! (.-onerror link) #(resolve nil))
            (.appendChild js/document.head link)))))))
+
+(defn ensure-loaded!
+  "The stylesheets of every module that is in the page by now, however its
+   code got there: a promise. Code loaded on demand calls this before its
+   screen shows, so no route has to say which module its screen lives in."
+  []
+  (js/Promise.all (to-array (for [module (keys @module-styles) :when (loader/loaded? module)]
+                              (ensure-module! module)))))

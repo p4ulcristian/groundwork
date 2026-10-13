@@ -465,6 +465,7 @@
   (let [wraps  (first (filter #(= file-ns (:wrapper %)) vendor))
         own?   #(= file-ns (names/class-namespace %))
         theirs #(and wraps (some (fn [prefix] (str/starts-with? % prefix)) (:prefixes wraps)))
+        foreign #(some-> (library-of vendor %) :wrapper (not= file-ns))
         said   (fn [rule message] {:file path :line (:line rule) :message message})]
     (concat
      (for [rule rules, class-name (distinct (mapcat :classes (everything (:complexes rule))))
@@ -490,10 +491,11 @@
      (for [rule rules
            :when (contains? styled (:id rule))
            :let  [subjects (map peek (:complexes rule))
-                  classes  (mapcat :classes subjects)]
-           :when (not (rule-owned? rules rule #(or (own? %) (theirs %))))]
+                  bare?    #(and (empty? (:classes %)) (not (:amp? %)) (empty? (:fns %)))]
+           :when (not (rule-owned? rules rule #(or (own? %) (theirs %))))
+           :when (not-any? foreign (mapcat :classes subjects))]
        (cond
-         (and (empty? classes) (not-any? :amp? subjects) (not-any? #(seq (:fns %)) subjects))
+         (some bare? subjects)
          (said rule (str "\"" (:selector rule) "\" styles globally; only base may, a namespace's stylesheet styles its own classes"))
          :else
          (said rule (str "\"" (:selector rule) "\" styles an element that carries no ." file-ns "__… class: a stylesheet "
@@ -529,9 +531,11 @@
         set-names   (into (set (mapcat :variables sources))
                           (for [file checked, v (set-in file)] (:name v)))
         home        (fn [var-name] (some-> (names/class-namespace (subs var-name 2))))
-        own-reads   (into {} (for [file checked :when (:namespace file)]
-                               [(:namespace file) (group-by :name (filter #(= (:namespace file) (home (:name %))) (reads-in file)))]))
-        read-at-home (reduce (fn [m [ns-name by-name]] (merge-with merge m {ns-name by-name})) {} own-reads)]
+        read-at-home (reduce (fn [m [owner read]] (update-in m [owner (:name read)] (fnil conj []) read))
+                             {}
+                             (for [file checked :when (:namespace file)
+                                   read (reads-in file) :when (= (:namespace file) (home (:name read)))]
+                               [(:namespace file) read]))]
     (concat
      (for [file checked, {:keys [name line fallback?]} (reads-in file)
            :let [owner (home name)]]
@@ -602,6 +606,16 @@
      {:file (:path file) :line 0
       :message (str "is a second " (last (str/split (:path file) #"/")) " (the other is " (:path (first (sort-by :path files)))
                     "): one namespace is one stylesheet; name a part " (:namespace file) ".<part>.css")})
+   (for [[space files] (group-by :namespace (filter :namespace (vals tree)))
+         :let [folder #(str/replace (:path %) #"[^/]+$" "")
+               files  (sort-by :path files)
+               named  (fn [file] (last (str/split (:path file) #"/")))]
+         file (rest files)
+         :when (and (not= (folder file) (folder (first files)))
+                    (not-any? #(and (not= file %) (= (named file) (named %))) files))]
+     {:file (:path file) :line 0
+      :message (str "is a part of " space ", whose other files are in " (folder (first files))
+                    ": one namespace's files sit together")})
    (for [file (vals tree) :when (:namespace file)
          :when (not (re-matches #"[a-z][a-z0-9]*(?:-[a-z0-9]+)*" (:namespace file)))]
      {:file (:path file) :line 0 :message "isn't named like a namespace: lowercase words joined by single hyphens"})))

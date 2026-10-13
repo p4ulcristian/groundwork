@@ -88,6 +88,28 @@
   :options
   {}}
 
+ ;; The app's stylesheets, checked against its code and bundled; nil or left out when the app brings its own through :page :stylesheets
+ :styles
+ {;; The styles tree: base/, vendor/, looks/ and areas/ under it
+  :dir "styles"
+
+  ;; Where the browser code is: the class keywords in it are read from here
+  :sources ["src"]
+
+  ;; The base files (tokens, fonts, resets, themes), in loading order
+  :base ["base/tokens.css" "base/reset.css"]
+
+  ;; Outside libraries' stylesheets: the file, how its classes start, and the one namespace that wraps it
+  :vendor [{:file "vendor/calendar.vendor.css",
+            :prefixes ["vc-"],
+            :wrapper "calendar"}]
+
+  ;; Where the bundles go, a folder whose public/ is served
+  :output-dir "resources/public/css"
+
+  ;; Where the browser fetches them
+  :asset-path "/css"}
+
  ;; Requests: the app's routes, limits, hooks, languages
  :web
  {;; The app's routes, reitit data; each route's data is checked like below

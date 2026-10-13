@@ -369,9 +369,11 @@
             [{:file "vendor/calendar.vendor.css" :prefixes ["vc-"] :wrapper "calendar"}]
             [:vector {:error/message "must be a list of {:file :prefixes :wrapper}" :doc/type "list of libraries"}
              [:map {:closed true}
-              [:file text]
-              [:prefixes [:vector {:min 1} text]]
-              [:wrapper name-text]]])
+              (entry :file "The library's own stylesheet, under vendor/; it is never checked" "vendor/calendar.vendor.css" text)
+              (entry :prefixes "How the library's class names start" ["vc-"]
+                     [:vector {:min 1 :error/message "must be a list of at least one prefix" :doc/type "list of text"} text])
+              (entry :wrapper "The one namespace that may style the library's classes, inside its own element" "calendar"
+                     name-text)]])
      (entry :output-dir "Where the bundles go, a folder whose public/ is served" "resources/public/css" text)
      (entry :asset-path "Where the browser fetches them" "/css"
             [:re {:error/message "must be a path like \"/css\"" :doc/type "path"} #"^/.*"])]]

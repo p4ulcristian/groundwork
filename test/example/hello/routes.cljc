@@ -14,5 +14,5 @@
              #?@(:cljs [:view views/form])}]
    ;; its screen is in the build's :reports module when there is one: its code
    ;; and its stylesheets load on arrival
-   ["/reports" {:name :reports :access :public :title "Reports" :page {:module :reports}
+   ["/reports" {:name :reports :access :public :title "Reports"
                 #?@(:cljs [:load views/load-reports :placeholder views/loading])}]])

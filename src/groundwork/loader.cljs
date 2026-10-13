@@ -7,3 +7,10 @@
    [shadow.loader :as loader]))
 
 (.setUseScriptTags ^js (loader/getModuleLoader) true)
+
+(defn loaded?
+  "Whether a module of the build is in the page already."
+  [module]
+  (try
+    (boolean (loader/loaded? (name module)))
+    (catch :default _ false)))

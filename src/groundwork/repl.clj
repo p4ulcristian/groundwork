@@ -10,6 +10,8 @@
      (repl/lines (:app dev))  (repl/recent-bells (:app dev))
      (repl/sessions (:app dev) peter)  (repl/sign-out-everywhere! (:app dev) peter)
      (repl/migrations (:app dev))
+     (repl/explain-class (:app dev) :css.job-card/title)  (repl/page-styles (:app dev) :admin)
+     (repl/styles-report (:app dev))
      (repl/queued-jobs (:app dev))  (repl/dead-jobs (:app dev))  (repl/retry-job! (:app dev) id)
      (repl/explain-setting [:sessions :visitor-hours])  (repl/settings)
      (repl/stop! dev)
@@ -34,6 +36,7 @@
    [groundwork.sessions :as sessions]
    [groundwork.settings :as settings]
    [groundwork.styles :as styles]
+   [groundwork.web :as web]
    [jsonista.core :as json]
    [next.jdbc :as jdbc]
    [next.jdbc.result-set :as rs])
@@ -444,12 +447,23 @@
 
 (defn page-styles
   "What a page loads and why: the base files in order, then each module's
-   stylesheets with the code that uses them. A page is named by its build
-   module, or nil for one that names none. (page-styles app :main)"
+   stylesheets with the code that uses them. A page is named by its address
+   (the route's :page says its module) or by a build module; without either
+   it is a page that names no module.
+   (page-styles app \"/admin/roles\")  (page-styles app :admin)"
   ([app] (page-styles app nil))
-  ([app module]
-   (let [read (styles-now app)]
-     (styles/page-loads read (:browser read) module))))
+  ([app page]
+   (let [read   (styles-now app)
+         route  (when (string? page)
+                  (or (web/route-at (gw/part app :groundwork/router) page)
+                      (throw (ex-info (str "No route of the app serves " page) {:type ::no-route :address page}))))
+         shell  (get-in route [:data :page])
+         shell  (if (or (fn? shell) (var? shell))
+                  (shell {:uri page :request-method :get :path-params (:path-params route)})
+                  shell)
+         module (if route (:module shell) page)]
+     (cond-> (styles/page-loads read (:browser read) module)
+       route (assoc :route (:template route))))))
 
 (defn styles-report
   "Every problem with the app's styles now, each a line with its file and
