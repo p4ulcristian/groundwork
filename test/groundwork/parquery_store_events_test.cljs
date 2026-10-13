@@ -256,3 +256,23 @@
                                    (later 30 (fn []
                                                (is (= 2 (count @requests)) "past its time: asked")
                                                (done))))))))))
+
+(deftest hearing-the-bell-for-a-list-something-else-keeps
+  (async done
+         (fresh!)
+         (let [told (atom 0)]
+           (rf/reg-event-db ::reload (fn [db _] (swap! told inc) db))
+           (rf/dispatch-sync [::store/hear :jobs-table [jobs] [::reload]])
+           (is (= [jobs-form] (watched)) "its read is watched, with no entry kept")
+           (is (nil? (entry jobs-key)))
+           (rf/dispatch-sync [::store/-changed [machines-form] nil])
+           (rf/dispatch-sync [::store/-changed [jobs-form] nil])
+           (rf/dispatch-sync [::store/-reconnected])
+           (later 10 (fn []
+                       (is (= 2 @told) "told when its read changed, and when the line came back")
+                       (rf/dispatch-sync [::store/release :jobs-table])
+                       (rf/dispatch-sync [::store/-changed [jobs-form] nil])
+                       (later 10 (fn []
+                                   (is (= 2 @told) "released: it hears nothing")
+                                   (is (= [] (watched)))
+                                   (done))))))))

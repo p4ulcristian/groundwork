@@ -13,6 +13,7 @@
      (rf/dispatch [::store/own :jobs-page [asks…]])   ; exactly these now: shared ones kept, the rest let go
      (rf/dispatch [::store/ask-again {:endpoint :jobs/list :params {:shop/id id}}])
      (rf/dispatch [::store/once-answered {:endpoint :jobs/list :params {:shop/id id}} [:jobs/loaded]])
+     (rf/dispatch [::store/hear :jobs-table [{:endpoint :jobs/list :params {:shop/id id}}] [:jobs-table/reload]])
      (rf/dispatch [::store/write {:endpoint :jobs/move :params {…}} [:jobs/moved]])
      @(rf/subscribe [::store/can? :jobs/move shop-id])
 
@@ -39,6 +40,9 @@
    - The app can hear of every read that failed (::start's :on-read-failed,
      an event that gets the ask and the answer), to say so its own way.
    - An entry nothing needs is kept 5 minutes, then dropped.
+   - An owner can hear the bell for asks whose answers something else keeps
+     (hear): a list with its own loader. Its event is dispatched when one of
+     them changed, and when the line came back; release stops it.
    - Writes are sent once, with a one-time key, and never kept. A write
      that brings its own :key keeps it: a form holds one until it is saved,
      so saving again after a lost answer can't save twice. A write
@@ -72,7 +76,9 @@
   [params]
   (walk/postwalk #(if (uuid? %) (str %) %) params))
 
-(defn- key-of [{:keys [endpoint params]}]
+(defn key-of
+  "The key an ask's entry is kept under: [endpoint params], ids as text."
+  [{:keys [endpoint params]}]
   [endpoint (ids-as-text (or params {}))])
 
 ;; =============================================================================
@@ -287,6 +293,19 @@
     [(reduce #(assoc-in %1 [:entries %2 :again?] true) store (filter out? hit))
      (vec (remove out? hit))]))
 
+(defn hearing
+  "An owner hears the bell for these asks, whose answers the store doesn't
+   keep; its event is dispatched when one of them changed."
+  [store owner asks event]
+  (assoc-in store [:hearing owner] {:forms (into #{} (map http/form) asks) :event event}))
+
+(defn hearers
+  "The events of whoever hears one of these forms."
+  [store forms]
+  (let [forms (set forms)]
+    (into [] (keep (fn [[_ {hears :forms :keys [event]}]] (when (some forms hears) event)))
+          (:hearing store))))
+
 (defn mark-all-stale
   "Everything on screen may have changed (the line was down)."
   [store]
@@ -299,9 +318,12 @@
         (:entries store)))
 
 (defn watched
-  "What is on screen, for the bells."
+  "What is on screen, for the bells: the entries something needs, and what
+   an owner hears."
   [store]
-  (into [] (keep (fn [[_ {:keys [owners form]}]] (when (seq owners) form))) (:entries store)))
+  (into (into [] (keep (fn [[_ {:keys [owners form]}]] (when (seq owners) form))) (:entries store))
+        (mapcat (comp :forms val))
+        (:hearing store)))
 
 (defn can?
   "Whether the person holds an action in a scope, from their grants."
@@ -374,7 +396,13 @@
 (rf/reg-event-fx ::release
                  [(rf/inject-cofx ::now)]
                  (fn [{:keys [db now]} [_ owner]]
-                   (let [store (collect (release-owner (store-of db) owner now) now)]
+                   (let [store (-> (collect (release-owner (store-of db) owner now) now)
+                                   (update :hearing dissoc owner))]
+                     {:db (assoc db :groundwork/parquery-store store) ::watch (watched store)})))
+
+(rf/reg-event-fx ::hear
+                 (fn [{:keys [db]} [_ owner asks event]]
+                   (let [store (hearing (store-of db) owner asks event)]
                      {:db (assoc db :groundwork/parquery-store store) ::watch (watched store)})))
 
 (rf/reg-event-fx ::-answered
@@ -414,16 +442,24 @@
 
 (rf/reg-event-fx ::-changed
                  (fn [{:keys [db]} [_ forms tag]]
-                   (let [store (rang (store-of db) forms tag)]
+                   (let [before  (store-of db)
+                         ;; what the write's own answer told already isn't told again
+                         news    (remove (get-in before [:tags tag :covered] #{}) forms)
+                         store   (rang before forms tag)
+                         tell    (mapv (fn [event] [:dispatch event]) (hearers store news))]
                      (if (:refresh-pending? store)
-                       {:db (assoc db :groundwork/parquery-store store)}
+                       {:db (assoc db :groundwork/parquery-store store) :fx tell}
                        {:db             (assoc db :groundwork/parquery-store (assoc store :refresh-pending? true))
+                        :fx             tell
                         :dispatch-later [{:ms gather-ms :dispatch [::-refresh]}]}))))
 
 (rf/reg-event-fx ::-reconnected
                  (fn [{:keys [db]} _]
-                   {:db       (assoc db :groundwork/parquery-store (mark-all-stale (store-of db)))
-                    :dispatch [::-refresh]}))
+                   (let [store (store-of db)]
+                     {:db (assoc db :groundwork/parquery-store (mark-all-stale store))
+                      :fx (into [[:dispatch [::-refresh]]]
+                                (map (fn [[_ {:keys [event]}]] [:dispatch event]))
+                                (:hearing store))})))
 
 (rf/reg-event-fx ::-refresh
                  (fn [{:keys [db]} _]
@@ -439,12 +475,17 @@
                  ;; The answer says which reads on screen the write changed: they
                  ;; are asked at once, without waiting for the websocket.
                  (fn [{:keys [db]} [_ watching on-answer answer]]
-                   (let [[store ks]      (if (contains? answer :changed)
-                                           (rang-in-answer (store-of db) (:tag answer) watching (:changed answer))
-                                           [(store-of db) []])
+                   (let [before          (store-of db)
+                         ;; what the websocket's bell for this write told already
+                         news            (remove (get-in before [:tags (:tag answer) :heard] #{}) (:changed answer))
+                         [store ks]      (if (contains? answer :changed)
+                                           (rang-in-answer before (:tag answer) watching (:changed answer))
+                                           [before []])
                          [store fetches] (fetching store ks)]
-                     (cond-> {:db (assoc db :groundwork/parquery-store store) ::fetch fetches}
-                       on-answer (assoc :dispatch (conj on-answer (dissoc answer :changed :tag)))))))
+                     {:db     (assoc db :groundwork/parquery-store store)
+                      ::fetch fetches
+                      :fx     (cond-> (mapv (fn [event] [:dispatch event]) (hearers store news))
+                                on-answer (conj [:dispatch (conj on-answer (dissoc answer :changed :tag))]))})))
 
 (rf/reg-sub ::store (fn [db _] (store-of db)))
 

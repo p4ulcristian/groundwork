@@ -20,4 +20,4 @@
 - Asking again after a failed first load reads as loading, not as the old error.
 - A write that brings its own key keeps it: a form holds one until it is saved.
 - The browser start can mount into another element than `<div id="app">` (`:mount`), for a page that keeps a splash there.
-
+- An owner can hear the bell for asks whose answers something else keeps (`hear`): a table with its own loader for paging and search. The better form is the table's page as a question of its own; this is for an app on its way there.
