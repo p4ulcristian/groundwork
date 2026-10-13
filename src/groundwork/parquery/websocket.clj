@@ -6,7 +6,9 @@
    Each watch is checked like an ask; one the person may not ask is
    dropped. When something they show changes, the server says which,
    {\"changed\": [[endpoint params] …]}, and the browser asks again through
-   HTTP. A bell carries no data.
+   HTTP. A bell carries no data. A bell rung by an endpoint's write carries
+   that write's tag, {\"changed\": […], \"tag\": \"…\"}: the browser that wrote
+   got the same news with its answer (changed-for) and doesn't ask twice.
 
    Postgres rings: at start, every table in the permission description, and
    the :global and :personal tables of the :bells setting, gets a trigger
@@ -111,14 +113,16 @@
     (str/replace sql #"\?\?|\?" (fn [m] (if (= "??" m) "?" (str "$" (swap! n inc)))))))
 
 (defn- relations
-  "Every table a plan reads."
+  "Every table a plan reads, named as its bell names it: a table outside the
+   app's own schema with its schema, \"groundwork.memberships\"."
   [plan]
   (let [found (atom #{})]
     (walk/postwalk (fn [x]
-                             (when (and (map? x) (get x "Relation Name"))
-                               (swap! found conj (get x "Relation Name")))
-                             x)
-                           plan)
+                     (when-let [table (and (map? x) (get x "Relation Name"))]
+                       (let [schema (get x "Schema")]
+                         (swap! found conj (if (or (nil? schema) (= "public" schema)) table (str schema "." table)))))
+                     x)
+                   plan)
     @found))
 
 (defn- tables-of-file
@@ -134,7 +138,7 @@
                      (with-open [conn (connect db-settings {"preferQueryMode" "simple"})
                                  st   (.createStatement conn)]
                        (.execute st "SET search_path = public")
-                       (with-open [rs (.executeQuery st (str "EXPLAIN (GENERIC_PLAN, FORMAT JSON) " (numbered sql)))]
+                       (with-open [rs (.executeQuery st (str "EXPLAIN (GENERIC_PLAN, VERBOSE, FORMAT JSON) " (numbered sql)))]
                          (.next rs)
                          (relations (json/read-value (.getString rs 1)))))
                      (catch Exception e
@@ -149,8 +153,11 @@
   (let [files  (endpoints/files-of endpoints endpoint)
         labels (map name (:reads (endpoints/endpoint endpoints endpoint)))
         each   (map #(tables-of-file part %) files)]
-    (when (and (seq files) (every? some? each))
-      (into (set labels) cat each))))
+    (cond
+      (and (seq files) (every? some? each)) (into (set labels) cat each)
+      ;; an endpoint with its own transactions runs no file Groundwork sees:
+      ;; its :reads say it all
+      (and (empty? files) (seq labels))     (set labels))))
 
 ;; =============================================================================
 ;; Lines and their watches
@@ -241,9 +248,31 @@
             :let [changed (into [] (comp (filter #(rings? part person % bell)) (map :ask) (distinct)) watches)]
             :when (seq changed)]
       (swap! rang inc)
-      (send! ch {:changed changed}))
+      ;; a write's bells carry its tag: the browser that wrote has them already
+      (send! ch (cond-> {:changed changed} (:g bell) (assoc :tag (:g bell)))))
     (when recent
       (swap! recent #(vec (take-last recent-kept (conj % {:at (java.time.Instant/now) :bell bell :lines @rang})))))))
+
+(defn changed-for
+  "Of the reads a browser shows (`watching`, [endpoint params] as they
+   travel), the ones a write's own bells concern, each checked like an ask
+   first. `rang` is the write's bells (see groundwork.endpoints/bell), or
+   :any: everything it shows that it may ask."
+  [part {:keys [person flags]} watching rang]
+  (let [asks    (vec (keep read-watch watching))
+        rung    (when-not (= :any rang) (set (map :t rang)))
+        maybe   (if rung
+                  (filterv (fn [[endpoint _]]
+                             (let [tables (tables-of-endpoint part endpoint)]
+                               (or (nil? tables) (seq (set/intersection tables rung)))))
+                           asks)
+                  asks)
+        watches (checked-watches part {:person person :flags (or flags #{})} maybe)]
+    (into []
+          (comp (filter (fn [watch] (or (nil? rung) (some #(rings? part person watch %) rang))))
+                (map :ask)
+                (distinct))
+          watches)))
 
 (defn lines-of
   "The open lines, for the REPL: who opened each, its session (the first

@@ -17,10 +17,15 @@
                {\"status\": \"error\", \"message\": \"…\", \"request-id\": \"…\"}
    A request carries a list of asks and gets the answers in the same order.
 
+   A write may say what its browser shows, \"watching\": [[endpoint, params], …];
+   its answer then says which of those it changed, with the tag its bells
+   carry on the websocket, so the same change isn't asked for twice:
+               {\"status\": \"ok\", \"data\": …, \"changed\": [[…], …], \"tag\": \"…\"}
+
    Over the websocket, the browser says what it shows and the server says
    what changed, both as asks [endpoint params]:
                {\"watch\": [[\"jobs/list\", {…}], …]}
-               {\"changed\": [[\"jobs/list\", {…}], …]}"
+               {\"changed\": [[\"jobs/list\", {…}], …], \"tag\": \"…\"}   (tag: a write's)"
   (:require
    [malli.core :as m]
    [malli.error :as me]
@@ -164,14 +169,17 @@
 
 (defn ask
   "One ask as it travels."
-  [{:keys [endpoint params key]}]
+  [{:keys [endpoint params key watching]}]
   (cond-> {:endpoint (endpoint-name endpoint) :params params}
-    key (assoc :key key)))
+    key      (assoc :key key)
+    watching (assoc :watching watching)))
 
 (defn read-ask
   "One ask as it arrived: the endpoint a keyword, params still as JSON gave
    them (the endpoint's input shape decodes them)."
-  [{:keys [endpoint params key]}]
-  (when (and (string? endpoint) (or (nil? params) (map? params)) (or (nil? key) (string? key)))
+  [{:keys [endpoint params key watching]}]
+  (when (and (string? endpoint) (or (nil? params) (map? params)) (or (nil? key) (string? key))
+             (or (nil? watching) (sequential? watching)))
     (cond-> {:endpoint (keyword endpoint) :params (or params {})}
-      key (assoc :key key))))
+      key      (assoc :key key)
+      watching (assoc :watching (vec watching)))))

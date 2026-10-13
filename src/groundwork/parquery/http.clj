@@ -7,9 +7,15 @@
    failing doesn't touch the others. A request carries at most :max-asks
    asks, and across the server at most :max-running run at once; the rest
    wait their turn. The :on-answer hook hears every ask's endpoint, answer
-   status and time, for counters and alerts."
+   status and time, for counters and alerts.
+
+   A write that names the reads its browser shows (\"watching\") gets back,
+   with its answer, the ones its own transaction changed (\"changed\") and the
+   tag its bells carry on the websocket: the writer's screen asks again at
+   once, without waiting for the websocket, and doesn't ask twice."
   (:require
    [groundwork.endpoints :as endpoints]
+   [groundwork.parquery.websocket :as websocket]
    [groundwork.parquery.wire :as wire]
    [groundwork.sessions :as sessions]
    [groundwork.web :as web])
@@ -18,6 +24,11 @@
    (java.util.concurrent Callable ExecutionException ExecutorService Future Semaphore)))
 
 (def ^:private ^System$Logger logger (System/getLogger "groundwork.parquery.http"))
+
+(def ^:private max-watching
+  "The most reads a write may name as on screen; with more, its answer says
+   nothing of what changed and the websocket's bells carry it."
+  300)
 
 (defn- json [status body]
   {:status  status
@@ -38,13 +49,18 @@
 
 (defn- run-one
   "One ask, waiting its turn among every ask running on the server."
-  [{:keys [endpoints ^Semaphore running settings]} ask about]
+  [{:keys [endpoints bells ^Semaphore running settings]} ask about]
   (.acquire running)
   (try
     (let [started (System/nanoTime)
-          answer  (endpoints/call endpoints (merge about ask))]
+          answer  (endpoints/call endpoints (merge about ask))
+          bell    (endpoints/bell answer)]
       (answered! (:on-answer settings) ask about answer started)
-      (endpoints/encode-answer endpoints (:endpoint ask) answer))
+      (cond-> (endpoints/encode-answer endpoints (:endpoint ask) answer)
+        ;; a write whose browser said what it shows hears which of it changed
+        (and bell (:watching ask) (<= (count (:watching ask)) max-watching))
+        (assoc :changed (websocket/changed-for bells about (:watching ask) (:rang bell))
+               :tag     (:tag bell))))
     (finally (.release running))))
 
 (defn- run-all

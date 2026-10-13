@@ -96,3 +96,28 @@
         (is (= [jobs-key] (second (store/ask-again s jobs))))))
     (testing "a question nothing has ensured isn't asked"
       (is (= [] (second (store/ask-again s machines)))))))
+
+(deftest a-writes-answer-carries-its-bell
+  (let [jobs-form     ["jobs/list" {:shop/id "acme"}]
+        machines-form ["machines/list" {:shop/id "acme"}]
+        [s _]  (ensured store/empty-store :board jobs machines)
+        [s n1] (store/start-fetch s jobs-key)
+        s      (store/answered s jobs-key n1 {:status :ok :data [:jobs]})
+        [s _]  (store/start-fetch s [:machines/list {:shop/id "acme"}])]
+    (testing "what the answer says changed is asked at once; a question that is out, once more after"
+      (let [[s fetch] (store/rang-in-answer s "t1" [jobs-form machines-form] [jobs-form machines-form])]
+        (is (= [jobs-key] fetch))
+        (is (:again? (get-in s [:entries [:machines/list {:shop/id "acme"}]])))
+        (testing "the websocket's bell for the same write adds nothing for what the answer covered"
+          (is (= [] (store/stale-on-screen (store/rang s [jobs-form] "t1"))))
+          (is (= [jobs-key] (store/stale-on-screen (store/rang s [jobs-form] "another-write")))))))
+    (testing "the bell first, then the answer: what the bell rang isn't asked again"
+      (let [s         (store/rang s [jobs-form] "t2")
+            [_ fetch] (store/rang-in-answer s "t2" [jobs-form machines-form] [jobs-form])]
+        (is (= [] fetch))))
+    (testing "a read that came on screen after the write was sent still hears the websocket"
+      (let [[s _] (store/rang-in-answer s "t3" [machines-form] [])]
+        (is (= [jobs-key] (store/stale-on-screen (store/rang s [jobs-form] "t3"))))))
+    (testing "only the newest tags are remembered"
+      (let [s (reduce #(store/rang %1 [jobs-form] (str "tag-" %2)) s (range (+ 5 store/tags-kept)))]
+        (is (= store/tags-kept (count (:tags s)) (count (:tag-order s))))))))

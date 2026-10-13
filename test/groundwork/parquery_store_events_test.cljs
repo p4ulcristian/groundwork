@@ -29,6 +29,7 @@
     "jobs/list"     {:status "ok" :data [{:job/id "j1"}]}
     "machines/list" {:status "ok" :data [{:machine/id "m1"}]}
     "jobs/move"     (if key {:status "ok" :data {:job/id "j1"}} {:status "invalid"})
+    "jobs/rename"   {:status "ok" :data {:job/id "j1"} :changed [["jobs/list" {:shop/id "acme"}]] :tag "w1"}
     {:status "not-found"}))
 
 (defn- fake-transport [body on-text _]
@@ -191,3 +192,25 @@
                                              (is (= 3 (count @requests)))
                                              (is (= :ready (:status (answer jobs))))
                                              (done)))))))))
+
+(deftest a-write-says-what-is-on-screen-and-its-answer-what-changed
+  (async done
+         (fresh!)
+         (rf/dispatch-sync [::store/ensure :board [jobs machines]])
+         (later 30 (fn []
+                     (let [answers (atom [])]
+                       (rf/reg-event-db ::renamed (fn [db [_ a]] (swap! answers conj a) db))
+                       (rf/dispatch-sync [::store/write {:endpoint :jobs/rename :params {:job/id "j1"}} [::renamed]])
+                       (later 30 (fn []
+                                   (testing "the write named the reads on screen"
+                                     (is (= #{jobs-form machines-form}
+                                            (set (:watching (first (filter #(= "jobs/rename" (:endpoint %)) (apply concat @requests))))))))
+                                   (testing "what it changed was asked again at once, and nothing else"
+                                     (is (= [["jobs/list" "machines/list"] ["jobs/rename"] ["jobs/list"]] (asked))))
+                                   (is (= [{:status :ok :data {:job/id "j1"}}] @answers) "the event got the plain answer")
+                                   ;; the websocket's bell for the same write
+                                   (let [^js s (first @sockets)]
+                                     ((.-onmessage s) #js {:data (wire/write-json {:changed [jobs-form] :tag "w1"})}))
+                                   (later 300 (fn []
+                                                (is (= 3 (count @requests)) "not asked twice for one change")
+                                                (done))))))))))

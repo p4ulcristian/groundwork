@@ -3,7 +3,7 @@
    /parquery for the whole visit. It tells the server which reads are on
    screen and hears which of them changed.
 
-     (websocket/start! {:on-changed (fn [forms] …) :on-reconnected (fn [] …)
+     (websocket/start! {:on-changed (fn [forms tag] …) :on-reconnected (fn [] …)
                         :on-status  (fn [status] …)})          ; :open or :closed
      (websocket/watch! [[\"jobs/list\" {:shop/id \"…\"}] …])   ; the whole list, each time
 
@@ -51,8 +51,9 @@
               (when (and again? on-reconnected) (on-reconnected)))))
     (set! (.-onmessage socket)
           (fn [event]
-            (when-let [changed (:changed (try (wire/read-json (.-data event)) (catch :default _ nil)))]
-              (when on-changed (on-changed changed)))))
+            (let [message (try (wire/read-json (.-data event)) (catch :default _ nil))]
+              (when-let [changed (:changed message)]
+                (when on-changed (on-changed changed (:tag message)))))))
     (set! (.-onclose socket)
           (fn [_]
             (swap! state assoc :socket nil)
@@ -61,7 +62,7 @@
 
 (defn start!
   "Open the line. on-changed gets the changed reads as [endpoint params]
-   forms; on-reconnected is called when a dropped line is back; on-status,
+   forms and, for a write's bell, its tag (else nil); on-reconnected is called when a dropped line is back; on-status,
    when given, hears :open and :closed as the line comes and goes."
   [options]
   (swap! state assoc :options options :stopped? false :wait 0 :reconnecting? false)

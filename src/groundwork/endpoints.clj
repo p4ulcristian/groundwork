@@ -50,7 +50,12 @@
 
    A read runs in a read-only transaction; a write in one transaction that
    commits only when everything succeeded, its answer fitting its shape
-   included. Both see only the verified scopes (the database wall). A write
+   included. A write's answer knows what it changed: the bells rung in its
+   transaction (tables, scopes, ids) and the tag they carry, as the answer's
+   metadata (bell); parquery's HTTP part turns them into the reads the asking
+   browser shows that changed. Work an endpoint commits outside its own
+   transaction (after-commit work, a job, an endpoint with its own
+   transactions) isn't in it; that reaches screens through the websocket. Both see only the verified scopes (the database wall). A write
    carrying a one-time key runs once: a repeat with the same key gets the
    first answer back.
 
@@ -96,6 +101,8 @@
 (pg/defsql grants-sql "groundwork/endpoints/grants.sql")
 (pg/defsql remember-file "groundwork/endpoints/remember_file.sql")
 (pg/defsql files-of-sql "groundwork/endpoints/files_of.sql")
+(pg/defsql set-tag "groundwork/endpoints/set_tag.sql")
+(pg/defsql rang-sql "groundwork/endpoints/rang.sql")
 
 (def ^:private ^System$Logger logger (System/getLogger "groundwork.endpoints"))
 
@@ -325,6 +332,21 @@
           (throw (refuse "This key was used for something else")))
         (:value (wire/decode answer (wire/read-json stored)))))))
 
+(defn- rang
+  "The bells rung in this transaction: :any, or the bells as maps, or nil."
+  [tx]
+  (let [text (:bell/rang (pg/row tx rang-sql))]
+    (cond
+      (str/blank? text) nil
+      (= "any" text)    :any
+      :else             (mapv wire/read-json (str/split-lines text)))))
+
+(defn bell
+  "What a write's answer knows of what it changed, or nil:
+   {:tag … :rang [{:t table :s scopes :p people :i ids} …] or :any}."
+  [answer]
+  (::bell (meta answer)))
+
 (defn- collecting
   "An on-query hook that notes each SQL file a read runs, and calls the
    app's own hook too."
@@ -409,24 +431,31 @@
                     (run-after-commit! part @after about)
                     (answer :ok :data data))
                 (let [files (atom #{})
-                      data  (permissions/in-wall
-                            perms (let [{:keys [action record list]} (when (map? (:permission entry)) (:permission entry))]
-                                    {:person person :scopes scopes :read-only? (:read? entry)
-                                     :action action :kind (or (first record) list)})
-                            (fn [tx]
-                              (let [tx  (cond-> tx (:read? entry) (assoc ::pg/on-query (collecting files (::pg/on-query tx))))
-                                    ctx (assoc ask :db tx :scopes scopes :flags flags :params decoded :jobs (:jobs part))
-                                    run (fn []
-                                          (let [data ((:handler entry) ctx decoded)]
-                                            (when-not (wire/fits? (:answer entry) data)
-                                              (throw (ex-info (str "Endpoint " endpoint "'s answer doesn't fit its shape")
-                                                              {:type ::bad-answer :endpoint endpoint
-                                                               :errors (wire/explain (:answer entry) data)})))
-                                            data))]
-                                (if (:read? entry) (run) (run-write-once entry tx ask run)))))]
+                      tag   (when-not (:read? entry) (str (random-uuid)))
+                      [data rang]
+                      (permissions/in-wall
+                       perms (let [{:keys [action record list]} (when (map? (:permission entry)) (:permission entry))]
+                               {:person person :scopes scopes :read-only? (:read? entry)
+                                :action action :kind (or (first record) list)})
+                       (fn [tx]
+                         (let [tx  (cond-> tx (:read? entry) (assoc ::pg/on-query (collecting files (::pg/on-query tx))))
+                               ctx (assoc ask :db tx :scopes scopes :flags flags :params decoded :jobs (:jobs part))
+                               run (fn []
+                                     (let [data ((:handler entry) ctx decoded)]
+                                       (when-not (wire/fits? (:answer entry) data)
+                                         (throw (ex-info (str "Endpoint " endpoint "'s answer doesn't fit its shape")
+                                                         {:type ::bad-answer :endpoint endpoint
+                                                          :errors (wire/explain (:answer entry) data)})))
+                                       data))]
+                           (if (:read? entry)
+                             [(run) nil]
+                             (do (pg/execute! tx set-tag {:tag tag})
+                                 (let [data (run-write-once entry tx ask run)]
+                                   [data (rang tx)]))))))]
                   (when (:read? entry) (remember-files! part endpoint @files))
                   (run-after-commit! part @after about)
-                  (answer :ok :data data)))))
+                  (cond-> (answer :ok :data data)
+                    rang (with-meta {::bell {:tag tag :rang rang}}))))))
             (catch clojure.lang.ExceptionInfo e
               (case (:type (ex-data e))
                 ::permissions/not-found (answer :not-found)

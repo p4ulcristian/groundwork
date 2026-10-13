@@ -916,7 +916,14 @@ Then the store, under the screens:
   answer counts; bells are gathered for 200 ms and only what's on screen is
   asked again (once more after the answer when the bell rang while the
   question was out); an entry nothing needs goes after five minutes. Writes are
-  sent once, with a one-time key. `ask-again` asks a question again now, for
+  sent once, with a one-time key. **A write's answer carries its own bell:**
+  the write says which reads are on screen, the server answers which of them
+  its transaction changed (from the same triggers that ring the websocket),
+  and those are asked again at once, with no wait and no websocket needed.
+  The websocket's bell for that write carries the same tag, so nothing is
+  asked twice. Work committed outside the endpoint's own transaction
+  (after-commit work, jobs, the team endpoints) isn't in the answer; it
+  reaches screens through the websocket. `ask-again` asks a question again now, for
   what no change in the database announces (a "try again" button, a refresh,
   a timer); out already, it's asked once more when its answer lands.
 - "Can I?" reads `:groundwork/grants`.

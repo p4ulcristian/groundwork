@@ -30,8 +30,11 @@
      question is out, it's asked once more when its answer lands. Asking
      again a question nothing has ensured does nothing.
    - An entry nothing needs is kept 5 minutes, then dropped.
-   - Writes are sent once, with a one-time key, and never kept; their
-     effect reaches screens through the bells.
+   - Writes are sent once, with a one-time key, and never kept. A write
+     says what is on screen, and its answer says which of that it changed:
+     those are asked again at once, without waiting for the websocket. The
+     websocket's bell for the same write carries the same tag, so nothing
+     is asked twice; everyone else's screens hear it there.
    - A caller over a rate limit gets its answer as the entry's :error:
      {:status :too-many :limit :per-minute|:per-day :retry-after-seconds n};
      the store doesn't ask again by itself, and a write is never repeated.
@@ -45,7 +48,9 @@
 (def gc-ms (* 5 60 1000))
 (def gather-ms 200)
 
-(def empty-store {:entries {} :seq 0 :refresh-pending? false})
+(def tags-kept 50)
+
+(def empty-store {:entries {} :seq 0 :refresh-pending? false :tags {} :tag-order []})
 
 (defn- key-of [{:keys [endpoint params]}]
   [endpoint (or params {})])
@@ -150,6 +155,47 @@
                            [k (cond-> entry (forms (:form entry)) (assoc :stale? true))]))
                     entries)))))
 
+(defn- remember-tag
+  "Note something about a write's tag; only the newest tags-kept are kept."
+  [store tag f]
+  (let [new?  (not (contains? (:tags store) tag))
+        store (cond-> (update-in store [:tags tag] f)
+                new? (update :tag-order (fnil conj []) tag))
+        extra (- (count (:tag-order store)) tags-kept)]
+    (if (pos? extra)
+      (-> store
+          (update :tags #(apply dissoc % (take extra (:tag-order store))))
+          (update :tag-order #(vec (drop extra %))))
+      store)))
+
+(defn rang
+  "The websocket's bell: these reads changed. A bell with a write's tag
+   leaves out what that write's own answer covered already (rang-in-answer),
+   and is remembered, in case the answer comes second."
+  [store forms tag]
+  (if (nil? tag)
+    (changed store forms)
+    (let [covered (get-in store [:tags tag :covered] #{})]
+      (-> store
+          (remember-tag tag #(update % :heard (fnil into #{}) forms))
+          (changed (remove covered forms))))))
+
+(defn rang-in-answer
+  "A write's own answer says which of the reads it was sent with
+   (`watching`) changed: [store keys-to-fetch], asked at once. What the
+   websocket's bell for the same tag rang already isn't asked again; a
+   question that is out is asked once more when its answer lands."
+  [store tag watching forms]
+  (let [heard  (get-in store [:tags tag :heard] #{})
+        forms  (set (remove heard forms))
+        store  (remember-tag store tag #(assoc % :covered (set watching)))
+        hit    (for [[k {:keys [form owners]}] (:entries store)
+                     :when (and (forms form) (seq owners))]
+                 k)
+        out?   #(get-in store [:entries % :fetching?])]
+    [(reduce #(assoc-in %1 [:entries %2 :again?] true) store (filter out? hit))
+     (vec (remove out? hit))]))
+
 (defn mark-all-stale
   "Everything on screen may have changed (the line was down)."
   [store]
@@ -196,13 +242,13 @@
            (fn [forms] (websocket/watch! forms)))
 
 (rf/reg-fx ::send-write
-           (fn [[ask on-answer]]
-             (http/ask! (assoc ask :key (str (random-uuid)))
-                        #(when on-answer (rf/dispatch (conj on-answer %))))))
+           (fn [[ask watching on-answer]]
+             (http/ask! (assoc ask :key (str (random-uuid)) :watching watching)
+                        #(rf/dispatch [::-written watching on-answer %]))))
 
 (rf/reg-fx ::start-line
            (fn [options]
-             (websocket/start! (merge {:on-changed     #(rf/dispatch [::-changed %])
+             (websocket/start! (merge {:on-changed     #(rf/dispatch [::-changed %1 %2])
                                        :on-reconnected #(rf/dispatch [::-reconnected])}
                                       options))))
 
@@ -251,8 +297,8 @@
                      {:db (assoc db :groundwork/parquery-store store) ::fetch fetches})))
 
 (rf/reg-event-fx ::-changed
-                 (fn [{:keys [db]} [_ forms]]
-                   (let [store (changed (store-of db) forms)]
+                 (fn [{:keys [db]} [_ forms tag]]
+                   (let [store (rang (store-of db) forms tag)]
                      (if (:refresh-pending? store)
                        {:db (assoc db :groundwork/parquery-store store)}
                        {:db             (assoc db :groundwork/parquery-store (assoc store :refresh-pending? true))
@@ -270,8 +316,19 @@
                      {:db (assoc db :groundwork/parquery-store store) ::fetch fetches})))
 
 (rf/reg-event-fx ::write
-                 (fn [_ [_ ask on-answer]]
-                   {::send-write [ask on-answer]}))
+                 (fn [{:keys [db]} [_ ask on-answer]]
+                   {::send-write [ask (watched (store-of db)) on-answer]}))
+
+(rf/reg-event-fx ::-written
+                 ;; The answer says which reads on screen the write changed: they
+                 ;; are asked at once, without waiting for the websocket.
+                 (fn [{:keys [db]} [_ watching on-answer answer]]
+                   (let [[store ks]      (if (contains? answer :changed)
+                                           (rang-in-answer (store-of db) (:tag answer) watching (:changed answer))
+                                           [(store-of db) []])
+                         [store fetches] (fetching store ks)]
+                     (cond-> {:db (assoc db :groundwork/parquery-store store) ::fetch fetches}
+                       on-answer (assoc :dispatch (conj on-answer (dissoc answer :changed :tag)))))))
 
 (rf/reg-sub ::store (fn [db _] (store-of db)))
 

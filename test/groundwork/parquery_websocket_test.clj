@@ -86,15 +86,18 @@
                  (HttpResponse$BodyHandlers/ofString))]
     (first (str/split (.orElse (.firstValue (.headers r) "set-cookie") "") #";"))))
 
-(defn- ask! [cookie endpoint params]
-  (let [r (.send client (-> (HttpRequest/newBuilder (URI. (str origin "/parquery")))
-                            (.header "Origin" origin) (.header "Cookie" cookie)
-                            (.header "Content-Type" "application/json")
-                            (.POST (HttpRequest$BodyPublishers/ofString
-                                    (wire/write-json [{:endpoint endpoint :params params :key (str (UUID/randomUUID))}])))
-                            .build)
-                 (HttpResponse$BodyHandlers/ofString))]
-    (first (wire/read-json (.body r)))))
+(defn- ask!
+  ([cookie endpoint params] (ask! cookie endpoint params nil))
+  ([cookie endpoint params watching]
+   (let [r (.send client (-> (HttpRequest/newBuilder (URI. (str origin "/parquery")))
+                             (.header "Origin" origin) (.header "Cookie" cookie)
+                             (.header "Content-Type" "application/json")
+                             (.POST (HttpRequest$BodyPublishers/ofString
+                                     (wire/write-json [(cond-> {:endpoint endpoint :params params :key (str (UUID/randomUUID))}
+                                                         watching (assoc :watching watching))])))
+                             .build)
+                  (HttpResponse$BodyHandlers/ofString))]
+     (first (wire/read-json (.body r))))))
 
 (defn- open-line
   "A websocket to /parquery; its messages go to a queue."
@@ -121,6 +124,9 @@
 
 (defn- next-bell [{:keys [^LinkedBlockingQueue messages]} ms]
   (some-> (.poll messages ms TimeUnit/MILLISECONDS) wire/read-json :changed))
+
+(defn- next-message [{:keys [^LinkedBlockingQueue messages]} ms]
+  (some-> (.poll messages ms TimeUnit/MILLISECONDS) wire/read-json))
 
 (defn- close! [{:keys [^WebSocket ws]}]
   (when-not (.isOutputClosed ws)
@@ -270,4 +276,28 @@
       (websocket/recheck! (get-in (gw/part *app* :groundwork/parquery) [:bells]))
       (as-system! "INSERT INTO notes VALUES (?, ?, 'eight')" (UUID/randomUUID) acme)
       (is (nil? (next-bell line 700)) "removed from the shop, she hears nothing more")
+      (finally (close! line)))))
+
+(deftest a-writes-answer-and-its-bell-carry-one-tag
+  (let [cookie    (sign-in paul)
+        _         (ask! cookie "notes/of-shop" {:shop/id (str acme)})
+        line      (open-line cookie)
+        acme-list ["notes/of-shop" {:shop/id (str acme)}]
+        zinc-list ["notes/of-shop" {:shop/id (str zinc)}]]
+    (try
+      (watch! line acme-list)
+      (let [answer (ask! cookie "notes/add" {:shop/id (str acme) :note/id (str (UUID/randomUUID)) :note/text "tagged"}
+                         [acme-list zinc-list ["notes/one" {:note/id (str note-1)}]])]
+        (testing "the answer says which of the reads on screen the write changed"
+          (is (= "ok" (:status answer)))
+          (is (= [acme-list] (:changed answer)) "not another shop's list, not another note")
+          (is (string? (:tag answer))))
+        (testing "the websocket's bell for the same write carries the same tag"
+          (is (= {:changed [acme-list] :tag (:tag answer)} (next-message line 3000)))))
+      (testing "a change from elsewhere has no tag"
+        (as-system! "INSERT INTO notes VALUES (?, ?, 'untagged')" (UUID/randomUUID) acme)
+        (is (= {:changed [acme-list]} (next-message line 3000))))
+      (testing "a write that names no reads gets a plain answer"
+        (is (= #{:status :data} (set (keys (ask! cookie "notes/add" {:shop/id (str acme) :note/id (str (UUID/randomUUID))
+                                                                    :note/text "plain"}))))))
       (finally (close! line)))))
