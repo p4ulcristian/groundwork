@@ -13,3 +13,5 @@
 **The price:** a write whose work commits outside its endpoint's transaction tells its answer nothing; such work belongs inside the transaction. The writer may read once more when the websocket's bell for the same change arrives, unless the two share a tag.
 
 **Instead of:** every write listing by hand what to ask again (forgotten ones leave stale screens, and the list repeats what the database knows); or bells over the websocket alone.
+
+**Added 2026-10-14:** a statement that changed no row rings nothing (an update that matched nothing, an insert that met a row already there). Before, such a statement on a global table rang everyone watching it, and a read that made sure of a row rang its own watchers in a circle.

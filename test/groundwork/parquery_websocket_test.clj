@@ -38,6 +38,7 @@
 (pg/defsql ws-notes-of-shop)
 (pg/defsql ws-one-note)
 (pg/defsql ws-add-note)
+(pg/defsql ws-colours)
 
 (def note-shape [:map [:note/id :uuid] [:note/text :string]])
 
@@ -50,6 +51,10 @@
                    :permission {:action :notes/see :record [:note :note/id]}
                    :input      [:map [:note/id :uuid]]
                    :answer     [:maybe note-shape]}
+   :colours/all   {:read       (fn [{:keys [db]} _] (pg/rows db ws-colours {}))
+                   :permission :signed-in
+                   :input      [:map]
+                   :answer     [:vector [:map [:colour/id :uuid] [:colour/name :string]]]}
    :notes/add     {:write      (fn [{:keys [db]} params] (pg/row db ws-add-note params))
                    :permission {:action :notes/add :scope [:shop :shop/id]}
                    :input      [:map [:shop/id :uuid] [:note/id {:groundwork/record false} :uuid] [:note/text :string]]
@@ -59,21 +64,24 @@
 
 (use-fixtures :once
   (fn [t]
-    (sql! "DROP TABLE IF EXISTS notes, tags;
+    (sql! "DROP TABLE IF EXISTS notes, tags, colours;
            CREATE TABLE notes (note__id uuid PRIMARY KEY, note__shop_id uuid NOT NULL, note__text text NOT NULL);
-           CREATE TABLE tags (tag__id uuid PRIMARY KEY, tag__shop_id uuid NOT NULL)")
+           CREATE TABLE tags (tag__id uuid PRIMARY KEY, tag__shop_id uuid NOT NULL);
+           CREATE TABLE colours (colour__id uuid PRIMARY KEY, colour__name text NOT NULL UNIQUE)")
     (sql! "INSERT INTO notes VALUES (?, ?, 'one'), (?, ?, 'two'), (?, ?, 'zinc')"
           note-1 acme note-2 acme zinc-note zinc)
     (let [app (gw/start (-> app-settings
                             (assoc :permissions description)
-                            (assoc-in [:parquery :endpoints] [endpoints-map])))]
+                            (assoc-in [:parquery :endpoints] [endpoints-map])
+                            ;; a table of no shop: everyone watching it hears
+                            (assoc-in [:parquery :bells :global] #{:colours})))]
       (try
         (perm/create-scope! (gw/permissions app) {:kind :shop :id acme :parent nil :owner paul})
         (perm/create-scope! (gw/permissions app) {:kind :shop :id zinc :parent nil :owner ana})
         (binding [*app* app] (t))
         (finally
           (gw/stop app)
-          (sql! "DROP TABLE IF EXISTS notes, tags"))))))
+          (sql! "DROP TABLE IF EXISTS notes, tags, colours"))))))
 
 (def ^:private client (HttpClient/newHttpClient))
 (def ^:private origin (get-in app-settings [:sessions :origin]))
@@ -177,6 +185,31 @@
         (is (= "ok" (:status (ask! paul-cookie "notes/add" {:shop/id (str acme) :note/id (str (UUID/randomUUID))
                                                             :note/text "four"}))))
         (is (= [acme-list] (next-bell paul-line 3000))))
+      (finally (close! paul-line) (close! ana-line)))))
+
+(deftest a-global-table-rings-everyone-but-only-for-a-change
+  (let [paul-cookie (sign-in paul)
+        ana-cookie  (sign-in ana)
+        _           (ask! paul-cookie "colours/all" {})
+        paul-line   (open-line paul-cookie)
+        ana-line    (open-line ana-cookie)
+        colours     ["colours/all" {}]]
+    (try
+      (watch! paul-line colours)
+      (watch! ana-line colours)
+      (testing "a new colour rings every watcher"
+        (as-system! "INSERT INTO colours VALUES (?, 'red')" (UUID/randomUUID))
+        (is (= [colours] (next-bell paul-line 3000)))
+        (is (= [colours] (next-bell ana-line 3000))))
+      (testing "a statement that changed no row rings nothing"
+        (as-system! "INSERT INTO colours VALUES (?, 'red') ON CONFLICT DO NOTHING" (UUID/randomUUID))
+        (as-system! "UPDATE colours SET colour__name = 'blue' WHERE colour__name = 'no such colour'")
+        (as-system! "DELETE FROM colours WHERE colour__name = 'no such colour'")
+        (is (nil? (next-bell paul-line 700)))
+        (is (nil? (next-bell ana-line 300))))
+      (testing "and the next real change rings again"
+        (as-system! "UPDATE colours SET colour__name = 'crimson' WHERE colour__name = 'red'")
+        (is (= [colours] (next-bell paul-line 3000))))
       (finally (close! paul-line) (close! ana-line)))))
 
 (deftest a-one-record-read-rings-for-its-record
