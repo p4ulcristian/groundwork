@@ -10,6 +10,7 @@
      ;=> {:status :ready :data […]} or :loading, :error (with :error), and
      ;   :refresh-error when a refresh failed while the old data still shows
      (rf/dispatch [::store/release :jobs-page])
+     (rf/dispatch [::store/own :jobs-page [asks…]])   ; exactly these now: shared ones kept, the rest let go
      (rf/dispatch [::store/ask-again {:endpoint :jobs/list :params {:shop/id id}}])
      (rf/dispatch [::store/write {:endpoint :jobs/move :params {…}} [:jobs/moved]])
      @(rf/subscribe [::store/can? :jobs/move shop-id])
@@ -145,6 +146,27 @@
                                 entry)])))
                   entries))))
 
+(defn own-asks
+  "An owner needs exactly these asks now: [store keys-to-fetch]. The ones it
+   had and still needs stay as they are, the ones it doesn't are let go
+   (marked with the time when nothing else needs them), new ones are asked.
+   A route's reads work this way: what the next route shares is kept."
+  [store owner asks now]
+  (let [wanted (set (map key-of asks))
+        had    (into #{} (keep (fn [[k entry]] (when (contains? (:owners entry) owner) k))) (:entries store))
+        store  (update store :entries
+                       (fn [entries]
+                         (into {}
+                               (map (fn [[k entry]]
+                                      [k (if (and (had k) (not (wanted k)))
+                                           (let [entry (update entry :owners disj owner)]
+                                             (cond-> entry
+                                               (and (empty? (:owners entry)) (not (:released-at entry)))
+                                               (assoc :released-at now)))
+                                           entry)]))
+                               entries)))]
+    (ensure-asks store owner (remove #(had (key-of %)) asks))))
+
 (defn collect
   "Drop entries nothing has needed for gc-ms."
   [store now]
@@ -274,6 +296,15 @@
                  [(rf/inject-cofx ::now)]
                  (fn [{:keys [db now]} [_ owner asks]]
                    (let [[store ks]      (ensure-asks (collect (store-of db) now) owner asks)
+                         [store fetches] (fetching store ks)]
+                     {:db     (assoc db :groundwork/parquery-store store)
+                      ::fetch fetches
+                      ::watch (watched store)})))
+
+(rf/reg-event-fx ::own
+                 [(rf/inject-cofx ::now)]
+                 (fn [{:keys [db now]} [_ owner asks]]
+                   (let [[store ks]      (own-asks (collect (store-of db) now) owner asks now)
                          [store fetches] (fetching store ks)]
                      {:db     (assoc db :groundwork/parquery-store store)
                       ::fetch fetches

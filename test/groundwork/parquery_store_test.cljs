@@ -128,3 +128,18 @@
     (testing "only the newest tags are remembered"
       (let [s (reduce #(store/rang %1 [jobs-form] (str "tag-" %2)) s (range (+ 5 store/tags-kept)))]
         (is (= store/tags-kept (count (:tags s)) (count (:tag-order s))))))))
+
+(deftest an-owner-needs-exactly-these-now
+  (let [orders  {:endpoint :orders/list :params {}}
+        shop    {:endpoint :shop/get :params {}}
+        order   {:endpoint :orders/get :params {:order/id "5"}}
+        [s f1]  (store/own-asks store/empty-store :route [orders shop] 1000)
+        [s _]   (ensured s :panel orders)
+        [s f2]  (store/own-asks s :route [order shop] 2000)]
+    (is (= #{[:orders/list {}] [:shop/get {}]} (set f1)))
+    (is (= [[:orders/get {:order/id "5"}]] f2) "what the next list shares isn't asked again")
+    (is (= #{:route} (get-in s [:entries [:shop/get {}] :owners])))
+    (is (= #{:panel} (get-in s [:entries [:orders/list {}] :owners])) "still needed elsewhere: kept")
+    (let [[s _] (store/own-asks s :route [] 3000)]
+      (is (= 3000 (get-in s [:entries [:shop/get {}] :released-at])) "nothing needs it: let go, with the time")
+      (is (nil? (get-in s [:entries [:orders/list {}] :released-at]))))))

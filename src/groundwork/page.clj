@@ -43,7 +43,8 @@
    The page has one element for the app to render into, <div id=\"app\">,
    and what the browser start reads first, as JSON in
    <script type=\"application/json\" id=\"groundwork\">: the person signed in
-   (or null), their session's flags and the page's language. It is never
+   (or null), their session's flags, the page's language and, with
+   languages, the ones the app speaks (the browser's routing reads them). It is never
    cached: a deploy is seen on the next load. Every <script> and
    <style> on it, the app's :head and :body included, carries the request's
    nonce, so the strict Content-Security-Policy lets them run."
@@ -88,10 +89,12 @@
 
 (defn- initial-data
   "What the browser start reads first, as JSON safe inside a <script>."
-  [{:keys [person flags lang]}]
-  (str/replace (json/write-value-as-string {"person"   (some-> person str)
-                                            "flags"    (mapv name (sort flags))
-                                            "language" lang})
+  [{:keys [person flags lang languages]}]
+  (str/replace (json/write-value-as-string (cond-> {"person"   (some-> person str)
+                                                    "flags"    (mapv name (sort flags))
+                                                    "language" lang}
+                                             languages (assoc "languages" {"supported" (:supported languages)
+                                                                           "default"   (:default languages)})))
                "</" "<\\/"))
 
 (defn html
@@ -150,8 +153,9 @@
         scripts (if (= :development environment) for* cached)]
     (fn [request]
       (let [page (merged (cond-> (assoc settings
-                                        :person (sessions/person request)
-                                        :flags  (sessions/flags request))
+                                        :person    (sessions/person request)
+                                        :flags     (sessions/flags request)
+                                        :languages (get-in app-settings [:web :languages]))
                            (::language request)   (assoc :lang (::language request))
                            (::alternates request) (assoc :alternates (::alternates request)))
                          (route-page request))]
