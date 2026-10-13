@@ -173,6 +173,10 @@
              {:orders/see :order/customer-id}
              [:map-of {:error/message "must map actions to person columns" :doc/type "action → column"}
               qualified column])
+   (optional :visitors "An action a visitor on the record holds: action → the column with their visitor session's id. At sign-in the row moves to the person, into the kind's person column"
+             {:designs/edit :design/visitor-id}
+             [:map-of {:error/message "must map actions to the visitor column" :doc/type "action → column"}
+              qualified column])
    (optional :only-when "An action allowed only when the record matches: action → condition"
              {:orders/edit [:= :order/status "open"]}
              [:map-of {:error/message "must map actions to conditions" :doc/type "action → condition"}
@@ -274,7 +278,9 @@
     (entry :answer "What may be sent back, a malli shape" [:vector [:map [:job/id :uuid]]] malli-shape)
     (optional :reads "Tables a read uses that Postgres can't see in its SQL" [:jobs]
               [:vector {:error/message "must be a list of tables, like [:jobs]" :doc/type "list of tables"} :keyword])
-    (optional :rate-limit "How often a caller may ask it (see groundwork.limits)" {:per-day 20 :by :person} rate-limit)]
+    (optional :rate-limit "How often a caller may ask it (see groundwork.limits)" {:per-day 20 :by :person} rate-limit)
+    (optional :keeps-for-visitor "A write that keeps something for someone not signed in: a visitor without a session gets one, so the row can be theirs"
+              true [:boolean {:error/message "must be true or false" :doc/type "true or false"}])]
    (pred "one handler" "needs exactly one of :read or :write, its handler"
          #(= 1 (count (filter (fn [k] (contains? % k)) [:read :write]))))])
 

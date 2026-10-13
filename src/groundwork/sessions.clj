@@ -36,6 +36,7 @@
    and paying open on the app's own site, where the Lax cookie lives."
   (:require
    [clojure.string :as str]
+   [groundwork.permissions :as permissions]
    [groundwork.postgres :as pg]
    [groundwork.settings :as settings])
   (:import
@@ -119,6 +120,7 @@
                             (.plusHours (OffsetDateTime/now) (dec hours))))
         (pg/execute! db extend-visitor {:session/key-hash (key-hash key) :hours hours}))
       {:key       key
+       :id        (:session/id row)
        :cookie    cookie
        :person-id (:session/person-id row)
        :flags     (set (map keyword (:session/flags data)))
@@ -138,6 +140,16 @@
   "The id of the person signed in on this request, or nil."
   [request]
   (get-in request [::session :person-id]))
+
+(defn visitor
+  "The id of this request's visitor session, for someone not signed in who
+   has one; else nil. It is Groundwork's own id for the session, never a
+   value the browser sent: a record that names it belongs to this visitor
+   (see :visitors in the permission description)."
+  [request]
+  (let [session (::session request)]
+    (when (and session (nil? (:person-id session)))
+      (:id session))))
 
 (defn flags
   "The session's flags, like #{:impersonated}."
@@ -171,6 +183,23 @@
    session's hash, when it began and ends, its flags."
   [{:keys [db]} person-id]
   (pg/rows db of-person-sql {:session/person-id person-id}))
+
+(defn visitor-session!
+  "A visitor session for a request that has none, made now: {:id … :cookie
+   \"…\"}, its id and the Set-Cookie value to send. For a write that keeps
+   something for someone not signed in (an endpoint's :keeps-for-visitor)."
+  [request]
+  (let [{:keys [db settings]} (::sessions request)
+        key                   (new-key)
+        max-age               (* 86400 (:max-age-days settings))
+        row                   (pg/row db insert-session {:session/key-hash  (key-hash key)
+                                                         :session/person-id nil
+                                                         :session/data      (data-in {})
+                                                         :hours             (:visitor-hours settings)})]
+    {:id     (:session/id row)
+     :cookie (if (::embedded? request)
+               (embed-cookie settings key max-age)
+               (cookie settings key max-age))}))
 
 (defn- check-data [m]
   (when-not (and (map? m) (every? qualified-keyword? (keys m)))
@@ -219,7 +248,10 @@
   "The response, signing the person in: a new session row and its cookie.
    A session the request already had is ended first, so a key someone else
    planted before the login is worthless after it. A visitor's data comes
-   along into the new session; a signed-in session's doesn't. A page in
+   along into the new session, and the records that were the visitor's
+   become the person's (every table with a visitor column in the permission
+   description: the person is set, the visitor emptied); a signed-in
+   session's data doesn't come along. A page in
    another site's frame can't sign in: the session it would make lives in
    the app's own site's cookie.
 
@@ -237,6 +269,9 @@
          hours                              (or (:hours opts) (* 24 (:max-age-days settings)))
          visitor-data                       (let [s (::session request)]
                                               (when (and s (nil? (:person-id s))) (:data s)))]
+     ;; the visitor's records first: once their session is gone, nobody's
+     (when-let [perms (:permissions sessions)]
+       (permissions/move-visitor! perms (visitor request) person-id))
      (doseq [old [(cookie-key request (:cookie-name settings))
                   (some-> (::session request) (#(when (= :embed (:cookie %)) (:key %))))]
              :when old]
@@ -300,8 +335,9 @@
                    request))))))
 
 (defn start
-  "The sessions part. Forgets sessions that ended."
-  [{:keys [settings db]}]
+  "The sessions part. Forgets sessions that ended. With the permissions
+   part, sign-in moves a visitor's records to the person."
+  [{:keys [settings db permissions]}]
   (settings/check-part! :sessions settings)
   (pg/execute! db delete-expired)
-  {:db db :settings settings})
+  {:db db :settings settings :permissions permissions})

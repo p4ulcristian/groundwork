@@ -59,12 +59,14 @@
                            :needs    [:groundwork/db]
                            :start    (fn [{:keys [app-settings] :as config}]
                                        (migrations/start (assoc config :db-settings (:db app-settings))))}
-   :groundwork/sessions   {:settings :sessions
-                           :needs    [:groundwork/db :groundwork/migrations]
-                           :start    sessions/start}
    :groundwork/permissions {:settings :permissions
                             :needs    [:groundwork/db :groundwork/migrations]
                             :start    permissions/start}
+   ;; sign-in moves a visitor's records to the person: the tables with a
+   ;; visitor column are the permission description's
+   :groundwork/sessions   {:settings :sessions
+                           :needs    [:groundwork/db :groundwork/migrations :groundwork/permissions]
+                           :start    sessions/start}
    :groundwork/limits     {:settings :limits
                            :needs    [:groundwork/db :groundwork/migrations]
                            :start    limits/start}
@@ -180,11 +182,11 @@
                               (throw (ex-info (str "No part " k) {:type ::unknown-part :part k})))
                             (assoc config k {::fake fake}))
                           (config settings)
-                          fakes)]
-    (let [system (init config)]
-      (snapshot! settings system (set (keys fakes)))
-      (reset! current-app {::system system
-                           ::fakes  (set (keys fakes))}))))
+                          fakes)
+        system (init config)]
+    (snapshot! settings system (set (keys fakes)))
+    (reset! current-app {::system system
+                         ::fakes  (set (keys fakes))})))
 
 (defn stop
   "Stop a running app, its parts in reverse order."

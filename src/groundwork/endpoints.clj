@@ -57,6 +57,14 @@
                        scope gets in. The permission's own param needs no mark.
      :answer           what may be sent back, a malli shape
 
+   A visitor's record: an action some record kind gives a visitor (:visitors
+   in the permission description) may be asked by someone not signed in.
+   ctx holds :visitor, the id of their visitor session or nil; the rows that
+   name it are theirs, behind the wall. A write that keeps something for a
+   visitor says :keeps-for-visitor true: asked without a session, the
+   visitor gets one first (its cookie goes out with the answer), and
+   (:visitor ctx) is its id. The id never comes from the request.
+
    Optional: :reads [:table …], tables a read uses that Postgres can't see
    in its SQL (a database function), for the bells; :rate-limit, how often a
    caller may ask it (see groundwork.limits). A public endpoint without one
@@ -278,6 +286,8 @@
            :permission permission
            :ids        (id-fields perms k permission input)
            :public?    (public? perms permission)
+           ;; an action a visitor can hold: asked signed out too
+           :visitors?  (boolean (and (map? permission) (permissions/visitor-action? perms (:action permission))))
            :read?      (contains? entry :read)
            :handler    (or (:read entry) (:write entry)))))
 
@@ -351,7 +361,7 @@
 (defn- verified-scopes
   "The scopes a request may see, or throws not-found. A write is held to
    what a write may: a pass to a record gives it nothing."
-  [perms {:keys [permission ids read?]} {:keys [person flags]} params]
+  [perms {:keys [permission ids read?]} {:keys [person visitor flags]} params]
   (let [also     (ids-in ids params)
         writing? (not read?)]
     (case permission
@@ -363,10 +373,12 @@
         (when open?
           (doseq [[kind ids] also
                   id         ids]
-            (when-not (permissions/allowed? perms {:person person :flags flags :action action :record [kind id]})
+            (when-not (permissions/allowed? perms {:person person :visitor visitor :flags flags :action action
+                                                   :record [kind id]})
               (throw (ex-info "Not found" {:type ::permissions/not-found :record [kind id]})))))
         (cond
-          record (permissions/check! perms {:person person :flags flags :action action :writing? writing?
+          record (permissions/check! perms {:person person :visitor visitor :flags flags :action action
+                                            :writing? writing?
                                             :record [(first record) (as-id (get params (second record)))]
                                             :also   also})
           ;; the scope in the request, and the fixed one that always comes
@@ -460,11 +472,15 @@
 
 (defn call
   "Run one ask for a person: {:endpoint :params :key :person :flags
-   :request-id :client-ip}. Returns the answer; never throws for the ask's
+   :request-id :client-ip}, or for someone not signed in, :visitor, the id
+   of their visitor session. Returns the answer; never throws for the ask's
    own reasons."
   [{:keys [perms endpoints limits] :as part} {:keys [endpoint params person flags request-id client-ip] :as ask}]
-  (let [entry (get endpoints endpoint)
-        flags (or flags #{})
+  (let [entry   (get endpoints endpoint)
+        ;; a visitor is someone not signed in
+        visitor (when (nil? person) (:visitor ask))
+        ask     (assoc ask :visitor visitor)
+        flags   (or flags #{})
         after (atom [])
         ask   (assoc ask :after-commit (fn [f] (swap! after conj f) nil))
         about {:endpoint endpoint :person person :request-id request-id :client-ip client-ip}]
@@ -475,18 +491,19 @@
           errors
           (answer :invalid :errors errors)
 
-          (and (nil? person) (not (:public? entry)))
+          (and (nil? person) (not (:public? entry)) (not (:visitors? entry)))
           (answer :signed-out)
 
           :else
           (try
-            (let [scopes (verified-scopes perms entry {:person person :flags flags} decoded)]
+            (let [scopes (verified-scopes perms entry {:person person :visitor visitor :flags flags} decoded)]
               (if-let [{:keys [limit retry-after-seconds]}
                        (when limits
                          (limits/take! limits {:id       endpoint
                                                :endpoint endpoint
                                                :limit    (limits/limit-of limits {:own     (:rate-limit entry)
-                                                                                  :public? (:public? entry)
+                                                                                  :public? (or (:public? entry)
+                                                                                               (and (nil? person) (:visitors? entry)))
                                                                                   :read?   (:read? entry)})
                                                :about    {:person person :scopes scopes :client-ip client-ip}}))]
                 (answer :too-many :limit limit :retry-after-seconds retry-after-seconds)
@@ -503,7 +520,7 @@
                       [data rang]
                       (permissions/in-wall
                        perms (let [{:keys [action record list]} (when (map? (:permission entry)) (:permission entry))]
-                               {:person person :scopes scopes :read-only? (:read? entry)
+                               {:person person :visitor visitor :scopes scopes :read-only? (:read? entry)
                                 :action action :kind (or (first record) list)})
                        (fn [tx]
                          (let [tx  (cond-> tx (:read? entry) (assoc ::pg/on-query (collecting files (::pg/on-query tx))))
@@ -538,14 +555,16 @@
    not ask it: {:scopes … :record [kind id]-or-nil :tables set-or-nil}. The
    same check as asking. :tables, for an open action: the only tables whose
    bells its scopes bring."
-  [{:keys [perms endpoints]} {:keys [endpoint params person flags]}]
-  (let [entry (get endpoints endpoint)]
-    (when (and entry (:read? entry) (or person (:public? entry)))
+  [{:keys [perms endpoints]} {:keys [endpoint params person visitor flags]}]
+  (let [entry   (get endpoints endpoint)
+        visitor (when (nil? person) visitor)]
+    (when (and entry (:read? entry) (or person (:public? entry) (:visitors? entry)))
       (let [{decoded :value} (wire/decode (:input entry) (or params {}))
             action           (when (map? (:permission entry)) (:action (:permission entry)))]
         (when decoded
           (try
-            {:scopes (into (verified-scopes perms entry {:person person :flags (or flags #{})} decoded)
+            {:scopes (into (verified-scopes perms entry {:person person :visitor visitor :flags (or flags #{})}
+                                            decoded)
                            ;; a list also hears of the scopes a new pass would reach it through
                            (when-let [kind (and action (get-in entry [:permission :list]))]
                              (permissions/pass-scopes perms {:person person :action action :kind kind})))

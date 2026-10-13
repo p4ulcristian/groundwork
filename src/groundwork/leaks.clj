@@ -34,6 +34,11 @@
    record, what a stranger behind it sees of each foreign scope (open-wall):
    only the rows the action's rule allows, and nothing of any other kind.
 
+   An action a record kind gives a visitor (:visitors) may be asked by
+   someone not signed in, so its endpoints are asked twice more with the
+   foreign ids: as another visitor (a visitor session that isn't the
+   record's) and as a signed-in stranger. Both must answer not-found.
+
    Generating needs org.clojure/test.check on the test classpath."
   (:require
    [clojure.set :as set]
@@ -184,14 +189,25 @@
                   (if (instance? Exception generated)
                     (assoc-in report [:skipped k] (str "its input can't be generated: " (ex-message generated)))
                     (if-let [params (foreign-ids entry generated foreign (keys (get-in part [:perms :description :scopes])))]
-                      (let [answer (endpoints/call part {:endpoint k :params params :person person
-                                                         :flags (or flags #{}) :request-id "leak-test"})]
-                        (case (:status answer)
-                          :not-found (update report :checked conj k)
+                      (let [ask     {:endpoint k :params params :flags (or flags #{}) :request-id "leak-test"}
+                            answer  (endpoints/call part (assoc ask :person person))
+                            ;; a visitor's records: as another visitor, and as a signed-in stranger
+                            others  (when (:visitors? entry)
+                                      [(endpoints/call part (assoc ask :person nil :visitor (random-uuid)))
+                                       (endpoints/call part (assoc ask :person (random-uuid)))])
+                            through (first (remove #(= :not-found (:status %)) others))]
+                        (cond
                           ;; the generated params didn't reach the check: not a leak, not checked either
-                          :invalid   (assoc-in report [:skipped k] (str "the generated params don't fit its input: "
-                                                                        (pr-str (:errors answer))))
-                          (update report :leaked conj {:endpoint k :params params :answer answer})))
+                          (= :invalid (:status answer))
+                          (assoc-in report [:skipped k] (str "the generated params don't fit its input: "
+                                                             (pr-str (:errors answer))))
+                          (not= :not-found (:status answer))
+                          (update report :leaked conj {:endpoint k :params params :answer answer})
+                          through
+                          (update report :leaked conj {:endpoint k :params params :answer through
+                                                       :as "another visitor, or a signed-in stranger"})
+                          :else
+                          (update report :checked conj k)))
                       (assoc-in report [:skipped k] "no foreign id given for a kind it carries")))))))
           {:checked [] :skipped {}
            :leaked  (mapv (fn [leak] {:open-wall leak})

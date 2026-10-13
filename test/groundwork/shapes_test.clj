@@ -12,6 +12,7 @@
    [groundwork.permissions :as perm]
    [groundwork.permissions.rules :as rules]
    [groundwork.postgres :as pg]
+   [groundwork.sessions :as sessions]
    [groundwork.test-support :refer [app-settings sql!]]
    [next.jdbc :as jdbc])
   (:import
@@ -49,6 +50,13 @@
 (defn- settings [description endpoint-map]
   (-> app-settings
       (assoc :permissions description)
+      ;; the app's own login, on a browser route: the request carries the visitor's session
+      (assoc-in [:web :routes]
+                [["/login-as/:person"
+                  {:post   (fn [request]
+                             (sessions/sign-in request {:status 200 :headers {} :body "signed in"}
+                                               (parse-uuid (get-in request [:path-params :person]))))
+                   :access :public}]])
       (assoc-in [:parquery :endpoints] [endpoint-map])))
 
 (defn- join! [perms by scope person role]
@@ -507,6 +515,110 @@
               (is (= "not-found" (:status (ask! cookie "orders/note" {:order/id (str acme-order)})))))
             (finally (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff)))))
       (finally (close! line)))))
+
+;; =============================================================================
+;; A record can belong to a visitor
+;; =============================================================================
+
+(defn- post!
+  "A POST from the app's own pages: [the response's first Set-Cookie pair or nil, its body]."
+  [cookie path body]
+  (let [r (.send client (-> (cond-> (-> (HttpRequest/newBuilder (URI. (str origin path)))
+                                        (.header "Origin" origin)
+                                        (.header "Content-Type" "application/json"))
+                              cookie (.header "Cookie" cookie))
+                            (.POST (HttpRequest$BodyPublishers/ofString body))
+                            .build)
+                 (HttpResponse$BodyHandlers/ofString))]
+    [(some-> (.orElse (.firstValue (.headers r) "set-cookie") nil) (str/split #";") first)
+     (.body r)]))
+
+(defn- save-design!
+  "Save a design over HTTP: [the cookie the answer set or nil, the design's id]."
+  [cookie design-name]
+  (let [[set-cookie body] (post! cookie "/parquery"
+                                 (wire/write-json [{:endpoint "designs/save" :params {:design/name design-name}
+                                                    :key (str (id))}]))]
+    [set-cookie (parse-uuid (:data (first (wire/read-json body))))]))
+
+(deftest a-visitors-record-is-theirs
+  (let [[anna rim]   (save-design! nil "Rim")
+        [bela frame] (save-design! nil "Frame")]
+    (testing "saving without a session makes a visitor's session: its cookie goes out with the answer"
+      (is (string? anna)) (is (uuid? rim))
+      (is (not= anna bela)))
+    (testing "saving again in that session makes no new one"
+      (let [[again _] (save-design! anna "Rim 2")]
+        (is (nil? again))))
+    (testing "each visitor sees their own, to read and to change"
+      (is (= {:status "ok" :data ["Rim" "Rim 2"]} (ask! anna "designs/mine" {})))
+      (is (= {:status "ok" :data ["Frame"]} (ask! bela "designs/mine" {})))
+      (is (= {:status "ok" :data "Rim!"} (ask! anna "designs/rename" {:design/id (str rim) :design/name "Rim!"})))
+      (is (= {:status "ok" :data "Rim!"} (ask! anna "designs/one" {:design/id (str rim)}))))
+    (testing "and nobody else's: another visitor, a signed-in stranger, nobody at all"
+      (is (= "not-found" (:status (ask! bela "designs/one" {:design/id (str rim)}))))
+      (is (= "not-found" (:status (ask! bela "designs/rename" {:design/id (str rim) :design/name "mine now"}))))
+      (is (= "not-found" (:status (ask! (sign-in uma) "designs/one" {:design/id (str rim)}))))
+      (is (= "not-found" (:status (ask! (sign-in sam) "designs/one" {:design/id (str rim)}))) "a shop's owner neither")
+      (is (= "not-found" (:status (ask! nil "designs/one" {:design/id (str rim)}))))
+      (is (= {:status "ok" :data []} (ask! nil "designs/mine" {})) "someone with no session has no designs"))
+    (testing "the visitor's id never comes from the request: an ask that names another visitor is still its sender's"
+      (let [annas-visitor (:sh_designs/design__visitor_id
+                           (first (as-system! "SELECT design__visitor_id FROM sh_designs WHERE design__id = ?" rim)))
+            [_ body]      (post! bela "/parquery"
+                                 (wire/write-json [{:endpoint "designs/mine" :params {}
+                                                    :visitor (str annas-visitor) :person (str annas-visitor)}]))]
+        (is (uuid? annas-visitor))
+        (is (= {:status "ok" :data ["Frame"]} (first (wire/read-json body))))))
+    (testing "the leak test asks as another visitor and as a signed-in stranger"
+      (let [report (leaks/check (gw/endpoints *app*) {:person stella :foreign {:design rim}})]
+        (is (= [] (:leaked report)))
+        (is (every? (set (:checked report)) [:designs/mine :designs/one :designs/rename]))))
+    (testing "at sign-in the visitor's records become the person's"
+      (let [[tibor _] (post! anna (str "/login-as/" vic) "")]
+        (is (string? tibor))
+        (is (= #{"Rim 2" "Rim!"} (set (:data (ask! tibor "designs/mine" {})))) "signed in: still theirs")
+        (is (= #{{:sh_designs/design__customer_id vic :sh_designs/design__visitor_id nil}}
+               (set (as-system! "SELECT design__customer_id, design__visitor_id FROM sh_designs WHERE design__id = ?" rim)))
+            "the person is set, the visitor emptied")
+        (is (= {:status "ok" :data []} (ask! anna "designs/mine" {})) "the visitor's old cookie opens nothing")
+        (is (= {:status "ok" :data "Rim!!"} (ask! tibor "designs/rename" {:design/id (str rim) :design/name "Rim!!"})))))
+    (testing "when a visitor's session has ended, its records are the system's only"
+      (as-system! "DELETE FROM groundwork.sessions WHERE session__person_id IS NULL")
+      (is (= {:status "ok" :data []} (ask! bela "designs/mine" {})))
+      (is (= "not-found" (:status (ask! bela "designs/one" {:design/id (str frame)}))))
+      (is (= 1 (count (as-system! "SELECT 1 FROM sh_designs WHERE design__id = ?" frame))) "the row is still there"))))
+
+(deftest a-visitor-hears-of-their-own-records
+  (let [[anna rim] (save-design! nil "Bell")
+        [bela _]   (save-design! nil "Other")
+        _          (ask! anna "designs/mine" {})
+        line       (open-line anna)
+        mine       ["designs/mine" {}]]
+    (try
+      (watch! line mine)
+      (testing "their own design changes"
+        (as-system! "UPDATE sh_designs SET design__name = 'Bell 2' WHERE design__id = ?" rim)
+        (is (= [mine] (next-bell line 3000))))
+      (testing "another visitor saves one: nothing"
+        (save-design! bela "Other 2")
+        (is (nil? (next-bell line 500))))
+      (finally (close! line)))))
+
+(deftest the-start-checks-a-visitor-column
+  (testing "one visitor column a kind, and one person column for the row to move to"
+    (is (= ::rules/bad-description
+           (:type (error #(rules/check (assoc-in shapes/description [:records :design :people]
+                                                 {:designs/mine :design/customer-id
+                                                  :orders/see   :design/shop-id}))))))
+    (is (= ::rules/bad-description
+           (:type (error #(rules/check (assoc-in shapes/description [:records :design :visitors]
+                                                 {:designs/mine :design/visitor-id
+                                                  :orders/see   :design/customer-id})))))))
+  (testing "an open action isn't a visitor's"
+    (is (= ::rules/bad-description
+           (:type (error #(rules/check (assoc-in shapes/description [:records :design :visitors]
+                                                 {:catalogue/see :design/visitor-id}))))))))
 
 ;; =============================================================================
 ;; A record between fixed sides carries them

@@ -11,6 +11,7 @@
       :records  {:order   {:table :orders :id :order/id
                            :in [:shop :order/shop-id]                    ; the arrow to its scope
                            :people {:orders/see :order/customer-id}     ; optional: a person on the record
+                           :visitors {:orders/see :order/visitor-id}    ; optional: a visitor on the record
                            :only-when {:orders/edit [:= :order/status \"open\"]}} ; optional
                  :job     {:table :jobs :id :job/id
                            :in [:shop :job/shop-id]                      ; its own scope column
@@ -43,6 +44,14 @@
    role holds it and nothing grants it. A request for it is about the scope
    it names: that scope is verified, and the wall shows the caller those
    kinds' rows of it and nothing else of the scope.
+
+   A record can belong to a visitor, someone not signed in: :visitors is
+   action → the column holding the id of their visitor session, as :people
+   is for a person. The id is Groundwork's own (the session's), never a
+   value from the request. The wall shows the row to that visitor, to read
+   and to change, and to nobody else; at sign-in Groundwork moves the row to
+   the person (the kind's person column); when the visitor's session has
+   ended the row is the system's only.
 
    A pass gives a reading action on the one record its row names, and on
    the kinds listed :under it, while its condition holds: to the people of
@@ -176,6 +185,7 @@
               (into {}
                     (map (fn [[_ {:keys [id people only-when parent] t :table :as record}]]
                            [(table t) (set (map column (concat [id]
+                                                               (vals (:visitors record))
                                                                (map second (arrows record))
                                                                (when parent [(second parent)])
                                                                (when parent (keys (nth parent 2 nil)))
@@ -280,9 +290,20 @@
                 (problem (str "Record kind " kind " carries " mine " from " parents
                               ": both must be scope columns (in :in) or both person columns (in :people)")
                          {:kind kind}))))))
-      (doseq [action (concat (keys people) (keys only-when))]
+      (doseq [action (concat (keys people) (keys only-when) (keys (:visitors record)))]
         (when-not (kinds action)
           (problem (str "Record kind " kind " names an unknown action " action) {:kind kind :action action})))
+      (when-let [visitors (seq (:visitors record))]
+        (doseq [[action _] visitors
+                :when (opens action)]
+          (problem (str "Record kind " kind " gives the open action " action " to a visitor; it is everyone's already")
+                   {:kind kind :action action}))
+        (when (< 1 (count (distinct (vals visitors))))
+          (problem (str "Record kind " kind " names more than one visitor column") {:kind kind}))
+        (when (< 1 (count (distinct (vals people))))
+          (problem (str "Record kind " kind " has a visitor column and more than one person column: at sign-in a"
+                        " visitor's row moves to the person, and there must be one column to move it to")
+                   {:kind kind})))
       (doseq [action (:open record)]
         (when-not (opens action)
           (problem (str "Record kind " kind " lists " action " under :open, which isn't in the description's :open")
@@ -605,6 +626,9 @@
           ;; a person on the record
           (when-let [col (get people action)]
             [[(str alias "." (quote-id (column col)) " = CAST(? AS uuid)") [:person]]])
+          ;; a visitor on the record
+          (when-let [col (get (:visitors record) action)]
+            [[(str alias "." (quote-id (column col)) " = CAST(? AS uuid)") [:visitor]]])
           ;; a pass to this record, or to the record it hangs under: last, so
           ;; a row granted another way never asks for the passes
           (when-not writing?
@@ -645,31 +669,38 @@
   "The database wall's condition for a record kind's table: a row is visible
    when one of its scopes was verified, or it belongs to the person."
   [{:keys [records]} kind]
-  (let [{t :table :keys [people] :as record} (records kind)
+  (let [{t :table :keys [people visitors] :as record} (records kind)
         base                                 (quote-id (table t))]
     (str/join " OR "
               (concat (for [arrow (arrows record)]
                         (str "groundwork.wall_allows(" (scope-sql base arrow) ")"))
                       (for [col (distinct (vals people))]
-                        (str base "." (quote-id (column col)) " = groundwork.wall_person()"))))))
+                        (str base "." (quote-id (column col)) " = groundwork.wall_person()"))
+                      (for [col (distinct (vals visitors))]
+                        (str base "." (quote-id (column col)) " = groundwork.wall_visitor()"))))))
 
 (defn- member-wall-sql
   "A row of a kind's table is visible to a member: its scope was verified
    and the person belongs there (or above), or the row is the person's."
   [{:keys [records]} kind]
-  (let [{t :table :keys [people] :as record} (records kind)
+  (let [{t :table :keys [people visitors] :as record} (records kind)
         base                                 (quote-id (table t))]
     (str/join " OR "
               (concat (for [arrow (arrows record)]
                         (str "groundwork.wall_member(" (scope-sql base arrow) ")"))
                       (for [col (distinct (vals people))]
-                        (str base "." (quote-id (column col)) " = groundwork.wall_person()"))))))
+                        (str base "." (quote-id (column col)) " = groundwork.wall_person()"))
+                      (for [col (distinct (vals visitors))]
+                        (str base "." (quote-id (column col)) " = groundwork.wall_visitor()"))))))
 
 (defn- inline
   "A compiled rule's SQL with its params written in: the person as the
    transaction's own, values as literals."
   [{:keys [sql params]}]
-  (fill sql params #(if (= :person %) "groundwork.wall_person()" (sql-literal %))))
+  (fill sql params #(case %
+                      :person  "groundwork.wall_person()"
+                      :visitor "groundwork.wall_visitor()"
+                      (sql-literal %))))
 
 (defn policy-sql
   "The database wall's policy for a record kind's table, {:using … :check …}.
@@ -834,9 +865,32 @@
     (conj (set (filter #(and (not (opens %)) (under? description (kinds %) kind)) (keys kinds))) team-action)))
 
 (defn bind
-  "A rule's params with the person filled in."
-  [params person]
-  (mapv #(if (= :person %) (str person) %) params))
+  "A rule's params with the person filled in, and the visitor (nobody's,
+   unless given)."
+  ([params person] (bind params person nil))
+  ([params person visitor]
+   (mapv #(case %
+            :person  (some-> person str)
+            :visitor (some-> visitor str)
+            %)
+         params)))
+
+(defn visitor-actions
+  "The actions some record kind gives a visitor: their endpoints may be
+   asked by someone not signed in."
+  [{:keys [records]}]
+  (into #{} (mapcat (comp keys :visitors val)) records))
+
+(defn visitor-moves
+  "For sign-in: every table with a visitor column, and the person column a
+   visitor's rows move to there (nil when the kind has none):
+   [{:table :visitor-column :person-column}]."
+  [{:keys [records]}]
+  (vec (for [[_ {t :table :keys [people visitors]}] records
+             :when (seq visitors)]
+         {:table          (table t)
+          :visitor-column (column (first (vals visitors)))
+          :person-column  (some-> (first (vals people)) column)})))
 
 (defn quote-table [t] (quote-id (table t)))
 (defn quote-column [c] (quote-id (column c)))

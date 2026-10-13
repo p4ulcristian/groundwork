@@ -221,6 +221,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:permissions :records <record kind> :in` | [kind column] or a list of them | Its scope column: [scope-kind column], or a list of them for a record shared by scopes | `[:shop :order/shop-id]` |
 | `:permissions :records <record kind> :parent` (optional) | [kind column] or [kind column {column column}] | The record it hangs under: [record-kind its-column], and what it carries from it when either has more than one scope, or a person: [record-kind its-column {its column → the parent's}] | `[:order :job/order-id]` |
 | `:permissions :records <record kind> :people` (optional) | action → column | An action a person on the record holds: action → their column | `#:orders{:see :order/customer-id}` |
+| `:permissions :records <record kind> :visitors` (optional) | action → column | An action a visitor on the record holds: action → the column with their visitor session's id. At sign-in the row moves to the person, into the kind's person column | `#:designs{:edit :design/visitor-id}` |
 | `:permissions :records <record kind> :only-when` (optional) | action → condition | An action allowed only when the record matches: action → condition | `#:orders{:edit [:= :order/status "open"]}` |
 | `:permissions :records <record kind> :open` (optional) | set of actions | The open actions that reach this kind (each is in the description's :open); its :only-when for them still holds | `#{:catalogue/see}` |
 | `:permissions :links` | list of links | Scopes reaching other scopes through a linking record | `[]` |
@@ -301,6 +302,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `<endpoint name> :answer` | malli shape | What may be sent back, a malli shape | `[:vector [:map [:job/id :uuid]]]` |
 | `<endpoint name> :reads` (optional) | list of tables | Tables a read uses that Postgres can't see in its SQL | `[:jobs]` |
 | `<endpoint name> :rate-limit` (optional) | {:per-minute n :per-day n :by …} | How often a caller may ask it (see groundwork.limits) | `{:per-day 20, :by :person}` |
+| `<endpoint name> :keeps-for-visitor` (optional) | true or false | A write that keeps something for someone not signed in: a visitor without a session gets one, so the row can be theirs | `true` |
 <!-- end of the settings reference -->
 
 ---
@@ -821,6 +823,30 @@ The app describes its places, actions, roles and records once:
   to the record rings its own scope and whoever holds a pass on it, and a
   pass made or ended rings the reads of the records it gives. Index the
   pass table's receiver column: passes are found by it.
+- **A record can belong to a visitor,** someone not signed in: a design,
+  an upload, a cart made before the login. A record kind names a visitor
+  column beside, or instead of, its person column:
+
+  ```clojure
+  :design {:table :designs :id :design/id :in [:shop :design/shop-id]
+           :people   {:designs/mine :design/customer-id}
+           :visitors {:designs/mine :design/visitor-id}}
+  ```
+
+  The column holds the id of the visitor's session, which is Groundwork's
+  own: the app doesn't make one and the browser never sends it. An endpoint
+  gets it as `(:visitor ctx)` (nil for someone signed in, or with no
+  session), and an action a kind gives a visitor may be asked signed out.
+  The wall shows the row to that visitor, to read and to change, and to
+  nobody else. A write that keeps something for a visitor says
+  `:keeps-for-visitor true`: asked without a session, the visitor gets one
+  first, and its cookie goes out with the answer. **At sign-in Groundwork
+  moves the visitor's rows to the person** (`sessions/sign-in`): in every
+  table with a visitor column the person is set and the visitor emptied, no
+  hook to write; a kind with no person column keeps its rows. When the
+  visitor's session has ended, its rows are nobody's: only the system sees
+  them, and the app's cleanup may remove them. A visitor's own line hears of
+  their rows.
 - **Team:** `create-scope!`, `invite!`, `accept-invitation!`,
   `change-role!`, `create-role!`, `set-role-actions!`, `remove-member!`,
   `grant-extra!`, `revoke-extra!`. Managing needs `:groundwork/team`, and
@@ -1211,6 +1237,9 @@ Then the store, under the screens:
 - **Passes:** run it once more as the holder of a pass on one record, with
   the giving scope's other records as the foreign ids: a pass on one must
   answer not-found for another.
+- **A visitor's records:** an endpoint whose action a kind gives a visitor
+  is asked twice more with the foreign ids, as another visitor and as a
+  signed-in stranger; both must answer not-found.
 - Public and signed-in endpoints are skipped, and so is one that needs a
   foreign id nobody gave; the report says which and why.
 - Generating needs `org.clojure/test.check` on the test classpath.

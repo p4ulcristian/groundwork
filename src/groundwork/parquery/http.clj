@@ -86,14 +86,23 @@
       (json 413 {:error (str "At most " (:max-asks settings) " asks in one request")})
 
       :else
-      (let [about {:person       (sessions/person request)
-                   :flags        (sessions/flags request)
-                   :session-data (sessions/data request)
-                   :request      request
-                   :request-id (web/request-id request)
-                   :client-ip  (web/client-ip request)}
-            run   (fn [raw]
-                    (if-let [ask (and (map? raw) (wire/read-ask raw))]
-                      (run-one part ask about)
-                      {:status :invalid :errors {:ask ["isn't an ask: {\"endpoint\": …, \"params\": {…}}"]}}))]
-        (json 200 (run-all part run asks))))))
+      (let [read    (mapv #(when (map? %) (wire/read-ask %)) asks)
+            ;; a write that keeps something for a visitor: someone with no
+            ;; session gets one now, and its cookie goes out with the answer
+            made    (when (and (nil? (sessions/person request)) (nil? (sessions/visitor request))
+                               (some #(:keeps-for-visitor (endpoints/endpoint (:endpoints part) (:endpoint %)))
+                                     (remove nil? read)))
+                      (sessions/visitor-session! request))
+            about   {:person       (sessions/person request)
+                     :visitor      (or (:id made) (sessions/visitor request))
+                     :flags        (sessions/flags request)
+                     :session-data (sessions/data request)
+                     :request      request
+                     :request-id (web/request-id request)
+                     :client-ip  (web/client-ip request)}
+            run     (fn [ask]
+                      (if ask
+                        (run-one part ask about)
+                        {:status :invalid :errors {:ask ["isn't an ask: {\"endpoint\": …, \"params\": {…}}"]}}))]
+        (cond-> (json 200 (run-all part run read))
+          made (assoc-in [:headers "Set-Cookie"] (:cookie made)))))))

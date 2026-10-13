@@ -73,13 +73,14 @@
   "A record kind's scope columns and person columns; a pass to a person
    kept in its table counts as a person on it, so its bell reaches them."
   [description kind]
-  (let [{:keys [in people] t :table} (get-in description [:records kind])
+  (let [{:keys [in people visitors] t :table} (get-in description [:records kind])
         arrows                       (if (keyword? (first in)) [in] in)
         receivers                    (for [{pt :table :keys [to-person]} (:passes description)
                                            :when (and to-person (= (name pt) (name t)))]
                                        to-person)]
     {:scopes (mapv (comp column second) arrows)
-     :people (vec (distinct (map column (concat (vals people) receivers))))}))
+     ;; a visitor's id travels with the people: only their own line knows it
+     :people (vec (distinct (map column (concat (vals people) (vals visitors) receivers))))}))
 
 (defn- ringing-tables
   "Every table that rings: {table {:id col :scopes [cols] :people [cols]}}."
@@ -226,15 +227,16 @@
 
 (defn- checked-watches
   "A line's watches, each checked like an ask; one it may not ask is dropped."
-  [{:keys [endpoints]} {:keys [person flags]} asks]
+  [{:keys [endpoints]} {:keys [person visitor flags]} asks]
   (let [tables (get-in endpoints [:perms :description :records])]
     (vec (keep (fn [[endpoint params]]
                  (when-let [{:keys [scopes record] only :tables}
                             (endpoints/watch endpoints {:endpoint endpoint :params params
-                                                        :person person :flags flags})]
+                                                        :person person :visitor visitor :flags flags})]
                    {:ask          [(wire/endpoint-name endpoint) params]
                     :endpoint     endpoint
                     :scopes       (set (map str scopes))
+                    :visitor      visitor
                     :only-tables  only
                     :record-table (some-> record first tables :table name)
                     :record-id    (some-> record second str)}))
@@ -278,7 +280,7 @@
 
 (defn- rings?
   "Whether a bell concerns a watch."
-  [part person {:keys [endpoint scopes record-table record-id only-tables]} {:keys [t s p i]}]
+  [part person {:keys [endpoint scopes record-table record-id only-tables visitor]} {:keys [t s p i]}]
   (let [ringing (get (:tables part) t)
         tables  (tables-of-endpoint part endpoint)]
     (and (or (nil? tables) (contains? tables t)
@@ -288,7 +290,9 @@
              ;; a scope's bell reaches an open action's watch only for the tables it reaches
              (and (or (nil? only-tables) (contains? only-tables t))
                   (or (nil? s) (seq (set/intersection scopes (set s)))))
-             (and person (or (nil? p) (some #{(str person)} p))))
+             ;; a person's own rows, or a visitor's: the bell names whose
+             (let [me (or person visitor)]
+               (and me (or (and person (nil? p)) (some #{(str me)} p)))))
          (or (not= t record-table) (nil? i) (some #{record-id} i)))))
 
 (def ^:private recent-kept 50)
@@ -309,7 +313,7 @@
    travel), the ones a write's own bells concern, each checked like an ask
    first. `rang` is the write's bells (see groundwork.endpoints/bell), or
    :any: everything it shows that it may ask."
-  [part {:keys [person flags]} watching rang]
+  [part {:keys [person visitor flags]} watching rang]
   (let [asks    (vec (keep read-watch watching))
         rung    (when-not (= :any rang)
                   (into (set (map :t rang)) (mapcat #(get (:pass-tables part) (:t %))) rang))
@@ -319,7 +323,7 @@
                                (or (nil? tables) (seq (set/intersection tables rung)))))
                            asks)
                   asks)
-        watches (checked-watches part {:person person :flags (or flags #{})} maybe)]
+        watches (checked-watches part {:person person :visitor visitor :flags (or flags #{})} maybe)]
     (into []
           (comp (filter (fn [watch] (or (nil? rung) (some #(rings? part person watch %) rang))))
                 (map :ask)
@@ -423,10 +427,12 @@
     :else
     (let [{:keys [lines]} bells
           person          (sessions/person request)
+          visitor         (sessions/visitor request)
           flags           (sessions/flags request)
           session         (sessions/session-hash request)]
       (http/as-channel request
-                       {:on-open    (fn [ch] (swap! lines assoc ch {:person person :flags flags :session session
+                       {:on-open    (fn [ch] (swap! lines assoc ch {:person person :visitor visitor :flags flags
+                                                                    :session session
                                                                     :asks [] :watches []}))
                         :on-receive (fn [ch text] (watch! bells ch text))
                         :on-close   (fn [ch _] (swap! lines dissoc ch))}))))

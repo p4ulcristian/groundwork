@@ -15,7 +15,10 @@
 
 (def tables
   "DROP TABLE IF EXISTS sh_packages, sh_price_sheets, sh_agreements, sh_order_services, sh_handoffs, sh_jobs,
-                        sh_orders, sh_messages, sh_conversations;
+                        sh_orders, sh_messages, sh_conversations, sh_designs;
+   -- made before signing in: a design is its visitor's, then its person's; its shop may wait
+   CREATE TABLE sh_designs (design__id uuid PRIMARY KEY DEFAULT gen_random_uuid(), design__shop_id uuid,
+                            design__customer_id uuid, design__visitor_id uuid, design__name text NOT NULL);
    CREATE TABLE sh_packages (package__id uuid PRIMARY KEY, package__shop_id uuid NOT NULL,
                              package__name text NOT NULL, package__published boolean NOT NULL);
    CREATE TABLE sh_orders (order__id uuid PRIMARY KEY, order__shop_id uuid NOT NULL,
@@ -76,12 +79,12 @@
 
 (def drop-tables
   "DROP TABLE IF EXISTS sh_packages, sh_price_sheets, sh_agreements, sh_order_services, sh_handoffs, sh_jobs,
-                        sh_orders, sh_messages, sh_conversations")
+                        sh_orders, sh_messages, sh_conversations, sh_designs")
 
 (def description
   {:scopes  {:shop {:actions #{:catalogue/see :catalogue/edit :shop/card :orders/see :orders/edit
                                :prices/see :prices/edit :services/see :talk/read :talk/write
-                               :handoffs/give :handoffs/work}
+                               :handoffs/give :handoffs/work :designs/mine}
                     :roles   {"Staff"      #{:catalogue/edit :orders/see :orders/edit :prices/see :prices/edit
                                              :services/see :talk/read :talk/write :handoffs/give :handoffs/work}
                               ;; who in a receiving shop may use a pass is that shop's own roles' matter
@@ -95,6 +98,11 @@
                                    :shop/card     [:= :package/published true]}}
              :order   {:table :sh_orders :id :order/id :in [:shop :order/shop-id]
                        :people {:orders/see :order/customer-id}}
+             ;; a record can belong to a visitor: theirs to read and to change, and the
+             ;; person's once they sign in
+             :design  {:table :sh_designs :id :design/id :in [:shop :design/shop-id]
+                       :people   {:designs/mine :design/customer-id}
+                       :visitors {:designs/mine :design/visitor-id}}
              :job     {:table :sh_jobs :id :job/id :in [:shop :job/shop-id] :parent [:order :job/order-id]}
              :handoff {:table :sh_handoffs :id :handoff/id
                        :in [[:shop :handoff/from-shop-id] [:shop :handoff/to-shop-id]]}
@@ -161,6 +169,10 @@
 (pg/defsql jobs-of-order)
 (pg/defsql job)
 (pg/defsql stamp-order)
+(pg/defsql save-design)
+(pg/defsql designs)
+(pg/defsql design)
+(pg/defsql rename-design)
 (pg/defsql messages)
 (pg/defsql say)
 
@@ -257,6 +269,28 @@
    :orders/stamp        {:write      (fn [{:keys [db]} params] (:order/note (pg/row db stamp-order params)))
                          :permission {:action :orders/see :record [:order :order/id]}
                          :input      [:map [:order/id :uuid] [:order/note :string]]
+                         :answer     [:maybe :string]}
+   ;; a visitor's records. Saving keeps something for someone not signed in, who
+   ;; gets a visitor session for it; whose the row is comes from ctx, never the params
+   :designs/save        {:write      (fn [{:keys [db person visitor]} params]
+                                       (:design/id (pg/row db save-design
+                                                           (assoc params :design/customer-id person
+                                                                  :design/visitor-id visitor))))
+                         :permission :public
+                         :keeps-for-visitor true
+                         :input      [:map [:design/name :string]]
+                         :answer     :uuid}
+   :designs/mine        {:read       (fn [{:keys [db]} _] (mapv :design/name (pg/rows db designs {})))
+                         :permission {:action :designs/mine :list :design}
+                         :input      [:map]
+                         :answer     [:vector :string]}
+   :designs/one         {:read       (fn [{:keys [db]} params] (:design/name (pg/row db design params)))
+                         :permission {:action :designs/mine :record [:design :design/id]}
+                         :input      [:map [:design/id :uuid]]
+                         :answer     [:maybe :string]}
+   :designs/rename      {:write      (fn [{:keys [db]} params] (:design/name (pg/row db rename-design params)))
+                         :permission {:action :designs/mine :record [:design :design/id]}
+                         :input      [:map [:design/id :uuid] [:design/name :string]]
                          :answer     [:maybe :string]}
    ;; every side of a conversation reads it and writes into it
    :talk/messages       {:read       (fn [{:keys [db]} params] (mapv :message/text (pg/rows db messages params)))

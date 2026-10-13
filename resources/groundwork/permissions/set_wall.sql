@@ -1,8 +1,10 @@
--- The scopes verified for this transaction, the person, the action and kind
+-- The scopes verified for this transaction, the person (or the visitor's
+-- session, for someone not signed in), the action and kind
 -- of record it runs for, whether it writes, and which of those scopes the
 -- person is a member of (there or above), until it ends.
 SELECT set_config('groundwork.scopes', :scopes, true) AS wall__scopes,
        set_config('groundwork.person', :person, true) AS wall__person,
+       set_config('groundwork.visitor', :visitor, true) AS wall__visitor,
        set_config('groundwork.action', :action, true) AS wall__action,
        set_config('groundwork.kind', :kind, true) AS wall__kind,
        set_config('groundwork.writing', :writing, true) AS wall__writing,

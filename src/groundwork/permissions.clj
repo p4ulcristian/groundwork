@@ -82,13 +82,15 @@
    the action's rule allows (without a kind, every kind the action has a
    rule for); every other kind only rows of the scopes the person is a
    member of. See rules/policy-sql. With :read-only? true, the transaction
-   can't change anything."
-  [perms {:keys [person scopes action kind read-only?]} f]
+   can't change anything. :visitor is the id of the visitor's session, for
+   someone not signed in: the rows that name it are theirs."
+  [perms {:keys [person visitor scopes action kind read-only?]} f]
   (own-transaction perms
                    {:read-only? (boolean read-only?)}
                    (fn [tx]
                      (pg/execute! tx set-wall {:scopes  (str "{" (str/join "," scopes) "}")
                                                :person  (if person (str person) "")
+                                               :visitor (if (and visitor (nil? person)) (str visitor) "")
                                                :action  (if action (rules/action-name action) "")
                                                :kind    (if kind (rules/action-name kind) "")
                                                :writing (if read-only? "" "on")})
@@ -151,18 +153,20 @@
   "Whether a person may do an action on one record: [kind id]. Nobody
    signed in may do only what is open to anyone. With :writing? true, held
    to what a write may: a pass gives nothing then."
-  [perms {:keys [person flags action writing?] [kind id] :record}]
+  [perms {:keys [person visitor flags action writing?] [kind id] :record}]
   (let [id                    (as-id id)
         {t :table id-col :id} (record-spec perms kind)
-        {:keys [sql params]}  (rule perms action kind writing?)]
-    (and (or (some? person) (= :anyone (open-level perms action)))
+        {:keys [sql params]}  (rule perms action kind writing?)
+        ;; a visitor is someone not signed in: signed in, there is none
+        visitor               (when (nil? person) visitor)]
+    (and (or (some? person) (some? visitor) (= :anyone (open-level perms action)))
          (some? sql)
          (not (rules/blocked? (:description perms) action flags))
          (as-system perms
                     (fn [tx]
                       (boolean (seq (query tx (str "SELECT 1 FROM " (rules/quote-table t) " r WHERE "
                                                    (id-is id-col id) " AND " sql)
-                                           (into [id] (rules/bind params person))))))))))
+                                           (into [id] (rules/bind params person visitor))))))))))
 
 (defn scopes-of
   "The scope ids a record belongs to, through its own columns."
@@ -237,6 +241,31 @@
                                         (apply str (map #(str " OR " (first %)) links)))
                                 (into [(str scope) (str person) (rules/action-name action)]
                                       (mapcat #(rules/bind (second %) person) links)))))))))
+
+(defn visitor-action?
+  "Whether some record kind gives this action to a visitor: its endpoints
+   may be asked by someone not signed in."
+  [perms action]
+  (contains? (rules/visitor-actions (:description perms)) action))
+
+(defn move-visitor!
+  "At sign-in: every row that is the visitor's becomes the person's, in
+   every table with a visitor column. The person is set and the visitor
+   emptied; a kind with no person column keeps its rows, which are nobody's
+   once the visitor's session has ended. Returns how many rows moved."
+  [perms visitor person]
+  (let [moves (filter :person-column (rules/visitor-moves (:description perms)))]
+    (if (or (nil? visitor) (nil? person) (empty? moves))
+      0
+      (as-system perms
+                 (fn [tx]
+                   (reduce + 0
+                           (for [{:keys [table visitor-column person-column]} moves]
+                             (:next.jdbc/update-count
+                              (first (query tx (str "UPDATE \"" table "\" SET \"" person-column "\" = CAST(? AS uuid), \""
+                                                    visitor-column "\" = NULL WHERE \"" visitor-column
+                                                    "\" = CAST(? AS uuid)")
+                                            [(str person) (str visitor)]))))))))))
 
 (defn open-scope
   "For an open action asked about a scope: that scope alone, when it exists
