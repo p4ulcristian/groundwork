@@ -1,12 +1,14 @@
 (ns groundwork.css-test
   (:require
+   ["react" :as react]
    ["react-dom/server" :as server]
    [cljs.test :refer [deftest is testing]]
    [groundwork.css :as css]
    [reagent.core :as r]))
 
-(defn- html [hiccup]
-  (server/renderToStaticMarkup (r/as-element hiccup css/compiler)))
+(defn- html
+  ([hiccup] (server/renderToStaticMarkup (r/as-element hiccup)))
+  ([hiccup compiler] (server/renderToStaticMarkup (r/as-element hiccup compiler))))
 
 (defn- console-errors
   "What f writes to the console's errors."
@@ -31,20 +33,42 @@
   (testing "a class keyword that isn't one is refused"
     (is (thrown-with-msg? ExceptionInfo #"Not a class keyword" (css/class-names :css.Job/title)))))
 
+(defn- button [props label]
+  [:button (update props :class #(vector :css.button/button %)) label])
+
+(defn- counted
+  "A component with a hook: it only renders as a function component."
+  []
+  (let [[n _] (react/useState 3)]
+    [:b {:class [:css.panel/count (when (pos? n) :css.panel/some)]} n]))
+
+(defn- screen []
+  [:main {:class [:css.panel/frame (when false :css.panel/open)]}
+   [:h1.plain {:class :css.panel/title} "Jobs"]
+   [button {:class :css.toolbar/save} "Save"]
+   [:<> [:i {:class "vc-day"}] [:b {:id "plain"}]]
+   [:> "section" {:class [:css.panel/part]} "x"]])
+
+(def ^:private screen-html
+  (str "<main class=\"panel__frame\"><h1 class=\"plain panel__title\">Jobs</h1>"
+       "<button class=\"button__button toolbar__save\">Save</button>"
+       "<i class=\"vc-day\"></i><b id=\"plain\"></b>"
+       "<section class=\"panel__part\">x</section></main>"))
+
 (deftest every-element-goes-through-the-door
   (css/start! {})
-  (letfn [(button [props label] [:button (update props :class #(vector :css.button/button %)) label])
-          (screen []
-            [:main {:class [:css.panel/frame (when false :css.panel/open)]}
-             [:h1 {:class :css.panel/title} "Jobs"]
-             [button {:class :css.toolbar/save} "Save"]
-             [:<> [:i {:class "vc-day"}] [:b {:id "plain"}]]
-             [:> "section" {:class [:css.panel/part]} "x"]])]
-    (is (= (str "<main class=\"panel__frame\"><h1 class=\"panel__title\">Jobs</h1>"
-                "<button class=\"button__button toolbar__save\">Save</button>"
-                "<i class=\"vc-day\"></i><b id=\"plain\"></b>"
-                "<section class=\"panel__part\">x</section></main>")
-           (html [screen])))))
+  (testing "with Reagent's own compiler"
+    (is (= screen-html (html [screen]))))
+  (testing "with whichever compiler an app renders with: the door isn't a compiler of its own"
+    (let [functional (r/create-compiler {:function-components true})]
+      (is (= screen-html (html [screen] functional)))
+      (is (= "<b class=\"panel__count panel__some\">3</b>" (html [counted] functional)) "hooks keep working")
+      (is (= "<b class=\"panel__count panel__some\">3</b>" (html [:f> counted])))))
+  (testing "what isn't a class keyword comes out as Reagent always made it"
+    (is (= "<i class=\"a b c 4\"></i>" (html [:i {:class ["a" :b 'c nil false 4]}])))
+    (is (= "<i class=\"b\"></i>" (html [:i {:class :b}])))
+    (is (= "<i></i>" (html [:i {:class []}])))
+    (is (= "a b" (r/class-names "a" :b)))))
 
 (deftest a-state-from-data-is-looked-up-in-a-table
   (let [stage-class {:coating :css.job-card/coating :curing :css.job-card/curing nil nil}]

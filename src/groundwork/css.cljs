@@ -27,8 +27,7 @@
    [clojure.string :as str]
    [groundwork.loader :as loader]
    [groundwork.names :as names]
-   [reagent.impl.protocols :as p]
-   [reagent.impl.template :as tmpl]))
+   [reagent.impl.util :as util]))
 
 (defonce ^:private known (atom nil))
 (defonce ^:private module-styles (atom {}))
@@ -60,6 +59,7 @@
     (or (nil? x) (false? x)) nil
     (string? x)              (when-not (str/blank? x) x)
     (keyword? x)             (class-of x)
+    (symbol? x)              (name x)
     (coll? x)                (let [parts (keep class-names x)]
                                (when (seq parts) (str/join " " parts)))
     :else                    (str x)))
@@ -75,29 +75,22 @@
       (throw (ex-info (str "No class for " (pr-str value) "; the table has " (pr-str (vec (keys table))))
                       {:type ::no-class :value value :table table})))))
 
-(defn- with-class-names
-  "A hiccup form with its :class as text."
-  [x]
-  (if (vector? x)
-    (let [tag (nth x 0 nil)]
-      (if (keyword? tag)
-        (let [i     (if (or (keyword-identical? tag :>) (keyword-identical? tag :r>)) 2 1)
-              props (nth x i nil)]
-          (if (and (map? props) (some? (:class props)) (not (string? (:class props))))
-            (assoc x i (assoc props :class (class-names (:class props))))
-            x))
-        x))
-    x))
+(defn- reagent-class-names
+  "What Reagent makes of an element's :class, with class keywords
+   understood: everything else as Reagent itself does it."
+  [class]
+  (cond
+    (coll? class)    (class-names class)
+    (keyword? class) (class-of class)
+    (symbol? class)  (name class)
+    :else            class))
 
-(defonce ^{:doc "Reagent's compiler with class keywords understood in every element's :class."}
-  compiler
-  (let [id (gensym "groundwork-compiler")]
-    (reify p/Compiler
-      (get-id [_] id)
-      (parse-tag [this tag-name tag-value] (tmpl/cached-parse this tag-name tag-value))
-      (as-element [this x] (tmpl/as-element this (with-class-names x) tmpl/reag-element))
-      (make-element [this argv component jsprops first-child]
-        (tmpl/make-element this argv component jsprops first-child)))))
+;; Every element's :class goes through here, whichever Reagent compiler the
+;; app renders with (its default, one with function components, one handed
+;; to a render by hand): Reagent turns :class into text in one function, and
+;; this is that function from now on. A class keyword can't come out as its
+;; bare name because some render went another way.
+(set! (.-cljs$core$IFn$_invoke$arity$1 util/class-names) reagent-class-names)
 
 (defn- linked?
   "Whether the page links a stylesheet already, whatever was added to its

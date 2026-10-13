@@ -1123,7 +1123,8 @@ styles/
   the class `job-card__title` (`names/key->class`, `names/class->key`).
   The marker keeps classes apart from data, endpoints and events. Every
   element's `:class` takes a class keyword, a collection of them, or a
-  library's own class as text; `groundwork.browser/start!` installs it.
+  library's own class as text, whichever Reagent compiler the app renders
+  with (its default, or one with function components).
 - **A namespace is one stylesheet,** named after it (`job-card.css`),
   anywhere under `looks/`, `areas/` or `vendor/`. A large one is several
   files named `job-card.<part>.css`, side by side or in a folder of their

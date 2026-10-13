@@ -18,7 +18,7 @@
 
    Groundwork then, in order: reads what the page shell put in the page (the
    person signed in, their session's flags, the language and the app's
-   languages); teaches Reagent class keywords (groundwork.css); sets up
+   languages, the styles' bundles for groundwork.css); sets up
    re-frame with the store, which opens the /parquery websocket; asks for the person's grants, so \"can I?\" answers; starts
    routing at the page's address; and mounts :root into <div id=\"app\">
    with Reagent. A save reloads the code and renders again.
@@ -54,7 +54,6 @@
    [groundwork.parquery-store :as store]
    [groundwork.routing :as routing]
    [re-frame.core :as rf]
-   [reagent.core :as r]
    [reagent.dom.client :as rdc]))
 
 (defn read-initial
@@ -125,8 +124,6 @@
   [{:keys [root routes shapes max-asks mount store] :as options}]
   (let [initial (read-initial (some-> (js/document.getElementById "groundwork") .-textContent))]
     (css/start! initial)
-    ;; class keywords in every element's :class, for whatever renders with Reagent
-    (r/set-default-compiler! css/compiler)
     (rf/dispatch-sync [::-init (dissoc initial :styles :classes)])
     (rf/dispatch-sync [::store/start (merge {:shapes shapes :max-asks max-asks} store)])
     (when (:person initial)
