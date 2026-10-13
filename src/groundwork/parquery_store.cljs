@@ -4,7 +4,7 @@
    for whose answers it keeps. It lives in re-frame's db under
    :groundwork/parquery-store; the app's own state is beside it.
 
-     (rf/dispatch [::store/start {:shapes {…}}])                  ; once, at boot
+     (rf/dispatch [::store/start {:shapes {…}}])                  ; once, at boot; nothing asks before it
      (rf/dispatch [::store/ensure :jobs-page [{:endpoint :jobs/list :params {:shop/id id}}]])
      @(rf/subscribe [::store/answer {:endpoint :jobs/list :params {:shop/id id}}])
      ;=> {:status :ready :data […]} or :loading, :error (with :error), and
@@ -53,11 +53,16 @@
    - A caller over a rate limit gets its answer as the entry's :error:
      {:status :too-many :limit :per-minute|:per-day :retry-after-seconds n};
      the store doesn't ask again by itself, and a write is never repeated.
+   - Nothing asks before the start: ensure, own, hear, once-answered,
+     ask-again and write throw before ::start, naming the endpoint. The start
+     makes the store and sets how answers are read; a question from before it
+     would be answered into nothing.
    - \"Can I?\" reads the person's grants: ensure
      {:endpoint :groundwork/grants :params {}} for a signed-in person.
    - An id is text here, in params, answers and keys; a UUID value given in
      params counts as its text."
   (:require
+   [clojure.string :as str]
    [clojure.walk :as walk]
    [groundwork.parquery.http :as http]
    [groundwork.parquery.websocket :as websocket]
@@ -337,6 +342,20 @@
 
 (defn- store-of [db] (get db :groundwork/parquery-store empty-store))
 
+(defn- started!
+  "Throws when the app hasn't started: nothing asks before the start. The
+   start makes the store and sets how answers are read; a question from
+   before it would be answered into nothing, and its screen would wait
+   forever. `asks` are the questions, to name them."
+  [db what asks]
+  (when-not (contains? db :groundwork/parquery-store)
+    (let [endpoints (distinct (keep :endpoint asks))]
+      (throw (ex-info (str "Asked " (if (seq endpoints) (str/join ", " endpoints) "the store") " (" what
+                           ") before the app's start. Nothing asks before groundwork.browser/start!: "
+                           "the data a screen needs on arrival is declared on its route (:reads), "
+                           "and code that asks while its namespace loads belongs in an event after the start.")
+                      {:type ::asked-before-start :what what :endpoints (vec endpoints)})))))
+
 (defn- fetching
   "Start asking these keys: [store fetches], for the ::fetch effect."
   [store ks]
@@ -378,6 +397,7 @@
 (rf/reg-event-fx ::ensure
                  [(rf/inject-cofx ::now)]
                  (fn [{:keys [db now]} [_ owner asks]]
+                   (started! db "ensure" asks)
                    (let [[store ks]      (ensure-asks (collect (store-of db) now) owner asks now)
                          [store fetches] (fetching store ks)]
                      {:db     (assoc db :groundwork/parquery-store store)
@@ -387,6 +407,7 @@
 (rf/reg-event-fx ::own
                  [(rf/inject-cofx ::now)]
                  (fn [{:keys [db now]} [_ owner asks]]
+                   (started! db "own" asks)
                    (let [[store ks]      (own-asks (collect (store-of db) now) owner asks now)
                          [store fetches] (fetching store ks)]
                      {:db     (assoc db :groundwork/parquery-store store)
@@ -402,6 +423,7 @@
 
 (rf/reg-event-fx ::hear
                  (fn [{:keys [db]} [_ owner asks event]]
+                   (started! db "hear" asks)
                    (let [store (hearing (store-of db) owner asks event)]
                      {:db (assoc db :groundwork/parquery-store store) ::watch (watched store)})))
 
@@ -430,12 +452,14 @@
 
 (rf/reg-event-fx ::once-answered
                  (fn [{:keys [db]} [_ ask event]]
+                   (started! db "once-answered" [ask])
                    (let [[store now?] (once-answered (store-of db) ask event)]
                      (cond-> {:db (assoc db :groundwork/parquery-store store)}
                        now? (assoc :dispatch (conj event (get-in store [:entries (key-of ask) :data])))))))
 
 (rf/reg-event-fx ::ask-again
                  (fn [{:keys [db]} [_ ask]]
+                   (started! db "ask-again" [ask])
                    (let [[store ks]      (ask-again (store-of db) ask)
                          [store fetches] (fetching store ks)]
                      {:db (assoc db :groundwork/parquery-store store) ::fetch fetches})))
@@ -469,6 +493,7 @@
 
 (rf/reg-event-fx ::write
                  (fn [{:keys [db]} [_ ask on-answer]]
+                   (started! db "write" [ask])
                    {::send-write [ask (watched (store-of db)) on-answer]}))
 
 (rf/reg-event-fx ::-written

@@ -276,3 +276,32 @@
                                    (is (= 2 @told) "released: it hears nothing")
                                    (is (= [] (watched)))
                                    (done))))))))
+
+(deftest nothing-asks-before-the-start
+  (reset! requests [])
+  (reset! rf-db/app-db {})
+  (reset! http/transport fake-transport)
+  (let [jobs    {:endpoint :jobs/list :params {:shop/id "s1"}}
+        refused (fn [event]
+                  (try (rf/dispatch-sync event) nil
+                       (catch :default e {:message (ex-message e) :data (ex-data e)})))]
+    (testing "a question before the start is refused, naming the endpoint"
+      (let [problem (refused [::store/ensure :board [jobs]])]
+        (is (= ::store/asked-before-start (:type (:data problem))))
+        (is (= [:jobs/list] (:endpoints (:data problem))))
+        (is (re-find #":jobs/list" (:message problem)))
+        (is (re-find #"before the app's start" (:message problem)))))
+    (testing "every way of asking: own, ask-again, a write, waiting for an answer, hearing"
+      (doseq [event [[::store/own :board [jobs]]
+                     [::store/ask-again jobs]
+                     [::store/write {:endpoint :jobs/move :params {:job/id "j1"}} [::moved]]
+                     [::store/once-answered jobs [::loaded]]
+                     [::store/hear :table [jobs] [::rang]]]]
+        (is (= ::store/asked-before-start (:type (:data (refused event)))) (pr-str (first event)))))
+    (testing "nothing went out, and nothing was kept"
+      (is (= [] @requests))
+      (is (nil? (:groundwork/parquery-store @rf-db/app-db))))
+    (testing "after the start, the same question is asked"
+      (fresh!)
+      (rf/dispatch-sync [::store/ensure :board [jobs]])
+      (is (= :loading (:status (answer jobs)))))))

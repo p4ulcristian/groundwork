@@ -1039,6 +1039,14 @@ The app's browser entry (the `:browser` settings' `:entry`) makes one call:
   Reagent. `@(rf/subscribe [::gb/person])` (the id, as text), `[::gb/flags]`,
   `[::gb/language]`, `[::gb/route]`, `[::gb/query]`.
 
+**Nothing asks before the start.** `gb/start!` makes the store and sets how
+answers are read (which fields are times, which are decimals). A question
+put to the store before it (`ensure`, `own`, `ask-again`, a `write`,
+`once-answered`, `hear`) throws, naming the endpoint, in development and in
+production alike: code that asks while its namespace loads would otherwise
+be answered into nothing, with its screen waiting forever. What a screen
+needs on arrival is its route's `:reads`.
+
 **Routing is Groundwork's, and a route is a record.** An app writes its
 pages once, in a `.cljc` file the server and the browser both read:
 
