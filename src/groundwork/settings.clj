@@ -410,7 +410,9 @@
            "(?i)\\.[0-9a-f]{8,}\\."
            (pred "regular expression text or nil" "must be a regular expression as text, or nil"
                  #(or (nil? %) (regex-text? %))))
-    (entry :gzip-min-bytes "Text-like answers at least this big go gzipped; nil for none" 1024 positive-or-nil)]
+    (entry :gzip-min-bytes "Text-like answers at least this big go gzipped; nil for none" 1024 positive-or-nil)
+    (optional :unknown-page "What a browser gets at an address no route knows: nil (or left out) for the page shell, whose browser routing may know it; or a handler, for an app whose pages are all routes (its own 404)"
+              'app.pages/not-found function-or-nil)]
 
    :server
    [:map {:closed true}

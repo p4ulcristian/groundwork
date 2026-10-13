@@ -830,7 +830,7 @@
 
 (def ^:private settings-keys
   [:routes :max-body-bytes :content-security-policy :login-path :on-request :on-error :proxies :languages
-   :test-sign-in :eval-bridge :hashed-files :gzip-min-bytes])
+   :test-sign-in :eval-bridge :hashed-files :gzip-min-bytes :unknown-page])
 
 (defn handler
   "The app's Ring handler, for settings already checked."
@@ -855,7 +855,8 @@
         app    (ring/ring-handler
                 router
                 (ring/routes files
-                             (fn [request] (when (wants-page? request) (page request)))
+                             (let [unknown (or (:unknown-page settings) page)]
+                               (fn [request] (when (wants-page? request) (unknown request))))
                              not-found))]
     (-> (fn [request] (app (assoc request ::page page)))
         wrap-head

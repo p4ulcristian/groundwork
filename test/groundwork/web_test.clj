@@ -331,6 +331,24 @@
     (let [[_ {:keys [get]}] (#'web/health-route nil)]
       (is (= 503 (:status (get {})))))))
 
+(deftest an-app-whose-pages-are-all-routes-answers-unknown-addresses-itself
+  (let [app (gw/start (-> app-settings
+                          ;; beside the fixture's app, on any free port
+                          (assoc-in [:server :port] 0)
+                          (assoc-in [:web :routes] [["/" {:get web/page :access :public}]])
+                          (assoc-in [:web :unknown-page]
+                                    (fn [request]
+                                      (assoc (web/page request {:title "Nothing here"}) :status 404)))))]
+    (try
+      (binding [*app* app]
+        (is (= 200 (:status (request "/" {:headers html}))) "a route's page is the route's")
+        (let [{:keys [status body]} (request "/no/such/page" {:headers html})]
+          (is (= 404 status))
+          (is (str/includes? body "<title>Nothing here</title>")))
+        (is (= 404 (:status (request "/missing.png" {:headers {"Accept" "image/*"}})))
+            "what isn't a page is not found, as before"))
+      (finally (gw/stop app)))))
+
 (deftest anything-else-is-not-found
   (is (= 404 (:status (request "/missing.png" {:headers {"Accept" "image/*"}}))))
   (is (= 404 (:status (request "/" {:method "POST" :headers (assoc html "Origin" (:origin (:sessions app-settings)))}))))

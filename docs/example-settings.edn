@@ -137,7 +137,10 @@
   :hashed-files "(?i)\\.[0-9a-f]{8,}\\."
 
   ;; Text-like answers at least this big go gzipped; nil for none
-  :gzip-min-bytes 1024}
+  :gzip-min-bytes 1024
+
+  ;; What a browser gets at an address no route knows: nil (or left out) for the page shell, whose browser routing may know it; or a handler, for an app whose pages are all routes (its own 404) (optional)
+  :unknown-page app.pages/not-found}
 
  ;; The web server
  :server

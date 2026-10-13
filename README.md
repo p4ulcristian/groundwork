@@ -171,6 +171,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:web :eval-bridge :max-chars` | positive whole number | The longest result sent back | `20000` |
 | `:web :hashed-files` | regular expression text or nil | Files whose names match (a regular expression, as text) are cached a year; nil for none | `"(?i)\\.[0-9a-f]{8,}\\."` |
 | `:web :gzip-min-bytes` | positive whole number or nil | Text-like answers at least this big go gzipped; nil for none | `1024` |
+| `:web :unknown-page` (optional) | function or nil | What a browser gets at an address no route knows: nil (or left out) for the page shell, whose browser routing may know it; or a handler, for an app whose pages are all routes (its own 404) | `app.pages/not-found` |
 
 #### `:server`: The web server
 
@@ -523,7 +524,9 @@ resources/migrations/
   in search. In production the app's own `robots.txt` is served.
 - **The page:** any other page a browser asks for gets the page shell, and
   the app's routing in the browser takes over. It loads `:script` into
-  `<div id="app">`, and is never cached.
+  `<div id="app">`, and is never cached. An app whose pages are all routes
+  says what an unknown address gets instead, `:web :unknown-page`, a
+  handler: its own 404, `(assoc (web/page request {:title "Not found"}) :status 404)`.
 - **A page per route:** a route's `:page`, a map or a function of the
   request, is merged over the app's: its own `:lang :title :description`,
   `:canonical`, `:alternates` (hreflang links), extra `:stylesheets
