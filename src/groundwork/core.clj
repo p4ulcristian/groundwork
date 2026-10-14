@@ -138,6 +138,25 @@
   []
   @current-app)
 
+(defn- halt-parts!
+  "Stop the running parts of a system in reverse start order, all of them
+   even when one throws; the first error is thrown after the last part.
+
+   The order is the parts list's own, not Integrant's halt!, which works the
+   order out again by searching every part's settings for references: an
+   app's whole settings (its routes, endpoints and their schemas) under every
+   part, a million values or more, took a large app over ten seconds to
+   stop."
+  [system skip]
+  (let [failure (reduce (fn [failure k]
+                          (if (and (contains? system k) (not (contains? skip k)))
+                            (try (ig/halt-key! k (get system k)) failure
+                                 (catch Throwable t (or failure t)))
+                            failure))
+                        nil
+                        (reverse (keys parts)))]
+    (when failure (throw failure))))
+
 (defn- init
   "Start the parts. When one refuses, the parts started before it are
    stopped again and the part's own error is thrown, not Integrant's around
@@ -147,7 +166,7 @@
     (ig/init config)
     (catch clojure.lang.ExceptionInfo e
       (when-let [system (:system (ex-data e))]
-        (try (ig/halt! system) (catch Throwable _ nil)))
+        (try (halt-parts! system #{}) (catch Throwable _ nil)))
       (throw (or (ex-cause e) e)))))
 
 (defn- snapshot!
@@ -158,7 +177,7 @@
   (when-not (some #{:groundwork/db :groundwork/migrations} fakes)
     (try (migrations/snapshot! settings)
          (catch Throwable e
-           (try (ig/halt! system (remove (set fakes) (keys system))) (catch Throwable _ nil))
+           (try (halt-parts! system (set fakes)) (catch Throwable _ nil))
            (throw e)))))
 
 (defn start
@@ -193,7 +212,7 @@
   [app]
   (let [system (::system app)]
     (swap! current-app #(when-not (identical? (::system %) system) %))
-    (ig/halt! system (remove (::fakes app #{}) (keys system)))))
+    (halt-parts! system (::fakes app #{}))))
 
 (defn part
   "A running part's value, for the REPL and tests: (part app :groundwork/db)."
