@@ -36,6 +36,7 @@
 (pg/defsql set-member-scopes "groundwork/permissions/set_member_scopes.sql")
 (pg/defsql columns-of "groundwork/permissions/columns_of.sql")
 (pg/defsql links-between "groundwork/permissions/links_between.sql")
+(pg/defsql connecting-role "groundwork/permissions/connecting_role.sql")
 (pg/defsql holds-sql "groundwork/permissions/holds.sql")
 (pg/defsql insert-scope "groundwork/permissions/insert_scope.sql")
 (pg/defsql insert-role "groundwork/permissions/insert_role.sql")
@@ -637,10 +638,23 @@
               "ALTER TABLE " t " ADD FOREIGN KEY (" record-column ", " from-column ")\n"
               "  REFERENCES " record-table " (" record-id ", " record-scope ");"))))
 
+(defn role-problem
+  "Why the role the app connects as can't carry the wall, or nil: a superuser
+   or a role with BYPASSRLS passes by every row-level policy, so every query
+   would see every scope's rows, with no error anywhere. A hosted database
+   often makes its owner such a role."
+  [{:role/keys [name bypasses-rls]}]
+  (when bypasses-rls
+    (str "The database role " name " passes by row-level security (it is a superuser or has BYPASSRLS),"
+         " so the wall would let every query see every scope's rows. Connect as a role without it.")))
+
 (defn- check-database!
-  "Every table and column the description names must exist; every record
-   table names its scope; every record under another is tied to it."
+  "The role the app connects as must not pass by row-level security; every
+   table and column the description names must exist; every record table
+   names its scope; every record under another is tied to it."
   [db description]
+  (when-let [problem (role-problem (pg/row db connecting-role {}))]
+    (throw (ex-info problem {:type ::bad-database})))
   (doseq [t (keys (rules/columns-needed description))]
     (when (empty? (pg/rows db columns-of {:table t}))
       (throw (ex-info (str "Permissions name a table " t " that doesn't exist")

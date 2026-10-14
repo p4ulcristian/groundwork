@@ -746,6 +746,9 @@ The app describes its places, actions, roles and records once:
 - **The wall:** every record table gets forced row-level security at start.
   A transaction sees only its verified scopes and the person's own records,
   or everything as the system. Both last one transaction and can't nest.
+  The app must connect as a role that doesn't pass by row-level security:
+  a superuser or a role with BYPASSRLS (a hosted database often makes its
+  owner one) refuses the start, because no policy would apply to it.
 - **The wall knows the action.** An endpoint's transaction carries its
   action and the kind of record it's about, so a list's SQL needs no
   permission `WHERE`: that kind's rows show only as the action's rule allows
