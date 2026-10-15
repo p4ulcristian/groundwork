@@ -1,5 +1,7 @@
 # Groundwork ships permissions
 
+> Changed in part by [Who may see what is the app's; Groundwork enforces it](2026-10-15-who-may-see-what-is-the-apps.md).
+
 > Replaces [Groundwork knows nothing about tenants](2026-10-12-groundwork-knows-no-tenants.md): Groundwork knows about scopes, not what they are.
 
 **Decision:** permissions are a Groundwork part, built so they can't be skipped.
