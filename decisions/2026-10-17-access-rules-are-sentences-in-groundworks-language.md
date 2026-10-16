@@ -11,7 +11,7 @@ The words:
 - **To whom:** `:anyone`, `:signed-in`, `[:member <scope>]` (a member of a fixed scope, or of the scope a column of the row names, whose role holds the action), `[:me <column>]` (the person or visitor in that column).
 - **When:** a condition on the row's own columns (`[:= :invoice__status "draft"]`), and `[:none <column>]` for a universal row that belongs to nobody.
 - **`:via`:** a row is allowed when a related row exists for which a who and a when hold. It names the other table, which columns match, and the who and when on that row; it is SQL's EXISTS. It covers every direction: the row points to the other (a payout row may be written by whoever may pay its order), the other points to the row (a shop handed an order sees it while the handoff is open), or both share a column (a partner sees a shop's orders while their agreement is active). The lookup runs past the wall, inside Groundwork, so Postgres doesn't loop on the other table's own rule. Groundwork refuses to start when the matched columns have no index.
-- **Deny:** only two things can say no, before any yes: a session flag (an impersonating admin can't move money) and a scope's state (a suspended shop is read-only). Never a person or a row.
+- **Deny:** only two things can say no, before any yes: a session flag (an impersonating admin can't move money) and a scope's state (a suspended shop is read-only). Never a person or a row. A scope's state lives in the app's own table: the scope kind names its table, and the deny is a condition on that table's columns (`[:= :workspace__status "suspended"]`). A scope a deny holds for stays verified for reads and is left out of the transaction's writes, so the wall refuses its writes too.
 
 A kind of scope may have exactly one scope (the platform's back office): its members hold roles there, and its sentences reach other scopes' rows and universal rows.
 
@@ -26,6 +26,7 @@ A kind of scope may have exactly one scope (the platform's back office): its mem
 
 **Instead of:**
 - `:via` following only a row's own pointer: it covers the payout rows only, so handoffs and agreements would keep their own words (passes, links)
+- a state column on Groundwork's scopes table: the reason for the state (a trial ending, an unpaid bill) stays in the app, so two places would have to agree
 - adding the missing words to the shapes as they are: smallest change, but the rules stay scattered, and the next case risks a new shape again
 - conditions in a policy language (Cedar, Oso Polar): says anything, but hard to turn into list filters and bells
 - the app writing Postgres row rules itself: Groundwork can't read them, so no bells, no "can I?", a blind leak test
