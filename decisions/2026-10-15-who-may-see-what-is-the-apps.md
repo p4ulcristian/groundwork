@@ -1,5 +1,7 @@
 # Who may see what is the app's; Groundwork enforces it
 
+> How the app says it: [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md).
+
 > Changes [Groundwork ships permissions](2026-10-12-groundwork-ships-permissions.md) in part. Decided, not built: Groundwork is frozen ([Groundwork is frozen](2026-10-15-groundwork-is-frozen.md)).
 
 **Decision:** the line between the business and everything else runs through permissions too.
