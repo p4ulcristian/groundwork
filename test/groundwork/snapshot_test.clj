@@ -23,10 +23,10 @@
   (-> app-settings
       (assoc :environment :development)
       (assoc :migrations {:schema-snapshot (str file)})
-      (assoc :permissions {:scopes  {:shop {:actions #{:things/see} :roles {} :parent nil}}
+      (assoc :permissions {:scopes  {:shop {:actions {:things/see #{:read}} :roles {} :parent nil}}
                            :records {:snap-thing {:table :snap_things :id :snap-thing/id
-                                                  :in [:shop :snap-thing/shop-id]}}
-                           :links [] :passes [] :open {:anyone #{} :signed-in #{}} :session-blocks {}})))
+                                                  :whose {:snap-thing/shop-id :shop}}}
+                           :rules   [{:allow :things/see :on :snap-thing :to [:member :snap-thing/shop-id]}]})))
 
 (defn- about-the-table
   "The snapshot's lines about the test's own table: other tests' tables come and go."
@@ -40,7 +40,7 @@
         (gw/stop (gw/start (settings file)))
         (let [text (slurp file)]
           (is (str/includes? text "CREATE TABLE public.snap_things"))
-          (is (str/includes? text "CREATE POLICY groundwork_wall ON public.snap_things") "the wall")
+          (is (str/includes? text "CREATE POLICY groundwork_read ON public.snap_things") "the wall, a policy per command")
           (is (str/includes? text "CREATE TRIGGER groundwork_ring_insert AFTER INSERT ON public.snap_things")
               "the bells")
           (is (str/includes? text "FORCE ROW LEVEL SECURITY"))))

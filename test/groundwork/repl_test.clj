@@ -25,21 +25,22 @@
 (def acme-open (id)) (def acme-closed (id)) (def zinc-katis (id))
 
 (def description
-  {:scopes  {:shop    {:actions #{:orders/see :orders/edit :money/move}
+  {:scopes  {:shop    {:actions {:orders/see #{:read} :orders/edit #{:read :update} :money/move #{:read :update}}
                        :roles   {"Production" #{:orders/see}}
                        :parent  nil}
-             :partner {:actions #{:agreements/see} :roles {"Member" #{:agreements/see}} :parent nil}}
-   :records {:order {:table :rpl_orders :id :rpl-order/id :in [:shop :rpl-order/shop-id]
-                     :people {:orders/see :rpl-order/customer-id}
-                     :only-when {:orders/edit [:= :rpl-order/status "open"]}}}
-   :links   [{:table  :rpl_agreements
-              :from   [:partner :rpl-agreement/partner-id]
-              :to     [:shop :rpl-agreement/shop-id]
-              :when   [:= :rpl-agreement/status "active"]
-              :grants {:orders/see :agreements/see}}]
-   :passes []
-   :open {:anyone #{} :signed-in #{}}
-   :session-blocks {:impersonated #{:money/move}}})
+             :partner {:actions {:agreements/see #{:read}} :roles {"Member" #{:agreements/see}} :parent nil}}
+   :records {:order     {:table :rpl_orders :id :rpl-order/id
+                         :whose {:rpl-order/shop-id :shop :rpl-order/customer-id :person}}
+             :agreement {:table :rpl_agreements :id :rpl-agreement/id
+                         :whose {:rpl-agreement/shop-id :shop :rpl-agreement/partner-id :partner}}}
+   :rules   [{:allow #{:orders/see :money/move} :on :order :to [:member :rpl-order/shop-id]}
+             {:allow :orders/see :on :order :to [:me :rpl-order/customer-id]}
+             {:allow :orders/edit :on :order :to [:member :rpl-order/shop-id] :when [:= :rpl-order/status "open"]}
+             {:allow :orders/see :on :order
+              :via   {:table :rpl_agreements :match {:rpl-order/shop-id :rpl-agreement/shop-id}
+                      :to [:member :rpl-agreement/partner-id :agreements/see] :when [:= :rpl-agreement/status "active"]}}
+             {:allow :agreements/see :on :agreement :to [:member :rpl-agreement/partner-id]}
+             {:deny :money/move :session :impersonated}]})
 
 (pg/defsql rpl-orders-of-shop)
 
@@ -65,8 +66,12 @@
     (sql! "DROP TABLE IF EXISTS rpl_orders, rpl_agreements;
            CREATE TABLE rpl_orders (rpl_order__id uuid PRIMARY KEY, rpl_order__shop_id uuid NOT NULL,
                                     rpl_order__customer_id uuid, rpl_order__status text NOT NULL);
+           CREATE INDEX ON rpl_orders (rpl_order__shop_id);
            CREATE TABLE rpl_agreements (rpl_agreement__partner_id uuid NOT NULL, rpl_agreement__shop_id uuid NOT NULL,
-                                        rpl_agreement__status text NOT NULL)")
+                                        rpl_agreement__status text NOT NULL,
+                                        rpl_agreement__id uuid PRIMARY KEY DEFAULT gen_random_uuid());
+           CREATE INDEX ON rpl_agreements (rpl_agreement__shop_id);
+           CREATE INDEX ON rpl_agreements (rpl_agreement__partner_id)")
     (sql! "INSERT INTO rpl_orders VALUES (?, ?, NULL, 'open'), (?, ?, NULL, 'closed'), (?, ?, ?, 'open');
            INSERT INTO rpl_agreements VALUES (?, ?, 'active')"
           acme-open acme acme-closed acme zinc-katis zinc kati partner acme)
@@ -107,10 +112,10 @@
     (let [w (repl/why *app* peter :orders/see [:order zinc-katis])]
       (is (not (:allowed? w)))
       (is (says? w (str "has no membership in shop " zinc " or above")))))
-  (testing "through a link"
+  (testing "through a related row"
     (let [w (repl/why *app* pia :orders/see [:order acme-open])]
       (is (:allowed? w))
-      (is (says? w "A link through rpl_agreements gives :orders/see"))))
+      (is (says? w "A related row in rpl_agreements is there for them now"))))
   (testing "a customer on their order"
     (let [w (repl/why *app* kati :orders/see [:order zinc-katis])]
       (is (:allowed? w))
@@ -122,7 +127,7 @@
   (testing "a session flag that blocks"
     (let [w (repl/why *app* paul :money/move [:order acme-open] :flags #{:impersonated})]
       (is (not (:allowed? w)))
-      (is (says? w "The session is impersonated, which blocks :money/move"))))
+      (is (says? w "Denied: the session is impersonated, and Rule 5 {:deny :money/move, :session :impersonated} says no to :money/move"))))
   (testing "in a scope"
     (is (:allowed? (repl/why *app* peter :orders/see acme)))
     (is (not (:allowed? (repl/why *app* peter :orders/see zinc)))))

@@ -47,6 +47,7 @@
    [groundwork.endpoints :as endpoints]
    [groundwork.names :as names]
    [groundwork.parquery.wire :as wire]
+   [groundwork.permissions :as permissions]
    [groundwork.permissions.rules :as rules]
    [groundwork.postgres :as pg]
    [groundwork.sessions :as sessions]
@@ -67,31 +68,16 @@
 ;; Which tables ring
 ;; =============================================================================
 
-(defn- column [k]
-  (names/key->column k))
-
-(defn- columns-of
-  "A record kind's scope columns and person columns; a pass to a person
-   kept in its table counts as a person on it, so its bell reaches them."
-  [description kind]
-  (let [{:keys [in people visitors] t :table} (get-in description [:records kind])
-        arrows                       (if (keyword? (first in)) [in] in)
-        receivers                    (for [{pt :table :keys [to-person]} (:passes description)
-                                           :when (and to-person (= (name pt) (name t)))]
-                                       to-person)]
-    {:scopes (mapv (comp column second) arrows)
-     ;; a visitor's id travels with the people: only their own line knows it
-     :people (vec (distinct (map column (concat (vals people) (vals visitors) receivers))))}))
-
 (defn- ringing-tables
-  "Every table that rings: {table {:id col :scopes [cols] :people [cols]}}."
+  "Every table that rings: {table {:id col :scopes [cols] :people [cols]
+   :universal? bool}}."
   [description {:keys [global personal]}]
   (merge
    (into {} (map (fn [[kind {t :table id :id}]]
-                   [(name t) (assoc (columns-of description kind) :id (column id))]))
+                   [(name t) (assoc (rules/ringing description kind) :id (names/key->column id))]))
          (:records description))
    (into {} (map (fn [t] [(name t) {:id nil :scopes [] :people [] :global? true}])) (keys global))
-   (into {} (map (fn [[t col]] [(name t) {:id nil :scopes [] :people [(column col)]}])) personal)))
+   (into {} (map (fn [[t col]] [(name t) {:id nil :scopes [] :people [(names/key->column col)]}])) personal)))
 
 (pg/defsql app-tables "groundwork/parquery/app_tables.sql")
 
@@ -144,7 +130,7 @@
             :when (not (contains? tables trigger_table))]
       (jdbc/execute! (::pg/conn tx)
                      [(str "DROP TRIGGER IF EXISTS " trigger_name " ON " (rules/quote-table trigger_table))]))
-    (doseq [[t {:keys [id scopes people]}] tables
+    (doseq [[t {:keys [id scopes people universal?]}] tables
             [op referencing] [["INSERT" "NEW TABLE AS new_rows"]
                               ["UPDATE" "NEW TABLE AS new_rows OLD TABLE AS old_rows"]
                               ["DELETE" "OLD TABLE AS old_rows"]]]
@@ -153,7 +139,8 @@
                            " AFTER " op " ON " (rules/quote-table t)
                            " REFERENCING " referencing " FOR EACH STATEMENT"
                            " EXECUTE FUNCTION groundwork.ring('" (or id "") "', '"
-                           (str/join "," scopes) "', '" (str/join "," people) "')")]))))
+                           (str/join "," scopes) "', '" (str/join "," people) "'"
+                           (when universal? ", 'u'") ")")]))))
 
 ;; =============================================================================
 ;; Which tables a read uses
@@ -243,16 +230,20 @@
   (http/close ch))
 
 (defn- checked-watches
-  "A line's watches, each checked like an ask; one it may not ask is dropped."
+  "A line's watches, each checked like an ask; one it may not ask is
+   dropped. Each also listens in the scopes where the person could be the
+   one a related row names (a via): a change there changes what they see."
   [{:keys [endpoints]} {:keys [person visitor flags]} asks]
-  (let [tables (get-in endpoints [:perms :description :records])]
+  (let [tables    (get-in endpoints [:perms :description :records])
+        listening (delay (permissions/listening (:perms endpoints) person))]
     (vec (keep (fn [[endpoint params]]
                  (when-let [{:keys [scopes record] only :tables}
                             (endpoints/watch endpoints {:endpoint endpoint :params params
                                                         :person person :visitor visitor :flags flags})]
                    {:ask          [(wire/endpoint-name endpoint) params]
                     :endpoint     endpoint
-                    :scopes       (set (map str scopes))
+                    :scopes       (if (= :every scopes) :every (set (map str scopes)))
+                    :listening    (if (:every? @listening) :every (set (map str (:scopes @listening))))
                     :visitor      visitor
                     :only-tables  only
                     :record-table (some-> record first tables :table name)
@@ -295,18 +286,31 @@
   (doseq [[ch line] @lines]
     (swap! lines (fn [ls] (if (contains? ls ch) (assoc-in ls [ch :watches] (checked-watches part line (:asks line))) ls)))))
 
+(defn- meets?
+  "Whether a watch's scopes (a set, or :every) meet a bell's (nil: any)."
+  [scopes s]
+  (or (nil? s)
+      (if (= :every scopes) (boolean (seq s)) (boolean (seq (set/intersection scopes (set s)))))))
+
 (defn- rings?
-  "Whether a bell concerns a watch."
-  [part person {:keys [endpoint scopes record-table record-id only-tables visitor]} {:keys [t s p i]}]
+  "Whether a bell concerns a watch. A row's own table rings the watches in
+   its scopes and the people it names; a row a via looks for rings the
+   reads of what it gives, in its scopes and where the person could be the
+   one it names; a row that belongs to nobody rings everyone reading its
+   table."
+  [part person {:keys [endpoint scopes listening record-table record-id only-tables visitor]} {:keys [t s p i u]}]
   (let [ringing (get (:tables part) t)
-        tables  (tables-of-endpoint part endpoint)]
+        tables  (tables-of-endpoint part endpoint)
+        gives   (get (:via-tables part) t)]
     (and (or (nil? tables) (contains? tables t)
-             ;; a pass made or ended changes who sees the records it gives
-             (some tables (get (:pass-tables part) t)))
+             ;; a row a via looks for changes who sees the rows it gives
+             (some tables gives))
          (or (:global? ringing)
-             ;; a scope's bell reaches an open action's watch only for the tables it reaches
+             (and u (or (nil? only-tables) (contains? only-tables t)))
+             ;; a scope's bell reaches a watch verified only by an open word for the tables it shows
              (and (or (nil? only-tables) (contains? only-tables t))
-                  (or (nil? s) (seq (set/intersection scopes (set s)))))
+                  (meets? scopes s))
+             (and gives (meets? listening s))
              ;; a person's own rows, or a visitor's: the bell names whose
              (let [me (or person visitor)]
                (and me (or (and person (nil? p)) (some #{(str me)} p)))))
@@ -333,7 +337,7 @@
   [part {:keys [person visitor flags]} watching rang]
   (let [asks    (vec (keep read-watch watching))
         rung    (when-not (= :any rang)
-                  (into (set (map :t rang)) (mapcat #(get (:pass-tables part) (:t %))) rang))
+                  (into (set (map :t rang)) (mapcat #(get (:via-tables part) (:t %))) rang))
         maybe   (if rung
                   (filterv (fn [[endpoint _]]
                              (let [tables (tables-of-endpoint part endpoint)]
@@ -464,7 +468,7 @@
                      :db          db
                      :db-settings db-settings
                      :tables      tables
-                     :pass-tables (rules/pass-tables description)
+                     :via-tables  (rules/via-tables description)
                      :plans       (atom {})
                      :lines       (atom {})
                      :recent      (atom [])

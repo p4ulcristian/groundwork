@@ -22,12 +22,9 @@
 (def other-note (UUID/randomUUID))
 
 (def description
-  {:scopes         {:shop {:actions #{:notes/see} :roles {} :parent nil}}
-   :records        {:note {:table :notes :id :note/id :in [:shop :note/shop-id]}}
-   :links          []
-   :passes []
-   :open {:anyone #{} :signed-in #{}}
-   :session-blocks {}})
+  {:scopes  {:shop {:actions {:notes/see #{:read}} :roles {} :parent nil}}
+   :records {:note {:table :notes :id :note/id :whose {:note/shop-id :shop}}}
+   :rules   [{:allow :notes/see :on :note :to [:member :note/shop-id]}]})
 
 (defn- ok [_] {:status 200 :body "ok"})
 

@@ -108,26 +108,29 @@
 (def ^:private column
   (pred "column keyword" "must be a column keyword, like :order/shop-id" qualified-keyword?))
 
+(def ^:private action-commands
+  [:map-of {:error/message "must map namespaced actions to what each does at the wall, like {:orders/see #{:read}}"
+            :doc/type      "action → commands"}
+   qualified
+   [:set {:error/message "must be a set of :read :insert :update :delete" :doc/type "set of commands"}
+    [:enum :read :insert :update :delete]]])
+
 (def ^:private actions
   [:set {:error/message "must be a set of namespaced keywords, like #{:orders/see}"
          :doc/type "set of actions"}
    qualified])
 
-(def ^:private arrow
-  (pred "[kind column]" "must be [kind column], like [:shop :order/shop-id]"
-        #(and (vector? %) (= 2 (count %)) (keyword? (first %)) (qualified-keyword? (second %)))))
-
 (defn- condition?
   "[:= col v] [:not= col v] [:in col [v …]] [:is-null col] [:not-null col]
-   [:and …] [:or …], on the record's own columns."
+   [:none col] [:and …] [:or …], on the record's own columns."
   [c]
   (and (vector? c)
        (let [[op & args] c]
          (case op
-           (:and :or)          (and (seq args) (every? condition? args))
-           (:= :not=)          (and (= 2 (count args)) (qualified-keyword? (first args)))
-           :in                 (and (= 2 (count args)) (qualified-keyword? (first args)) (sequential? (second args)))
-           (:is-null :not-null) (and (= 1 (count args)) (qualified-keyword? (first args)))
+           (:and :or)                 (and (seq args) (every? condition? args))
+           (:= :not=)                 (and (= 2 (count args)) (qualified-keyword? (first args)))
+           :in                        (and (= 2 (count args)) (qualified-keyword? (first args)) (sequential? (second args)))
+           (:is-null :not-null :none) (and (= 1 (count args)) (qualified-keyword? (first args)))
            false))))
 
 (def ^:private condition
@@ -140,25 +143,28 @@
 
 (def scope-kind
   [:map {:closed true :doc/key "<scope kind>"}
-   (entry :actions "The actions of this kind of scope" #{:orders/see :orders/edit} actions)
+   (entry :actions "The actions of this kind of scope, each with what it does at the wall: :read, :insert, :update, :delete"
+          {:orders/see #{:read} :orders/edit #{:read :update}} action-commands)
    (entry :roles "The starting roles every new scope of this kind gets: name → actions"
           {"Manager" #{:orders/see :orders/edit}}
           [:map-of {:error/message "must map role names (text) to sets of actions" :doc/type "role name → actions"}
            text actions])
    (entry :parent "The kind of scope above this one, or nil" nil
-          (pred "keyword or nil" "must be a scope kind keyword, or nil" #(or (nil? %) (keyword? %))))])
+          (pred "keyword or nil" "must be a scope kind keyword, or nil" #(or (nil? %) (keyword? %))))
+   (optional :single? "This kind has exactly one scope (a platform's back office): [:member <kind>] names it"
+             true [:boolean {:error/message "must be true or false" :doc/type "true or false"}])
+   (optional :table "The app's own table of these scopes, where a scope's state lives (with :id)" :shops kind-name)
+   (optional :id "Its id column, the scope's id" :shop/id column)])
 
 (def record-kind
   [:map {:closed true :doc/key "<record kind>"}
    (entry :table "Its table" :orders kind-name)
    (entry :id "Its id column" :order/id column)
-   (entry :in "Its scope column: [scope-kind column], or a list of them for a record shared by scopes"
-          [:shop :order/shop-id]
-          (pred "[kind column] or a list of them" "must be [scope-kind column], or a list of them"
-                #(or (and (vector? %) (keyword? (first %)) (= 2 (count %)) (qualified-keyword? (second %)))
-                     (and (vector? %) (seq %) (every? (fn [a] (and (vector? a) (= 2 (count a))
-                                                                   (keyword? (first a)) (qualified-keyword? (second a))))
-                                                      %)))))
+   (entry :whose "Whose row each column names: column → a scope kind, :person or :visitor (the id of a visitor's session)"
+          {:order/shop-id :shop :order/customer-id :person}
+          [:map-of {:error/message "must map columns to a scope kind, :person or :visitor"
+                    :doc/type      "column → whose"}
+           column kind-name])
    (optional :parent "The record it hangs under: [record-kind its-column], and what it carries from it when either has more than one scope, or a person: [record-kind its-column {its column → the parent's}]"
              [:order :job/order-id]
              (pred "[kind column] or [kind column {column column}]"
@@ -168,72 +174,71 @@
                              (let [carried (nth % 2)]
                                (and (map? carried) (seq carried)
                                     (every? qualified-keyword? (keys carried))
-                                    (every? qualified-keyword? (vals carried))))))))
-   (optional :people "An action a person on the record holds: action → their column"
-             {:orders/see :order/customer-id}
-             [:map-of {:error/message "must map actions to person columns" :doc/type "action → column"}
-              qualified column])
-   (optional :visitors "An action a visitor on the record holds: action → the column with their visitor session's id. At sign-in the row moves to the person, into the kind's person column"
-             {:designs/edit :design/visitor-id}
-             [:map-of {:error/message "must map actions to the visitor column" :doc/type "action → column"}
-              qualified column])
-   (optional :only-when "An action allowed only when the record matches: action → condition"
-             {:orders/edit [:= :order/status "open"]}
-             [:map-of {:error/message "must map actions to conditions" :doc/type "action → condition"}
-              qualified condition])
-   (optional :open "The open actions that reach this kind (each is in the description's :open); its :only-when for them still holds"
-             #{:catalogue/see} actions)])
+                                    (every? qualified-keyword? (vals carried))))))))])
 
-(def link
-  [:map {:closed true :doc/key "[…]"}
-   (entry :table "The linking record's table" :agreements kind-name)
-   (entry :from "The scope the person is in: [kind column]" [:partner :agreement/partner-id] arrow)
-   (entry :to "The scope the link reaches: [kind column]" [:shop :agreement/shop-id] arrow)
-   (entry :when "While this holds" [:= :agreement/status "active"] condition)
-   (entry :grants "What it gives in :to: given action → the action needed in :from"
-          {:orders/see :agreements/see}
-          [:map-of {:error/message "must map actions to actions" :doc/type "action → action"} qualified qualified])])
+(defn- who?
+  ":anyone, :signed-in, [:member x] or [:member x action], [:me column]."
+  [w]
+  (or (#{:anyone :signed-in} w)
+      (and (vector? w) (= :member (first w)) (<= 2 (count w) 3)
+           (let [[_ x h] w] (and (or (keyword? x) (uuid? x)) (or (nil? h) (qualified-keyword? h)))))
+      (and (vector? w) (= :me (first w)) (= 2 (count w)) (qualified-keyword? (second w)))))
 
-(def pass
-  [:map {:closed true :doc/key "[…]"}
-   (entry :table "The passing row's table; it is a record kind itself, in the giving and the receiving scope" :handoffs kind-name)
-   (entry :record "The one record it gives: [record-kind column]" [:order :handoff/order-id] arrow)
-   (entry :from "The giving scope, the record's own: [kind column]" [:shop :handoff/from-shop-id] arrow)
-   (optional :to "The receiving scope: [kind column]" [:shop :handoff/to-shop-id] arrow)
-   (optional :to-person "Or the receiving person's column" :handoff/driver-id column)
-   (entry :when "While this holds" [:= :handoff/status "open"] condition)
-   (entry :grants "The reading actions it gives on the record → the action needed in :to; for :to-person, a set of given actions"
-          {:orders/see :handoffs/work}
-          (pred "action → action, or a set of actions"
-                "must map given actions to needed actions, or be a set of given actions for :to-person"
-                #(or (and (map? %) (seq %) (every? qualified-keyword? (keys %)) (every? qualified-keyword? (vals %)))
-                     (and (set? %) (seq %) (every? qualified-keyword? %)))))
-   (entry :under "The record kinds right under the record that come with it" #{:job}
-          [:set {:error/message "must be a set of record kinds" :doc/type "set of kinds"} :keyword])])
+(def ^:private who
+  (pred "who" "must be :anyone, :signed-in, [:member <column, single-scope kind or scope id> <action held there, optional>] or [:me <column>]"
+        who?))
+
+(def ^:private action-or-actions
+  (pred "action or set of actions" "must be an action like :orders/see, or a set of them"
+        #(or (qualified-keyword? %) (and (set? %) (seq %) (every? qualified-keyword? %)))))
+
+(def via
+  [:map {:closed true :doc/key ":via"}
+   (entry :table "The related row's table; its record kind says whose its columns are" :agreements kind-name)
+   (entry :match "Which columns match: the row's column → the related row's" {:order/shop-id :agreement/shop-id}
+          [:map-of {:error/message "must map the row's columns to the related row's" :doc/type "column → column"}
+           column column])
+   (entry :to "Who must hold on the related row" [:member :agreement/partner-id :agreements/see] who)
+   (optional :when "While this holds on the related row" [:= :agreement/status "active"] condition)])
+
+(def sentence
+  [:and {:doc/key "[…]"}
+   [:map {:closed true}
+    (optional :allow "Allows this action (or each of a set of them): a sentence {:allow … :on … :to-or-:via … :when …}"
+              :orders/see action-or-actions)
+    (optional :on "The kind of record it is on" :order kind-name)
+    (optional :to "To whom: :anyone, :signed-in, [:member <column | single-scope kind | scope id> <action held, optional>], [:me <column>]"
+              [:member :order/shop-id] who)
+    (optional :via "Or through a related row: one that exists for which its :to and :when hold"
+              {:table :agreements :match {:order/shop-id :agreement/shop-id}
+               :to [:member :agreement/partner-id :agreements/see] :when [:= :agreement/status "active"]}
+              via)
+    (optional :when "Only while the row matches; [:none <scope column>] for a row that belongs to nobody"
+              [:= :order/status "open"] condition)
+    (optional :deny "Or denies this action, these, or :writes (every action that writes), before any yes"
+              :money/move (pred "action, set of actions or :writes" "must be an action, a set of them, or :writes"
+                                #(or (= :writes %) (qualified-keyword? %)
+                                     (and (set? %) (seq %) (every? qualified-keyword? %)))))
+    (optional :session "A deny's session flag" :impersonated kind-name)
+    (optional :scope "A deny's scope kind, whose state (its :when on the kind's :table) denies" :shop kind-name)]
+   (pred "a sentence" "must be {:allow … :on … :to …} (or :via instead of :to), or {:deny … :session flag} or {:deny … :scope kind :when …}"
+         #(= 1 (count (filter (fn [k] (contains? % k)) [:allow :deny]))))])
 
 (def permission-description
   [:map {:closed true}
    (entry :scopes "The kinds of scope: where data belongs and people are members"
-          {:shop {:actions #{:orders/see :orders/edit} :roles {"Manager" #{:orders/see :orders/edit}} :parent nil}}
+          {:shop {:actions {:orders/see #{:read} :orders/edit #{:read :update}}
+                  :roles {"Manager" #{:orders/see :orders/edit}} :parent nil}}
           [:map-of {:error/message "must map scope kinds to their actions, roles and parent" :doc/type "kind → scope kind"}
            kind-name scope-kind])
-   (entry :records "The kinds of record, each in a scope"
-          {:order {:table :orders :id :order/id :in [:shop :order/shop-id]}}
-          [:map-of {:error/message "must map record kinds to their table, id and scope" :doc/type "kind → record kind"}
+   (entry :records "The kinds of record, and whose row each column names"
+          {:order {:table :orders :id :order/id :whose {:order/shop-id :shop :order/customer-id :person}}}
+          [:map-of {:error/message "must map record kinds to their table, id and :whose" :doc/type "kind → record kind"}
            kind-name record-kind])
-   (entry :links "Scopes reaching other scopes through a linking record" []
-          [:vector {:error/message "must be a list of links" :doc/type "list of links"} link])
-   (entry :passes "Rows that are a pass to one record: a reading action on the record a row names, for the receiving scope's people or one person, while a condition holds"
-          []
-          [:vector {:error/message "must be a list of passes" :doc/type "list of passes"} pass])
-   (entry :open "The open actions, the one list of them: reading actions anyone, or anyone signed in, may do without a membership. No role holds one; each reaches only the record kinds that list it"
-          {:anyone #{:catalogue/see} :signed-in #{:shops/name}}
-          [:map {:closed true}
-           (entry :anyone "Open to everyone, signed in or not" #{:catalogue/see} actions)
-           (entry :signed-in "Open to everyone who is signed in" #{:shops/name} actions)])
-   (entry :session-blocks "A session flag blocks actions: flag → actions" {:impersonated #{:money/move}}
-          [:map-of {:error/message "must map session flags to sets of actions" :doc/type "flag → actions"}
-           kind-name actions])])
+   (entry :rules "Who may do what: one list of sentences, read at start (see groundwork.permissions.rules)"
+          [{:allow :orders/see :on :order :to [:member :order/shop-id]}
+           {:deny :money/move :session :impersonated}]
+          [:vector {:error/message "must be a list of sentences" :doc/type "list of sentences"} sentence])])
 
 ;; =============================================================================
 ;; Endpoints and routes
@@ -241,16 +246,12 @@
 
 (def ^:private permission
   (pred ":public, :signed-in or {:action … :record|:scope|:list …}"
-        "must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param-or-id]} (with :and-scope [kind id] for a fixed scope that always comes along) or {:action … :list kind}"
+        "must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param-or-id]} or {:action … :list kind}"
         (fn [p]
           (or (#{:public :signed-in} p)
               (and (map? p) (qualified-keyword? (:action p))
-                   (if (contains? p :and-scope)
-                     (and (= 3 (count p)) (contains? p :scope)
-                          (let [v (:and-scope p)]
-                            (and (vector? v) (= 2 (count v)) (keyword? (first v)) (uuid? (second v)))))
-                     (= 2 (count p)))
-                   (let [[k v] (first (dissoc p :action :and-scope))]
+                   (= 2 (count p))
+                   (let [[k v] (first (dissoc p :action))]
                      (case k
                        :record (and (vector? v) (= 2 (count v)) (every? keyword? v))
                        :scope  (and (vector? v) (= 2 (count v)) (keyword? (first v))

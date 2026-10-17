@@ -1,8 +1,8 @@
 (ns groundwork.lists-test
   "Lists get their permission from the wall: a list's SQL has no WHERE, and
-   still sees only what its action's rule allows. A link gives the linked
-   action's records and nothing else of that shop; an only-when holds on a
-   list; a customer sees their own order and no other."
+   still sees only rows a sentence gives the person. A via gives the rows
+   its sentence is on and nothing else of that shop; a :when holds on what
+   a write may change; a customer sees their own order and no other."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.endpoints :as endpoints]
@@ -23,22 +23,22 @@
 (def acme-invoice (id)) (def zinc-invoice (id))
 
 (defn- description [link-condition]
-  {:scopes  {:shop    {:actions #{:orders/see :orders/edit :invoices/see}
+  {:scopes  {:shop    {:actions {:orders/see #{:read} :orders/edit #{:read :update} :invoices/see #{:read}}
                        :roles   {"Production" #{:orders/see :orders/edit :invoices/see}}
                        :parent  nil}
-             :partner {:actions #{:agreements/see} :roles {"Member" #{:agreements/see}} :parent nil}}
-   :records {:order   {:table :lst_orders :id :lst-order/id :in [:shop :lst-order/shop-id]
-                       :people {:orders/see :lst-order/customer-id}
-                       :only-when {:orders/edit [:= :lst-order/status "open"]}}
-             :invoice {:table :lst_invoices :id :lst-invoice/id :in [:shop :lst-invoice/shop-id]}}
-   :links   [{:table  :lst_agreements
-              :from   [:partner :lst-agreement/partner-id]
-              :to     [:shop :lst-agreement/shop-id]
-              :when   link-condition
-              :grants {:orders/see :agreements/see}}]
-   :passes []
-   :open {:anyone #{} :signed-in #{}}
-   :session-blocks {}})
+             :partner {:actions {:agreements/see #{:read}} :roles {"Member" #{:agreements/see}} :parent nil}}
+   :records {:order     {:table :lst_orders :id :lst-order/id
+                         :whose {:lst-order/shop-id :shop :lst-order/customer-id :person}}
+             :invoice   {:table :lst_invoices :id :lst-invoice/id :whose {:lst-invoice/shop-id :shop}}
+             :agreement {:table :lst_agreements :id :lst-agreement/id
+                         :whose {:lst-agreement/shop-id :shop :lst-agreement/partner-id :partner}}}
+   :rules   [{:allow :orders/see :on :order :to [:member :lst-order/shop-id]}
+             {:allow :orders/see :on :order :to [:me :lst-order/customer-id]}
+             {:allow :orders/edit :on :order :to [:member :lst-order/shop-id] :when [:= :lst-order/status "open"]}
+             {:allow :orders/see :on :order
+              :via   {:table :lst_agreements :match {:lst-order/shop-id :lst-agreement/shop-id}
+                      :to [:member :lst-agreement/partner-id :agreements/see] :when link-condition}}
+             {:allow :invoices/see :on :invoice :to [:member :lst-invoice/shop-id]}]})
 
 (def sealed (description [:= :lst-agreement/status "active"]))
 (def broken (description [:not-null :lst-agreement/status]))
@@ -90,9 +90,13 @@
     (sql! "DROP TABLE IF EXISTS lst_orders, lst_invoices, lst_agreements;
            CREATE TABLE lst_orders (lst_order__id uuid PRIMARY KEY, lst_order__shop_id uuid NOT NULL,
                                     lst_order__customer_id uuid, lst_order__status text NOT NULL);
+           CREATE INDEX ON lst_orders (lst_order__shop_id);
            CREATE TABLE lst_invoices (lst_invoice__id uuid PRIMARY KEY, lst_invoice__shop_id uuid NOT NULL);
            CREATE TABLE lst_agreements (lst_agreement__partner_id uuid NOT NULL, lst_agreement__shop_id uuid NOT NULL,
-                                        lst_agreement__status text NOT NULL)")
+                                        lst_agreement__status text NOT NULL,
+                                        lst_agreement__id uuid PRIMARY KEY DEFAULT gen_random_uuid());
+           CREATE INDEX ON lst_agreements (lst_agreement__shop_id);
+           CREATE INDEX ON lst_agreements (lst_agreement__partner_id)")
     (sql! (str "INSERT INTO lst_orders VALUES (?, ?, NULL, 'open'), (?, ?, NULL, 'closed'),"
                "                              (?, ?, NULL, 'open'), (?, ?, ?, 'closed');"
                "INSERT INTO lst_invoices VALUES (?, ?), (?, ?);"
@@ -130,21 +134,36 @@
     (testing "a customer: their own order, nothing else of that shop"
       (is (= #{zinc-katis} (ask p :orders/all kati))))))
 
-(deftest an-only-when-holds-on-a-list
+(deftest a-when-holds-on-writes-and-the-list-filter
   (let [p (part sealed)]
-    (is (= #{acme-open} (ask p :orders/editable peter)) "only the open order is editable")
-    (testing "closing an open order still works: the new row needn't fit only-when"
+    (testing "the wall knows reading, not actions: a list for :orders/edit shows what Peter reads"
+      (is (= #{acme-open acme-closed} (ask p :orders/editable peter))))
+    (testing "the list filter narrows to the action, :when included"
+      (let [{:keys [sql params]} (perm/list-filter (:perms p) {:person peter :flags #{} :action :orders/edit :kind :order})]
+        (is (= #{acme-open}
+               (perm/as-system (:perms p)
+                               (fn [tx] (ids (jdbc/execute! (::pg/conn tx)
+                                                            (into [(str "SELECT r.lst_order__id FROM lst_orders r WHERE " sql)]
+                                                                  params)))))))))
+    (testing "a closed order isn't editable: the endpoint says not-found, and the wall touches nothing"
+      (is (= :not-found (ask p :orders/close peter {:lst-order/id acme-closed})))
+      (is (= 0 (perm/in-wall (:perms p) {:person peter :scopes #{acme}}
+                             (fn [tx] (:next.jdbc/update-count
+                                       (first (jdbc/execute! (::pg/conn tx)
+                                                             ["UPDATE lst_orders SET lst_order__customer_id = NULL WHERE lst_order__id = ?"
+                                                              acme-closed]))))))))
+    (testing "closing an open order still works: the changed row needn't fit :when"
       (let [order (id)]
         (try
           (perm/as-system (:perms p)
                           (fn [tx] (jdbc/execute! (::pg/conn tx) ["INSERT INTO lst_orders VALUES (?, ?, NULL, 'open')" order acme])))
           (is (= #{order} (ask p :orders/close peter {:lst-order/id order})))
-          (is (= #{acme-open} (ask p :orders/editable peter)) "closed now, so no longer editable")
+          (is (= :not-found (ask p :orders/close peter {:lst-order/id order})) "closed now, so no longer editable")
           (finally
             (perm/as-system (:perms p)
                             (fn [tx] (jdbc/execute! (::pg/conn tx) ["DELETE FROM lst_orders WHERE lst_order__id = ?" order])))))))))
 
-(deftest a-link-gives-the-linked-action-and-nothing-else
+(deftest a-via-gives-its-kind-and-nothing-else
   (let [p (part sealed)]
     (is (= #{acme-invoice} (ask p :orders/and-invoices peter)) "a member sees the shop's invoices")
     (is (= #{} (ask p :orders/and-invoices pia)) "the partner, through the link: orders only, no invoices")))
@@ -161,6 +180,6 @@
       (let [report (leaks/check (part sealed) {:person pia :foreign foreign})]
         (is (= [] (:leaked report)))
         (is (some #{:orders/all} (:checked report)))))
-    (testing "a link that forgot its status: Zinc's orders show up in the partner's list"
+    (testing "a via that forgot its status: Zinc's orders show up in the partner's list"
       (let [report (leaks/check (part broken) {:person pia :foreign foreign})]
         (is (contains? (set (map :endpoint (:leaked report))) :orders/all))))))

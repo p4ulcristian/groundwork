@@ -2,8 +2,9 @@
   "The built-in leak test, for an app's own tests: every endpoint with an
    action permission is called as a member of one scope, with ids from
    another, and must answer not-found. It catches what the declarations
-   can't: a rule in the permission description that grants too much, a link
-   whose condition forgot something.
+   can't: a sentence that gives too much, a via whose condition forgot
+   something. It proves the wall matches the sentences, not that the
+   sentences are right: a sentence that is too open passes it.
 
      (deftest nothing-leaks
        (let [report (leaks/check (gw/endpoints app)
@@ -25,19 +26,21 @@
    A list carries no ids: it's called as it is, and its answer must hold
    none of the foreign ids, anywhere in it.
 
-   An open action (the description's :open) is everyone's, so its endpoints
-   are called as a stranger: nobody for one open to anyone, a person who
-   belongs nowhere for one open to the signed-in. They may answer; what
-   they answer must hold none of the :sealed ids (give the ids no stranger
-   may see: an unpublished row, a row of a kind the action doesn't reach).
-   And the wall itself is asked, for every open action and every kind of
-   record, what a stranger behind it sees of each foreign scope (open-wall):
-   only the rows the action's rule allows, and nothing of any other kind.
+   An action a sentence opens to :anyone or :signed-in is everyone's, so its
+   endpoints are called as a stranger: nobody for one open to anyone, a
+   person who belongs nowhere for one open to the signed-in. They may
+   answer; what they answer must hold none of the :sealed ids (give the ids
+   no stranger may see: an unpublished row, a row of a kind no open sentence
+   reaches).
 
-   An action a record kind gives a visitor (:visitors) may be asked by
-   someone not signed in, so its endpoints are asked twice more with the
-   foreign ids: as another visitor (a visitor session that isn't the
-   record's) and as a signed-in stranger. Both must answer not-found.
+   The wall itself is asked too (wall-check): for every kind of record and
+   every foreign scope, what nobody, a signed-in stranger and the person see
+   behind it must be exactly the rows the sentences give them there.
+
+   An action a sentence gives a visitor may be asked by someone not signed
+   in, so its endpoints are asked twice more with the foreign ids: as
+   another visitor (a visitor session that isn't the record's) and as a
+   signed-in stranger. Both must answer not-found.
 
    Generating needs org.clojure/test.check on the test classpath."
   (:require
@@ -98,48 +101,56 @@
                                    (when where (str " WHERE " where)))]
                              params))))
 
-(defn open-wall
-  "What a stranger sees behind the wall, for every open action in every
-   scope given ({scope-kind scope-id}), of every kind of record: the rows
-   that show and shouldn't, [{:action :kind :ids}]. A row should show only
-   when its kind lists the action, the row is in that scope, and the kind's
-   :only-when for the action holds."
-  [perms scopes]
+(defn wall-check
+  "What the wall shows, against what the sentences give: for every kind of
+   record and every scope given ({scope-kind scope-id}), as nobody, as a
+   signed-in stranger and as `person`, behind a wall verified for that one
+   scope. The wall's policies and the sentences are compiled apart (the
+   wall's with the transaction's own person and scopes written in, the
+   sentences' with them bound), so a difference is a bug in one of them.
+   Returns the differences, [{:kind :as :scope :shown ids :hidden ids}]:
+   :shown, rows the wall shows that no sentence gives; :hidden, rows a
+   sentence gives that the wall hides."
+  [perms scopes {:keys [person]}]
   (let [description (:description perms)
-        arrows      (fn [{:keys [in]}] (if (keyword? (first in)) [in] in))]
+        records     (:records description)]
     (vec
-     (for [action (sort (rules/open-actions description))
-           :let   [scope (get scopes (permissions/action-kind perms action))]
-           :when  scope
-           [kind record] (sort-by key (:records description))
-           :let   [stranger (when (= :signed-in (rules/open-level description action)) (random-uuid))
-                   seen     (apply set/union
-                                   (for [about [nil kind]]
-                                     (permissions/in-wall perms {:person stranger :scopes #{scope} :action action
-                                                                 :kind about :read-only? true}
-                                                          #(ids-seen % record nil []))))
-                   allowed  (if (contains? (:open record) action)
-                              (let [[c ps] (if-let [condition (get-in record [:only-when action])]
-                                             (rules/condition-sql "r" condition)
-                                             ["TRUE" []])
-                                    mine   (str "(" (str/join
-                                                     " OR " (for [arrow (arrows record)]
-                                                              (str (rules/scope-sql "r" arrow) " = CAST(? AS uuid)")))
-                                                ")")]
-                                (permissions/as-system
-                                 perms #(ids-seen % record (str mine " AND " c)
-                                                  (into (vec (repeat (count (arrows record)) (str scope))) ps))))
-                              #{})
-                   extra    (set/difference seen allowed)]
-           :when  (seq extra)]
-       {:action action :kind kind :ids (vec (sort extra))}))))
+     (for [[_ scope]     (sort-by (comp str key) scopes)
+           [kind record] (sort-by key records)
+           [as caller]   [[:nobody nil] [:signed-in-stranger (random-uuid)] [:person person]]
+           :when         (or caller (not= :person as))
+           :let [ss      (filter #(and (= kind (:kind %))
+                                       (contains? (rules/commands-of description (:action %)) :read))
+                                 (:sentences perms))
+                 seen    (permissions/in-wall perms {:person caller :scopes #{scope} :read-only? true}
+                                              #(ids-seen % record nil []))
+                 cols    (keys (rules/scope-columns record))
+                 parts   (for [s ss]
+                           (let [[w ps] (rules/sentence-sql s "r")
+                                 base   (when-not (= :me (get-in s [:who :word]))
+                                          (when (seq cols)
+                                            (str "((" (str/join " OR " (map #(str "r." (rules/quote-column %) " = CAST(? AS uuid)") cols)) ")"
+                                                 (when (:universal? s)
+                                                   (str " OR (" (str/join " AND " (map #(str "r." (rules/quote-column %) " IS NULL") cols)) ")"))
+                                                 ")")))]
+                             [(str "(" (when base (str base " AND ")) w ")")
+                              (into (if base (vec (repeat (count cols) (str scope))) []) (rules/bind ps caller))]))
+                 given   (if (seq parts)
+                           (permissions/as-system perms #(ids-seen % record (str/join " OR " (map first parts))
+                                                                   (vec (mapcat second parts))))
+                           #{})
+                 shown   (set/difference seen given)
+                 hidden  (set/difference given seen)]
+           :when (or (seq shown) (seq hidden))]
+       {:kind kind :as as :scope scope :shown (vec (sort shown)) :hidden (vec (sort hidden))}))))
 
 (defn check
   "Call every endpoint with another scope's ids. Returns {:checked [names]
-   :skipped {name reason} :leaked [{:endpoint :params :answer}]}. Open
-   actions are called as a stranger and must show none of the :sealed ids;
-   a row the wall shows a stranger that it shouldn't is in :leaked as
-   {:open-wall {:action :kind :ids}}."
+   :skipped {name reason} :leaked [{:endpoint :params :answer}] :hidden […]}.
+   Open actions are called as a stranger and must show none of the :sealed
+   ids. A row the wall shows that no sentence gives is in :leaked as {:wall
+   {:kind :as :scope :shown}}; a row a sentence gives that the wall hides is
+   in :hidden."
   [part {:keys [person flags foreign sealed]}]
   (reduce (fn [report [k entry]]
             (let [permission (:permission entry)
@@ -209,8 +220,10 @@
                           :else
                           (update report :checked conj k)))
                       (assoc-in report [:skipped k] "no foreign id given for a kind it carries")))))))
-          {:checked [] :skipped {}
-           :leaked  (mapv (fn [leak] {:open-wall leak})
-                          (open-wall (:perms part)
-                                     (select-keys foreign (keys (get-in part [:perms :description :scopes])))))}
+          (let [walls (wall-check (:perms part)
+                                  (select-keys foreign (keys (get-in part [:perms :description :scopes])))
+                                  {:person person})]
+            {:checked [] :skipped {}
+             :leaked  (vec (for [w walls :when (seq (:shown w))] {:wall (dissoc w :hidden)}))
+             :hidden  (vec (for [w walls :when (seq (:hidden w))] (dissoc w :shown)))})
           (sort-by key (:endpoints part))))

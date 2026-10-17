@@ -56,9 +56,9 @@
     (sql! "INSERT INTO jb_notes VALUES (?, ?), (?, ?)" acme-note acme zinc-note zinc)
     (let [app (gw/start (-> app-settings
                             (assoc :jobs job-settings)
-                            (assoc :permissions {:scopes  {:shop {:actions #{:notes/see} :roles {} :parent nil}}
-                                                 :records {:note {:table :jb_notes :id :note/id :in [:shop :note/shop-id]}}
-                                                 :links [] :passes [] :open {:anyone #{} :signed-in #{}} :session-blocks {}})
+                            (assoc :permissions {:scopes  {:shop {:actions {:notes/see #{:read}} :roles {} :parent nil}}
+                                                 :records {:note {:table :jb_notes :id :note/id :whose {:note/shop-id :shop}}}
+                                                 :rules   [{:allow :notes/see :on :note :to [:member :note/shop-id]}]})
                             (assoc-in [:parquery :endpoints] [note-endpoints])))]
       (try
         (sql! "TRUNCATE groundwork.jobs, groundwork.job_schedules")

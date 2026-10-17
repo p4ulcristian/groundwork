@@ -29,13 +29,11 @@
 (def zinc-note (UUID/randomUUID))
 
 (def description
-  {:scopes         {:shop {:actions #{:notes/see :notes/add} :roles {} :parent nil}}
-   :records        {:note {:table :notes :id :note/id :in [:shop :note/shop-id]}
-                    :tag  {:table :tags :id :tag/id :in [:shop :tag/shop-id]}}
-   :links          []
-   :passes []
-   :open {:anyone #{} :signed-in #{}}
-   :session-blocks {}})
+  {:scopes  {:shop {:actions {:notes/see #{:read} :notes/add #{:read :insert}} :roles {} :parent nil}}
+   :records {:note {:table :notes :id :note/id :whose {:note/shop-id :shop}}
+             :tag  {:table :tags :id :tag/id :whose {:tag/shop-id :shop}}}
+   :rules   [{:allow #{:notes/see :notes/add} :on :note :to [:member :note/shop-id]}
+             {:allow :notes/see :on :tag :to [:member :tag/shop-id]}]})
 
 (pg/defsql ws-notes-of-shop)
 (pg/defsql ws-one-note)

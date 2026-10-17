@@ -1,5 +1,5 @@
 (ns groundwork.shapes-test
-  "The permission shapes on the example app (example.shapes.app), through a
+  "The access language on the example app (example.shapes.app), through a
    whole started app: real tables, real endpoints, the wall and the bells."
   (:require
    [clojure.string :as str]
@@ -34,7 +34,7 @@
 ;; records
 (def gloss (id)) (def acme-secret (id)) (def zinc-matte (id)) (def zinc-secret (id))
 (def acme-order (id)) (def zinc-order (id))
-(def shared (id)) (def shared-draft (id))   ; the platform's own packages
+(def shared (id)) (def shared-draft (id))   ; universal packages: nobody's, kept by the back office
 (def pine (id))   ; a partner: a scope like a shop
 (def piet (id))   ; Pine's owner
 (def acme-pine (id)) (def zinc-pine (id))   ; agreements
@@ -71,8 +71,8 @@
   (system! perms (str "INSERT INTO sh_packages VALUES (?, ?, 'Gloss', true), (?, ?, 'Secret', false),"
                       " (?, ?, 'Zinc Matte', true), (?, ?, 'Zinc Secret', false)")
            gloss acme acme-secret acme zinc-matte zinc zinc-secret zinc)
-  (system! perms "INSERT INTO sh_packages VALUES (?, ?, 'Shared Primer', true), (?, ?, 'Shared Draft', false)"
-           shared shapes/platform shared-draft shapes/platform)
+  (system! perms "INSERT INTO sh_packages VALUES (?, NULL, 'Shared Primer', true), (?, NULL, 'Shared Draft', false)"
+           shared shared-draft)
   (system! perms "INSERT INTO sh_orders VALUES (?, ?, ?, 'a'), (?, ?, NULL, 'z')"
            acme-order acme vic zinc-order zinc)
   (system! perms "INSERT INTO sh_orders VALUES (?, ?, NULL, 'b')" acme-order-2 acme)
@@ -108,7 +108,7 @@
         (let [perms (gw/permissions app)]
           (perm/create-scope! perms {:kind :shop :id acme :parent nil :owner sam})
           (perm/create-scope! perms {:kind :shop :id zinc :parent nil :owner olga})
-          (perm/create-scope! perms {:kind :shop :id shapes/platform :parent nil :owner pat})
+          (perm/create-scope! perms {:kind :platform :id shapes/platform :parent nil :owner pat})
           (perm/create-scope! perms {:kind :shop :id pine :parent nil :owner piet})
           (join! perms sam acme stella "Staff")
           (join! perms piet pine petra "Production")
@@ -186,54 +186,54 @@
          (catch Exception _ nil))))
 
 ;; =============================================================================
-;; An action can be open
+;; :anyone and :signed-in
 ;; =============================================================================
 
-(deftest an-open-action-needs-no-membership
-  (testing "nobody signed in reads a shop's published packages, and only those"
-    (is (= ["Gloss"] (names (call nil :catalogue/of-shop {:shop/id acme}))))
-    (is (= ["Zinc Matte"] (names (call nil :catalogue/of-shop {:shop/id zinc})))))
+(deftest an-open-word-needs-no-membership
+  (testing "nobody signed in reads a shop's published packages and the universal ones, and only those"
+    (is (= ["Gloss" "Shared Primer"] (names (call nil :catalogue/of-shop {:shop/id acme}))))
+    (is (= ["Shared Primer" "Zinc Matte"] (names (call nil :catalogue/of-shop {:shop/id zinc})))))
   (testing "over HTTP, signed out"
-    (is (= {:status "ok" :data [{:package/id (str gloss) :package/name "Gloss"}]}
+    (is (= {:status "ok" :data [{:package/id (str gloss) :package/name "Gloss"}
+                                {:package/id (str shared) :package/name "Shared Primer"}]}
            (ask! nil "catalogue/of-shop" {:shop/id (str acme)}))))
   (testing "one record: the published one answers, the unpublished one isn't there"
     (is (= "Gloss" (get-in (call nil :catalogue/package {:package/id gloss}) [:data :package/name])))
-    (is (= {:status :not-found} (call nil :catalogue/package {:package/id acme-secret}))))
+    (is (= "Shared Primer" (get-in (call nil :catalogue/package {:package/id shared}) [:data :package/name])))
+    (is (= {:status :not-found} (call nil :catalogue/package {:package/id acme-secret})))
+    (is (= {:status :not-found} (call nil :catalogue/package {:package/id shared-draft}))))
   (testing "a scope that doesn't exist is not found"
     (is (= {:status :not-found} (call nil :catalogue/of-shop {:shop/id (id)}))))
-  (testing "a member gets the same rows from the open read: its rule is everyone's"
-    (is (= ["Gloss"] (names (call stella :catalogue/of-shop {:shop/id acme}))))))
+  (testing "the wall knows reading, not actions: a member sees what every sentence gives them there"
+    (is (= ["Gloss" "Secret" "Shared Primer"] (names (call stella :catalogue/of-shop {:shop/id acme})))
+        "the published ones, and as staff, who edit the catalogue, the draft too")))
 
-(deftest the-wall-shows-an-open-action-only-its-own-kinds
+(deftest a-stranger-sees-only-what-an-open-word-gives
   (testing "the same open action with SQL that reaches for orders: a stranger sees none"
     (is (= {:status :ok :data 0} (call nil :catalogue/busy? {:shop/id acme})))
     (is (= {:status :ok :data 0} (call olga :catalogue/busy? {:shop/id acme})) "another shop's owner too"))
-  (testing "a member of the shop sees its orders, as a member"
+  (testing "a member of the shop sees its orders, through their own sentence"
     (is (= {:status :ok :data 2} (call stella :catalogue/busy? {:shop/id acme}))))
   (testing "a person's own record stays theirs: Vic's order in Acme"
     (is (= {:status :ok :data 1} (call vic :catalogue/busy? {:shop/id acme})))))
 
 (deftest open-to-the-signed-in-asks-for-a-session
   (is (= {:status :signed-out} (call nil :shop/card {:shop/id acme})))
-  (is (= {:status :ok :data 1} (call vic :shop/card {:shop/id acme})) "signed in, a member nowhere")
+  (is (= {:status :ok :data 2} (call vic :shop/card {:shop/id acme})) "signed in, a member nowhere")
   (is (= "signed-out" (:status (ask! nil "shop/card" {:shop/id (str acme)}))))
-  (is (= {:status "ok" :data 1} (ask! (sign-in vic) "shop/card" {:shop/id (str acme)}))))
+  (is (= {:status "ok" :data 2} (ask! (sign-in vic) "shop/card" {:shop/id (str acme)}))))
 
-(deftest an-open-action-only-reads-and-nobody-holds-it
-  (testing "a member's write still needs its own action"
+(deftest an-open-word-only-reads
+  (testing "a member's write still needs its own sentence"
     (is (= {:status :not-found} (call vic :catalogue/rename {:package/id gloss :package/name "X"})))
     (is (= "Gloss 2" (get-in (call stella :catalogue/rename {:package/id gloss :package/name "Gloss 2"})
                              [:data :package/name])))
     (as-system! "UPDATE sh_packages SET package__name = 'Gloss' WHERE package__id = ?" gloss))
-  (testing "a role can't hold it"
+  (testing "an open write isn't decided: the start refuses one"
     (is (= ::rules/bad-description
-           (:type (error #(rules/check (assoc-in shapes/description [:scopes :shop :roles "Staff"]
-                                                 #{:catalogue/see})))))))
-  (testing "it can't be given as an extra action"
-    (is (= ::perm/unknown-action
-           (:type (error #(perm/grant-extra! (gw/permissions *app*)
-                                             {:by sam :scope acme :person stella :action :catalogue/see}))))))
-  (testing "a write can't declare it, nor a list of every scope's"
+           (:type (error #(rules/check (update shapes/description :rules conj
+                                               {:allow :catalogue/edit :on :package :to :anyone})))))))
+  (testing "a write can't declare a reading action, nor a list of what is open only in a named scope"
     (let [start (fn [entry] (error #(endpoints/start {:settings     (assoc (get-in (settings shapes/description {}) [:parquery])
                                                                           :endpoints [{:x/y entry}])
                                                       :db           (gw/db *app*)
@@ -245,16 +245,20 @@
                             :input      [:map [:shop/id :uuid]] :answer :nil}))))
       (is (= ::endpoints/bad-endpoint
              (:type (start {:read       (fn [_ _] nil)
-                            :permission {:action :catalogue/see :list :package}
+                            :permission {:action :shop/card :list :package}
                             :input      [:map] :answer :nil}))))
-      (testing "nor carry ids of a kind it doesn't reach"
+      (testing "but a list of the universal rows anyone reads is fine"
+        (is (nil? (start {:read       (fn [_ _] nil)
+                          :permission {:action :catalogue/see :list :package}
+                          :input      [:map] :answer :nil}))))
+      (testing "nor carry ids of a kind no sentence opens to them"
         (is (= ::endpoints/bad-endpoint
                (:type (start {:read       (fn [_ _] nil)
                               :permission {:action :catalogue/see :scope [:shop :shop/id]}
                               :input      [:map [:shop/id :uuid] [:order/id {:groundwork/record :order} :uuid]]
                               :answer     :nil}))))))))
 
-(deftest the-leak-test-covers-open-actions
+(deftest the-leak-test-covers-open-words
   (let [part   (gw/endpoints *app*)
         sealed #{acme-secret zinc-secret shared-draft acme-order zinc-order}
         report (leaks/check part {:person  stella
@@ -265,12 +269,13 @@
                                             :job zinc-job :handoff zinc-pine-handoff}
                                   :sealed  sealed})]
     (is (= [] (:leaked report)))
+    (is (= [] (:hidden report)))
     (is (every? (set (:checked report)) [:catalogue/of-shop :catalogue/package :catalogue/busy? :shop/card
                                          :catalogue/rename :orders/of-shop :prices/of-agreement :prices/add
                                          :services/mine :services/add :orders/note
                                          :talk/messages :talk/say :handoffs/give :handoffs/set-status
                                          :orders/incoming :jobs/of-order :jobs/one :orders/stamp]))
-    (testing "as the holder of a pass on one order, asking for the giving shop's other records"
+    (testing "as the receiver of a handoff of one order, asking for the giving shop's other records"
       (let [handoff (:data (call sam :handoffs/give {:order/id acme-order :handoff/to-shop-id pine
                                                      :handoff/driver-id nil}))]
         (try
@@ -279,17 +284,17 @@
                                                           :package acme-secret}
                                                 :sealed  sealed}))))
           (finally (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff)))))
-    (testing "the wall, asked directly: a stranger sees nothing it shouldn't, of any kind"
-      (is (= [] (leaks/open-wall (gw/permissions *app*) {:shop acme}))))
-    (testing "a kind that forgot its condition shows its unpublished rows, and the test says so"
-      (let [broken (update-in shapes/description [:records :package] dissoc :only-when)
+    (testing "the wall, asked directly: what it shows is what the sentences give, of every kind"
+      (is (= [] (leaks/wall-check (gw/permissions *app*) {:shop acme} {:person olga}))))
+    (testing "a sentence that forgot its condition shows the unpublished rows, and the test says so"
+      (let [broken (update shapes/description :rules (fn [rs] (assoc rs 0 (dissoc (rs 0) :when))))
             perms  (perm/start {:settings broken :db (gw/db *app*)})
             part   (endpoints/start {:settings     (get-in (settings broken shapes/endpoints) [:parquery])
                                      :db           (gw/db *app*)
                                      :permissions  perms
                                      :app-settings {}})]
         (try
-          (is (= #{:catalogue/package :catalogue/of-shop :catalogue/for-shop}
+          (is (= #{:catalogue/package :catalogue/of-shop}
                  (set (keep :endpoint (:leaked (leaks/check part {:person  stella
                                                                   :foreign {:shop zinc :package zinc-secret
                                                                             :order zinc-order}
@@ -363,7 +368,7 @@
       (try
         (let [problem (start #(assoc-in % [:records :loose]
                                         {:table :sh_loose :id :loose/id
-                                         :in [[:shop :loose/shop-id] [:shop :loose/partner-id]]
+                                         :whose {:loose/shop-id :shop :loose/partner-id :shop}
                                          :parent [:agreement :loose/agreement-id
                                                   {:loose/shop-id    :agreement/shop-id
                                                    :loose/partner-id :agreement/partner-id}]}))]
@@ -374,14 +379,14 @@
           (perm/start {:settings shapes/description :db (gw/db *app*)}))))))
 
 ;; =============================================================================
-;; A row can be a pass to one record
+;; :via: an open handoff shows one order to another shop
 ;; =============================================================================
 
 (defn- in-wall! [person scopes sql & params]
   (perm/in-wall (gw/permissions *app*) {:person person :scopes scopes}
                 (fn [tx] (jdbc/execute! (::pg/conn tx) (into [sql] params)))))
 
-(deftest a-handoff-is-a-pass-to-one-order
+(deftest a-handoff-shows-one-order
   (testing "a handoff that is done gives nothing: Zinc's old one to Acme"
     (is (= {:status :not-found} (call stella :orders/note {:order/id zinc-order}))))
   (testing "before any handoff, the other shop's people see none of Acme's orders"
@@ -395,7 +400,7 @@
         (is (= {:status :ok :data ["cut"]} (call petra :jobs/of-order {:order/id acme-order})))
         (is (= {:status :ok :data "cut"} (call petra :jobs/one {:job/id acme-job})))
         (is (= {:status :ok :data ["a"]} (call petra :orders/incoming {}))))
-      (testing "a pass names one record: Acme's other order isn't there, with the right id"
+      (testing "it names one order: Acme's other order isn't there, with the right id"
         (is (= {:status :not-found} (call petra :orders/note {:order/id acme-order-2})))
         (is (= {:status :not-found} (call petra :jobs/one {:job/id acme-job-2})))
         (is (= {:status :not-found} (call petra :orders/of-shop {:shop/id acme})) "nor the shop as a whole"))
@@ -405,7 +410,7 @@
       (testing "nobody else"
         (is (= {:status :not-found} (call olga :orders/note {:order/id acme-order})))
         (is (= {:status :not-found} (call uma :orders/note {:order/id acme-order}))))
-      (testing "a pass only reads: a write that declares the given action gets nothing from it"
+      (testing "it gives a reading action: writing the order needs one that writes"
         (is (= {:status :not-found} (call petra :orders/stamp {:order/id acme-order :order/note "mine"})))
         (is (= {:status :ok :data "a"} (call stella :orders/stamp {:order/id acme-order :order/note "a"}))))
       (testing "the receiver reports on the handoff itself; done, the order is gone for it, nothing to clean up"
@@ -413,7 +418,7 @@
         (is (= {:status :not-found} (call petra :orders/note {:order/id acme-order})))
         (is (= {:status :not-found} (call petra :jobs/one {:job/id acme-job})))
         (is (= {:status :ok :data []} (call petra :orders/incoming {}))))
-      (testing "the receiver can't open it again: that would be writing itself a pass"
+      (testing "the receiver can't open it again: that is making one, which only the giver may"
         (is (= :error (:status (call petra :handoffs/set-status {:handoff/id handoff :handoff/status "open"}))))
         (is (= {:status :not-found} (call petra :orders/note {:order/id acme-order}))))
       (testing "the giving shop can"
@@ -422,14 +427,14 @@
       (finally
         (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff)))))
 
-(deftest a-scope-cant-write-itself-a-pass
-  (testing "the receiving shop's person, behind their own shop's wall, storing a pass from Acme: refused"
-    (is (thrown-with-msg? org.postgresql.util.PSQLException #"Only the giving scope may create a pass"
+(deftest a-shop-cant-hand-itself-an-order
+  (testing "the receiving shop's person, behind their own shop's wall, storing a handoff from Acme: refused"
+    (is (thrown-with-msg? org.postgresql.util.PSQLException #"row-level security"
                           (in-wall! petra #{pine}
                                     (str "INSERT INTO sh_handoffs (handoff__order_id, handoff__from_shop_id,"
                                          " handoff__to_shop_id) VALUES (?, ?, ?)")
                                     acme-order-2 acme pine))))
-  (testing "a pass 'from Pine' for Acme's order: the database ties the giver to the order's own shop"
+  (testing "a handoff 'from Pine' for Acme's order: the database ties the giver to the order's own shop"
     (is (thrown? org.postgresql.util.PSQLException
                  (as-system! (str "INSERT INTO sh_handoffs (handoff__order_id, handoff__from_shop_id,"
                                   " handoff__to_shop_id) VALUES (?, ?, ?)")
@@ -437,13 +442,17 @@
   (testing "nor through the endpoint: giving needs the giving action on the order"
     (is (= {:status :not-found}
            (call petra :handoffs/give {:order/id acme-order-2 :handoff/to-shop-id pine :handoff/driver-id nil}))))
-  (testing "pointing an existing pass at another order, or at another receiver, is creating one"
+  (testing "pointing an existing handoff at another order, or at another receiver, is making one"
     (let [handoff (:data (call sam :handoffs/give {:order/id acme-order :handoff/to-shop-id pine :handoff/driver-id nil}))]
       (try
-        (is (thrown-with-msg? org.postgresql.util.PSQLException #"Only the giving scope may create a pass"
+        (is (thrown-with-msg? org.postgresql.util.PSQLException #"Only someone who may create a row of sh_handoffs"
                               (in-wall! petra #{pine acme}
                                         "UPDATE sh_handoffs SET handoff__order_id = ? WHERE handoff__id = ?"
                                         acme-order-2 handoff)))
+        (is (thrown-with-msg? org.postgresql.util.PSQLException #"Only someone who may create a row of sh_handoffs"
+                              (in-wall! petra #{pine acme}
+                                        "UPDATE sh_handoffs SET handoff__driver_id = ? WHERE handoff__id = ?"
+                                        petra handoff)))
         (finally (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff))))))
 
 (deftest a-pass-to-one-person
@@ -457,36 +466,32 @@
       (is (= {:status :not-found} (call uma :orders/note {:order/id acme-order})))
       (finally (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff)))))
 
-(deftest the-start-checks-a-pass
-  (let [pass  (first (:passes shapes/description))
-        check (fn [f] (:type (error #(rules/check (update shapes/description :passes (fn [ps] [(f (first ps))]))))))]
-    (is (= ::rules/bad-description (check #(assoc % :table :sh_packages)))
-        "its table is a record kind in the giving and the receiving scope")
-    (is (= ::rules/bad-description (check #(assoc % :under #{:message}))) "what comes with it hangs right under the record")
-    (is (= ::rules/bad-description (check #(assoc % :grants {:catalogue/see :handoffs/work}))) "an open action isn't given")
-    (is (= ::rules/bad-description (check #(assoc % :to-person :handoff/driver-id))) "one receiver")
-    (testing "the database must tie the giver to the record's own scope; the error carries the SQL"
-      (sql! "DROP TABLE IF EXISTS sh_loose_passes;
-             CREATE TABLE sh_loose_passes (loose_pass__id uuid PRIMARY KEY, loose_pass__order_id uuid NOT NULL,
-               loose_pass__from_id uuid NOT NULL, loose_pass__to_id uuid, loose_pass__status text NOT NULL)")
-      (try
-        (let [problem (error #(perm/start
-                               {:settings (-> shapes/description
-                                              (assoc-in [:records :loose-pass]
-                                                        {:table :sh_loose_passes :id :loose-pass/id
-                                                         :in [[:shop :loose-pass/from-id] [:shop :loose-pass/to-id]]})
-                                              (update :passes conj
-                                                      (assoc pass :table :sh_loose_passes
-                                                             :record [:order :loose-pass/order-id]
-                                                             :from [:shop :loose-pass/from-id]
-                                                             :to [:shop :loose-pass/to-id]
-                                                             :when [:= :loose-pass/status "open"])))
-                                :db (gw/db *app*)}))]
-          (is (= ::perm/bad-description (:type problem)))
-          (is (str/includes? (str (:sql problem)) "ADD FOREIGN KEY (loose_pass__order_id, loose_pass__from_id)")))
-        (finally
-          (sql! "DROP TABLE IF EXISTS sh_loose_passes")
-          (perm/start {:settings shapes/description :db (gw/db *app*)}))))))
+(deftest the-start-checks-a-via
+  (let [check (fn [f] (:type (error #(rules/check (f shapes/description)))))]
+    (is (= ::rules/bad-description
+           (check #(update % :rules conj {:allow :orders/see :on :order
+                                          :via {:table :sh_nowhere :match {:order/id :x/order-id}
+                                                :to [:member :x/shop-id]}})))
+        "the table it looks in is a record kind's: walled, and ringing")
+    (is (= ::rules/bad-description
+           (check #(update % :rules conj {:allow :orders/see :on :order
+                                          :via {:table :sh_handoffs :match {:order/id :handoff/order-id}
+                                                :to [:member :handoff/note-id]}})))
+        "its who names a scope column of the other row")
+    (is (= ::rules/bad-description
+           (check #(update % :rules conj {:allow :orders/see :on :order :to [:member :order/shop-id]
+                                          :via {:table :sh_handoffs :match {:order/id :handoff/order-id}
+                                                :to [:member :handoff/to-shop-id]}})))
+        "a sentence says :to or :via, not both"))
+  (testing "the matched columns need an index, on both sides; the error carries the SQL"
+    (sql! "DROP INDEX sh_handoffs_order")
+    (try
+      (let [problem (error #(perm/start {:settings shapes/description :db (gw/db *app*)}))]
+        (is (= ::perm/bad-description (:type problem)))
+        (is (= "CREATE INDEX ON sh_handoffs (handoff__order_id);" (:sql problem))))
+      (finally
+        (sql! "CREATE INDEX sh_handoffs_order ON sh_handoffs (handoff__order_id)")
+        (perm/start {:settings shapes/description :db (gw/db *app*)})))))
 
 (deftest a-pass-rings-who-holds-it
   (let [cookie   (sign-in petra)
@@ -611,17 +616,15 @@
 (deftest the-start-checks-a-visitor-column
   (testing "one visitor column a kind, and one person column for the row to move to"
     (is (= ::rules/bad-description
-           (:type (error #(rules/check (assoc-in shapes/description [:records :design :people]
-                                                 {:designs/mine :design/customer-id
-                                                  :orders/see   :design/shop-id}))))))
+           (:type (error #(rules/check (assoc-in shapes/description [:records :design :whose :design/shop-id]
+                                                 :person))))))
     (is (= ::rules/bad-description
-           (:type (error #(rules/check (assoc-in shapes/description [:records :design :visitors]
-                                                 {:designs/mine :design/visitor-id
-                                                  :orders/see   :design/customer-id})))))))
-  (testing "an open action isn't a visitor's"
+           (:type (error #(rules/check (assoc-in shapes/description [:records :design :whose :design/customer-id]
+                                                 :visitor)))))))
+  (testing "[:me …] names a person or visitor column of the row"
     (is (= ::rules/bad-description
-           (:type (error #(rules/check (assoc-in shapes/description [:records :design :visitors]
-                                                 {:catalogue/see :design/visitor-id}))))))))
+           (:type (error #(rules/check (update shapes/description :rules conj
+                                               {:allow :designs/mine :on :design :to [:me :design/shop-id]}))))))))
 
 ;; =============================================================================
 ;; A record between fixed sides carries them
@@ -674,56 +677,36 @@
                                                  :conversation/shop-id))))))))
 
 ;; =============================================================================
-;; Shared rows have an owner
+;; Universal rows belong to nobody
 ;; =============================================================================
 
-(deftest a-read-brings-the-shops-rows-and-the-shared-ones
-  (testing "nobody signed in: the shop's published packages and the platform's, no other shop's, no drafts"
-    (is (= ["Gloss" "Shared Primer"] (names (call nil :catalogue/for-shop {:shop/id acme}))))
-    (is (= ["Shared Primer" "Zinc Matte"] (names (call nil :catalogue/for-shop {:shop/id zinc})))))
-  (testing "the platform's rows are an ordinary scope's: its people edit them as members, through the wall"
+(deftest universal-rows-are-everyones-to-read-and-the-back-offices-to-keep
+  (testing "nobody signed in: the shop's published packages and the universal ones, no other shop's, no drafts"
+    (is (= ["Gloss" "Shared Primer"] (names (call nil :catalogue/of-shop {:shop/id acme}))))
+    (is (= ["Shared Primer" "Zinc Matte"] (names (call nil :catalogue/of-shop {:shop/id zinc})))))
+  (testing "the back office keeps them, through its one scope"
     (is (= "Shared Primer!" (get-in (call pat :catalogue/rename {:package/id shared :package/name "Shared Primer!"})
                                     [:data :package/name])))
     (is (= {:status :not-found} (call stella :catalogue/rename {:package/id shared :package/name "Mine"}))
         "Acme's staff don't")
     (as-system! "UPDATE sh_packages SET package__name = 'Shared Primer' WHERE package__id = ?" shared))
-  (testing "an action people hold: both scopes must verify, or the ask is not found"
-    (is (= {:status :not-found} (call stella :catalogue/workbench {:shop/id acme}))
-        "Stella holds it in Acme, not in the platform's scope")
-    (is (= {:status :not-found} (call pat :catalogue/workbench {:shop/id acme}))
-        "the platform's owner doesn't hold it in Acme")
-    (perm/grant-extra! (gw/permissions *app*) {:by pat :scope shapes/platform :person stella :action :catalogue/edit})
-    (try
-      (is (= ["Gloss" "Secret" "Shared Draft" "Shared Primer"]
-             (names (call stella :catalogue/workbench {:shop/id acme})))
-          "holding it in both: every row of both")
-      (finally
-        (perm/revoke-extra! (gw/permissions *app*)
-                            {:by pat :scope shapes/platform :person stella :action :catalogue/edit}))))
-  (testing "the fixed scope goes with a scope from the request, and an open action's must be of its kind"
-    (let [start (fn [permission]
-                  (error #(endpoints/start {:settings     (assoc (get-in (settings shapes/description {}) [:parquery])
-                                                                 :endpoints [{:x/y {:read (fn [_ _] nil) :permission permission
-                                                                                    :input [:map [:package/id :uuid]]
-                                                                                    :answer :nil}}])
-                                            :db           (gw/db *app*)
-                                            :permissions  (gw/permissions *app*)
-                                            :app-settings {}})))]
-      (is (= :groundwork.settings/invalid
-             (:type (start {:action :catalogue/see :record [:package :package/id] :and-scope [:shop shapes/platform]}))))
-      (is (= ::endpoints/bad-endpoint
-             (:type (start {:action :catalogue/see :scope [:shop shapes/platform] :and-scope [:shop shapes/platform]})))))))
+  (testing "nor can the back office move one into a shop: a changed row keeps belonging to nobody"
+    (is (thrown? org.postgresql.util.PSQLException
+                 (in-wall! pat #{acme} "UPDATE sh_packages SET package__shop_id = ? WHERE package__id = ?" acme shared))))
+  (testing "a kind with exactly one scope refuses a second"
+    (is (= ::perm/single-scope
+           (:type (error #(perm/create-scope! (gw/permissions *app*) {:kind :platform :id (id) :parent nil :owner pat})))))))
 
-(deftest a-watch-holds-both-scopes
-  (ask! nil "catalogue/for-shop" {:shop/id (str acme)})
+(deftest a-universal-row-rings-everyone-reading-it
+  (ask! nil "catalogue/of-shop" {:shop/id (str acme)})
   (let [line (open-line nil)
-        list ["catalogue/for-shop" {:shop/id (str acme)}]]
+        list ["catalogue/of-shop" {:shop/id (str acme)}]]
     (try
       (watch! line list)
       (testing "the shop's own package"
         (as-system! "UPDATE sh_packages SET package__name = 'Gloss' WHERE package__id = ?" gloss)
         (is (= [list] (next-bell line 3000))))
-      (testing "a shared one: everyone showing a catalogue shows that row"
+      (testing "a universal one: everyone showing a catalogue shows that row"
         (as-system! "UPDATE sh_packages SET package__name = 'Shared Primer' WHERE package__id = ?" shared)
         (is (= [list] (next-bell line 3000))))
       (testing "another shop's: nothing"
@@ -745,7 +728,7 @@
       (testing "another shop's package: nothing"
         (as-system! "UPDATE sh_packages SET package__name = 'Zinc Matte' WHERE package__id = ?" zinc-matte)
         (is (nil? (next-bell line 500))))
-      (testing "an order of that shop, a kind the open action doesn't reach: nothing, though the read's SQL names the table"
+      (testing "an order of that shop, a kind no open word gives: nothing, though the read's SQL names the table"
         (as-system! "UPDATE sh_orders SET order__note = 'a' WHERE order__id = ?" acme-order)
         (is (nil? (next-bell line 500))))
       (finally (close! line)))))

@@ -56,7 +56,7 @@
                                      (update :web dissoc :login-path)
                                      (assoc-in [:web :languages] {:supported ["en"] :default "de" :cookie nil})
                                      (assoc-in [:web :proxies :trusted] ["not an address"])
-                                     (assoc-in [:permissions :scopes :shop] {:actions #{:see} :roles {} :parent nil})))]
+                                     (assoc-in [:permissions :scopes :shop] {:actions {:see #{:read}} :roles {} :parent nil})))]
     (is (= #{[:sessions :visitor-hours] [:server :port] [:web :login-path] [:web :languages]
              [:web :proxies :trusted 0] [:permissions :scopes :shop :actions :see]}
            (set (map :in found))))

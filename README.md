@@ -205,38 +205,31 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 
 | Key | Type | What it is | Example |
 |-----|------|------------|---------|
-| `:permissions :scopes` | kind → scope kind | The kinds of scope: where data belongs and people are members | `{:shop {:actions #{:orders/see :orders/edit}, :roles {"Ma…` |
-| `:permissions :scopes <scope kind> :actions` | set of actions | The actions of this kind of scope | `#{:orders/see :orders/edit}` |
+| `:permissions :scopes` | kind → scope kind | The kinds of scope: where data belongs and people are members | `{:shop {:actions #:orders{:see #{:read}, :edit #{:read :u…` |
+| `:permissions :scopes <scope kind> :actions` | action → commands | The actions of this kind of scope, each with what it does at the wall: :read, :insert, :update, :delete | `#:orders{:see #{:read}, :edit #{:read :update}}` |
 | `:permissions :scopes <scope kind> :roles` | role name → actions | The starting roles every new scope of this kind gets: name → actions | `{"Manager" #{:orders/see :orders/edit}}` |
 | `:permissions :scopes <scope kind> :parent` | keyword or nil | The kind of scope above this one, or nil |  |
-| `:permissions :records` | kind → record kind | The kinds of record, each in a scope | `{:order {:table :orders, :id :order/id, :in [:shop :order…` |
+| `:permissions :scopes <scope kind> :single?` (optional) | true or false | This kind has exactly one scope (a platform's back office): [:member <kind>] names it | `true` |
+| `:permissions :scopes <scope kind> :table` (optional) | keyword | The app's own table of these scopes, where a scope's state lives (with :id) | `:shops` |
+| `:permissions :scopes <scope kind> :id` (optional) | column keyword | Its id column, the scope's id | `:shop/id` |
+| `:permissions :records` | kind → record kind | The kinds of record, and whose row each column names | `{:order {:table :orders, :id :order/id, :whose #:order{:s…` |
 | `:permissions :records <record kind> :table` | keyword | Its table | `:orders` |
 | `:permissions :records <record kind> :id` | column keyword | Its id column | `:order/id` |
-| `:permissions :records <record kind> :in` | [kind column] or a list of them | Its scope column: [scope-kind column], or a list of them for a record shared by scopes | `[:shop :order/shop-id]` |
+| `:permissions :records <record kind> :whose` | column → whose | Whose row each column names: column → a scope kind, :person or :visitor (the id of a visitor's session) | `#:order{:shop-id :shop, :customer-id :person}` |
 | `:permissions :records <record kind> :parent` (optional) | [kind column] or [kind column {column column}] | The record it hangs under: [record-kind its-column], and what it carries from it when either has more than one scope, or a person: [record-kind its-column {its column → the parent's}] | `[:order :job/order-id]` |
-| `:permissions :records <record kind> :people` (optional) | action → column | An action a person on the record holds: action → their column | `#:orders{:see :order/customer-id}` |
-| `:permissions :records <record kind> :visitors` (optional) | action → column | An action a visitor on the record holds: action → the column with their visitor session's id. At sign-in the row moves to the person, into the kind's person column | `#:designs{:edit :design/visitor-id}` |
-| `:permissions :records <record kind> :only-when` (optional) | action → condition | An action allowed only when the record matches: action → condition | `#:orders{:edit [:= :order/status "open"]}` |
-| `:permissions :records <record kind> :open` (optional) | set of actions | The open actions that reach this kind (each is in the description's :open); its :only-when for them still holds | `#{:catalogue/see}` |
-| `:permissions :links` | list of links | Scopes reaching other scopes through a linking record | `[]` |
-| `:permissions :links […] :table` | keyword | The linking record's table | `:agreements` |
-| `:permissions :links […] :from` | [kind column] | The scope the person is in: [kind column] | `[:partner :agreement/partner-id]` |
-| `:permissions :links […] :to` | [kind column] | The scope the link reaches: [kind column] | `[:shop :agreement/shop-id]` |
-| `:permissions :links […] :when` | condition | While this holds | `[:= :agreement/status "active"]` |
-| `:permissions :links […] :grants` | action → action | What it gives in :to: given action → the action needed in :from | `#:orders{:see :agreements/see}` |
-| `:permissions :passes` | list of passes | Rows that are a pass to one record: a reading action on the record a row names, for the receiving scope's people or one person, while a condition holds | `[]` |
-| `:permissions :passes […] :table` | keyword | The passing row's table; it is a record kind itself, in the giving and the receiving scope | `:handoffs` |
-| `:permissions :passes […] :record` | [kind column] | The one record it gives: [record-kind column] | `[:order :handoff/order-id]` |
-| `:permissions :passes […] :from` | [kind column] | The giving scope, the record's own: [kind column] | `[:shop :handoff/from-shop-id]` |
-| `:permissions :passes […] :to` (optional) | [kind column] | The receiving scope: [kind column] | `[:shop :handoff/to-shop-id]` |
-| `:permissions :passes […] :to-person` (optional) | column keyword | Or the receiving person's column | `:handoff/driver-id` |
-| `:permissions :passes […] :when` | condition | While this holds | `[:= :handoff/status "open"]` |
-| `:permissions :passes […] :grants` | action → action, or a set of actions | The reading actions it gives on the record → the action needed in :to; for :to-person, a set of given actions | `#:orders{:see :handoffs/work}` |
-| `:permissions :passes […] :under` | set of kinds | The record kinds right under the record that come with it | `#{:job}` |
-| `:permissions :open` | map | The open actions, the one list of them: reading actions anyone, or anyone signed in, may do without a membership. No role holds one; each reaches only the record kinds that list it | `{:anyone #{:catalogue/see}, :signed-in #{:shops/name}}` |
-| `:permissions :open :anyone` | set of actions | Open to everyone, signed in or not | `#{:catalogue/see}` |
-| `:permissions :open :signed-in` | set of actions | Open to everyone who is signed in | `#{:shops/name}` |
-| `:permissions :session-blocks` | flag → actions | A session flag blocks actions: flag → actions | `{:impersonated #{:money/move}}` |
+| `:permissions :rules` | list of sentences | Who may do what: one list of sentences, read at start (see groundwork.permissions.rules) | `[{:allow :orders/see, :on :order, :to [:member :order/sho…` |
+| `:permissions :rules […] :allow` (optional) | action or set of actions | Allows this action (or each of a set of them): a sentence {:allow … :on … :to-or-:via … :when …} | `:orders/see` |
+| `:permissions :rules […] :on` (optional) | keyword | The kind of record it is on | `:order` |
+| `:permissions :rules […] :to` (optional) | who | To whom: :anyone, :signed-in, [:member <column \| single-scope kind \| scope id> <action held, optional>], [:me <column>] | `[:member :order/shop-id]` |
+| `:permissions :rules […] :via` (optional) | map | Or through a related row: one that exists for which its :to and :when hold | `{:table :agreements, :match #:order{:shop-id :agreement/s…` |
+| `:permissions :rules […] :via :table` | keyword | The related row's table; its record kind says whose its columns are | `:agreements` |
+| `:permissions :rules […] :via :match` | column → column | Which columns match: the row's column → the related row's | `#:order{:shop-id :agreement/shop-id}` |
+| `:permissions :rules […] :via :to` | who | Who must hold on the related row | `[:member :agreement/partner-id :agreements/see]` |
+| `:permissions :rules […] :via :when` (optional) | condition | While this holds on the related row | `[:= :agreement/status "active"]` |
+| `:permissions :rules […] :when` (optional) | condition | Only while the row matches; [:none <scope column>] for a row that belongs to nobody | `[:= :order/status "open"]` |
+| `:permissions :rules […] :deny` (optional) | action, set of actions or :writes | Or denies this action, these, or :writes (every action that writes), before any yes | `:money/move` |
+| `:permissions :rules […] :session` (optional) | keyword | A deny's session flag | `:impersonated` |
+| `:permissions :rules […] :scope` (optional) | keyword | A deny's scope kind, whose state (its :when on the kind's :table) denies | `:shop` |
 
 #### `:limits`: How often a caller may ask
 

@@ -331,9 +331,11 @@
         (:hearing store)))
 
 (defn can?
-  "Whether the person holds an action in a scope, from their grants."
+  "Whether the sentences give the person an action in a scope, from their
+   grants. A grant with no scope is for every scope."
   [store action scope-id]
-  (boolean (some #(and (= action (:grant/action %)) (= (str scope-id) (:grant/scope-id %)))
+  (boolean (some #(and (= action (:grant/action %))
+                       (or (nil? (:grant/scope-id %)) (= (str scope-id) (:grant/scope-id %))))
                  (get-in store [:entries [:groundwork/grants {}] :data]))))
 
 ;; =============================================================================
