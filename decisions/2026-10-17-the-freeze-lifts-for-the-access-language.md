@@ -1,5 +1,7 @@
 # The freeze lifts for the access language
 
+> **Replaced** by [Groundwork is no longer frozen](2026-10-17-groundwork-is-no-longer-frozen.md).
+
 > Changes [Groundwork is frozen](2026-10-15-groundwork-is-frozen.md) in part.
 
 **Decision:** Groundwork builds [the access language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md), and the shapes it replaces go. Everything else stays frozen: bells, styles, and every other part.
