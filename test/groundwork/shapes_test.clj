@@ -223,16 +223,23 @@
   (is (= "signed-out" (:status (ask! nil "shop/card" {:shop/id (str acme)}))))
   (is (= {:status "ok" :data 2} (ask! (sign-in vic) "shop/card" {:shop/id (str acme)}))))
 
-(deftest an-open-word-only-reads
+(deftest an-open-word-gives-what-it-says
   (testing "a member's write still needs its own sentence"
     (is (= {:status :not-found} (call vic :catalogue/rename {:package/id gloss :package/name "X"})))
     (is (= "Gloss 2" (get-in (call stella :catalogue/rename {:package/id gloss :package/name "Gloss 2"})
                              [:data :package/name])))
     (as-system! "UPDATE sh_packages SET package__name = 'Gloss' WHERE package__id = ?" gloss))
-  (testing "an open write isn't decided: the start refuses one"
+  (testing "an open write needs a :when or a :via that narrows it; the start refuses one with neither"
     (is (= ::rules/bad-description
            (:type (error #(rules/check (update shapes/description :rules conj
-                                               {:allow :catalogue/edit :on :package :to :anyone})))))))
+                                               {:allow :catalogue/edit :on :package :to :anyone}))))))
+    (is (some? (rules/check (update shapes/description :rules conj
+                                    {:allow :catalogue/edit :on :package :to :signed-in
+                                     :when [:= :package/published false]}))))
+    (is (some? (rules/check (update shapes/description :rules conj
+                                    {:allow :catalogue/edit :on :package
+                                     :via {:table :sh_orders :match {:package/shop-id :order/shop-id}
+                                           :to :anyone :when [:= :order/note "open"]}})))))
   (testing "a write can't declare a reading action, nor a list of what is open only in a named scope"
     (let [start (fn [entry] (error #(endpoints/start {:settings     (assoc (get-in (settings shapes/description {}) [:parquery])
                                                                           :endpoints [{:x/y entry}])

@@ -65,6 +65,7 @@ access rule.
 | `:session-blocks {:impersonated #{:money/move}}` | `{:deny :money/move :session :impersonated}`; it now holds at the wall too, for every sentence of the action |
 | shared rows owned by the platform's scope, read with `:and-scope [:shop platform]` | universal rows: the scope column empty, `{:allow :catalogue/see :on :package :to :anyone :when [:and [:none :package/shop-id] [:= :package/published true]]}`, kept by `{:allow :catalogue/edit :on :package :to [:member :platform :platform/catalogue] :when [:none :package/shop-id]}`; drop `:and-scope` from the endpoints |
 | platform staff as members of a shop-kind scope | a `:single? true` kind, and `[:member :platform <its action>]` |
+| (new) anyone may write, narrowed | `{:allow :inquiries/send :on :inquiry :to :anyone :when [:= :inquiry/status "new"]}`, or `:via` a related row instead of `:to`; an open write with neither refuses the start |
 | (new) a suspended shop is read-only | `:shop {… :table :shops :id :shop/id}` and `{:deny :writes :scope :shop :when [:= :shop/status "suspended"]}` |
 
 ## What else changes for an app

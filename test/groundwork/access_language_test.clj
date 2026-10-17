@@ -44,7 +44,7 @@
 (def a1 (id)) (def a2 (id)) (def z1 (id)) (def z2 (id))
 
 (def tables
-  "DROP TABLE IF EXISTS lg_payouts, lg_orders, lg_shops, lg_links;
+  "DROP TABLE IF EXISTS lg_payouts, lg_orders, lg_shops, lg_links, lg_inquiries, lg_replies, lg_tickets;
    -- the app's own table of shops, where a shop's state lives
    CREATE TABLE lg_shops (shop__id uuid PRIMARY KEY, shop__status text NOT NULL);
    CREATE TABLE lg_orders (order__id uuid PRIMARY KEY, order__shop_id uuid NOT NULL, order__customer_id uuid,
@@ -57,13 +57,26 @@
    CREATE TABLE lg_links (link__id uuid PRIMARY KEY DEFAULT gen_random_uuid(), link__shop_id uuid NOT NULL,
                           link__partner_id uuid NOT NULL, link__status text NOT NULL);
    CREATE INDEX lg_links_shop ON lg_links (link__shop_id);
-   CREATE INDEX lg_links_partner ON lg_links (link__partner_id);")
+   CREATE INDEX lg_links_partner ON lg_links (link__partner_id);
+   -- anyone may send a shop an inquiry, and anyone signed in may reply under an open ticket
+   CREATE TABLE lg_inquiries (inquiry__id uuid PRIMARY KEY DEFAULT gen_random_uuid(), inquiry__shop_id uuid NOT NULL,
+                              inquiry__status text NOT NULL, inquiry__text text NOT NULL);
+   CREATE TABLE lg_tickets (ticket__id uuid PRIMARY KEY, ticket__shop_id uuid NOT NULL, ticket__status text NOT NULL,
+                            UNIQUE (ticket__id, ticket__shop_id));
+   CREATE TABLE lg_replies (reply__id uuid PRIMARY KEY DEFAULT gen_random_uuid(), reply__ticket_id uuid NOT NULL,
+                            reply__shop_id uuid NOT NULL, reply__text text NOT NULL,
+                            FOREIGN KEY (reply__ticket_id, reply__shop_id)
+                              REFERENCES lg_tickets (ticket__id, ticket__shop_id) ON UPDATE CASCADE);
+   CREATE INDEX ON lg_replies (reply__ticket_id);")
 
 (def description
   {:scopes  {:shop     {:actions {:orders/see    #{:read}
                                   :orders/edit   #{:read :update}
                                   :orders/pay    #{:read :insert}
-                                  :payouts/write #{:read :insert}}
+                                  :payouts/write #{:read :insert}
+                                  :inquiries/send #{:insert}
+                                  :inquiries/see  #{:read}
+                                  :replies/write  #{:insert}}
                         :roles   {"Clerk"   #{:orders/see :orders/edit}
                                   "Cashier" #{:orders/see :orders/pay}}
                         :parent  nil
@@ -74,7 +87,10 @@
              :auditor  {:actions {:audit/orders #{:read}} :roles {} :parent nil}}
    :records {:order  {:table :lg_orders :id :order/id :whose {:order/shop-id :shop :order/customer-id :person}}
              :payout {:table :lg_payouts :id :payout/id :whose {:payout/shop-id :shop}}
-             :link   {:table :lg_links :id :link/id :whose {:link/shop-id :shop :link/partner-id :partner}}}
+             :link   {:table :lg_links :id :link/id :whose {:link/shop-id :shop :link/partner-id :partner}}
+             :inquiry {:table :lg_inquiries :id :inquiry/id :whose {:inquiry/shop-id :shop}}
+             :ticket  {:table :lg_tickets :id :ticket/id :whose {:ticket/shop-id :shop}}
+             :reply   {:table :lg_replies :id :reply/id :whose {:reply/shop-id :shop} :parent [:ticket :reply/ticket-id]}}
    :rules   [{:allow #{:orders/see :orders/edit :orders/pay} :on :order :to [:member :order/shop-id]}
              {:allow :orders/see :on :order :to [:me :order/customer-id]}
              ;; through a shared column: the link names the order's shop
@@ -93,7 +109,13 @@
              ;; an impersonating admin can't move money, through any endpoint
              {:deny :payouts/write :session :impersonated}
              ;; a suspended shop is read-only
-             {:deny :writes :scope :shop :when [:= :shop/status "suspended"]}]})
+             {:deny :writes :scope :shop :when [:= :shop/status "suspended"]}
+             ;; open writes, each narrowed: by a :when on the row, or by a related row
+             {:allow :inquiries/send :on :inquiry :to :anyone :when [:= :inquiry/status "new"]}
+             {:allow :inquiries/see :on :inquiry :to [:member :inquiry/shop-id]}
+             {:allow :replies/write :on :reply
+              :via   {:table :lg_tickets :match {:reply/ticket-id :ticket/id} :to :signed-in
+                      :when [:= :ticket/status "open"]}}]})
 
 (pg/defsql lg-order)
 (pg/defsql lg-orders)
@@ -102,6 +124,7 @@
 (pg/defsql lg-close-all)
 (pg/defsql lg-count-orders)
 (pg/defsql lg-add-payout)
+(pg/defsql lg-send-inquiry)
 
 (def endpoint-map
   {:orders/one       {:read       (fn [{:keys [db]} params] (:order/id (pg/row db lg-order params)))
@@ -127,6 +150,10 @@
                       :permission {:action :orders/edit :list :order}
                       :input      [:map]
                       :answer     [:map [:closed [:set :uuid]] [:seen :int]]}
+   :inquiries/send   {:write      (fn [{:keys [db]} params] (pg/execute! db lg-send-inquiry params) true)
+                      :permission {:action :inquiries/send :scope [:shop :shop/id]}
+                      :input      [:map [:shop/id :uuid] [:inquiry/status :string] [:inquiry/text :string]]
+                      :answer     :boolean}
    :payouts/add      {:write      (fn [{:keys [db]} params] (:payout/id (pg/row db lg-add-payout params)))
                       :permission {:action :orders/pay :record [:order :order/id]}
                       :input      [:map [:order/id :uuid] [:payout/cents :int]]
@@ -171,7 +198,7 @@
         (binding [*app* app] (t))
         (finally
           (gw/stop app)
-          (sql! "DROP TABLE IF EXISTS lg_payouts, lg_orders, lg_shops, lg_links"))))))
+          (sql! "DROP TABLE IF EXISTS lg_payouts, lg_orders, lg_shops, lg_links, lg_inquiries, lg_replies, lg_tickets"))))))
 
 (defn- call [person endpoint params & {:keys [flags]}]
   (endpoints/call (gw/endpoints *app*) {:endpoint endpoint :params params :person person :flags (or flags #{})}))
@@ -290,7 +317,10 @@
 ;; =============================================================================
 
 (deftest can-i-comes-from-the-sentences
-  (let [grants (fn [person] (set (map (juxt :grant/scope-id :grant/action) (:data (call person :groundwork/grants {})))))]
+  (let [grants (fn [person] (into #{}
+                                  (comp (map (juxt :grant/scope-id :grant/action))
+                                        (filter #(= "orders" (namespace (second %)))))
+                                  (:data (call person :groundwork/grants {}))))]
     (is (= #{[acme :orders/see] [acme :orders/edit] [zinc :orders/see] [zinc :orders/edit]} (grants carla))
         "a Clerk, through her role's actions in each shop, and nothing her role doesn't hold")
     (is (= #{[acme :orders/see] [acme :orders/pay]} (grants cash))
@@ -298,7 +328,56 @@
     (is (contains? (grants partner-owner) [acme :orders/see]) "through the active link")
     (is (not (contains? (grants partner-owner) [zinc :orders/see])))
     (is (contains? (grants sue) [nil :orders/see]) "every scope: no scope named")
-    (is (contains? (grants acme-owner) [acme :groundwork/team]))))
+    (is (contains? (set (map (juxt :grant/scope-id :grant/action) (:data (call acme-owner :groundwork/grants {}))))
+                   [acme :groundwork/team]))
+    (is (contains? (set (map (juxt :grant/scope-id :grant/action) (:data (call vic :groundwork/grants {}))))
+                   [nil :inquiries/send])
+        "an open write, for every scope")))
+
+;; =============================================================================
+;; An open write is narrowed by a :when or a :via
+;; =============================================================================
+
+(deftest an-open-write-is-narrowed
+  (testing "anyone sends a shop an inquiry, as its :when allows: a new one"
+    (is (= {:status :ok :data true}
+           (call nil :inquiries/send {:shop/id acme :inquiry/status "new" :inquiry/text "Do you ship?"})))
+    (is (= [{:lg_inquiries/inquiry__shop_id acme}]
+           (system! "SELECT inquiry__shop_id FROM lg_inquiries WHERE inquiry__text = 'Do you ship?'")))
+    (testing "and nothing its :when doesn't: the wall refuses the row"
+      (is (= :error (:status (call nil :inquiries/send {:shop/id acme :inquiry/status "answered" :inquiry/text "x"}))))
+      (is (= [] (system! "SELECT 1 FROM lg_inquiries WHERE inquiry__text = 'x'"))))
+    (testing "writing isn't reading: the sender sees no inquiry, the shop's members do"
+      (is (= [] (perm/in-wall (gw/permissions *app*) {:person vic :scopes #{acme}}
+                              (fn [tx] (jdbc/execute! (::pg/conn tx) ["SELECT 1 FROM lg_inquiries"])))))
+      (is (= 1 (count (perm/in-wall (gw/permissions *app*) {:person acme-owner :scopes #{acme}}
+                                    (fn [tx] (jdbc/execute! (::pg/conn tx) ["SELECT 1 FROM lg_inquiries"]))))))))
+  (testing "anyone signed in replies under an open ticket, as the :via allows"
+    (let [open-ticket (id) closed-ticket (id)
+          reply!      (fn [person ticket]
+                        (perm/in-wall (gw/permissions *app*) {:person person :scopes #{acme}}
+                                      (fn [tx] (jdbc/execute! (::pg/conn tx)
+                                                              [(str "INSERT INTO lg_replies (reply__ticket_id, reply__shop_id,"
+                                                                    " reply__text) VALUES (?, ?, 'hello')")
+                                                               ticket acme]))))]
+      (system! "INSERT INTO lg_tickets VALUES (?, ?, 'open'), (?, ?, 'closed')" open-ticket acme closed-ticket acme)
+      (try
+        (is (some? (reply! vic open-ticket)))
+        (is (thrown-with-msg? org.postgresql.util.PSQLException #"row-level security" (reply! vic closed-ticket))
+            "not under a closed one")
+        (is (thrown-with-msg? org.postgresql.util.PSQLException #"row-level security" (reply! nil open-ticket))
+            "nor signed out")
+        (finally
+          (system! "DELETE FROM lg_replies")
+          (system! "DELETE FROM lg_tickets")))))
+  (testing "the start refuses an open write that nothing narrows, and says how to narrow it"
+    (is (= ::rules/bad-description
+           (:type (error #(rules/check (update description :rules conj {:allow :inquiries/send :on :inquiry :to :anyone}))))))
+    (let [message (try (rules/check (update description :rules conj {:allow :inquiries/send :on :inquiry :to :signed-in}))
+                       nil
+                       (catch clojure.lang.ExceptionInfo e (ex-message e)))]
+      (is (re-find #":inquiries/send writes, and it is given to :signed-in with nothing that narrows it" message))
+      (is (re-find #"needs a :when on the row .* or a :via instead of :to" message)))))
 
 ;; =============================================================================
 ;; The bells: a row that changes who sees it rings old and new viewers

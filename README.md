@@ -708,9 +708,16 @@ record, to whom, and when:
   scope a deny holds in stays verified for reads and is left out of the
   transaction's writes, so the wall refuses its writes too.
 
+**An open write is narrowed.** A sentence may give `:anyone` or
+`:signed-in` an action that writes (anyone sends a shop an inquiry, anyone
+signed in replies under an open ticket), but only with a `:when` on the row
+or a `:via`: `{:allow :inquiries/send :on :inquiry :to :anyone :when [:=
+:inquiry/status "new"]}`. Writing isn't reading: the sender sees the row
+only if a sentence whose action reads gives it to them.
+
 Groundwork reads every sentence at start and refuses an unknown word,
 kind, action, table or column, an action nobody in that scope can hold,
-and an open write (to `:anyone` or `:signed-in`, not decided).
+and an open write that nothing narrows.
 
 **What comes from the sentences:**
 

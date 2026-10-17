@@ -534,14 +534,13 @@
         :else
         (problem (str where ": a sentence starts with :allow or :deny") {:rule rule})))
     ;; reading each sentence checks its words
-    (doseq [{:keys [action who via n rule]} (sentences description)]
-      (when (and (#{:anyone :signed-in} (:word who)) (writes? description action))
-        (problem (str "Rule " n " " (shown rule) ": " action " writes, and an open write (to "
-                      (:word who) ") isn't decided; give it to people the app knows")
-                 {:rule rule}))
-      (when (and (#{:anyone :signed-in} (get-in via [:who :word])) (writes? description action))
-        (problem (str "Rule " n " " (shown rule) ": " action " writes, and an open write through a related row"
-                      " isn't decided")
+    ;; an open write must be narrowed: by a :when on the row, or a :via (a
+    ;; related row must exist)
+    (doseq [{:keys [action who via n rule] condition :when} (sentences description)]
+      (when (and (#{:anyone :signed-in} (:word who)) (writes? description action) (nil? via) (nil? condition))
+        (problem (str "Rule " n " " (shown rule) ": " action " writes, and it is given to " (:word who)
+                      " with nothing that narrows it. An open write needs a :when on the row (only a new"
+                      " inquiry, say) or a :via instead of :to (only under an open ticket)")
                  {:rule rule}))))
   description)
 
