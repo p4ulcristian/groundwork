@@ -126,7 +126,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 |-----|------|------------|---------|
 | `:page :lang` | text | The page's language | `"en"` |
 | `:page :title` | text | The browser tab's title | `"Acme Coating"` |
-| `:page :description` | text or nil | A one-sentence summary for search results and link previews, or nil | `"Powder coating, ordered online"` |
+| `:page :description` | text or nil | A one-sentence summary for search results and link previews, or nil | `"Orders and invoices for small shops"` |
 | `:page :icon` | text | The tab's icon | `"/icon.svg"` |
 | `:page :stylesheets` | list of text | The CSS files every page loads | `["/app.css"]` |
 | `:page :head` | list of text | Extra tags at the end of <head>, as HTML text | `[]` |
@@ -275,8 +275,8 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:parquery :max-running` | positive whole number | The most asks running at once across the server; keep it below the pool size | `16` |
 | `:parquery :bearer` | function or nil | Whose token a tool calls with: (fn [token] person-id-or-nil), or nil | `app.tools/token->person` |
 | `:parquery :on-answer` | function or nil | After every ask over HTTP: (fn [{:keys [endpoint status ms person request-id]}] …), or nil | `app.metrics/on-answer` |
-| `:parquery :bells` | map | How the tables outside the permission description ring | `{:global {:powder_colours "reference data only the platfo…` |
-| `:parquery :bells :global` | table → reason | Tables every watcher of them hears about: table → the reason. A global table is one whose rows belong to nobody, or whose every row is read by everyone; a table whose rows belong to a scope goes in the permission description | `{:powder_colours "reference data only the platform's staf…` |
+| `:parquery :bells` | map | How the tables outside the permission description ring | `{:global {:countries "reference data only the platform's …` |
+| `:parquery :bells :global` | table → reason | Tables every watcher of them hears about: table → the reason. A global table is one whose rows belong to nobody, or whose every row is read by everyone; a table whose rows belong to a scope goes in the permission description | `{:countries "reference data only the platform's staff cha…` |
 | `:parquery :bells :personal` | table → column | Tables only their person hears about: table → person column | `{:notifications :notification/person-id}` |
 | `:parquery :bells :silent` (optional) | table → reason | Tables that ring nothing, on purpose: table → the reason. Every table of the app says how it rings, here or in the permission description, or the start refuses; :groundwork/every-other-table covers the rest of a database the app shares with something else | `{:import_log "written once by the nightly import, shown n…` |
 

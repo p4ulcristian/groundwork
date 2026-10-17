@@ -49,7 +49,7 @@
   :title "Acme Coating"
 
   ;; A one-sentence summary for search results and link previews, or nil
-  :description "Powder coating, ordered online"
+  :description "Orders and invoices for small shops"
 
   ;; The tab's icon
   :icon "/icon.svg"
@@ -262,7 +262,7 @@
   ;; How the tables outside the permission description ring
   :bells
   {;; Tables every watcher of them hears about: table → the reason. A global table is one whose rows belong to nobody, or whose every row is read by everyone; a table whose rows belong to a scope goes in the permission description
-   :global {:powder_colours "reference data only the platform's staff change"}
+   :global {:countries "reference data only the platform's staff change"}
 
    ;; Tables only their person hears about: table → person column
    :personal {:notifications :notification/person-id}

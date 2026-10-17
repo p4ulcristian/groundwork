@@ -374,7 +374,7 @@
     (entry :lang "The page's language" "en" text)
     (entry :title "The browser tab's title" "Acme Coating" text)
     (entry :description "A one-sentence summary for search results and link previews, or nil"
-           "Powder coating, ordered online" text-or-nil)
+           "Orders and invoices for small shops" text-or-nil)
     (entry :icon "The tab's icon" "/icon.svg" text)
     (entry :stylesheets "The CSS files every page loads" ["/app.css"] texts)
     (entry :head "Extra tags at the end of <head>, as HTML text" [] texts)]
@@ -539,14 +539,14 @@
     (entry :on-answer "After every ask over HTTP: (fn [{:keys [endpoint status ms person request-id]}] …), or nil"
            'app.metrics/on-answer function-or-nil)
     (entry :bells "How the tables outside the permission description ring"
-           {:global {:powder_colours "reference data only the platform's staff change"}
+           {:global {:countries "reference data only the platform's staff change"}
             :personal {:notifications :notification/person-id}}
            [:map {:closed true}
             (entry :global
                    (str "Tables every watcher of them hears about: table → the reason. A global table is one "
                         "whose rows belong to nobody, or whose every row is read by everyone; "
                         "a table whose rows belong to a scope goes in the permission description")
-                   {:powder_colours "reference data only the platform's staff change"}
+                   {:countries "reference data only the platform's staff change"}
                    [:map-of {:error/message "must map tables to the reason they are global" :doc/type "table → reason"}
                     :keyword text])
             (entry :personal "Tables only their person hears about: table → person column"
