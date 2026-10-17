@@ -50,6 +50,35 @@ RETURNS boolean LANGUAGE sql STABLE AS $$
   SELECT coalesce(current_setting('groundwork.bypass', true), '') = 'on'
 $$;
 
+-- The same, as sets a policy reads once per statement: a policy compares a
+-- row's scope with "column IN (SELECT groundwork.wall_scope_set())", which
+-- Postgres hashes once, instead of reading the setting again for every row.
+CREATE FUNCTION groundwork.wall_scope_set()
+RETURNS SETOF uuid LANGUAGE sql STABLE AS $$
+  SELECT unnest(coalesce(nullif(nullif(current_setting('groundwork.scopes', true), ''), '*'), '{}')::uuid[])
+$$;
+
+CREATE FUNCTION groundwork.wall_write_set()
+RETURNS SETOF uuid LANGUAGE sql STABLE AS $$
+  SELECT unnest(coalesce(nullif(nullif(current_setting('groundwork.write_scopes', true), ''), '*'), '{}')::uuid[])
+$$;
+
+CREATE FUNCTION groundwork.wall_whole_set()
+RETURNS SETOF uuid LANGUAGE sql STABLE AS $$
+  SELECT unnest(coalesce(nullif(current_setting('groundwork.whole_scopes', true), ''), '{}')::uuid[])
+$$;
+
+-- Whether the transaction reads, or writes, in every scope.
+CREATE FUNCTION groundwork.wall_reads_every()
+RETURNS boolean LANGUAGE sql STABLE AS $$
+  SELECT coalesce(current_setting('groundwork.scopes', true), '') = '*'
+$$;
+
+CREATE FUNCTION groundwork.wall_writes_every()
+RETURNS boolean LANGUAGE sql STABLE AS $$
+  SELECT coalesce(current_setting('groundwork.write_scopes', true), '') = '*'
+$$;
+
 -- Every scope where a person holds any of these actions: one lookup for
 -- the sentences that differ only in the action they need.
 CREATE FUNCTION groundwork.scopes_holding_any(person uuid, actions text[])

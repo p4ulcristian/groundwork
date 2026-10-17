@@ -730,13 +730,17 @@
 
 (defn- scope-base
   "A row's scope verified for the command: read or write. A row the
-   sentence says may be universal passes when it has no scope at all."
+   sentence says may be universal passes when it has no scope at all. The
+   verified scopes are a set the statement reads once (a hashed subquery),
+   never a setting parsed again for every row."
   [record alias command universal]
-  (let [cols (keys (scope-columns record))
-        f    (if (= :read command) "groundwork.wall_allows" "groundwork.wall_writes")]
+  (let [cols  (keys (scope-columns record))
+        every (if (= :read command) "(SELECT groundwork.wall_reads_every())" "(SELECT groundwork.wall_writes_every())")
+        set   (if (= :read command) "(SELECT groundwork.wall_scope_set())" "(SELECT groundwork.wall_write_set())")]
     (if (empty? cols)
       nil
-      (let [scoped (str "(" (str/join " OR " (map #(str f "(" alias "." (quote-column %) ")") cols)) ")")]
+      (let [scoped (str "(" every " AND (" (str/join " OR " (map #(str alias "." (quote-column %) " IS NOT NULL") cols)) ")"
+                        " OR " (str/join " OR " (map #(str alias "." (quote-column %) " IN " set) cols)) ")")]
         (if universal
           (str "(" scoped " OR (" (str/join " AND " (map #(str alias "." (quote-column %) " IS NULL") cols)) "))")
           scoped)))))
@@ -749,7 +753,7 @@
                    (if (= :writes (:actions d))
                      (and (write-commands command) (writes? description action))
                      (contains? (:actions d) action)))]
-    (str "NOT groundwork.wall_flag(" (sql-literal (name session)) ")")))
+    (str "NOT (SELECT groundwork.wall_flag(" (sql-literal (name session)) "))")))
 
 (defn- wall-part
   "A sentence's branch of a command's policy: its scope verified for the
@@ -793,8 +797,8 @@
         parts  (concat (for [[k g] groups :when k] (grouped-member-part description record ds command alias state? g))
                        (for [s (get groups nil)] (wall-part description record ds command alias state? s)))
         whole  (when-let [cols (seq (keys (scope-columns record)))]
-                 (str/join " OR " (map #(str "groundwork.wall_whole(" alias "." (quote-column %) ")") cols)))]
-    (str "groundwork.wall_bypass()"
+                 (str/join " OR " (map #(str alias "." (quote-column %) " IN (SELECT groundwork.wall_whole_set())") cols)))]
+    (str "(SELECT groundwork.wall_bypass())"
          (when whole (str " OR " whole))
          (when (seq parts) (str "\n  OR " (str/join "\n  OR " (sort (distinct parts))))))))
 

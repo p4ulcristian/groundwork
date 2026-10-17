@@ -270,7 +270,7 @@
                                                                        (id) zinc-order]))))))
   (testing "the wall compares the row's own column, no lookup"
     (let [{:keys [select]} (rules/policies description :job)]
-      (is (str/includes? select "groundwork.wall_allows(\"jobs\".\"job__shop_id\")"))
+      (is (str/includes? select "\"jobs\".\"job__shop_id\" IN (SELECT groundwork.wall_scope_set())"))
       (is (not (str/includes? select "\"orders\"")) "nothing reaches for the order"))))
 
 (deftest start-refuses-a-deep-table-without-its-scope-or-link
