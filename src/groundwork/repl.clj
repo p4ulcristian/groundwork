@@ -10,8 +10,6 @@
      (repl/lines (:app dev))  (repl/recent-bells (:app dev))
      (repl/sessions (:app dev) peter)  (repl/sign-out-everywhere! (:app dev) peter)
      (repl/migrations (:app dev))
-     (repl/explain-class (:app dev) :css.job-card/title)  (repl/page-styles (:app dev) :admin)
-     (repl/styles-report (:app dev))
      (repl/queued-jobs (:app dev))  (repl/dead-jobs (:app dev))  (repl/retry-job! (:app dev) id)
      (repl/explain-setting [:sessions :visitor-hours])  (repl/settings)
      (repl/stop! dev)
@@ -35,8 +33,6 @@
    [groundwork.postgres :as pg]
    [groundwork.sessions :as sessions]
    [groundwork.settings :as settings]
-   [groundwork.styles :as styles]
-   [groundwork.web :as web]
    [jsonista.core :as json]
    [next.jdbc :as jdbc]
    [next.jdbc.result-set :as rs])
@@ -153,7 +149,7 @@
             _      (when mcp-json? (write-mcp-json! dir (:port nrepl)))
             shadow (when (get-in settings [:browser :watch?])
                      (needs 'shadow.cljs.devtools.server/start! "thheller/shadow-cljs")
-                     (build/watch! (styles/with-watch-dir (:styles settings) (:browser settings))))
+                     (build/watch! (:browser settings) (:styles settings)))
             app    (gw/start settings)]
         (println (str "Groundwork is running: port " (gw/port app) ", nREPL " (:port nrepl)
                       (when shadow (str ", watching " shadow)) ", log " log))
@@ -172,10 +168,10 @@
 
 (defn stop!
   "Stop the app, the watcher and the nREPL, and stop logging."
-  [{:keys [app nrepl shadow dir undo]}]
+  [{:keys [app settings nrepl shadow dir undo]}]
   (try
     (some-> app gw/stop)
-    (when shadow ((requiring-resolve 'shadow.cljs.devtools.server/stop!)))
+    (when shadow (build/stop-watch! (:browser settings)))
     (when nrepl ((requiring-resolve 'nrepl.server/stop-server) nrepl))
     (io/delete-file (io/file dir ".nrepl-port") true)
     (finally
@@ -424,51 +420,3 @@
   "Run a dead job again now."
   [app id]
   (jobs/retry! (gw/jobs app) id))
-
-;; =============================================================================
-;; Styles
-;; =============================================================================
-
-(defn- styles-now
-  "The app's styles as they are on disk now, read again: the tree, the code
-   and the bundles' plan."
-  [app]
-  (let [{:keys [settings browser]} (or (gw/part app :groundwork/styles)
-                                       (throw (ex-info "This app has no :styles" {:type ::no-styles})))
-        read (styles/analysis settings)]
-    (assoc read :plan (styles/plan settings browser read) :browser browser)))
-
-(defn explain-class
-  "Where a class is defined, which code uses it (file:line), which bundles
-   carry it and which other stylesheets look at it.
-   (explain-class app :css.job-card/title)"
-  [app class-key]
-  (styles/explain-class (styles-now app) class-key))
-
-(defn page-styles
-  "What a page loads and why: the base files in order, then each module's
-   stylesheets with the code that uses them. A page is named by its address
-   (the route's :page says its module) or by a build module; without either
-   it is a page that names no module.
-   (page-styles app \"/admin/roles\")  (page-styles app :admin)"
-  ([app] (page-styles app nil))
-  ([app page]
-   (let [read   (styles-now app)
-         route  (when (string? page)
-                  (or (web/route-at (gw/part app :groundwork/router) page)
-                      (throw (ex-info (str "No route of the app serves " page) {:type ::no-route :address page}))))
-         shell  (get-in route [:data :page])
-         shell  (if (or (fn? shell) (var? shell))
-                  (shell {:uri page :request-method :get :path-params (:path-params route)})
-                  shell)
-         module (if route (:module shell) page)]
-     (cond-> (styles/page-loads read (:browser read) module)
-       route (assoc :route (:template route))))))
-
-(defn styles-report
-  "Every problem with the app's styles now, each a line with its file and
-   line, or \"No problems.\""
-  [app]
-  (let [read  (styles-now app)
-        found (styles/problems (:styles read) read)]
-    (if (seq found) (styles/report found) "No problems.")))

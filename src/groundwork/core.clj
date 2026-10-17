@@ -37,7 +37,6 @@
    [groundwork.server :as server]
    [groundwork.sessions :as sessions]
    [groundwork.settings :as settings]
-   [groundwork.styles :as styles]
    [groundwork.web :as web]
    [integrant.core :as ig]))
 
@@ -82,12 +81,8 @@
                            :needs    [:groundwork/db :groundwork/endpoints :groundwork/sessions]
                            :start    parquery/start
                            :stop     parquery/stop}
-   :groundwork/styles     {:settings :styles
-                           :needs    []
-                           :start    styles/start
-                           :stop     styles/stop}
    :groundwork/page       {:settings :page
-                           :needs    [:groundwork/styles]
+                           :needs    []
                            :start    page/start}
    :groundwork/router     {:settings :web
                            :needs    [:groundwork/migrations :groundwork/sessions :groundwork/permissions

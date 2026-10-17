@@ -7,17 +7,7 @@
    Both directions are exact: (= k (column->key (key->column k))) for every
    valid k. A part is lowercase letters and digits, words joined by single
    hyphens (keyword) or single underscores (column). Anything else throws
-   ex-info {:type :groundwork.names/invalid}; nothing is guessed.
-
-   How a thing looks has its name the same way. A CSS class is a keyword
-   with the marker css. on its namespace, and the class keeps its hyphens:
-
-     :css.job-card/title  <->  \"job-card__title\"
-
-   The marker keeps a class apart from data, endpoints and events, which are
-   namespaced keywords too; their names have no dots, so the two can't
-   collide. A stylesheet's own variable is named after its namespace too:
-   --job-card__group-color."
+   ex-info {:type :groundwork.names/invalid}; nothing is guessed."
   (:require
    [clojure.string :as str]))
 
@@ -74,52 +64,3 @@
   [s]
   (or (as-key s)
       (invalid (str "Not a valid column name: " (pr-str s)) s)))
-
-;; =============================================================================
-;; Classes
-;; =============================================================================
-
-(def class-marker
-  "What a class keyword's namespace starts with."
-  "css.")
-
-(defn class-key?
-  "Whether a keyword says it is a class: :css.job-card/title."
-  [k]
-  (boolean (and (keyword? k)
-                (when-let [n (namespace k)] (str/starts-with? n class-marker)))))
-
-(defn as-class
-  "The class name for a class keyword, or nil when it isn't a valid one."
-  [k]
-  (when (class-key? k)
-    (let [block (subs (namespace k) (count class-marker))]
-      (when (and (re-matches keyword-part block) (re-matches keyword-part (name k)))
-        (str block "__" (name k))))))
-
-(defn key->class
-  ":css.job-card/title -> \"job-card__title\"."
-  [k]
-  (or (as-class k)
-      (invalid (str "Not a class keyword like :css.job-card/title: " (pr-str k)) k)))
-
-(defn as-class-key
-  "The class keyword for a class name, or nil when it isn't block__name."
-  [s]
-  (when (string? s)
-    (when-let [i (str/index-of s "__")]
-      (let [block (subs s 0 i)
-            part  (subs s (+ i 2))]
-        (when (and (re-matches keyword-part block) (re-matches keyword-part part))
-          (keyword (str class-marker block) part))))))
-
-(defn class->key
-  "\"job-card__title\" -> :css.job-card/title."
-  [s]
-  (or (as-class-key s)
-      (invalid (str "Not a class name like job-card__title: " (pr-str s)) s)))
-
-(defn class-namespace
-  "The namespace a class name belongs to: \"job-card__title\" -> \"job-card\", or nil."
-  [s]
-  (some-> (as-class-key s) namespace (subs (count class-marker))))

@@ -409,19 +409,9 @@
    :styles
    [:maybe
     [:map {:closed true}
-     (entry :dir "The styles tree: base/, vendor/, looks/ and areas/ under it" "styles" text)
-     (entry :sources "Where the browser code is: the class keywords in it are read from here" ["src"] texts)
-     (entry :base "The base files (tokens, fonts, resets, themes), in loading order" ["base/tokens.css" "base/reset.css"] texts)
-     (entry :vendor "Outside libraries' stylesheets: the file, how its classes start, and the one namespace that wraps it"
-            [{:file "vendor/calendar.vendor.css" :prefixes ["vc-"] :wrapper "calendar"}]
-            [:vector {:error/message "must be a list of {:file :prefixes :wrapper}" :doc/type "list of libraries"}
-             [:map {:closed true}
-              (entry :file "The library's own stylesheet, under vendor/; it is never checked" "vendor/calendar.vendor.css" text)
-              (entry :prefixes "How the library's class names start" ["vc-"]
-                     [:vector {:min 1 :error/message "must be a list of at least one prefix" :doc/type "list of text"} text])
-              (entry :wrapper "The one namespace that may style the library's classes, inside its own element" "calendar"
-                     name-text)]])
-     (entry :output-dir "Where the bundles go, a folder whose public/ is served" "resources/public/css" text)
+     (entry :sources "Where the browser code and its stylesheets are: every .css under them is named by a namespace's {:css […]}, and in development a saved one rebuilds the bundles"
+            ["src"] texts)
+     (entry :output-dir "Where the bundles and their manifest go, a folder whose public/ is served" "resources/public/css" text)
      (entry :asset-path "Where the browser fetches them" "/css"
             [:re {:error/message "must be a path like \"/css\"" :doc/type "path"} #"^/.*"])]]
 
@@ -578,7 +568,7 @@
    :migrations  "The schema's changes, run at start"
    :page        "The page shell every screen loads into"
    :browser     "The app's browser code and its build"
-   :styles      "The app's stylesheets, checked against its code and bundled; nil or left out when the app brings its own through :page :stylesheets"
+   :styles      "The app's stylesheets, named by its namespaces and bundled per browser module; nil or left out when the app brings its own through :page :stylesheets"
    :web         "Requests: the app's routes, limits, hooks, languages"
    :server      "The web server"
    :sessions    "Who is signed in"

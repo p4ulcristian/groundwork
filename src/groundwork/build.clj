@@ -21,21 +21,27 @@
      :options {…}        extra shadow-cljs build options, merged over these
 
    In development (groundwork.repl/start!), starting the app also starts the
-   watcher; compile! builds the same once, without watching. A release (release!, before packaging the app) compiles with
-   fingerprinted names, like main.3F2A9C.js, and writes manifest.edn next to
-   them; the page shell reads it, so a page and the build can't disagree, and
-   a fingerprinted file can be cached a year. The release for clojure -X
-   also checks the app's styles and writes their bundles (groundwork.styles).
+   watcher; compile! builds the same once, without watching. A release
+   (release!, before packaging the app) compiles with fingerprinted names,
+   like main.3F2A9C.js, and writes manifest.edn next to them; the page shell
+   reads it, so a page and the build can't disagree, and a fingerprinted
+   file can be cached a year.
+
+   With the app's :styles, every build also checks and bundles its
+   stylesheets, through groundwork.styles' build hook: a problem stops the
+   build like a compile error does.
 
    Groundwork's own browser libraries are in its deps.cljs; shadow-cljs
-   installs them for the app. The app's package.json holds only its own.
+   installs them for the app. The app's package.json holds only its own,
+   and lightningcss when it has :styles.
 
    Needs thheller/shadow-cljs on the classpath (an app's :dev or :build
    alias), and the npm packages installed."
   (:refer-clojure :exclude [compile])
   (:require
    [clojure.edn :as edn]
-   [clojure.java.io :as io]))
+   [clojure.java.io :as io]
+   [clojure.string :as str]))
 
 (defn- deep-merge [a b]
   (if (and (map? a) (map? b)) (merge-with deep-merge a b) b))
@@ -45,17 +51,30 @@
   [{:keys [entry modules]}]
   (or modules {:main {:init-fn entry}}))
 
+(defn- watch-dir
+  "Where shadow-cljs watches for changed stylesheets in development: the
+   served folder the bundles are in, so a changed bundle is swapped into the
+   open page without a reload."
+  [{:keys [output-dir asset-path]}]
+  (when (str/ends-with? output-dir asset-path)
+    (subs output-dir 0 (- (count output-dir) (count asset-path)))))
+
 (defn config
-  "The shadow-cljs build for the :browser settings."
-  [{:keys [build output-dir asset-path loader? options] :as browser}]
-  (deep-merge (cond-> {:build-id   build
-                       :target     :browser
-                       :output-dir output-dir
-                       :asset-path asset-path
-                       :modules    (modules browser)
-                       :release    {:module-hash-names true}}
-                loader? (assoc :module-loader true))
-              (or options {})))
+  "The shadow-cljs build for the :browser settings, and the :styles ones
+   when the app has them."
+  ([browser] (config browser nil))
+  ([{:keys [build output-dir asset-path loader? options] :as browser} styles]
+   (let [merged (deep-merge (cond-> {:build-id   build
+                                     :target     :browser
+                                     :output-dir output-dir
+                                     :asset-path asset-path
+                                     :modules    (modules browser)
+                                     :release    {:module-hash-names true}}
+                              loader? (assoc :module-loader true))
+                            (or options {}))]
+     (cond-> merged
+       styles (update :build-hooks #(into [(list 'groundwork.styles/hook styles)] %))
+       (and styles (watch-dir styles)) (update-in [:devtools :watch-dir] #(or % (watch-dir styles)))))))
 
 (defn- shadow [sym]
   (or (requiring-resolve sym)
@@ -64,53 +83,60 @@
 
 (defn watch!
   "Start shadow-cljs and watch the app's build: every save recompiles and the
-   browser reloads it."
-  [browser]
-  ((shadow 'shadow.cljs.devtools.server/start!))
-  ((shadow 'shadow.cljs.devtools.api/watch*) (config browser) {})
-  (:build browser))
+   browser reloads it. With :styles, a saved stylesheet runs the build again
+   too."
+  ([browser] (watch! browser nil))
+  ([browser styles]
+   ((shadow 'shadow.cljs.devtools.server/start!))
+   ((shadow 'shadow.cljs.devtools.api/watch*) (config browser styles) {})
+   (when styles
+     ((requiring-resolve 'groundwork.styles/watch!) styles (:build browser)))
+   (:build browser)))
 
 (defn stop-watch!
   "Stop the watcher and shadow-cljs."
   [browser]
+  ((requiring-resolve 'groundwork.styles/stop-watch!) (:build browser))
   ((shadow 'shadow.cljs.devtools.api/stop-worker) (:build browser))
   ((shadow 'shadow.cljs.devtools.server/stop!)))
 
 (defn compile!
   "Compile the app's browser code once, as the watcher would, without
    watching: for a second copy of the app on one checkout (two watchers
-   would write the same files), or a check before a commit."
-  [browser]
-  (shadow 'shadow.cljs.devtools.api/compile*)
-  (eval `(shadow.cljs.devtools.api/with-runtime
-           (shadow.cljs.devtools.api/compile* '~(config browser) {})))
-  (:build browser))
+   would write the same files), or a check before a commit. A build that
+   fails throws."
+  ([browser] (compile! browser nil))
+  ([browser styles]
+   (shadow 'shadow.cljs.devtools.api/compile*)
+   (eval `(shadow.cljs.devtools.api/with-runtime
+            (shadow.cljs.devtools.api/compile* '~(config browser styles) {})))
+   (:build browser)))
 
 (defn release!
   "Compile the app's browser code for production: optimized, fingerprinted,
-   with the manifest the page shell reads."
-  [browser]
-  (shadow 'shadow.cljs.devtools.api/release*)
-  ;; with-runtime is a macro: shadow's runtime for the time of the build,
-  ;; unless a running shadow-cljs has one already
-  (eval `(shadow.cljs.devtools.api/with-runtime
-           (shadow.cljs.devtools.api/release* '~(config browser) {})))
-  (:build browser))
+   with the manifest the page shell reads; with :styles, the stylesheets'
+   bundles too. A build that fails throws."
+  ([browser] (release! browser nil))
+  ([browser styles]
+   (shadow 'shadow.cljs.devtools.api/release*)
+   ;; with-runtime is a macro: shadow's runtime for the time of the build,
+   ;; unless a running shadow-cljs has one already
+   (eval `(shadow.cljs.devtools.api/with-runtime
+            (shadow.cljs.devtools.api/release* '~(config browser styles) {})))
+   (:build browser)))
 
 (defn release
   "release! for clojure -X: clojure -X:build groundwork.build/release :settings app.settings/production"
   [{:keys [settings]}]
   (let [settings (if (symbol? settings) @(requiring-resolve settings) settings)]
-    ;; the styles first: a problem there stops the release before anything is built
-    ((requiring-resolve 'groundwork.styles/release!) settings)
-    (release! (:browser settings))
+    (release! (:browser settings) (:styles settings))
     (shutdown-agents)))
 
 (defn compile
   "compile! for clojure -X: clojure -X:dev groundwork.build/compile :settings app.settings/dev"
   [{:keys [settings]}]
   (let [settings (if (symbol? settings) @(requiring-resolve settings) settings)]
-    (compile! (:browser settings))
+    (compile! (:browser settings) (:styles settings))
     (shutdown-agents)))
 
 (defn- manifest

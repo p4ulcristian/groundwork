@@ -1,2 +1,0 @@
-/* A shared look: the home screen and the reports screen both carry it. */
-.panel__frame { padding: var(--panel__padding, 8px); }

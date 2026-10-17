@@ -12,7 +12,8 @@
    The app's compiled browser code is the build's own (see groundwork.build):
    after a release, its fingerprinted file from the build's manifest. An app
    with :styles (groundwork.styles) gets its stylesheets the same way: the
-   base bundle and the bundles of the page's modules, before :stylesheets.
+   bundles of the page's modules, before :stylesheets. In production such an
+   app doesn't start before the release has written them.
 
    A route can give its own page, a map or a function of the request
    returning one, merged over these:
@@ -46,7 +47,8 @@
    and what the browser start reads first, as JSON in
    <script type=\"application/json\" id=\"groundwork\">: the person signed in
    (or null), their session's flags, the page's language and, with
-   languages, the ones the app speaks (the browser's routing reads them). It is never
+   languages, the ones the app speaks (the browser's routing reads them),
+   and with :styles each module's bundle, for code loaded on demand. It is never
    cached: a deploy is seen on the next load. Every <script> and
    <style> on it, the app's :head and :body included, carries the request's
    nonce, so the strict Content-Security-Policy lets them run."
@@ -92,14 +94,13 @@
 
 (defn- initial-data
   "What the browser start reads first, as JSON safe inside a <script>."
-  [{:keys [person flags lang languages module-styles known-classes]}]
+  [{:keys [person flags lang languages module-styles]}]
   (str/replace (json/write-value-as-string (cond-> {"person"   (some-> person str)
                                                     "flags"    (mapv name (sort flags))
                                                     "language" lang}
                                              languages     (assoc "languages" {"supported" (:supported languages)
                                                                                "default"   (:default languages)})
-                                             module-styles (assoc "styles" module-styles)
-                                             known-classes (assoc "classes" known-classes)))
+                                             module-styles (assoc "styles" module-styles)))
                "</" "<\\/"))
 
 (defn html
@@ -153,13 +154,16 @@
 (defn start
   "The page part: a Ring handler that answers with the page, the route's
    own page (::route-page on the request) merged over the app's. The build's
-   script is looked up on every page in development, where it changes, and
-   once otherwise."
-  [{:keys [settings app-settings environment] styles-part :styles}]
+   script and stylesheets are looked up on every page in development, where
+   they change, and once otherwise."
+  [{:keys [settings app-settings environment]}]
   (settings/check-part! :page settings)
   (let [browser  (:browser app-settings)
-        styles   (:settings styles-part)
+        styles   (:styles app-settings)
         dev?     (= :development environment)
+        _        (when (and styles (= :production environment) (nil? (styles/manifest styles)))
+                   (throw (ex-info (str "No styles manifest in " (:output-dir styles) ": run the release first")
+                                   {:type ::no-styles-manifest})))
         for*     (fn [module]
                    (if module
                      (build/scripts browser module)
@@ -172,9 +176,7 @@
         links*   (fn [module] (when styles (styles/links styles browser module)))
         links    (if dev? links* (memoize links*))
         modules* (fn [] (when styles (styles/module-links styles)))
-        modules  (if dev? modules* (memoize modules*))
-        ;; what the browser's own check knows, in development only
-        known    (fn [] (when (and styles dev?) (some-> styles-part :state deref styles/known-classes)))]
+        modules  (if dev? modules* (memoize modules*))]
     (fn [request]
       (let [page (merged (cond-> (assoc settings
                                         :person    (sessions/person request)
@@ -190,6 +192,5 @@
                                :module-scripts (scripts (:module page))
                                :loader-info    (loader)
                                :style-links    (links (:module page))
-                               :module-styles  (modules)
-                               :known-classes  (known))
+                               :module-styles  (modules))
                         (::nonce request))}))))

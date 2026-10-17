@@ -14,9 +14,8 @@
                    the next route shares are kept, the rest let go
      :load         instead of :view, for a screen whose code loads on demand:
                    (fn [] promise-of-the-view); :placeholder shows meanwhile.
-                   The stylesheets of the module the code arrived in
-                   (groundwork.styles) are in the page before the screen
-                   shows
+                   The module the code arrives in brings its stylesheets
+                   before its code runs (groundwork.loader)
      :placeholder  a component, for this route (else the app's)
 
    and whatever the server reads from the same record (:access, :page…; see
@@ -44,7 +43,6 @@
    asks the browser's own question."
   (:require
    [clojure.string :as str]
-   [groundwork.css :as css]
    [groundwork.parquery-store :as store]
    [re-frame.core :as rf]
    [reitit.frontend :as rfr]
@@ -184,10 +182,7 @@
 (defn- load-view! [{:keys [data] route-name :name}]
   (when-let [load (:load data)]
     (when-not (contains? (:loaded @state) route-name)
-      ;; the stylesheets of whatever modules the code arrived in, before the
-      ;; screen shows; a route that names its module gets them alongside
-      (-> (js/Promise.all #js [(load) (css/ensure-module! (get-in data [:page :module]))])
-          (.then (fn [loaded] (-> (css/ensure-loaded!) (.then (fn [_] (aget loaded 0))))))
+      (-> (load)
           (.then (fn [view]
                    (swap! state assoc-in [:loaded route-name] view)
                    (rf/dispatch [::-loaded route-name])))))))
