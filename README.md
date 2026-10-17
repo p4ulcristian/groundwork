@@ -700,9 +700,14 @@ record, to whom, and when:
   sees it while the handoff is open), or both share a column (the
   agreement above). The related table is a record kind; its rows are read
   past the wall, through a function Groundwork installs, so the other
-  table's own wall never loops back. Both sides of what it matches, and the
-  related row's who column, need an index, or the start refuses with the
-  SQL to add.
+  table's own wall never loops back. A row a via gives needs no scope of
+  its own verified for the request: its related row does (a payout in the
+  payee's shop, written in a request about the order's shop), unless the
+  related row is the person's own (a customer's order, whose items she
+  reads wherever she asks from). Both sides of what it matches, and the
+  related row's who column, need an index (a partial one counts when it
+  leaves out only rows with those columns empty), or the start refuses
+  with the SQL to add.
 - `:deny` an action, a set, or `:writes` (every action that writes), by a
   session flag or by a scope's state, a condition on the app's own table
   of that kind. A deny comes before every yes, and nothing else says no. A
@@ -728,8 +733,10 @@ and an open write that nothing narrows.
 
 - **The wall:** every record kind's table gets forced row-level security,
   a policy per command. A row shows when a sentence whose action reads
-  holds for it, in a scope verified for the transaction (a person's own row
-  needs none; a universal row has none); it is inserted, updated or
+  holds for it, in a scope verified for the transaction: through exactly
+  the column a `[:member <column>]` names, any of its scope columns for an
+  open word (a person's own row needs none, a universal row has none, a
+  via's row its related row's); it is inserted, updated or
   deleted the same way with the sentences whose action does that. The
   wall knows commands, not actions: two update actions on one table are
   one update rule, and only the endpoint's check tells them apart. A
@@ -1187,7 +1194,8 @@ Then the store, under the screens:
   called as a stranger (nobody, or a person who belongs nowhere): it may
   answer, and what it answers must hold none of the `:sealed` ids you give
   (`:sealed #{an-unpublished-package an-order}`): the ids no stranger may
-  see.
+  see. An open write that answers refused or an error changed nothing and
+  showed nothing: checked, not leaked.
 - **The wall itself** (`leaks/wall-check`): for every kind of record and
   every foreign scope, what nobody, a signed-in stranger and the person see
   behind it must be exactly the rows the sentences give them there. A row

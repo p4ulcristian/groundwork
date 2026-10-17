@@ -41,6 +41,7 @@
 (pg/defsql groundwork-policies "groundwork/permissions/groundwork_policies.sql")
 (pg/defsql groundwork-guards "groundwork/permissions/groundwork_guards.sql")
 (pg/defsql groundwork-functions "groundwork/permissions/groundwork_functions.sql")
+(pg/defsql old-via-functions "groundwork/permissions/old_via_functions.sql")
 (pg/defsql links-between "groundwork/permissions/links_between.sql")
 (pg/defsql connecting-role "groundwork/permissions/connecting_role.sql")
 (pg/defsql holds-sql "groundwork/permissions/holds.sql")
@@ -359,7 +360,7 @@
              via
              (when-let [i (via-scope-position perms s)]
                [(str expr " IN (SELECT via_" (inc i) " FROM " (rules/via-function via)
-                     "(CAST(? AS uuid), CAST(? AS uuid)))")
+                     "(CAST(? AS uuid), CAST(? AS uuid), NULL))")
                 [:person :visitor]])))
          (sentences-of perms action))))
 
@@ -426,7 +427,7 @@
                               via
                               (if-let [i (via-scope-position perms s)]
                                 [(str "SELECT via_" (inc i) " AS scope FROM " (rules/via-function via)
-                                      "(CAST(? AS uuid), CAST(? AS uuid))")
+                                      "(CAST(? AS uuid), CAST(? AS uuid), NULL)")
                                  [:person :visitor]]
                                 ;; a via that names records, not their scope: the
                                 ;; scopes of the records it gives
@@ -548,7 +549,7 @@
                                    via
                                    (when-let [i (via-scope-position perms s)]
                                      [(str "SELECT via_" (inc i) ", ? FROM " (rules/via-function via)
-                                           "(CAST(? AS uuid), CAST(? AS uuid))")
+                                           "(CAST(? AS uuid), CAST(? AS uuid), NULL)")
                                       [a :person :visitor]]))]
                       :when part]
                   part)))]
@@ -903,14 +904,33 @@
              (str "-- drop the existing foreign key (" parent-column ", " c "), then:\n"
                   (link-sql link one)))))))
 
+(defn- implied-by-match?
+  "Whether a partial index's predicate (as Postgres prints it) holds for
+   every row a lookup by these columns finds: it says only that some of
+   them are not empty, as an equality match already does."
+  [predicate columns]
+  (let [parts (-> predicate
+                  (str/replace #"[()]" "")
+                  (str/split #"(?i)\s+AND\s+"))]
+    (every? (fn [part]
+              (when-let [[_ c] (re-matches #"(?i)\s*\"?([a-z_][a-z0-9_]*)\"?\s+IS\s+NOT\s+NULL\s*" part)]
+                (contains? columns c)))
+            parts)))
+
 (defn- check-via-indexes!
   "A via looks rows up by what it matches, on both sides, and finds the
    other rows by their who column: each needs an index that starts with
-   those columns, or the lookup reads the whole table on every check."
+   those columns, or the lookup reads the whole table on every check. A
+   partial index counts when it leaves out only rows with those columns
+   empty (WHERE col IS NOT NULL): no lookup by them finds such a row."
   [db description]
   (doseq [{t :table :keys [columns why]} (rules/via-indexes description)
-          :let [indexes (map :index/columns (pg/rows db indexes-of {:table t}))
-                wanted  (set columns)]
+          :let [wanted  (set columns)
+                indexes (keep (fn [{:index/keys [columns predicate]}]
+                                ;; a partial index counts when all it leaves out is a row
+                                ;; whose matched column is empty, which a match never finds
+                                (when (or (nil? predicate) (implied-by-match? predicate wanted)) columns))
+                              (pg/rows db indexes-of {:table t}))]
           :when (not-any? #(and (<= (count wanted) (count %)) (= wanted (set (take (count wanted) %)))) indexes)]
     (bad (str "Table " t " needs an index on " (str/join ", " columns) ": " why)
          {:table t :columns columns}
@@ -974,6 +994,10 @@
       (exec! tx (str "CREATE POLICY groundwork_update ON " table " FOR UPDATE USING (" (first update)
                      ") WITH CHECK (" (second update) ")"))
       (exec! tx (str "CREATE POLICY groundwork_delete ON " table " FOR DELETE USING (" delete ")")))
+    ;; a via's function from before its related row was held to the
+    ;; request's scopes took two arguments; nothing calls those now
+    (doseq [{:function/keys [name]} (pg/rows tx old-via-functions {})]
+      (exec! tx (str "DROP FUNCTION IF EXISTS groundwork.\"" name "\"(uuid, uuid)")))
     (let [guarded (set (map #(name (get-in description [:records % :table])) (rules/guarded-kinds description)))]
       ;; a guard from an earlier start on a table no via looks into any more
       ;; (or a pass's, from before the access language) goes

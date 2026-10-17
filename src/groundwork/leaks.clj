@@ -31,7 +31,8 @@
    person who belongs nowhere for one open to the signed-in. They may
    answer; what they answer must hold none of the :sealed ids (give the ids
    no stranger may see: an unpublished row, a row of a kind no open sentence
-   reaches).
+   reaches). An open write that answers refused or an error changed nothing
+   and showed nothing: it is checked, not leaked.
 
    The wall itself is asked too (wall-check): for every kind of record and
    every foreign scope, what nobody, a signed-in stranger and the person see
@@ -127,16 +128,20 @@
                  seen    (permissions/in-wall perms {:person caller :scopes #{scope} :read-only? true}
                                               #(ids-seen % record nil []))
                  cols    (keys (rules/scope-columns record))
+                 within  (str "{" scope "}")
                  parts   (for [s ss]
+                           ;; the same rules as the wall's, written apart: the row's scope through
+                           ;; the sentence's own column, none for a person's own row or one a
+                           ;; related row gives (whose own scope the via's function holds to this one)
                            (let [[w ps] (rules/sentence-sql s "r")
-                                 base   (when-not (= :me (get-in s [:who :word]))
-                                          (when (seq cols)
-                                            (str "((" (str/join " OR " (map #(str "r." (rules/quote-column %) " = CAST(? AS uuid)") cols)) ")"
-                                                 (when (:universal? s)
-                                                   (str " OR (" (str/join " AND " (map #(str "r." (rules/quote-column %) " IS NULL") cols)) ")"))
-                                                 ")")))]
+                                 by     (rules/base-columns record s)
+                                 base   (when (and (seq by) (seq cols))
+                                          (str "((" (str/join " OR " (map #(str "r." (rules/quote-column %) " = CAST(? AS uuid)") by)) ")"
+                                               (when (:universal? s)
+                                                 (str " OR (" (str/join " AND " (map #(str "r." (rules/quote-column %) " IS NULL") cols)) ")"))
+                                               ")"))]
                              [(str "(" (when base (str base " AND ")) w ")")
-                              (into (if base (vec (repeat (count cols) (str scope))) []) (rules/bind ps caller))]))
+                              (into (if base (vec (repeat (count by) (str scope))) []) (rules/bind ps caller nil within))]))
                  given   (if (seq parts)
                            (permissions/as-system perms #(ids-seen % record (str/join " OR " (map first parts))
                                                                    (vec (mapcat second parts))))
@@ -176,7 +181,7 @@
                  denied   (permissions/as-system perms #(set (keys (permissions/denied-scopes perms % action #{scope}))))
                  given    (if (or (seq denied) (permissions/blocked? perms action #{}))
                             #{}
-                            (permissions/as-system perms #(ids-seen % record sql (rules/bind params caller))))
+                            (permissions/as-system perms #(ids-seen % record sql (rules/bind params caller nil (str "{" scope "}")))))
                  expected (set/intersection seen given)
                  shown    (set/difference answered expected)
                  hidden   (set/difference expected answered)]
@@ -220,6 +225,11 @@
                         (and (= :ok (:status answer)) (holds-any? (:data answer) (set sealed)))
                         (update report :leaked conj {:endpoint k :params params :answer answer})
                         (#{:ok :not-found} (:status answer))
+                        (update report :checked conj k)
+                        ;; a write refused, or failing on what was generated, changed nothing
+                        ;; and showed nothing: an open write may be narrowed by its :when or
+                        ;; its :via, and the app's own checks may say no
+                        (and (not (:read? entry)) (#{:refused :error :too-many} (:status answer)))
                         (update report :checked conj k)
                         :else
                         (update report :leaked conj {:endpoint k :params params :answer answer})))))

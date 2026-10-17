@@ -669,11 +669,13 @@
 
 (defn via-function
   "The name of the database function a via is read through: (person,
-   visitor) → the values its rows offer for what it matches. Read inside
-   it, the other table's wall is passed by, so a policy that calls it never
-   loops back through the other table's own."
+   visitor, within) → the values its rows offer for what it matches. Read
+   inside it, the other table's wall is passed by, so a policy that calls it
+   never loops back through the other table's own. `within` is the scopes
+   the related row must be in, as text (\"{…}\" or \"*\"), or NULL for any:
+   the wall passes the transaction's own."
   [{:keys [table match who] condition :when}]
-  (str "groundwork." (quote-id (str "via__" table "__" (format "%08x" (hash [table match who condition]))))))
+  (str "groundwork." (quote-id (str "via__" table "__" (format "%08x" (hash [table match who condition :within]))))))
 
 (defn- via-sql [alias via]
   (let [mine (map (comp quote-column first) (:match via))
@@ -681,8 +683,9 @@
     [(str (if (= 1 (count mine))
             (str alias "." (first mine))
             (str "(" (str/join ", " (map #(str alias "." %) mine)) ")"))
-          " IN (SELECT " (str/join ", " outs) " FROM " (via-function via) "(CAST(? AS uuid), CAST(? AS uuid)))")
-     [:person :visitor]]))
+          " IN (SELECT " (str/join ", " outs) " FROM " (via-function via)
+          "(CAST(? AS uuid), CAST(? AS uuid), CAST(? AS text)))")
+     [:person :visitor :within]]))
 
 (defn- conj-sql
   "[sql params] parts joined with AND; nil parts are left out."
@@ -701,23 +704,34 @@
               (when via (via-sql alias via))
               (when-let [c (if state? condition (nones-only condition))] (condition-sql alias c))])))
 
+(def ^:private within-of
+  {:read  "current_setting('groundwork.scopes', true)"
+   :write "current_setting('groundwork.write_scopes', true)"})
+
 (defn inline
   "Compiled SQL with its params written in: the person and the visitor as
-   the transaction's own, values as literals."
-  [[sql params]]
-  (fill sql params #(case %
-                      :person  "groundwork.wall_person()"
-                      :visitor "groundwork.wall_visitor()"
-                      (sql-literal %))))
+   the transaction's own, values as literals, and the scopes a via's related
+   row must be in as the transaction's own for the command (read unless
+   said)."
+  ([sql-params] (inline sql-params :read))
+  ([[sql params] command]
+   (fill sql params #(case %
+                       :person  "groundwork.wall_person()"
+                       :visitor "groundwork.wall_visitor()"
+                       :within  (within-of (if (= :read command) :read :write))
+                       (sql-literal %)))))
 
 (defn bind
   "A rule's params with the person filled in, and the visitor (nobody's,
-   unless given)."
-  ([params person] (bind params person nil))
-  ([params person visitor]
+   unless given), and the scopes a via's related row must be in (any,
+   unless given as text: \"{…}\")."
+  ([params person] (bind params person nil nil))
+  ([params person visitor] (bind params person visitor nil))
+  ([params person visitor within]
    (mapv #(case %
             :person  (some-> person str)
             :visitor (some-> visitor str)
+            :within  within
             %)
          params)))
 
@@ -735,21 +749,34 @@
 ;; =============================================================================
 
 (defn- scope-base
-  "A row's scope verified for the command: read or write. A row the
-   sentence says may be universal passes when it has no scope at all. The
-   verified scopes are a set the statement reads once (a hashed subquery),
-   never a setting parsed again for every row."
-  [record alias command universal]
-  (let [cols  (keys (scope-columns record))
+  "A row's scope verified for the command: read or write, through `cols`
+   (the sentence's own column, or any of the row's). A row the sentence
+   says may be universal passes when it has no scope at all. The verified
+   scopes are a set the statement reads once (a hashed subquery), never a
+   setting parsed again for every row."
+  [record cols alias command universal]
+  (let [all   (keys (scope-columns record))
         every (if (= :read command) "(SELECT groundwork.wall_reads_every())" "(SELECT groundwork.wall_writes_every())")
         set   (if (= :read command) "(SELECT groundwork.wall_scope_set())" "(SELECT groundwork.wall_write_set())")]
-    (if (empty? cols)
+    (if (empty? all)
       nil
       (let [scoped (str "(" every " AND (" (str/join " OR " (map #(str alias "." (quote-column %) " IS NOT NULL") cols)) ")"
                         " OR " (str/join " OR " (map #(str alias "." (quote-column %) " IN " set) cols)) ")")]
         (if universal
-          (str "(" scoped " OR (" (str/join " AND " (map #(str alias "." (quote-column %) " IS NULL") cols)) "))")
+          (str "(" scoped " OR (" (str/join " AND " (map #(str alias "." (quote-column %) " IS NULL") all)) "))")
           scoped)))))
+
+(defn base-columns
+  "Through which of the row's scope columns a sentence's row is verified
+   for a request: the one its [:member <column>] names, exactly; any of
+   them for an open word or a fixed scope's member; none for a person's own
+   row or a row given through a related one (the related row is checked,
+   in the via's function)."
+  [record {:keys [who via]}]
+  (cond
+    (or via (= :me (:word who)))               nil
+    (and (= :member (:word who)) (:column who)) [(:column who)]
+    :else                                       (keys (scope-columns record))))
 
 (defn- flag-sql
   "The session flags that deny this sentence's action for a command."
@@ -763,21 +790,22 @@
 
 (defn- wall-part
   "A sentence's branch of a command's policy: its scope verified for the
-   command (a person's own row needs none), its words, no deny's flag."
+   command through its own column (a person's own row, and a row a related
+   row gives, need none), its words, no deny's flag."
   [description record ds command alias state? s]
-  (let [base  (when-not (= :me (get-in s [:who :word]))
-                (scope-base record alias command (:universal? s)))
+  (let [cols  (base-columns record s)
+        base  (when (seq cols) (scope-base record cols alias command (:universal? s)))
         flags (flag-sql description ds (:action s) command)
-        [sql] [(inline (sentence-sql s alias {:state? state?}))]]
+        sql   (inline (sentence-sql s alias {:state? state?}) command)]
     (str "(" (str/join " AND " (remove nil? (concat [base] flags [sql]))) ")")))
 
 (defn- grouped-member-part
   "Sentences that differ only in the action a member holds, as one branch:
-   one lookup of the scopes holding any of them."
+   one lookup of the scopes holding any of them, through their one column."
   [description record ds command alias state? group]
   (let [{:keys [who] :as s} (first group)
         held   (sort (distinct (map (comp action-name :holding :who) group)))
-        base   (scope-base record alias command (:universal? s))
+        base   (scope-base record [(:column who)] alias command (:universal? s))
         flags  (flag-sql description ds (:action s) command)
         member (str alias "." (quote-column (:column who)) " IN (SELECT groundwork.scopes_holding_any("
                     "groundwork.wall_person(), " (sql-literal (str "{" (str/join "," held) "}")) "::text[]))")
@@ -849,8 +877,16 @@
    ends the transaction, and the setting with it. STABLE: within one
    statement it answers the same, so a query asks it once and looks each
    row up in what it answered."
-  [{:keys [table match who] condition :when :as via} types]
+  [{:keys [table match who record] condition :when :as via} types]
   (let [others  (map (comp column second) match)
+        ;; the related row is in the scopes asked for: one of its scope
+        ;; columns, or none when it belongs to nobody; a person's own row,
+        ;; or one of a kind with no scope, wherever it is
+        cols    (keys (scope-columns record))
+        in-sql  (if (or (= :me (:word who)) (empty? cols))
+                  "TRUE"
+                  (str "(within_every OR " (str/join " OR " (map #(str "gwo." (quote-column %) " = ANY (within_set)") cols))
+                       " OR (" (str/join " AND " (map #(str "gwo." (quote-column %) " IS NULL") cols)) "))"))
         outs    (map-indexed (fn [i c] (str "via_" (inc i) " " (get types c))) others)
         [w wps] (who-sql "gwo" who)
         member? (and (= :member (:word who)) (:column who))
@@ -861,9 +897,12 @@
                                  :visitor "visitor"
                                  (sql-literal %))))
         c-sql   (when condition (let [[c ps] (condition-sql "gwo" condition)] (fill c ps sql-literal)))]
-    (str "CREATE OR REPLACE FUNCTION " (via-function via) "(person uuid, visitor uuid)\n"
+    (str "CREATE OR REPLACE FUNCTION " (via-function via) "(person uuid, visitor uuid, within text)\n"
          "RETURNS TABLE (" (str/join ", " outs) ") LANGUAGE plpgsql STABLE AS $$\n"
          "DECLARE before text := coalesce(current_setting('groundwork.bypass', true), '');\n"
+         "        within_every boolean := within IS NULL OR within = '*';\n"
+         "        within_set uuid[] := CASE WHEN within IS NULL OR within = '*' THEN '{}'::uuid[]\n"
+         "                                  ELSE coalesce(nullif(within, ''), '{}')::uuid[] END;\n"
          ;; the scopes first, as values: the rows are then found by their who
          ;; column (an index on it), however many there are
          (when member?
@@ -873,7 +912,7 @@
          "  PERFORM set_config('groundwork.bypass', 'on', true);\n"
          "  RETURN QUERY SELECT DISTINCT " (str/join ", " (map #(str "gwo." (quote-id %)) others))
          " FROM " (quote-id table) " gwo\n"
-         "    WHERE " w-sql (when c-sql (str " AND " c-sql)) ";\n"
+         "    WHERE " w-sql (when c-sql (str " AND " c-sql)) " AND " in-sql ";\n"
          "  PERFORM set_config('groundwork.bypass', before, true);\n"
          "END $$")))
 

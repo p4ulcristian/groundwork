@@ -12,6 +12,7 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.core :as gw]
    [groundwork.endpoints :as endpoints]
+   [groundwork.leaks :as leaks]
    [groundwork.parquery.wire :as wire]
    [groundwork.permissions :as perm]
    [groundwork.permissions.rules :as rules]
@@ -36,20 +37,27 @@
 (def carla (id))   ; Clerk in Acme and in Zinc
 (def zed (id))     ; Clerk in Zinc only
 (def cash (id))    ; Cashier in Acme: may pay its orders
+(def duo (id))     ; Cashier in Acme and in Zinc
+(def guest (id))   ; a Guest of the partner, holding nothing there, and Clerk in Acme
 (def sue (id))     ; Support in the back office
 (def aud (id))     ; the auditors' owner
 (def kim (id))     ; Acme's customer, a member nowhere
 (def vic (id))     ; a member nowhere
 ;; orders
 (def a1 (id)) (def a2 (id)) (def z1 (id)) (def z2 (id))
+(def i1 (id)) (def i2 (id))   ; an item of a1, Kim's order, and one of a2
 
 (def tables
-  "DROP TABLE IF EXISTS lg_payouts, lg_orders, lg_shops, lg_links, lg_inquiries, lg_replies, lg_tickets;
+  "DROP TABLE IF EXISTS lg_payouts, lg_orders, lg_shops, lg_links, lg_inquiries, lg_replies, lg_tickets, lg_items;
    -- the app's own table of shops, where a shop's state lives
    CREATE TABLE lg_shops (shop__id uuid PRIMARY KEY, shop__status text NOT NULL);
    CREATE TABLE lg_orders (order__id uuid PRIMARY KEY, order__shop_id uuid NOT NULL, order__customer_id uuid,
                            order__status text NOT NULL, order__note text NOT NULL DEFAULT '');
    CREATE INDEX ON lg_orders (order__shop_id);
+   CREATE INDEX ON lg_orders (order__customer_id);
+   -- an order's items: a customer reads them through their order
+   CREATE TABLE lg_items (item__id uuid PRIMARY KEY, item__order_id uuid NOT NULL, item__shop_id uuid NOT NULL);
+   CREATE INDEX ON lg_items (item__order_id);
    CREATE TABLE lg_payouts (payout__id uuid PRIMARY KEY DEFAULT gen_random_uuid(), payout__shop_id uuid NOT NULL,
                             payout__order_id uuid NOT NULL, payout__cents bigint NOT NULL);
    CREATE INDEX ON lg_payouts (payout__order_id);
@@ -81,12 +89,14 @@
                                   "Cashier" #{:orders/see :orders/pay}}
                         :parent  nil
                         :table   :lg_shops :id :shop/id}
-             :partner  {:actions {:links/see #{:read}} :roles {} :parent nil}
+             :partner  {:actions {:links/see #{:read}} :roles {"Guest" #{}} :parent nil}
              :platform {:actions {:platform/support #{:read}} :roles {"Support" #{:platform/support}}
                         :parent nil :single? true}
              :auditor  {:actions {:audit/orders #{:read}} :roles {} :parent nil}}
    :records {:order  {:table :lg_orders :id :order/id :whose {:order/shop-id :shop :order/customer-id :person}}
+             ;; a payout belongs to its payee's shop, which may not be the order's
              :payout {:table :lg_payouts :id :payout/id :whose {:payout/shop-id :shop}}
+             :item   {:table :lg_items :id :item/id :whose {:item/shop-id :shop}}
              :link   {:table :lg_links :id :link/id :whose {:link/shop-id :shop :link/partner-id :partner}}
              :inquiry {:table :lg_inquiries :id :inquiry/id :whose {:inquiry/shop-id :shop}}
              :ticket  {:table :lg_tickets :id :ticket/id :whose {:ticket/shop-id :shop}}
@@ -104,6 +114,9 @@
              ;; the row points to the related one: a payout is written by whoever may pay its order
              {:allow :payouts/write :on :payout
               :via   {:table :lg_orders :match {:payout/order-id :order/id} :to [:member :order/shop-id :orders/pay]}}
+             ;; the customer reads the items of their own order, wherever the request is about
+             {:allow :orders/see :on :item
+              :via   {:table :lg_orders :match {:item/order-id :order/id} :to [:me :order/customer-id]}}
              {:allow :links/see :on :link :to [:member :link/partner-id]}
              {:allow :orders/see :on :link :to [:member :link/shop-id]}
              ;; an impersonating admin can't move money, through any endpoint
@@ -125,6 +138,8 @@
 (pg/defsql lg-count-orders)
 (pg/defsql lg-add-payout)
 (pg/defsql lg-send-inquiry)
+(pg/defsql lg-pay-to)
+(pg/defsql lg-items)
 (pg/defsql lg-send-reply)
 (pg/defsql lg-editable-orders)
 
@@ -165,6 +180,16 @@
                       :permission {:action :orders/see :list :order}
                       :input      [:map]
                       :answer     [:vector :uuid]}
+   :payouts/pay-to   {:write      (fn [{:keys [db]} params] (pg/execute! db lg-pay-to params) true)
+                      :permission {:action :orders/pay :record [:order :order/id]}
+                      :input      [:map [:order/id :uuid] [:payout/cents :int]
+                                   [:payout/payee-id {:groundwork/record false} :uuid]]
+                      :answer     :boolean}
+   ;; every item the person reads: a list about orders, so it verifies the scopes orders give
+   :items/visible    {:read       (fn [{:keys [db]} _] (mapv :item/id (pg/rows db lg-items {})))
+                      :permission {:action :orders/see :list :order}
+                      :input      [:map]
+                      :answer     [:vector :uuid]}
    :payouts/add      {:write      (fn [{:keys [db]} params] (:payout/id (pg/row db lg-add-payout params)))
                       :permission {:action :orders/pay :record [:order :order/id]}
                       :input      [:map [:order/id :uuid] [:payout/cents :int]]
@@ -186,8 +211,10 @@
     (sql! (str "INSERT INTO lg_shops VALUES (?, 'active'), (?, 'active');"
                "INSERT INTO lg_orders (order__id, order__shop_id, order__customer_id, order__status)"
                " VALUES (?, ?, ?, 'open'), (?, ?, NULL, 'open'), (?, ?, NULL, 'open'), (?, ?, NULL, 'closed');"
-               "INSERT INTO lg_links (link__shop_id, link__partner_id, link__status) VALUES (?, ?, 'active')")
-          acme zinc a1 acme kim a2 acme z1 zinc z2 zinc acme partner)
+               "INSERT INTO lg_links (link__shop_id, link__partner_id, link__status) VALUES (?, ?, 'active');"
+               "INSERT INTO lg_items VALUES (?, ?, ?), (?, ?, ?)")
+          acme zinc a1 acme kim a2 acme z1 zinc z2 zinc acme partner
+          i1 a1 acme i2 a2 acme)
     (let [app (gw/start (-> app-settings
                             (assoc :permissions description)
                             (assoc-in [:parquery :endpoints] [endpoint-map])))]
@@ -205,11 +232,15 @@
           (join! perms zinc-owner zinc carla "Clerk")
           (join! perms zinc-owner zinc zed "Clerk")
           (join! perms acme-owner acme cash "Cashier")
+          (join! perms acme-owner acme duo "Cashier")
+          (join! perms zinc-owner zinc duo "Cashier")
+          (join! perms partner-owner partner guest "Guest")
+          (join! perms acme-owner acme guest "Clerk")
           (join! perms platform-owner platform sue "Support"))
         (binding [*app* app] (t))
         (finally
           (gw/stop app)
-          (sql! "DROP TABLE IF EXISTS lg_payouts, lg_orders, lg_shops, lg_links, lg_inquiries, lg_replies, lg_tickets"))))))
+          (sql! "DROP TABLE IF EXISTS lg_payouts, lg_orders, lg_shops, lg_links, lg_inquiries, lg_replies, lg_tickets, lg_items"))))))
 
 (defn- call [person endpoint params & {:keys [flags]}]
   (endpoints/call (gw/endpoints *app*) {:endpoint endpoint :params params :person person :flags (or flags #{})}))
@@ -488,6 +519,59 @@
         (doseq [line [acme-line zinc-line pia-line]] (close! line))))))
 
 ;; =============================================================================
+;; A row given through a :via is checked through its related row
+;; =============================================================================
+
+(defn- insert-payout! [person scopes payee order]
+  (perm/in-wall (gw/permissions *app*) {:person person :scopes scopes}
+                (fn [tx] (jdbc/execute! (::pg/conn tx)
+                                        [(str "INSERT INTO lg_payouts (payout__shop_id, payout__order_id, payout__cents)"
+                                              " VALUES (?, ?, 1)")
+                                         payee order]))))
+
+(deftest a-via-gives-a-row-in-another-scope
+  (testing "a payout in the payee's shop, written by whoever may pay its order: only the order's shop is verified"
+    (is (= {:status :ok :data true} (call cash :payouts/pay-to {:order/id a1 :payout/cents 300 :payout/payee-id zinc})))
+    (is (= [{:lg_payouts/payout__shop_id zinc}]
+           (system! "SELECT payout__shop_id FROM lg_payouts WHERE payout__order_id = ? AND payout__cents = 300" a1))))
+  (testing "nothing else crosses"
+    (is (= {:status :not-found} (call cash :payouts/pay-to {:order/id z1 :payout/cents 300 :payout/payee-id acme}))
+        "an order she may not pay")
+    (is (thrown-with-msg? org.postgresql.util.PSQLException #"row-level security"
+                          (insert-payout! duo #{acme} acme z1))
+        "the related order must be in the request's scopes, though she may pay it in Zinc")
+    (is (some? (insert-payout! duo #{zinc} acme z1)) "asked about Zinc, she may"))
+  (testing "a customer reads the items under her own order, though her request verifies no shop"
+    (is (= {:status :ok :data [i1]} (call kim :items/visible {})))
+    (is (= {:status :ok :data []} (call vic :items/visible {})) "nobody else's")
+    (is (= {:status :ok :data []} (call zed :items/visible {})) "nor a member of another shop"))
+  (system! "DELETE FROM lg_payouts"))
+
+(deftest a-sentence-on-one-scope-column-is-checked-through-that-column
+  (testing "a Clerk of Acme and a Guest of the partner, asking about the partner, doesn't see Acme's link through Acme"
+    (let [links (fn [scopes] (set (map :lg_links/link__shop_id
+                                       (perm/in-wall (gw/permissions *app*) {:person guest :scopes scopes}
+                                                     (fn [tx] (jdbc/execute! (::pg/conn tx)
+                                                                             ["SELECT link__shop_id FROM lg_links"]))))))]
+      (is (= #{} (links #{partner})) "the sentence names the shop column, and the shop isn't verified")
+      (is (= #{acme} (links #{acme})) "asked about Acme, it shows")
+      (is (= [] (leaks/wall-check (gw/permissions *app*) {:partner partner} {:person guest}))))))
+
+(deftest the-leak-test-takes-an-open-writes-refusal-for-what-it-is
+  (let [report (leaks/check (gw/endpoints *app*) {:person  zed
+                                                  :foreign {:shop acme :order a1 :link (:lg_links/link__id
+                                                                                         (first (system! "SELECT link__id FROM lg_links")))}
+                                                  :sealed  #{a1 a2}})]
+    (try
+      (is (= [] (:leaked report)) (pr-str (:leaked report)))
+      (is (= [] (:hidden report)))
+      (is (some #{:inquiries/send} (:checked report)) "the open write was asked, and its refusal is no leak")
+      (finally
+        (system! "UPDATE lg_orders SET order__status = 'open' WHERE order__id = ?" z1)
+        (system! "DELETE FROM lg_inquiries")
+        (system! "DELETE FROM lg_payouts")))))
+
+;; =============================================================================
 ;; The start reads every sentence
 ;; =============================================================================
 
@@ -531,6 +615,14 @@
                                {:allow :orders/see :on :order :to :anyone :when [:none :order/shop-id]}))]
           (is (= ::perm/bad-description (:type e)))
           (is (= "ALTER TABLE lg_orders ALTER COLUMN order__shop_id DROP NOT NULL;" (:sql e)))))
+      (testing "a partial index counts when all it leaves out is a row whose column is empty"
+        (sql! "DROP INDEX lg_links_partner; CREATE INDEX lg_links_partner ON lg_links (link__partner_id) WHERE link__partner_id IS NOT NULL")
+        (try
+          (is (nil? (start description)))
+          (sql! "DROP INDEX lg_links_partner; CREATE INDEX lg_links_partner ON lg_links (link__partner_id) WHERE link__status = 'active'")
+          (is (= "CREATE INDEX ON lg_links (link__partner_id);" (:sql (start description)))
+              "one that leaves out rows a lookup finds doesn't")
+          (finally (sql! "DROP INDEX lg_links_partner; CREATE INDEX lg_links_partner ON lg_links (link__partner_id)"))))
       (testing "a via's who column needs an index: the related rows are found by it"
         (sql! "DROP INDEX lg_links_partner")
         (try
