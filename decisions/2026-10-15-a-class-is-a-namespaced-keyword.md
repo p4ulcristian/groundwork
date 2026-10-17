@@ -1,5 +1,7 @@
 # A class is a namespaced keyword
 
+> **Replaced** by [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md).
+
 **Decision:** in a component a CSS class is a namespaced keyword with the marker `css.`, never typed text: `:css.job-card/title`. It converts to the class name by the same rule as a database column: `:css.job-card/title` ↔ `.job-card__title`. The stylesheets stay plain CSS, with everything CSS can do.
 
 Groundwork checks both ways and stops the build with every problem at once: a class keyword in the code that no stylesheet defines, and a class in a stylesheet that no code names.

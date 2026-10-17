@@ -1,5 +1,7 @@
 # The styles tree's order is cascade layers
 
+> **Replaced** by [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md).
+
 > Adds to [The styles tree](2026-10-15-the-styles-tree.md) and [A page loads the stylesheets its code uses](2026-10-15-a-page-loads-the-stylesheets-its-code-uses.md).
 
 **Decision:** the four folders of the styles tree are four cascade layers, declared once, first, in the base: `base`, `vendor`, `looks`, `areas`. The build puts each stylesheet, whole and as written, inside its folder's layer. Which of two rules wins is then decided by the folder they are in, never by which bundle arrived first.

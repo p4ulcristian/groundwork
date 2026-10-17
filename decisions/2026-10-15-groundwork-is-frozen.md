@@ -1,6 +1,6 @@
 # Groundwork is frozen
 
-> Lifted in part by [The freeze lifts for the access language](2026-10-17-the-freeze-lifts-for-the-access-language.md).
+> Lifted in part by [The freeze lifts for the access language](2026-10-17-the-freeze-lifts-for-the-access-language.md) and [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md).
 
 **Decision:** Groundwork stays as it is. Nothing new is built: no new permission shapes, no more work on bells, no changes to styles. Nothing is deleted. A fix to something that is broken is still allowed.
 

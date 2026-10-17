@@ -1,5 +1,7 @@
 # A stylesheet paints only its own room
 
+> **Replaced** by [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md).
+
 **Decision:** the first half of a class's name is its namespace, and one namespace is one stylesheet named after it (`job-card.css` holds only `job-card__…` classes; a large one may be a folder of files). A rule in a stylesheet may only style an element that carries one of its own classes; around that element it may look at anything (an ancestor, a child, a sibling of any namespace) to decide.
 
 - **Changing another namespace's look goes through what it offers:** a state of its own (`:css.card/compact`), or a variable it reads, named after it (`--card__padding`), which anyone may set.
