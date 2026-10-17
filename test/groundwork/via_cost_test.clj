@@ -153,6 +153,11 @@
       (println "|---|---|---|---|---|")
       (doseq [{:keys [what rows wall filter-rows filter]} lines]
         (println (str "| " what " | " rows " | " wall " | " filter-rows " | " filter " |")))
+      (let [{:keys [scopes]} (perm/scopes-listed *perms* {:person cashier :flags #{} :action :orders/pay :kind :order})
+            wall   #(perm/in-wall *perms* {:person cashier :scopes scopes :read-only? true} %)
+            narrow "SELECT * FROM vc_orders WHERE order__id IN (SELECT * FROM groundwork.\"may orders/pay on order\"())"]
+        (println (str "| the cashier's readable orders narrowed to those she may pay, through the wall | " (rows wall narrow [])
+                      " | " (ms wall narrow []) " | | |")))
       (let [one (perm/as-system *perms* (fn [tx] (:payout/id (first (jdbc/execute! (::pg/conn tx)
                                                                                    ["SELECT payout__id FROM vc_payouts WHERE payout__shop_id = ? LIMIT 1"
                                                                                     (first shops)])))))

@@ -23,6 +23,7 @@
   (:require
    [clojure.set :as set]
    [clojure.string :as str]
+   [groundwork.names :as names]
    [groundwork.permissions.rules :as rules]
    [groundwork.postgres :as pg]
    [groundwork.settings :as settings]
@@ -39,6 +40,7 @@
 (pg/defsql indexes-of "groundwork/permissions/indexes_of.sql")
 (pg/defsql groundwork-policies "groundwork/permissions/groundwork_policies.sql")
 (pg/defsql groundwork-guards "groundwork/permissions/groundwork_guards.sql")
+(pg/defsql groundwork-functions "groundwork/permissions/groundwork_functions.sql")
 (pg/defsql links-between "groundwork/permissions/links_between.sql")
 (pg/defsql connecting-role "groundwork/permissions/connecting_role.sql")
 (pg/defsql holds-sql "groundwork/permissions/holds.sql")
@@ -256,6 +258,34 @@
                        (nil? row) {:reason :not-allowed}
                        :else      (when-let [d (first (vals (denied-scopes perms tx action (row-scopes row))))]
                                     {:reason :denied :deny d}))))))))
+
+(defn via-kind?
+  "Whether a sentence giving the action reaches its rows through a related
+   row of this kind: an id of it may come with a request for the action."
+  [perms action kind]
+  (boolean (some #(= kind (get-in % [:via :kind])) (sentences-of perms action))))
+
+(defn via-allows?
+  "Whether a related row (a :via's own kind, by id) is one a sentence giving
+   the action looks for: its who and its when hold for the person. An open
+   action's request may carry its id (reply under this ticket); a ticket
+   the via doesn't take answers not-found. Read as the system."
+  [perms {:keys [person visitor flags action] [kind id] :record}]
+  (let [id     (as-id id)
+        visitor (when (nil? person) visitor)
+        vias   (filter #(= kind (get-in % [:via :kind])) (sentences-of perms action))
+        {t :table id-col :id} (record-spec perms kind)]
+    (boolean
+     (and (seq vias) (not (blocked? perms action flags))
+          (as-system perms
+                     (fn [tx]
+                       (some (fn [{:keys [via]}]
+                               (let [[w wps] (rules/who-sql "r" (:who via))
+                                     [c cps] (if (:when via) (rules/condition-sql "r" (:when via)) ["TRUE" []])]
+                                 (seq (query tx (str "SELECT 1 FROM " (rules/quote-table t) " r WHERE " (id-is id-col id)
+                                                     " AND " w " AND " c)
+                                             (into [id] (concat (rules/bind wps person visitor) cps))))))
+                             vias)))))))
 
 (defn allowed?
   "Whether a person (or a visitor, for someone not signed in) may do an
@@ -508,6 +538,12 @@
                                    (= :member (:word who))
                                    (let [[w ps] (rules/who-sql "gwx" who)]
                                      [(str "SELECT CAST(NULL AS uuid), ? WHERE " w) (into [a] ps)])
+
+                                   (= :anyone (get-in via [:who :word]))
+                                   ["SELECT CAST(NULL AS uuid), ?" [a]]
+
+                                   (= :signed-in (get-in via [:who :word]))
+                                   ["SELECT CAST(NULL AS uuid), ? WHERE CAST(? AS uuid) IS NOT NULL" [a :person]]
 
                                    via
                                    (when-let [i (via-scope-position perms s)]
@@ -946,7 +982,21 @@
         (exec! tx (str "DROP TRIGGER IF EXISTS \"" name "\" ON \"" table "\"")))
       (doseq [kind      (rules/guarded-kinds description)
               statement (rules/guard-sql description kind)]
-        (exec! tx statement)))))
+        (exec! tx statement)))
+    ;; the functions a query file narrows a list with, one per action and
+    ;; kind, and the state denies they leave out
+    (let [denies (filter :scope (rules/denies description))
+          mays   (distinct (map (juxt :action :kind) (rules/sentences description)))]
+      ;; made afresh each start: an id column's type may have changed
+      (doseq [{:function/keys [name]} (pg/rows tx groundwork-functions {})]
+        (exec! tx (str "DROP FUNCTION IF EXISTS groundwork.\"" name "\"()")))
+      (doseq [d denies]
+        (exec! tx (rules/deny-sql-statement description d)))
+      (doseq [[action kind] mays
+              :let [{t :table id :id} (get-in description [:records kind])
+                    id-type (some #(when (= (names/key->column id) (:column/name %)) (:column/type %))
+                                  (pg/rows tx columns-of {:table (clojure.core/name t)}))]]
+        (exec! tx (rules/may-sql-statement description action kind id-type))))))
 
 (defn install-fill!
   "On every record table under another record, a rule that fills a row's

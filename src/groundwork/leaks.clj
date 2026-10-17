@@ -35,7 +35,9 @@
 
    The wall itself is asked too (wall-check): for every kind of record and
    every foreign scope, what nobody, a signed-in stranger and the person see
-   behind it must be exactly the rows the sentences give them there.
+   behind it must be exactly the rows the sentences give them there. And so
+   is every function that narrows a list by an action (may-check): it must
+   answer exactly the rows the wall shows that the action's sentences give.
 
    An action a sentence gives a visitor may be asked by someone not signed
    in, so its endpoints are asked twice more with the foreign ids: as
@@ -144,6 +146,43 @@
            :when (or (seq shown) (seq hidden))]
        {:kind kind :as as :scope scope :shown (vec (sort shown)) :hidden (vec (sort hidden))}))))
 
+(defn may-check
+  "What each function that narrows a list by an action answers (see
+   rules/may-function), against the sentences: for every action and kind,
+   every scope given, as nobody, a signed-in stranger and `person`, behind a
+   wall verified for that one scope, it must answer exactly the rows the
+   wall shows that the action's sentences give, but those a scope's state
+   denies. Returns the differences, [{:action :kind :as :scope :shown
+   :hidden}]."
+  [perms scopes {:keys [person]}]
+  (let [description (:description perms)
+        records     (:records description)]
+    (vec
+     (for [[_ scope]       (sort-by (comp str key) scopes)
+           [[action kind] ss] (sort-by (comp str key) (:by-action-kind perms))
+           [as caller]     [[:nobody nil] [:signed-in-stranger (random-uuid)] [:person person]]
+           :when           (or caller (not= :person as))
+           :let [record  (records kind)
+                 answered (permissions/in-wall
+                           perms {:person caller :scopes #{scope} :read-only? true}
+                           (fn [tx]
+                             (into #{}
+                                   (map (comp str val first))
+                                   (jdbc/execute! (::pg/conn tx)
+                                                  [(str "SELECT x::text AS id FROM " (rules/may-function action kind) "() x")]))))
+                 seen     (permissions/in-wall perms {:person caller :scopes #{scope} :read-only? true}
+                                               #(ids-seen % record nil []))
+                 {:keys [sql params]} (rules/compile-sentences ss "r")
+                 denied   (permissions/as-system perms #(set (keys (permissions/denied-scopes perms % action #{scope}))))
+                 given    (if (or (seq denied) (permissions/blocked? perms action #{}))
+                            #{}
+                            (permissions/as-system perms #(ids-seen % record sql (rules/bind params caller))))
+                 expected (set/intersection seen given)
+                 shown    (set/difference answered expected)
+                 hidden   (set/difference expected answered)]
+           :when (or (seq shown) (seq hidden))]
+       {:action action :kind kind :as as :scope scope :shown (vec (sort shown)) :hidden (vec (sort hidden))}))))
+
 (defn check
   "Call every endpoint with another scope's ids. Returns {:checked [names]
    :skipped {name reason} :leaked [{:endpoint :params :answer}] :hidden […]}.
@@ -220,10 +259,12 @@
                           :else
                           (update report :checked conj k)))
                       (assoc-in report [:skipped k] "no foreign id given for a kind it carries")))))))
-          (let [walls (wall-check (:perms part)
-                                  (select-keys foreign (keys (get-in part [:perms :description :scopes])))
-                                  {:person person})]
+          (let [scopes (select-keys foreign (keys (get-in part [:perms :description :scopes])))
+                walls  (wall-check (:perms part) scopes {:person person})
+                mays   (may-check (:perms part) scopes {:person person})]
             {:checked [] :skipped {}
-             :leaked  (vec (for [w walls :when (seq (:shown w))] {:wall (dissoc w :hidden)}))
-             :hidden  (vec (for [w walls :when (seq (:hidden w))] (dissoc w :shown)))})
+             :leaked  (vec (concat (for [w walls :when (seq (:shown w))] {:wall (dissoc w :hidden)})
+                                   (for [m mays :when (seq (:shown m))] {:may (dissoc m :hidden)})))
+             :hidden  (vec (concat (for [w walls :when (seq (:hidden w))] (dissoc w :shown))
+                                   (for [m mays :when (seq (:hidden m))] (dissoc m :shown))))})
           (sort-by key (:endpoints part))))

@@ -183,7 +183,7 @@
    nowhere (:anyone, :signed-in): it verifies only the scope a request names."
   [perms action]
   (let [ss (get-in perms [:by-action action])]
-    (and (seq ss) (every? #(#{:anyone :signed-in} (get-in % [:who :word])) ss))))
+    (and (seq ss) (every? rules/open-word ss))))
 
 (defn- check-permission [perms k permission input read?]
   (let [kinds   (set (keys (get-in perms [:description :records])))
@@ -235,7 +235,7 @@
             (bad k (str "no record kind " list)))
           (when-not (permissions/declared? perms action list)
             (bad k (str "no sentence gives " action " on " list)))
-          (when (every? #(and (#{:anyone :signed-in} (get-in % [:who :word])) (not (:universal? %)))
+          (when (every? #(and (rules/open-word %) (not (:universal? %)))
                         (get-in perms [:by-action-kind [action list]]))
             (bad k (str action " is open on " list " only in the scope a request names: a :list of every scope's"
                         " has none to show; ask about a :scope or a :record"))))
@@ -262,7 +262,8 @@
                   (#{:public :signed-in} permission)
                   (bad k (str "the field " key " holds ids, so the endpoint needs an action permission"))
                   (and (permissions/open-level perms (:action permission))
-                       (not (permissions/declared? perms (:action permission) mark)))
+                       (not (permissions/declared? perms (:action permission) mark))
+                       (not (permissions/via-kind? perms (:action permission) mark)))
                   (bad k (str "the field " key " holds ids of " mark ", and no sentence gives the open action "
                               (:action permission) " on it"))
                   :else                    (assoc found key mark))))
@@ -380,8 +381,8 @@
         (when open?
           (doseq [[kind ids] also
                   id         ids]
-            (when-not (permissions/allowed? perms {:person person :visitor visitor :flags flags :action action
-                                                   :record [kind id]})
+            (when-not (let [request {:person person :visitor visitor :flags flags :action action :record [kind id]}]
+                        (or (permissions/allowed? perms request) (permissions/via-allows? perms request)))
               (throw (ex-info "Not found" {:type ::permissions/not-found :record [kind id]})))))
         (cond
           record (let [scopes (permissions/check! perms {:person person :visitor visitor :flags flags :action action

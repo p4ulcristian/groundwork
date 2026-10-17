@@ -713,7 +713,11 @@ record, to whom, and when:
 signed in replies under an open ticket), but only with a `:when` on the row
 or a `:via`: `{:allow :inquiries/send :on :inquiry :to :anyone :when [:=
 :inquiry/status "new"]}`. Writing isn't reading: the sender sees the row
-only if a sentence whose action reads gives it to them.
+only if a sentence whose action reads gives it to them. An action a `:via`
+opens (its related row's `:to` is `:anyone` or `:signed-in`) is open for
+endpoints too: what the wall allows, an endpoint can ask. Such a request
+may carry the related row's id (`[:ticket/id {:groundwork/record :ticket}
+:uuid]`); one the via doesn't take (a closed ticket) answers not-found.
 
 Groundwork reads every sentence at start and refuses an unknown word,
 kind, action, table or column, an action nobody in that scope can hold,
@@ -736,16 +740,28 @@ and an open write that nothing narrows.
   every id in a request too. A scope endpoint is verified where a member
   holds the action, where a related row names the scope, or for a word open
   to the caller. A list reads the scopes the sentences give.
-- **List filters:** `list-filter` is the sentences of an action on a kind
-  as one `WHERE`. The wall shows what the person may read; a list that
-  must be narrower (only what they may edit) says so in its SQL.
+- **Narrowing a list by an action:** the wall shows every row the person
+  may read. For "only the orders I may edit", Groundwork makes a function
+  per action and record kind, which a query file calls:
+
+  ```sql
+  SELECT order__id, order__note FROM orders
+  WHERE order__id IN (SELECT * FROM groundwork."may orders/edit on order"())
+  ```
+
+  It answers the ids of the rows the action's sentences give the person,
+  `:when` included, but what a session flag or a scope's state denies. It
+  runs behind the wall, so it never answers a row the transaction can't
+  read. Made afresh at every start. `list-filter` gives the same sentences
+  as one `WHERE` with bound params, for code that writes SQL itself.
 - **The bells** reach who may see a row: its scopes and people, the
   scopes where someone could be named by a related row, and everyone
   reading a table when a universal row changes. A row that changes who sees
   it rings the old viewers and the new.
 - **"Can I?"** (`:groundwork/grants`): every action the sentences give the
   person, and in which scopes; no scope for every scope.
-- **The leak test** and the REPL's `why`, below.
+- **The leak test** (it checks the wall and every narrowing function
+  against the sentences) and the REPL's `why`, below.
 
 **Records.** `:whose` says whose row each column names: a scope kind,
 `:person`, or `:visitor`. **Every scoped table names its scope,** however
@@ -1173,7 +1189,9 @@ Then the store, under the screens:
   every foreign scope, what nobody, a signed-in stranger and the person see
   behind it must be exactly the rows the sentences give them there. A row
   shown that no sentence gives is in `:leaked`; one a sentence gives that
-  the wall hides, in `:hidden`.
+  the wall hides, in `:hidden`. Every function that narrows a list by an
+  action (`leaks/may-check`) must answer exactly the rows the wall shows
+  that the action's sentences give.
 - **A related row:** run it once more as someone a via gives one record
   (the receiver of a handoff), with the giving scope's other records as the
   foreign ids: one must answer not-found for another.

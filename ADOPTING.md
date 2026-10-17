@@ -65,6 +65,7 @@ access rule.
 | `:session-blocks {:impersonated #{:money/move}}` | `{:deny :money/move :session :impersonated}`; it now holds at the wall too, for every sentence of the action |
 | shared rows owned by the platform's scope, read with `:and-scope [:shop platform]` | universal rows: the scope column empty, `{:allow :catalogue/see :on :package :to :anyone :when [:and [:none :package/shop-id] [:= :package/published true]]}`, kept by `{:allow :catalogue/edit :on :package :to [:member :platform :platform/catalogue] :when [:none :package/shop-id]}`; drop `:and-scope` from the endpoints |
 | platform staff as members of a shop-kind scope | a `:single? true` kind, and `[:member :platform <its action>]` |
+| (new) a related row open to anyone | `{:allow :replies/write :on :reply :via {:table :tickets :match {:reply/ticket-id :ticket/id} :to :anyone :when [:= :ticket/status "open"]}}`: the action is open for endpoints, which may carry the ticket's id |
 | (new) anyone may write, narrowed | `{:allow :inquiries/send :on :inquiry :to :anyone :when [:= :inquiry/status "new"]}`, or `:via` a related row instead of `:to`; an open write with neither refuses the start |
 | (new) a suspended shop is read-only | `:shop {… :table :shops :id :shop/id}` and `{:deny :writes :scope :shop :when [:= :shop/status "suspended"]}` |
 
@@ -72,8 +73,11 @@ access rule.
 
 - **Lists:** the wall knows read, insert, update and delete, not the
   endpoint's action. A list endpoint shows every row a sentence lets the
-  person read; a list that must be narrower (only the editable ones) says
-  so in its SQL.
+  person read. A list that must be narrower (only the editable ones) calls
+  the function Groundwork makes per action and kind in its query file:
+  `WHERE order__id IN (SELECT * FROM groundwork."may orders/edit on order"())`.
+  Before, the wall did this narrowing by itself for the endpoint's own
+  action and kind.
 - **Members see only what sentences give.** The old wall showed a member
   every kind in their scope; write the sentences for each kind the app's
   SQL reads, or its reads come back short.

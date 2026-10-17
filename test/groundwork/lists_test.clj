@@ -46,6 +46,7 @@
 (pg/defsql ls-all-orders)
 (pg/defsql ls-all-invoices)
 (pg/defsql ls-close-order)
+(pg/defsql ls-editable-orders)
 
 (defn- ids [rows] (into #{} (map (comp first vals)) rows))
 
@@ -58,6 +59,11 @@
                          :permission {:action :orders/edit :list :order}
                          :input      [:map]
                          :answer     [:vector :uuid]}
+   ;; the same list, narrowed in its SQL to the orders the person may edit
+   :orders/editable-only {:read       (fn [{:keys [db]} _] (vec (ids (pg/rows db ls-editable-orders))))
+                          :permission {:action :orders/see :list :order}
+                          :input      [:map]
+                          :answer     [:vector :uuid]}
    :orders/and-invoices {:read       (fn [{:keys [db]} _] (vec (ids (pg/rows db ls-all-invoices))))
                          :permission {:action :orders/see :list :order}
                          :input      [:map]
@@ -138,6 +144,13 @@
   (let [p (part sealed)]
     (testing "the wall knows reading, not actions: a list for :orders/edit shows what Peter reads"
       (is (= #{acme-open acme-closed} (ask p :orders/editable peter))))
+    (testing "a query file narrows it with the function made for the action, :when included"
+      (is (= #{acme-open} (ask p :orders/editable-only peter)))
+      (is (= #{} (ask p :orders/editable-only pia)) "the partner sees orders, may edit none")
+      (is (= #{} (ask p :orders/editable-only kati)) "nor may the customer")
+      (testing "it runs behind the wall: in a transaction not verified for Acme, nothing"
+        (is (= #{} (perm/in-wall (:perms p) {:person peter :scopes #{}}
+                                 (fn [tx] (ids (jdbc/execute! (::pg/conn tx) ["SELECT * FROM groundwork.\"may orders/edit on order\"()"]))))))))
     (testing "the list filter narrows to the action, :when included"
       (let [{:keys [sql params]} (perm/list-filter (:perms p) {:person peter :flags #{} :action :orders/edit :kind :order})]
         (is (= #{acme-open}
@@ -179,7 +192,11 @@
     (testing "sealed: the lists hold nothing of Zinc"
       (let [report (leaks/check (part sealed) {:person pia :foreign foreign})]
         (is (= [] (:leaked report)))
-        (is (some #{:orders/all} (:checked report)))))
+        (is (= [] (:hidden report)))
+        (is (some #{:orders/all :orders/editable-only} (:checked report)))))
+    (testing "the functions that narrow by an action answer what the sentences give, behind the wall"
+      (is (= [] (leaks/may-check (:perms (part sealed)) {:shop zinc} {:person peter})))
+      (is (= [] (leaks/may-check (:perms (part sealed)) {:shop acme} {:person pia}))))
     (testing "a via that forgot its status: Zinc's orders show up in the partner's list"
       (let [report (leaks/check (part broken) {:person pia :foreign foreign})]
         (is (contains? (set (map :endpoint (:leaked report))) :orders/all))))))

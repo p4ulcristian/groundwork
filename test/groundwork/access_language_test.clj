@@ -114,7 +114,7 @@
              {:allow :inquiries/send :on :inquiry :to :anyone :when [:= :inquiry/status "new"]}
              {:allow :inquiries/see :on :inquiry :to [:member :inquiry/shop-id]}
              {:allow :replies/write :on :reply
-              :via   {:table :lg_tickets :match {:reply/ticket-id :ticket/id} :to :signed-in
+              :via   {:table :lg_tickets :match {:reply/ticket-id :ticket/id} :to :anyone
                       :when [:= :ticket/status "open"]}}]})
 
 (pg/defsql lg-order)
@@ -125,6 +125,8 @@
 (pg/defsql lg-count-orders)
 (pg/defsql lg-add-payout)
 (pg/defsql lg-send-inquiry)
+(pg/defsql lg-send-reply)
+(pg/defsql lg-editable-orders)
 
 (def endpoint-map
   {:orders/one       {:read       (fn [{:keys [db]} params] (:order/id (pg/row db lg-order params)))
@@ -154,6 +156,15 @@
                       :permission {:action :inquiries/send :scope [:shop :shop/id]}
                       :input      [:map [:shop/id :uuid] [:inquiry/status :string] [:inquiry/text :string]]
                       :answer     :boolean}
+   :replies/send     {:write      (fn [{:keys [db]} params] (pg/execute! db lg-send-reply params) true)
+                      :permission {:action :replies/write :scope [:shop :shop/id]}
+                      :input      [:map [:shop/id :uuid] [:ticket/id {:groundwork/record :ticket} :uuid] [:reply/text :string]]
+                      :answer     :boolean}
+   ;; every order the person sees, narrowed in its SQL to those they may edit
+   :orders/editable  {:read       (fn [{:keys [db]} _] (mapv :order/id (pg/rows db lg-editable-orders {})))
+                      :permission {:action :orders/see :list :order}
+                      :input      [:map]
+                      :answer     [:vector :uuid]}
    :payouts/add      {:write      (fn [{:keys [db]} params] (:payout/id (pg/row db lg-add-payout params)))
                       :permission {:action :orders/pay :record [:order :order/id]}
                       :input      [:map [:order/id :uuid] [:payout/cents :int]]
@@ -230,6 +241,10 @@
   (testing "[:member <scope id> <action>]: a member of one fixed scope"
     (is (may? aud :orders/see [:order a2]))
     (is (not (may? vic :orders/see [:order a2]))))
+  (testing "a list narrowed in its SQL to what the person may edit"
+    (is (= #{a1 a2 z1 z2} (set (:data (call carla :orders/editable {})))))
+    (is (= [] (:data (call kim :orders/editable {}))) "the customer sees her order, may edit none")
+    (is (= [] (:data (call sue :orders/editable {}))) "the back office sees every order, may edit none"))
   (testing "nobody else"
     (is (= {:status :not-found} (call vic :orders/one {:order/id a1})))
     (is (= {:status :ok :data []} (call vic :orders/all {})))))
@@ -298,6 +313,8 @@
         (is (= #{a1 a2} closed))
         (is (= 4 seen) "Zinc's orders are verified for reads in the same transaction"))
       (is (= #{["open"]} (set (map vals (system! "SELECT order__status FROM lg_orders WHERE order__id = ?" z1))))))
+    (testing "a list narrowed to what the person may edit leaves the suspended shop out"
+      (is (= #{a1 a2} (set (:data (call carla :orders/editable {}))))))
     (testing "the REPL names the deny that said no"
       (let [w (repl/why *app* zed :orders/edit [:order z1])]
         (is (not (:allowed? w)))
@@ -352,7 +369,7 @@
                               (fn [tx] (jdbc/execute! (::pg/conn tx) ["SELECT 1 FROM lg_inquiries"])))))
       (is (= 1 (count (perm/in-wall (gw/permissions *app*) {:person acme-owner :scopes #{acme}}
                                     (fn [tx] (jdbc/execute! (::pg/conn tx) ["SELECT 1 FROM lg_inquiries"]))))))))
-  (testing "anyone signed in replies under an open ticket, as the :via allows"
+  (testing "anyone replies under an open ticket, as the :via allows"
     (let [open-ticket (id) closed-ticket (id)
           reply!      (fn [person ticket]
                         (perm/in-wall (gw/permissions *app*) {:person person :scopes #{acme}}
@@ -365,8 +382,17 @@
         (is (some? (reply! vic open-ticket)))
         (is (thrown-with-msg? org.postgresql.util.PSQLException #"row-level security" (reply! vic closed-ticket))
             "not under a closed one")
-        (is (thrown-with-msg? org.postgresql.util.PSQLException #"row-level security" (reply! nil open-ticket))
-            "nor signed out")
+        (is (some? (reply! nil open-ticket)) "signed out too")
+        (testing "through an endpoint, signed out: the via makes the action open, so it may be asked"
+          (is (= {:status :ok :data true}
+                 (call nil :replies/send {:shop/id acme :ticket/id open-ticket :reply/text "from outside"})))
+          (is (= 1 (count (system! "SELECT 1 FROM lg_replies WHERE reply__text = 'from outside'"))))
+          (is (= {:status :not-found}
+                 (call nil :replies/send {:shop/id acme :ticket/id closed-ticket :reply/text "x"}))
+              "a closed ticket isn't one the via takes")
+          (is (= {:status :not-found}
+                 (call nil :replies/send {:shop/id zinc :ticket/id open-ticket :reply/text "x"}))
+              "nor a ticket of another shop than the one asked about"))
         (finally
           (system! "DELETE FROM lg_replies")
           (system! "DELETE FROM lg_tickets")))))

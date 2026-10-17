@@ -365,11 +365,18 @@
     (writes? description action)
     (contains? actions action)))
 
+(defn open-word
+  "The open word a sentence gives its action with, :anyone or :signed-in,
+   on the row (:to) or on the related row (:via), or nil."
+  [{:keys [who via]}]
+  (some #{:anyone :signed-in} [(:word who) (get-in via [:who :word])]))
+
 (defn open-level
   "Who an action is open to through its sentences: :anyone, :signed-in, or
-   nil when none gives it to someone who belongs nowhere."
+   nil when none gives it to someone who belongs nowhere. A via open to
+   anyone counts: what the wall allows, an endpoint can ask."
   [description action]
-  (let [words (set (for [s (sentences description) :when (= action (:action s))] (get-in s [:who :word])))]
+  (let [words (set (for [s (sentences description) :when (= action (:action s))] (open-word s)))]
     (cond (words :anyone) :anyone (words :signed-in) :signed-in)))
 
 ;; =============================================================================
@@ -917,6 +924,69 @@
   (into (sorted-set) (map (comp :kind :via)) (filter :via (sentences description))))
 
 ;; =============================================================================
+;; Narrowing a list by an action: a function per action and record kind
+;; =============================================================================
+
+(defn may-function
+  "The name of the function a query file calls to narrow a list to the rows
+   the person may do an action on: groundwork.\"may orders/edit on order\",
+   (), the ids of those rows.
+
+     SELECT order__id, order__note FROM orders
+     WHERE order__id IN (SELECT * FROM groundwork.\"may orders/edit on order\"())"
+  [action kind]
+  (str "groundwork." (quote-id (str "may " (action-name action) " on " (name kind)))))
+
+(defn deny-function
+  "The name of the function that answers, past the wall, which of the
+   transaction's scopes a scope's state denies in (for one state deny)."
+  [{:keys [scope] condition :when}]
+  (str "groundwork." (quote-id (str "denied scopes " (name scope) " " (format "%08x" (hash [scope condition]))))))
+
+(defn deny-sql-statement
+  "The statement that installs a state deny's function: the scopes, of the
+   ones the transaction reads (or every one), whose row in the app's own
+   table matches the deny's condition. The bypass is on only while that
+   table is read. Safe to run again."
+  [{:keys [scopes]} {:keys [scope] condition :when :as d}]
+  (let [{t :table id :id} (scopes scope)
+        [c ps]            (condition-sql "s" condition)]
+    (str "CREATE OR REPLACE FUNCTION " (deny-function d) "()\n"
+         "RETURNS SETOF uuid LANGUAGE plpgsql STABLE AS $$\n"
+         "DECLARE before text := coalesce(current_setting('groundwork.bypass', true), '');\n"
+         "BEGIN\n"
+         "  PERFORM set_config('groundwork.bypass', 'on', true);\n"
+         "  RETURN QUERY SELECT s." (quote-column id) " FROM " (quote-table t) " s WHERE " (fill c ps sql-literal)
+         " AND (groundwork.wall_reads_every() OR s." (quote-column id) " IN (SELECT groundwork.wall_scope_set()));\n"
+         "  PERFORM set_config('groundwork.bypass', before, true);\n"
+         "END $$")))
+
+(defn may-sql-statement
+  "The statement that installs the function narrowing a kind's rows to
+   those the person may do an action on: the action's sentences on the
+   kind, but what a session flag or a scope's state denies. It runs as the
+   caller, behind the wall: it answers only rows the transaction may read.
+   `id-type` is the type of the kind's id column. Safe to run again."
+  [{:keys [records] :as description} action kind id-type]
+  (let [{t :table id :id :as record} (records kind)
+        ss      (filter #(and (= action (:action %)) (= kind (:kind %))) (sentences description))
+        ds      (filter #(deny-applies? description % action) (denies description))
+        flags   (for [{:keys [session]} ds :when session]
+                  (str "NOT (SELECT groundwork.wall_flag(" (sql-literal (name session)) "))"))
+        states  (for [{:keys [scope] :as d} ds
+                      :when scope
+                      [col col-kind] (scope-columns record)
+                      :when (= scope col-kind)]
+                  (str "(r." (quote-column col) " IS NULL OR r." (quote-column col)
+                       " NOT IN (SELECT * FROM " (deny-function d) "()))"))
+        granted (str "(" (str/join " OR " (distinct (map #(inline (sentence-sql % "r")) ss))) ")")]
+    (str "CREATE OR REPLACE FUNCTION " (may-function action kind) "()\n"
+         "RETURNS SETOF " id-type " LANGUAGE sql STABLE AS $$\n"
+         "  SELECT r." (quote-column id) " FROM " (quote-table t) " r\n"
+         "  WHERE " (str/join "\n    AND " (concat [granted] flags states)) "\n"
+         "$$")))
+
+;; =============================================================================
 ;; Records under records: the matching link and the fill
 ;; =============================================================================
 
@@ -1035,7 +1105,7 @@
   "The tables someone who belongs nowhere may read rows of: the kinds a
    sentence gives to :anyone or :signed-in, with :read."
   [{:keys [records] :as description}]
-  (into #{} (keep (fn [{:keys [kind who action]}]
-                    (when (and (#{:anyone :signed-in} (:word who)) (contains? (commands-of description action) :read))
+  (into #{} (keep (fn [{:keys [kind action] :as s}]
+                    (when (and (open-word s) (contains? (commands-of description action) :read))
                       (table (get-in records [kind :table])))))
         (sentences description)))
