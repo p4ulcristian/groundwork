@@ -23,6 +23,5 @@ The app's own taste in CSS (design tokens, no raw colours, no `!important`) stay
 
 **Instead of:**
 - a default browser floor inside Groundwork: an app's floor would be hidden, and a change of the default would move every app
-
 - keeping the stricter method next to this one: two ways to do one thing, and the strict one has no user
 - every module's bundle in the first page: every visitor downloads every area's styles
