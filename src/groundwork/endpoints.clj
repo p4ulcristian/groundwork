@@ -33,22 +33,14 @@
                          {:action … :scope [kind #uuid \"…\"]}  one fixed scope, for an
                                                            app-wide area (an admin
                                                            area every member shares)
-                         {:action … :scope [kind param]
-                          :and-scope [kind #uuid \"…\"]}   the scope in the request,
-                                                           and always also this fixed
-                                                           one: a shop's own rows and
-                                                           the shared rows the
-                                                           platform's scope owns, in
-                                                           one read. Both must verify
-                                                           for the action, or the ask
-                                                           is not found
                          {:action … :list kind}            every record of a kind the
                                                            person may
-                       An open action (the description's :open) needs no
-                       membership: its endpoint is a read, about a :scope
-                       or a :record, and open to anyone it is asked signed
-                       out too. The scope it names is verified for it, and
-                       the wall shows only the kinds that list the action.
+                       A write declares an action that writes (inserts,
+                       updates or deletes). An action a sentence gives
+                       :anyone may be asked signed out; one it gives
+                       :signed-in, by anyone signed in. Asked about a scope,
+                       such an action verifies that scope for the request
+                       and the wall shows what the sentences give there.
      :input            what may be sent, a malli :map. Every field holding ids
                        (a key named id, …-id or …-ids) says which kind of
                        record they are, {:groundwork/record :machine}, or that
@@ -57,8 +49,8 @@
                        scope gets in. The permission's own param needs no mark.
      :answer           what may be sent back, a malli shape
 
-   A visitor's record: an action some record kind gives a visitor (:visitors
-   in the permission description) may be asked by someone not signed in.
+   A visitor's record: an action a sentence gives a visitor ([:me <visitor
+   column>]) may be asked by someone not signed in.
    ctx holds :visitor, the id of their visitor session or nil; the rows that
    name it are theirs, behind the wall. A write that keeps something for a
    visitor says :keeps-for-visitor true: asked without a session, the
@@ -181,12 +173,19 @@
 
 (defn- public?
   "Whether an endpoint may be asked by nobody signed in: :public, or an
-   action open to anyone."
+   action a sentence gives :anyone."
   [perms permission]
   (or (= :public permission)
       (and (map? permission) (= :anyone (permissions/open-level perms (:action permission))))))
 
-(defn- check-permission [perms k permission input]
+(defn- open-only?
+  "Whether every sentence giving an action gives it to someone who belongs
+   nowhere (:anyone, :signed-in): it verifies only the scope a request names."
+  [perms action]
+  (let [ss (get-in perms [:by-action action])]
+    (and (seq ss) (every? rules/open-word ss))))
+
+(defn- check-permission [perms k permission input read?]
   (let [kinds   (set (keys (get-in perms [:description :records])))
         scopes  (set (keys (get-in perms [:description :scopes])))
         in-map? (fn [param] (some #(= param (first %)) (m/children input)))]
@@ -194,36 +193,25 @@
       (#{:public :signed-in} permission) permission
 
       (not (and (map? permission) (keyword? (:action permission))
-                (= (if (contains? permission :and-scope) 3 2) (count permission))
+                (= 2 (count permission))
                 (some #{:record :scope :list} (keys permission))))
       (bad k ":permission must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param]} or {:action … :list kind}")
 
       :else
-      (let [{:keys [action record scope list and-scope]} permission
-            team? (= rules/team-action action)]
-        (when and-scope
-          (let [[kind id] and-scope]
-            (when-not (and scope (keyword? (second scope)))
-              (bad k ":and-scope goes with a :scope whose id is in the params: the scope in the request, and always also the fixed one"))
-            (when-not (and (scopes kind) (uuid? id))
-              (bad k (str ":and-scope must be [scope-kind #uuid \"…\"], and " kind " isn't a scope kind")))
-            (when team?
-              (bad k (str rules/team-action " is about one scope")))
-            (when (and (permissions/open-level perms action) (not= kind (permissions/action-kind perms action)))
-              (bad k (str action " is open in a " (permissions/action-kind perms action) ", not in a " kind)))))
+      (let [{:keys [action record scope list]} permission
+            team? (= rules/team-action action)
+            ss    (get-in perms [:by-action action])]
         (when (and team? (not (and scope (= :groundwork/any (first scope)))))
           (bad k (str rules/team-action " goes with {:scope [:groundwork/any param]}: it is held in any kind of scope")))
         (when-not (or team? (permissions/action-kind perms action))
           (bad k (str "no action " action " in the permission description")))
-        (when (permissions/open-level perms action)
-          (when list
-            (bad k (str action " is open: its endpoint is about a :scope or a :record, never a :list of every scope's")))
-          (when (and scope (not= (first scope) (permissions/action-kind perms action)))
-            (bad k (str action " is open in a " (permissions/action-kind perms action) ", not in a " (first scope)))))
+        (when (and (not read?) (not team?) (not (permissions/writes? perms action)))
+          (bad k (str action " only reads; a write declares an action that inserts, updates or deletes"
+                      " (its commands, in the scope kind's :actions)")))
         (when record
           (let [[kind param] record]
             (when-not (permissions/declared? perms action kind)
-              (bad k (str "no permission rule for " action " on " kind)))
+              (bad k (str "no sentence gives " action " on " kind)))
             (when-not (in-map? param)
               (bad k (str "the record's param " param " isn't in :input")))))
         (when scope
@@ -231,12 +219,26 @@
             (when-not (or (scopes kind) (and team? (= :groundwork/any kind)))
               (bad k (str "no scope kind " kind)))
             (when-not (or (uuid? param) (in-map? param))
-              (bad k (str "the scope's param " param " isn't in :input")))))
+              (bad k (str "the scope's param " param " isn't in :input")))
+            (when-not team?
+              (when (empty? ss)
+                (bad k (str "no sentence gives " action)))
+              (when (open-only? perms action)
+                (let [open-kinds (set (for [{s-kind :kind} ss
+                                            v (vals (rules/scope-columns (get-in perms [:description :records s-kind])))]
+                                        v))]
+                  (when-not (open-kinds kind)
+                    (bad k (str action " is open on rows of a " (str/join " or a " (map name (sort open-kinds)))
+                                ", not in a " (name kind)))))))))
         (when list
           (when-not (kinds list)
             (bad k (str "no record kind " list)))
           (when-not (permissions/declared? perms action list)
-            (bad k (str "no permission rule for " action " on " list))))
+            (bad k (str "no sentence gives " action " on " list)))
+          (when (every? #(and (rules/open-word %) (not (:universal? %)))
+                        (get-in perms [:by-action-kind [action list]]))
+            (bad k (str action " is open on " list " only in the scope a request names: a :list of every scope's"
+                        " has none to show; ask about a :scope or a :record"))))
         permission))))
 
 (defn- id-fields
@@ -260,9 +262,10 @@
                   (#{:public :signed-in} permission)
                   (bad k (str "the field " key " holds ids, so the endpoint needs an action permission"))
                   (and (permissions/open-level perms (:action permission))
-                       (not (contains? (get-in perms [:description :records mark :open]) (:action permission))))
-                  (bad k (str "the field " key " holds ids of " mark ", which the open action "
-                              (:action permission) " doesn't reach"))
+                       (not (permissions/declared? perms (:action permission) mark))
+                       (not (permissions/via-kind? perms (:action permission) mark)))
+                  (bad k (str "the field " key " holds ids of " mark ", and no sentence gives the open action "
+                              (:action permission) " on it"))
                   :else                    (assoc found key mark))))
             {}
             (entries input))))
@@ -276,9 +279,7 @@
         answer     (shape k ":answer" (:answer entry))
         _          (when-not (= :map (m/type input))
                      (bad k ":input must be a malli :map"))
-        permission (check-permission perms k (:permission entry) input)]
-    (when (and (map? permission) (permissions/open-level perms (:action permission)) (contains? entry :write))
-      (bad k (str (:action permission) " is open, and an open action only reads: the endpoint must be a :read")))
+        permission (check-permission perms k (:permission entry) input (contains? entry :read))]
     (assoc entry
            :name       k
            :input      input
@@ -286,7 +287,7 @@
            :permission permission
            :ids        (id-fields perms k permission input)
            :public?    (public? perms permission)
-           ;; an action a visitor can hold: asked signed out too
+           ;; an action a sentence gives a visitor: asked signed out too
            :visitors?  (boolean (and (map? permission) (permissions/visitor-action? perms (:action permission))))
            :read?      (contains? entry :read)
            :handler    (or (:read entry) (:write entry)))))
@@ -299,20 +300,24 @@
 
 (defn- built-in
   "Groundwork's own endpoints. :groundwork/grants is behind the browser's
-   \"can I?\": every action the person holds, and in which scopes."
+   \"can I?\": every action the sentences give the person, and in which
+   scopes (none: every scope)."
   [perms]
-  (let [actions (mapv #(subs (str %) 1)
-                      (conj (keys (rules/action-kinds (:description perms))) rules/team-action))]
-    {:groundwork/grants {:read       (fn [{:keys [db person]} _]
-                                       (mapv (fn [{:grant/keys [scope-id action]}]
-                                               {:grant/scope-id scope-id :grant/action (keyword action)})
-                                             (pg/rows db grants-sql {:actions actions :person (str person)})))
-                         :permission :signed-in
-                         :input      [:map]
-                         :answer     [:vector [:map [:grant/scope-id :uuid] [:grant/action :keyword]]]
-                         ;; its SQL calls a function; these are what it reads
-                         :reads      [:groundwork.memberships :groundwork.role_actions
-                                      :groundwork.extra_actions :groundwork.roles]}}))
+  (let [description (:description perms)]
+    {:groundwork/grants (with-meta
+                          {:read       (fn [{:keys [perms person visitor flags]} _]
+                                         (permissions/grants perms {:person person :visitor visitor :flags flags}))
+                           :permission :signed-in
+                           :input      [:map]
+                           :answer     [:vector [:map [:grant/scope-id [:maybe :uuid]] [:grant/action :keyword]]]
+                           ;; it runs past the wall, through functions: these are what it reads
+                           :reads      (vec (concat [:groundwork.memberships :groundwork.role_actions
+                                                     :groundwork.extra_actions :groundwork.roles :groundwork.scopes]
+                                                    (map keyword (keys (rules/via-tables description)))
+                                                    (distinct (for [{:keys [scope]} (rules/denies description)
+                                                                    :when scope]
+                                                                (keyword (name (get-in description [:scopes scope :table])))))))}
+                          {::own-transaction true})}))
 
 (defn- gather
   "The app's endpoint maps as one, refusing a name twice."
@@ -355,47 +360,55 @@
   [perms scopes also]
   (doseq [[kind ids] also
           id         ids]
-    (when (empty? (set/intersection scopes (permissions/scopes-of perms [kind id])))
+    (when (and (not= :every scopes)
+               (empty? (set/intersection scopes (permissions/scopes-of perms [kind id]))))
       (throw (ex-info "Not found" {:type ::permissions/not-found :record [kind id]})))))
 
 (defn- verified-scopes
-  "The scopes a request may see, or throws not-found. A write is held to
-   what a write may: a pass to a record gives it nothing."
-  [perms {:keys [permission ids read?]} {:keys [person visitor flags]} params]
-  (let [also     (ids-in ids params)
-        writing? (not read?)]
+  "What a request may see and write, or throws not-found: {:read scopes
+   :write scopes :open? bool}, scopes a set or :every (a request a fixed
+   scope's member makes about every scope). :open? when it was verified
+   only because a sentence opens the action to someone who belongs
+   nowhere."
+  [perms {:keys [permission ids]} {:keys [person visitor flags]} params]
+  (let [also (ids-in ids params)]
     (case permission
-      (:public :signed-in) #{}
+      (:public :signed-in) {:read #{} :write #{}}
       (let [{:keys [action record scope list]} permission
             open? (some? (permissions/open-level perms action))]
-        ;; an open action's other ids are each held to its rule, not only to
-        ;; its scope: an id it doesn't show answers like one that isn't there
+        ;; an open action's other ids are each held to its sentences, not
+        ;; only to its scope: an id it doesn't show answers like one that isn't there
         (when open?
           (doseq [[kind ids] also
                   id         ids]
-            (when-not (permissions/allowed? perms {:person person :visitor visitor :flags flags :action action
-                                                   :record [kind id]})
+            (when-not (let [request {:person person :visitor visitor :flags flags :action action :record [kind id]}]
+                        (or (permissions/allowed? perms request) (permissions/via-allows? perms request)))
               (throw (ex-info "Not found" {:type ::permissions/not-found :record [kind id]})))))
         (cond
-          record (permissions/check! perms {:person person :visitor visitor :flags flags :action action
-                                            :writing? writing?
-                                            :record [(first record) (as-id (get params (second record)))]
-                                            :also   also})
-          ;; the scope in the request, and the fixed one that always comes
-          ;; along when the endpoint names one: each must verify for the action
-          scope  (let [verify (if open? permissions/open-scope permissions/scopes-under)
-                       each   (for [id (cond-> [(scope-of permission params)]
-                                         (:and-scope permission) (conj (second (:and-scope permission))))]
-                                (verify perms {:person person :flags flags :action action :scope id}))]
-                   (when (some empty? each)
+          record (let [scopes (permissions/check! perms {:person person :visitor visitor :flags flags :action action
+                                                         :record [(first record) (as-id (get params (second record)))]
+                                                         :also   also})]
+                   {:read scopes :write scopes})
+          scope  (let [id      (scope-of permission params)
+                       held    (permissions/scopes-under perms {:person person :visitor visitor :flags flags
+                                                                :action action :scope id})
+                       open    (when open?
+                                 (permissions/open-scope perms {:person person :flags flags :action action :scope id
+                                                                :kind (first scope)}))
+                       found   (into (set held) open)
+                       own     (set (filter #{id} found))]
+                   (when (empty? found)
                      (throw (ex-info "Not found" {:type ::permissions/not-found :scope scope})))
-                   (let [scopes (reduce into #{} each)]
-                     (also-belongs! perms scopes also)
-                     scopes))
-          list   (let [scopes (permissions/scopes-listed perms {:person person :flags flags :action action :kind list
-                                                                :writing? writing?})]
-                   (also-belongs! perms scopes also)
-                   scopes))))))
+                   (let [{:keys [read write]} (permissions/with-denies perms {:action action :own own
+                                                                               :more (remove own found)})]
+                     (also-belongs! perms read also)
+                     {:read read :write write :open? (empty? held)}))
+          list   (let [{:keys [scopes every?]} (permissions/scopes-listed perms {:person person :visitor visitor
+                                                                                 :flags flags :action action :kind list})
+                       {:keys [read write]}    (permissions/with-denies perms {:action action :own #{}
+                                                                               :more (if every? :every scopes)})]
+                   (also-belongs! perms read also)
+                   {:read read :write write}))))))
 
 (defn- run-write-once
   "Run a write's handler once per key: a key seen before gives its answer."
@@ -496,7 +509,10 @@
 
           :else
           (try
-            (let [scopes (verified-scopes perms entry {:person person :visitor visitor :flags flags} decoded)]
+            (let [{:keys [read write]} (verified-scopes perms entry {:person person :visitor visitor :flags flags} decoded)
+                  ;; ctx's :scopes is a set; a request that reaches every scope says so in :every-scope?
+                  scopes                 (if (= :every read) #{} read)
+                  every?                 (= :every read)]
               (if-let [{:keys [limit retry-after-seconds]}
                        (when limits
                          (limits/take! limits {:id       endpoint
@@ -514,7 +530,8 @@
                                     ((:make-visitor ask))))
                       ask     (-> ask (assoc :visitor visitor) (dissoc :make-visitor))]
                 (if (own-transaction? entry)
-                  (let [data ((:handler entry) (assoc ask :perms perms :scopes scopes :flags flags :params decoded)
+                  (let [data ((:handler entry) (assoc ask :perms perms :scopes scopes :every-scope? every?
+                                                      :flags flags :params decoded)
                                                decoded)]
                     (when-not (wire/fits? (:answer entry) data)
                       (throw (ex-info (str "Endpoint " endpoint "'s answer doesn't fit its shape")
@@ -525,12 +542,12 @@
                       tag   (when-not (:read? entry) (str (random-uuid)))
                       [data rang]
                       (permissions/in-wall
-                       perms (let [{:keys [action record list]} (when (map? (:permission entry)) (:permission entry))]
-                               {:person person :visitor visitor :scopes scopes :read-only? (:read? entry)
-                                :action action :kind (or (first record) list)})
+                       perms {:person person :visitor visitor :scopes read :write-scopes write :flags flags
+                              :read-only? (:read? entry)}
                        (fn [tx]
                          (let [tx  (cond-> tx (:read? entry) (assoc ::pg/on-query (collecting files (::pg/on-query tx))))
-                               ctx (assoc ask :db tx :scopes scopes :flags flags :params decoded :jobs (:jobs part))
+                               ctx (assoc ask :db tx :scopes scopes :every-scope? every? :flags flags :params decoded
+                                          :jobs (:jobs part))
                                run (fn []
                                      (let [data ((:handler entry) ctx decoded)]
                                        (when-not (wire/fits? (:answer entry) data)
@@ -558,27 +575,26 @@
 
 (defn watch
   "What a person watching a read may be told about, or nil when they may
-   not ask it: {:scopes … :record [kind id]-or-nil :tables set-or-nil}. The
-   same check as asking. :tables, for an open action: the only tables whose
-   bells its scopes bring."
+   not ask it: {:scopes set-or-:every :record [kind id]-or-nil :tables
+   set-or-nil}. The same check as asking. :tables, for a read verified only
+   because its action is open to someone who belongs nowhere: the only
+   tables whose bells its scope brings."
   [{:keys [perms endpoints]} {:keys [endpoint params person visitor flags]}]
   (let [entry   (get endpoints endpoint)
         visitor (when (nil? person) visitor)]
     (when (and entry (:read? entry) (or person (:public? entry) (:visitors? entry)))
-      (let [{decoded :value} (wire/decode (:input entry) (or params {}))
-            action           (when (map? (:permission entry)) (:action (:permission entry)))]
+      (let [{decoded :value} (wire/decode (:input entry) (or params {}))]
         (when decoded
           (try
-            {:scopes (into (verified-scopes perms entry {:person person :visitor visitor :flags (or flags #{})}
-                                            decoded)
-                           ;; a list also hears of the scopes a new pass would reach it through
-                           (when-let [kind (and action (get-in entry [:permission :list]))]
-                             (permissions/pass-scopes perms {:person person :action action :kind kind})))
-             :record (when-let [[kind param] (get-in entry [:permission :record])]
-                       [kind (get decoded param)])
-             ;; an open action hears of its scope only through the tables it reaches
-             :tables (when (and action (permissions/open-level perms action))
-                       (permissions/open-tables perms action))}
+            (let [{:keys [read open?]} (verified-scopes perms entry {:person person :visitor visitor
+                                                                      :flags (or flags #{})}
+                                                         decoded)]
+              {:scopes read
+               :record (when-let [[kind param] (get-in entry [:permission :record])]
+                         [kind (get decoded param)])
+               ;; someone who belongs nowhere hears of the scope only through
+               ;; the tables it shows them
+               :tables (when open? (permissions/open-tables perms))})
             (catch clojure.lang.ExceptionInfo e
               (when-not (= ::permissions/not-found (:type (ex-data e)))
                 (throw e)))))))))

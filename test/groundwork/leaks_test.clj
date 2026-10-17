@@ -1,5 +1,5 @@
 (ns groundwork.leaks-test
-  "The leak test: sealed endpoints pass; a link whose condition forgot the
+  "The leak test: sealed endpoints pass; a via whose condition forgot the
    status lets another shop's notes out, and the test says which."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
@@ -19,18 +19,20 @@
 (def acme-note (id)) (def zinc-note (id)) (def acme-board (id)) (def zinc-board (id))
 
 (defn- description [link-condition]
-  {:scopes  {:shop    {:actions #{:notes/see :notes/move} :roles {"Production" #{:notes/see :notes/move}} :parent nil}
-             :partner {:actions #{:links/see} :roles {"Member" #{:links/see}} :parent nil}}
-   :records {:note  {:table :notes :id :note/id :in [:shop :note/shop-id]}
-             :board {:table :boards :id :board/id :in [:shop :board/shop-id]}}
-   :links   [{:table  :partner_links
-              :from   [:partner :partner-link/partner-id]
-              :to     [:shop :partner-link/shop-id]
-              :when   link-condition
-              :grants {:notes/see :links/see}}]
-   :passes []
-   :open {:anyone #{} :signed-in #{}}
-   :session-blocks {}})
+  {:scopes  {:shop    {:actions {:notes/see #{:read} :notes/move #{:read :update}}
+                       :roles   {"Production" #{:notes/see :notes/move}} :parent nil}
+             :partner {:actions {:links/see #{:read}} :roles {"Member" #{:links/see}} :parent nil}}
+   :records {:note         {:table :notes :id :note/id :whose {:note/shop-id :shop}}
+             :board        {:table :boards :id :board/id :whose {:board/shop-id :shop}}
+             :partner-link {:table :partner_links :id :partner-link/id
+                            :whose {:partner-link/shop-id :shop :partner-link/partner-id :partner}}}
+   :rules   [{:allow #{:notes/see :notes/move} :on :note :to [:member :note/shop-id]}
+             {:allow #{:notes/see :notes/move} :on :board :to [:member :board/shop-id]}
+             ;; a partner sees a shop's notes while their link holds
+             {:allow :notes/see :on :note
+              :via   {:table :partner_links :match {:note/shop-id :partner-link/shop-id}
+                      :to [:member :partner-link/partner-id :links/see] :when link-condition}}
+             {:allow :links/see :on :partner-link :to [:member :partner-link/partner-id]}]})
 
 (def sealed (description [:= :partner-link/status "active"]))
 (def broken (description [:not-null :partner-link/status]))
@@ -83,9 +85,13 @@
   (fn [t]
     (sql! "DROP TABLE IF EXISTS notes, boards, partner_links;
            CREATE TABLE notes (note__id uuid PRIMARY KEY, note__shop_id uuid NOT NULL, note__board_id uuid);
+           CREATE INDEX ON notes (note__shop_id);
            CREATE TABLE boards (board__id uuid PRIMARY KEY, board__shop_id uuid NOT NULL);
            CREATE TABLE partner_links (partner_link__partner_id uuid NOT NULL, partner_link__shop_id uuid NOT NULL,
-                                       partner_link__status text NOT NULL)")
+                                       partner_link__status text NOT NULL,
+                                       partner_link__id uuid PRIMARY KEY DEFAULT gen_random_uuid());
+           CREATE INDEX ON partner_links (partner_link__shop_id);
+           CREATE INDEX ON partner_links (partner_link__partner_id)")
     (sql! "INSERT INTO notes VALUES (?, ?, NULL), (?, ?, NULL); INSERT INTO boards VALUES (?, ?), (?, ?);
            INSERT INTO partner_links VALUES (?, ?, 'ended')"
           acme-note acme zinc-note zinc acme-board acme zinc-board zinc partner zinc)
@@ -118,12 +124,14 @@
 
 (deftest a-condition-that-forgot-the-status-is-caught
   (let [report (leaks/check (part broken) {:person pia :foreign foreign})]
-    (is (= #{:notes/of-shop :notes/one :zinc/notice} (set (map :endpoint (:leaked report))))
+    (is (= #{:notes/of-shop :notes/one :zinc/notice} (set (keep :endpoint (:leaked report))))
         "the ended link still lets Zinc's notes out, and Zinc's own area")
+    (is (= [] (filter :wall (:leaked report)))
+        "the wall shows what the sentences give: the test proves they match, not that the sentence is right")
     (is (= :ok (:status (:answer (first (:leaked report))))))))
 
-(deftest a-scope-endpoint-honours-a-link-like-a-record-one
-  (sql! "INSERT INTO partner_links VALUES (?, ?, 'active')" partner acme)
+(deftest a-scope-endpoint-honours-a-via-like-a-record-one
+  (sql! "SET groundwork.bypass = 'on'; INSERT INTO partner_links VALUES (?, ?, 'active')" partner acme)
   (try
     (let [p (part sealed)]
       (is (= {:status :ok :data [acme-note]}
@@ -131,4 +139,4 @@
           "an active link gives the partner's member Acme's notes, as for one note")
       (is (= {:status :ok :data acme-note}
              (endpoints/call p {:endpoint :notes/one :params {:note/id acme-note} :person pia :flags #{}}))))
-    (finally (sql! "DELETE FROM partner_links WHERE partner_link__shop_id = ?" acme))))
+    (finally (sql! "SET groundwork.bypass = 'on'; DELETE FROM partner_links WHERE partner_link__shop_id = ?" acme))))

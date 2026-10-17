@@ -206,38 +206,31 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 
 | Key | Type | What it is | Example |
 |-----|------|------------|---------|
-| `:permissions :scopes` | kind → scope kind | The kinds of scope: where data belongs and people are members | `{:shop {:actions #{:orders/see :orders/edit}, :roles {"Ma…` |
-| `:permissions :scopes <scope kind> :actions` | set of actions | The actions of this kind of scope | `#{:orders/see :orders/edit}` |
+| `:permissions :scopes` | kind → scope kind | The kinds of scope: where data belongs and people are members | `{:shop {:actions #:orders{:see #{:read}, :edit #{:read :u…` |
+| `:permissions :scopes <scope kind> :actions` | action → commands | The actions of this kind of scope, each with what it does at the wall: :read, :insert, :update, :delete | `#:orders{:see #{:read}, :edit #{:read :update}}` |
 | `:permissions :scopes <scope kind> :roles` | role name → actions | The starting roles every new scope of this kind gets: name → actions | `{"Manager" #{:orders/see :orders/edit}}` |
 | `:permissions :scopes <scope kind> :parent` | keyword or nil | The kind of scope above this one, or nil |  |
-| `:permissions :records` | kind → record kind | The kinds of record, each in a scope | `{:order {:table :orders, :id :order/id, :in [:shop :order…` |
+| `:permissions :scopes <scope kind> :single?` (optional) | true or false | This kind has exactly one scope (a platform's back office): [:member <kind>] names it | `true` |
+| `:permissions :scopes <scope kind> :table` (optional) | keyword | The app's own table of these scopes, where a scope's state lives (with :id) | `:shops` |
+| `:permissions :scopes <scope kind> :id` (optional) | column keyword | Its id column, the scope's id | `:shop/id` |
+| `:permissions :records` | kind → record kind | The kinds of record, and whose row each column names | `{:order {:table :orders, :id :order/id, :whose #:order{:s…` |
 | `:permissions :records <record kind> :table` | keyword | Its table | `:orders` |
 | `:permissions :records <record kind> :id` | column keyword | Its id column | `:order/id` |
-| `:permissions :records <record kind> :in` | [kind column] or a list of them | Its scope column: [scope-kind column], or a list of them for a record shared by scopes | `[:shop :order/shop-id]` |
+| `:permissions :records <record kind> :whose` | column → whose | Whose row each column names: column → a scope kind, :person or :visitor (the id of a visitor's session) | `#:order{:shop-id :shop, :customer-id :person}` |
 | `:permissions :records <record kind> :parent` (optional) | [kind column] or [kind column {column column}] | The record it hangs under: [record-kind its-column], and what it carries from it when either has more than one scope, or a person: [record-kind its-column {its column → the parent's}] | `[:order :job/order-id]` |
-| `:permissions :records <record kind> :people` (optional) | action → column | An action a person on the record holds: action → their column | `#:orders{:see :order/customer-id}` |
-| `:permissions :records <record kind> :visitors` (optional) | action → column | An action a visitor on the record holds: action → the column with their visitor session's id. At sign-in the row moves to the person, into the kind's person column | `#:designs{:edit :design/visitor-id}` |
-| `:permissions :records <record kind> :only-when` (optional) | action → condition | An action allowed only when the record matches: action → condition | `#:orders{:edit [:= :order/status "open"]}` |
-| `:permissions :records <record kind> :open` (optional) | set of actions | The open actions that reach this kind (each is in the description's :open); its :only-when for them still holds | `#{:catalogue/see}` |
-| `:permissions :links` | list of links | Scopes reaching other scopes through a linking record | `[]` |
-| `:permissions :links […] :table` | keyword | The linking record's table | `:agreements` |
-| `:permissions :links […] :from` | [kind column] | The scope the person is in: [kind column] | `[:partner :agreement/partner-id]` |
-| `:permissions :links […] :to` | [kind column] | The scope the link reaches: [kind column] | `[:shop :agreement/shop-id]` |
-| `:permissions :links […] :when` | condition | While this holds | `[:= :agreement/status "active"]` |
-| `:permissions :links […] :grants` | action → action | What it gives in :to: given action → the action needed in :from | `#:orders{:see :agreements/see}` |
-| `:permissions :passes` | list of passes | Rows that are a pass to one record: a reading action on the record a row names, for the receiving scope's people or one person, while a condition holds | `[]` |
-| `:permissions :passes […] :table` | keyword | The passing row's table; it is a record kind itself, in the giving and the receiving scope | `:handoffs` |
-| `:permissions :passes […] :record` | [kind column] | The one record it gives: [record-kind column] | `[:order :handoff/order-id]` |
-| `:permissions :passes […] :from` | [kind column] | The giving scope, the record's own: [kind column] | `[:shop :handoff/from-shop-id]` |
-| `:permissions :passes […] :to` (optional) | [kind column] | The receiving scope: [kind column] | `[:shop :handoff/to-shop-id]` |
-| `:permissions :passes […] :to-person` (optional) | column keyword | Or the receiving person's column | `:handoff/driver-id` |
-| `:permissions :passes […] :when` | condition | While this holds | `[:= :handoff/status "open"]` |
-| `:permissions :passes […] :grants` | action → action, or a set of actions | The reading actions it gives on the record → the action needed in :to; for :to-person, a set of given actions | `#:orders{:see :handoffs/work}` |
-| `:permissions :passes […] :under` | set of kinds | The record kinds right under the record that come with it | `#{:job}` |
-| `:permissions :open` | map | The open actions, the one list of them: reading actions anyone, or anyone signed in, may do without a membership. No role holds one; each reaches only the record kinds that list it | `{:anyone #{:catalogue/see}, :signed-in #{:shops/name}}` |
-| `:permissions :open :anyone` | set of actions | Open to everyone, signed in or not | `#{:catalogue/see}` |
-| `:permissions :open :signed-in` | set of actions | Open to everyone who is signed in | `#{:shops/name}` |
-| `:permissions :session-blocks` | flag → actions | A session flag blocks actions: flag → actions | `{:impersonated #{:money/move}}` |
+| `:permissions :rules` | list of sentences | Who may do what: one list of sentences, read at start (see groundwork.permissions.rules) | `[{:allow :orders/see, :on :order, :to [:member :order/sho…` |
+| `:permissions :rules […] :allow` (optional) | action or set of actions | Allows this action (or each of a set of them): a sentence {:allow … :on … :to-or-:via … :when …} | `:orders/see` |
+| `:permissions :rules […] :on` (optional) | keyword | The kind of record it is on | `:order` |
+| `:permissions :rules […] :to` (optional) | who | To whom: :anyone, :signed-in, [:member <column \| single-scope kind \| scope id> <action held, optional>], [:me <column>] | `[:member :order/shop-id]` |
+| `:permissions :rules […] :via` (optional) | map | Or through a related row: one that exists for which its :to and :when hold | `{:table :agreements, :match #:order{:shop-id :agreement/s…` |
+| `:permissions :rules […] :via :table` | keyword | The related row's table; its record kind says whose its columns are | `:agreements` |
+| `:permissions :rules […] :via :match` | column → column | Which columns match: the row's column → the related row's | `#:order{:shop-id :agreement/shop-id}` |
+| `:permissions :rules […] :via :to` | who | Who must hold on the related row | `[:member :agreement/partner-id :agreements/see]` |
+| `:permissions :rules […] :via :when` (optional) | condition | While this holds on the related row | `[:= :agreement/status "active"]` |
+| `:permissions :rules […] :when` (optional) | condition | Only while the row matches; [:none <scope column>] for a row that belongs to nobody | `[:= :order/status "open"]` |
+| `:permissions :rules […] :deny` (optional) | action, set of actions or :writes | Or denies this action, these, or :writes (every action that writes), before any yes | `:money/move` |
+| `:permissions :rules […] :session` (optional) | keyword | A deny's session flag | `:impersonated` |
+| `:permissions :rules […] :scope` (optional) | keyword | A deny's scope kind, whose state (its :when on the kind's :table) denies | `:shop` |
 
 #### `:limits`: How often a caller may ask
 
@@ -652,204 +645,167 @@ resources/migrations/
 
 ## 6. Permissions
 
-The app describes its places, actions, roles and records once:
+The app says who may do what as one list of sentences, next to its kinds
+of scope and record:
 
 ```clojure
-{:scopes  {:shop    {:actions #{:orders/see :orders/edit :jobs/move}
-                     :roles   {"Manager"    #{:orders/see :orders/edit :jobs/move :groundwork/team}
-                               "Production" #{:orders/see :jobs/move}}
-                     :parent  :company}
-           :company {:actions #{:company/report} :roles {} :parent nil}}
- :records {:order {:table :orders :id :order/id :in [:shop :order/shop-id]
-                   :people {:orders/see :order/customer-id}           ; optional
-                   :only-when {:orders/edit [:= :order/status "open"]}} ; optional
-           :job   {:table :jobs :id :job/id :in [:shop :job/shop-id]  ; its own scope column
-                   :parent [:order :job/order-id]}}                    ; the record it hangs under
- :links   [{:table :agreements :from [:partner :agreement/partner-id] :to [:shop :agreement/shop-id]
-            :when [:= :agreement/status "active"] :grants {:orders/see :agreements/see}}]
- :passes  [{:table :handoffs :record [:order :handoff/order-id]     ; a row that is a pass to one record
-            :from [:shop :handoff/from-shop-id] :to [:shop :handoff/to-shop-id]
-            :when [:= :handoff/status "open"] :grants {:orders/see :handoffs/work} :under #{:job}}]
- :open    {:anyone #{:catalogue/see} :signed-in #{}}                ; the open actions, one list
- :session-blocks {:impersonated #{:money/move}}}
+{:scopes  {:shop     {:actions {:orders/see  #{:read}               ; what each action does at the wall:
+                                :orders/edit #{:read :update}       ; :read :insert :update :delete
+                                :money/move  #{:read :insert}}
+                      :roles   {"Manager" #{:orders/see :orders/edit :groundwork/team}}
+                      :parent  nil
+                      :table   :shops :id :shop/id}                 ; the app's own table, for a scope's state
+           :partner  {:actions {:agreements/see #{:read}} :roles {} :parent nil}
+           :platform {:actions {:platform/support #{:read}} :roles {} :parent nil
+                      :single? true}}                               ; exactly one scope: the back office
+ :records {:order     {:table :orders :id :order/id
+                       :whose {:order/shop-id :shop :order/customer-id :person}}   ; whose row a column names
+           :job       {:table :jobs :id :job/id :whose {:job/shop-id :shop}
+                       :parent [:order :job/order-id]}             ; it hangs under an order
+           :agreement {:table :agreements :id :agreement/id
+                       :whose {:agreement/shop-id :shop :agreement/partner-id :partner}}}
+ :rules   [{:allow #{:orders/see :orders/edit} :on :order :to [:member :order/shop-id]}
+           {:allow :orders/see :on :order :to [:me :order/customer-id]}
+           {:allow :orders/see :on :order                           ; a partner, while their agreement is active
+            :via {:table :agreements :match {:order/shop-id :agreement/shop-id}
+                  :to [:member :agreement/partner-id :agreements/see] :when [:= :agreement/status "active"]}}
+           {:allow :orders/see :on :order :to [:member :platform :platform/support]}
+           {:deny :money/move :session :impersonated}
+           {:deny :writes :scope :shop :when [:= :shop/status "suspended"]}]}
 ```
 
 ```clojure
-(perm/allowed? perms {:person p :flags #{} :action :jobs/move :record [:job id]})
+(perm/allowed? perms {:person p :flags #{} :action :orders/edit :record [:order id]})
 (perm/check! perms {… :also {:machine [machine-id]}})   ; every id; else not-found
 (perm/list-filter perms {:person p :flags #{} :action :orders/see :kind :order})
-(perm/in-wall perms {:person p :scopes #{shop-id} :action :orders/see :kind :order} (fn [tx] …))
+(perm/in-wall perms {:person p :scopes #{shop-id}} (fn [tx] …))
 (perm/as-system perms (fn [tx] …))
 ```
 
-- Groundwork keeps scopes, roles, role actions, memberships, extra actions
-  and invitations in the `groundwork` schema. Changes count on the next
-  check; nothing is cached.
-- A record is checked through its own scope column, never a scope the
-  browser names. Another scope's record is not-found.
-- **Every scoped table names its scope,** however deep: a job keeps its
-  shop, not only its order. A record under another record names the parent,
-  and the database ties them with a matching link, so the two can't differ:
-  the child's (parent, scope) references the parent's (id, scope),
-  `ON UPDATE CASCADE`, and a parent moving to another scope takes its
-  children along. At start Groundwork installs a rule that fills the scope
-  from the parent when a row is inserted without one, and refuses to start
-  when a scope column is missing or may be empty, or a link is missing or
-  doesn't cascade; the error carries the SQL to add.
-- **A record of two scopes may have a parent and children.** What a record
-  carries from its parent is a map, its column → the parent's (left out
-  when both have one scope):
+**The words.** A sentence allows an action (or each of a set) on a kind of
+record, to whom, and when:
 
-  ```clojure
-  ;; both scopes from the parent: a price sheet under an agreement between a shop and a partner
-  :price-sheet {:table :price_sheets :id :price-sheet/id
-                :in [[:shop :price-sheet/shop-id] [:partner :price-sheet/partner-id]]
-                :parent [:agreement :price-sheet/agreement-id
-                         {:price-sheet/shop-id    :agreement/shop-id
-                          :price-sheet/partner-id :agreement/partner-id}]}
-  ;; one from the parent, one of its own: a service on an order names the partner who does it
-  :order-service {:table :order_services :id :order-service/id
-                  :in [[:shop :order-service/shop-id] [:partner :order-service/partner-id]]
-                  :parent [:order :order-service/order-id {:order-service/shop-id :order/shop-id}]}
+- `:to` `:anyone`, `:signed-in`; `[:member <column>]`, a member of the
+  scope the row's column names whose role holds the action;
+  `[:member <single-scope kind>]` or `[:member #uuid "…"]`, a member of one
+  fixed scope, which reaches every scope's rows; any `[:member …]` may name
+  the action the role must hold there as a third element; `[:me <column>]`,
+  the person, or the visitor, in that column.
+- `:when` a condition on the row's own columns (`[:= col v]` `[:not= col v]`
+  `[:in col [v …]]` `[:is-null col]` `[:not-null col]` `[:and …]` `[:or …]`),
+  and `[:none <scope column>]` for a universal row that belongs to nobody.
+- `:via` instead of `:to`: a related row exists for which its `:to` and
+  `:when` hold. In any direction: the row points to it (a payout written by
+  whoever may pay its order), it points to the row (a shop handed an order
+  sees it while the handoff is open), or both share a column (the
+  agreement above). The related table is a record kind; its rows are read
+  past the wall, through a function Groundwork installs, so the other
+  table's own wall never loops back. A row a via gives needs no scope of
+  its own verified for the request: its related row does (a payout in the
+  payee's shop, written in a request about the order's shop), unless the
+  related row is the person's own (a customer's order, whose items she
+  reads wherever she asks from). Both sides of what it matches, and the
+  related row's who column, need an index (a partial one counts when it
+  leaves out only rows with those columns empty), or the start refuses
+  with the SQL to add.
+- `:deny` an action, a set, or `:writes` (every action that writes), by a
+  session flag or by a scope's state, a condition on the app's own table
+  of that kind. A deny comes before every yes, and nothing else says no. A
+  scope a deny holds in stays verified for reads and is left out of the
+  transaction's writes, so the wall refuses its writes too.
+
+**An open write is narrowed.** A sentence may give `:anyone` or
+`:signed-in` an action that writes (anyone sends a shop an inquiry, anyone
+signed in replies under an open ticket), but only with a `:when` on the row
+or a `:via`: `{:allow :inquiries/send :on :inquiry :to :anyone :when [:=
+:inquiry/status "new"]}`. Writing isn't reading: the sender sees the row
+only if a sentence whose action reads gives it to them. An action a `:via`
+opens (its related row's `:to` is `:anyone` or `:signed-in`) is open for
+endpoints too: what the wall allows, an endpoint can ask. Such a request
+may carry the related row's id (`[:ticket/id {:groundwork/record :ticket}
+:uuid]`); one the via doesn't take (a closed ticket) answers not-found.
+
+Groundwork reads every sentence at start and refuses an unknown word,
+kind, action, table or column, an action nobody in that scope can hold,
+and an open write that nothing narrows.
+
+**What comes from the sentences:**
+
+- **The wall:** every record kind's table gets forced row-level security,
+  a policy per command. A row shows when a sentence whose action reads
+  holds for it, in a scope verified for the transaction: through exactly
+  the column a `[:member <column>]` names, any of its scope columns for an
+  open word (a person's own row needs none, a universal row has none, a
+  via's row its related row's); it is inserted, updated or
+  deleted the same way with the sentences whose action does that. The
+  wall knows commands, not actions: two update actions on one table are
+  one update rule, and only the endpoint's check tells them apart. A
+  changed row is held to its sentence but its `:when` (closing an open
+  order works). The system bypass, and a job's scopes, last one
+  transaction. A superuser or a role with BYPASSRLS refuses the start.
+- **Checks:** an endpoint's record is checked through its own columns,
+  never a scope the browser names; another scope's record is not-found;
+  every id in a request too. A scope endpoint is verified where a member
+  holds the action, where a related row names the scope, or for a word open
+  to the caller. A list reads the scopes the sentences give.
+- **Narrowing a list by an action:** the wall shows every row the person
+  may read. For "only the orders I may edit", Groundwork makes a function
+  per action and record kind, which a query file calls:
+
+  ```sql
+  SELECT order__id, order__note FROM orders
+  WHERE order__id IN (SELECT * FROM groundwork."may orders/edit on order"())
   ```
 
-  Every carried column is filled from the parent at insert, tied to it by
-  a matching link and follows it; a carried scope column is NOT NULL on
-  both sides. A scope column that is the record's own may wait empty.
-  Either side sees the row and is rung for it, and nobody else; seeing it
-  gives nothing else (the partner who sees a service on an order doesn't
-  see the order). A foreign key holding several carried columns counts
-  while none of them can be empty.
-- **A record between fixed sides carries them.** A record shared by a
-  small, fixed set of sides that all read and write it (a conversation
-  between a customer, a shop, a partner and the platform's staff) has a
-  scope column per scope side and a person column for the person; a side
-  that is "the platform's staff" is the platform's own scope. It is an
-  ordinary record of several scopes. **A person column is carried down
-  like a scope column:** the records under it name the person in what they
-  carry (`{:message/customer-id :conversation/customer-id}`), and it is
-  filled, tied and follows the same way. A person column may be empty (the
-  row is then nobody's through it), in a foreign key of its own two
-  columns; a person named on the parent later reaches the rows already
-  under it.
-- A membership in a parent scope counts in its children; an owner holds
-  everything; a link gives access while its condition holds; a person on
-  the record, a condition on its own columns and session flags are part of
-  the rule.
-- Each rule is one SQL condition: it checks one record and filters a list.
-- The description is checked at start, against the database too.
-- **The wall:** every record table gets forced row-level security at start.
-  A transaction sees only its verified scopes and the person's own records,
-  or everything as the system. Both last one transaction and can't nest.
-  The app must connect as a role that doesn't pass by row-level security:
-  a superuser or a role with BYPASSRLS (a hosted database often makes its
-  owner one) refuses the start, because no policy would apply to it.
-- **The wall knows the action.** An endpoint's transaction carries its
-  action and the kind of record it's about, so a list's SQL needs no
-  permission `WHERE`: that kind's rows show only as the action's rule allows
-  (a link and its condition, an only-when, a person column), and every
-  other kind only where the person is a member. What a link gives is the
-  linked action on the endpoint's own kind, nothing else of that scope; a
-  customer asking for their order sees no other. A write leaves only-when
-  out for the rows it changes: its own record was checked before it ran.
-  Links are read through functions Groundwork installs at start, so the
-  database's rules never loop through the tables behind them.
-- **An action can be open:** to anyone, or to anyone signed in. It needs
-  no membership and only reads. The description's `:open` is the one list of
-  them, and a record kind lists the open actions that reach it:
+  It answers the ids of the rows the action's sentences give the person,
+  `:when` included, but what a session flag or a scope's state denies. It
+  runs behind the wall, so it never answers a row the transaction can't
+  read. Made afresh at every start. `list-filter` gives the same sentences
+  as one `WHERE` with bound params, for code that writes SQL itself.
+- **The bells** reach who may see a row: its scopes and people, the
+  scopes where someone could be named by a related row, and everyone
+  reading a table when a universal row changes. A row that changes who sees
+  it rings the old viewers and the new.
+- **"Can I?"** (`:groundwork/grants`): every action the sentences give the
+  person, and in which scopes; no scope for every scope.
+- **The leak test** (it checks the wall and every narrowing function
+  against the sentences) and the REPL's `why`, below.
 
-  ```clojure
-  :open    {:anyone #{:catalogue/see} :signed-in #{}}
-  :records {:package {:table :packages :id :package/id :in [:shop :package/shop-id]
-                      :open      #{:catalogue/see}
-                      :only-when {:catalogue/see [:= :package/published true]}}}
-  ```
+**Records.** `:whose` says whose row each column names: a scope kind,
+`:person`, or `:visitor`. **Every scoped table names its scope,** however
+deep: a job keeps its shop, not only its order. A record under another
+names the parent, and the database ties them with a matching link: the
+child's (parent, scope) references the parent's (id, scope), `ON UPDATE
+CASCADE`. At start Groundwork installs a rule that fills what a row
+carries from its parent when it's inserted without it, and refuses to
+start when a scope column is missing or may be empty, or a link is missing
+or doesn't cascade; the error carries the SQL. What a record carries is a
+map when either side has more than one scope, or a person:
+`:parent [:agreement :price-sheet/agreement-id {:price-sheet/shop-id :agreement/shop-id
+:price-sheet/partner-id :agreement/partner-id}]`; a person column carried
+down follows the parent's person. A scope column a record doesn't carry
+may wait empty: the row is nobody's yet, seen by its people and the system.
 
-  An endpoint declares it like any action, about a `:scope` or a `:record`
-  (`{:action :catalogue/see :scope [:shop :shop/id]}`), and must be a
-  `:read`; open to anyone, it is asked signed out too. The scope it names is
-  verified for that one request, and the wall shows the caller only the
-  kinds that list the action, as their `:only-when` allows: the shop's
-  published packages, none of its orders. A member of the shop still sees
-  the other kinds as a member, and a person their own records. No role holds
-  an open action and it can't be granted; a write, a `:list` of every
-  scope's, a link or an id field of a kind it doesn't reach refuses the
-  start. A watch on such a read holds the scope, so a visitor on one shop's
-  page hears that shop's bell, for the tables the action reaches, and no
-  other shop's.
-- **Shared rows have an owner.** A row every scope reads (the platform's
-  own categories next to each shop's) belongs to a real scope, the one
-  whose people keep it, never to no scope: an empty scope column means
-  "nobody's yet" everywhere. Its people edit it as members, through the
-  wall; everyone else reads it through an open action in that scope. An
-  endpoint names "the scope in the request, and always also this fixed
-  one", and one read returns both:
+**Money and personal data live in their own tables:** the wall works on
+whole rows, so a column some of a row's readers mustn't see moves to a
+table under it, with its own sentences.
 
-  ```clojure
-  :permission {:action :catalogue/see :scope [:shop :shop/id] :and-scope [:shop platform-id]}
-  ```
+**A record can belong to a visitor,** someone not signed in (a cart, a
+design): a `:visitor` column holds the id of their visitor session, which
+is Groundwork's own. `[:me <visitor column>]` gives them the row, and its
+endpoints may be asked signed out. A write that keeps something for a
+visitor says `:keeps-for-visitor true`: asked without a session, the
+visitor gets one first. **At sign-in Groundwork moves the visitor's rows to
+the person** (the kind's one person column); once the visitor's session
+ends, its rows are the system's only.
 
-  Both scopes must verify for the action (for an open action both do; for
-  one people hold, the person must hold it in both), or the ask is not
-  found. The watch holds both.
-- **A row can be a pass to one record.** A link gives an action in the
-  whole linked scope; a pass gives a reading action on the one record its
-  row names, while its condition holds:
-
-  ```clojure
-  :passes [{:table  :handoffs                      ; the row is the pass; nothing else is stored
-            :record [:order :handoff/order-id]     ; the one record it gives
-            :from   [:shop :handoff/from-shop-id]  ; the giving scope: the record's own
-            :to     [:shop :handoff/to-shop-id]    ; the receiving scope, or :to-person <column>
-            :when   [:= :handoff/status "open"]
-            :grants {:orders/see :handoffs/work}   ; given on the record → needed in :to
-            :under  #{:job}}]                      ; kinds right under the record that come with it
-  ```
-
-  The receiving scope's own roles decide who uses it (the needed action);
-  for `:to-person`, `:grants` is a set of actions. The holder's other
-  requests for the giving scope's records answer not-found, and when the
-  condition stops holding, or the row is gone, so is the access. **A pass
-  only reads:** a write that declares the given action gets nothing from
-  it. **A scope can't write itself a pass:** the pass's table is a record
-  kind of its own, in the giving and the receiving scope; a foreign key
-  ties its (record, giver) to the record's own (id, scope), checked at
-  start; and a guard Groundwork installs lets only the giving scope's
-  people (or the system) insert a pass, point one at another record, giver
-  or receiver, or make its condition hold again. A transaction about the
-  record also sees the `:under` kinds' rows the pass gives. Bells: a change
-  to the record rings its own scope and whoever holds a pass on it, and a
-  pass made or ended rings the reads of the records it gives. Index the
-  pass table's receiver column: passes are found by it.
-- **A record can belong to a visitor,** someone not signed in: a design,
-  an upload, a cart made before the login. A record kind names a visitor
-  column beside, or instead of, its person column:
-
-  ```clojure
-  :design {:table :designs :id :design/id :in [:shop :design/shop-id]
-           :people   {:designs/mine :design/customer-id}
-           :visitors {:designs/mine :design/visitor-id}}
-  ```
-
-  The column holds the id of the visitor's session, which is Groundwork's
-  own: the app doesn't make one and the browser never sends it. An endpoint
-  gets it as `(:visitor ctx)` (nil for someone signed in, or with no
-  session), and an action a kind gives a visitor may be asked signed out.
-  The wall shows the row to that visitor, to read and to change, and to
-  nobody else. A write that keeps something for a visitor says
-  `:keeps-for-visitor true`: asked without a session, the visitor gets one
-  first, and its cookie goes out with the answer. **At sign-in Groundwork
-  moves the visitor's rows to the person** (`sessions/sign-in`): in every
-  table with a visitor column the person is set and the visitor emptied, no
-  hook to write; a kind with no person column keeps its rows. When the
-  visitor's session has ended, its rows are nobody's: only the system sees
-  them, and the app's cleanup may remove them. A visitor's own line hears of
-  their rows.
-- **Team:** `create-scope!`, `invite!`, `accept-invitation!`,
-  `change-role!`, `create-role!`, `set-role-actions!`, `remove-member!`,
-  `grant-extra!`, `revoke-extra!`. Managing needs `:groundwork/team`, and
-  only actions the manager holds can be given; only an owner makes owners;
-  a scope always keeps one.
+**Team:** Groundwork keeps scopes, roles, role actions, memberships, extra
+actions and invitations in the `groundwork` schema; changes count on the
+next check, nothing is cached. `create-scope!` (a `:single?` kind refuses a
+second), `invite!`, `accept-invitation!`, `change-role!`, `create-role!`,
+`set-role-actions!`, `remove-member!`, `grant-extra!`, `revoke-extra!`.
+Managing needs `:groundwork/team`, only actions the manager holds can be
+given, only an owner makes owners, and a scope always keeps one.
 
 ---
 
@@ -875,7 +831,12 @@ Everything the browser, or a tool, can ask. The app lists them by area:
   doesn't start either.
 - `:permission`: `:public`, `:signed-in`, or an action on one record
   (`:record`), on a scope (`:scope`, with every scope below it) or on every
-  record of a kind the person may (`:list`).
+  record of a kind the person may (`:list`). A write declares an action
+  that writes. An action a sentence gives `:anyone` may be asked signed
+  out; one it gives a visitor, by a visitor.
+- The handler's ctx has `:scopes`, the verified scopes, and
+  `:every-scope?` for a request a fixed scope's member makes about every
+  scope (a back office's list).
 - Every input field holding ids says which kind of record they are
   (`{:groundwork/record :machine}`) or that they aren't one
   (`{:groundwork/record false}`); each id must belong to the verified
@@ -888,8 +849,8 @@ Everything the browser, or a tool, can ask. The app lists them by area:
   `:error` (a plain message and the request id; details to `:on-error`).
 - `(endpoints/call part ask)` runs one; `(endpoints/call-with-token part token
   ask)` for a tool, through `:bearer`.
-- `:groundwork/grants` is built in: every action the person holds, and
-  where, for the browser's "can I?".
+- `:groundwork/grants` is built in: every action the sentences give the
+  person, and where (no scope: every scope), for the browser's "can I?".
 
 ### The team endpoints
 
@@ -1223,23 +1184,31 @@ Then the store, under the screens:
 
 - Every endpoint with an action permission is called with params generated
   from its input shape and every id set to the foreign one of its kind; it
-  must answer not-found. It catches a permission description that grants
-  too much, like a link whose condition forgot the status.
+  must answer not-found. It catches a sentence that gives too much, like a
+  via whose condition forgot the status. It proves the wall matches the
+  sentences, not that the sentences are right: a sentence that is too open
+  passes.
 - A list that carries no ids is called as it is; its answer must hold none
   of the foreign ids, anywhere in it.
-- **Open actions** are called as a stranger (nobody, or a person who
-  belongs nowhere): they may answer, and what they answer must hold none of
-  the `:sealed` ids you give (`:sealed #{an-unpublished-package an-order}`):
-  the ids no stranger may see. The wall itself is asked too, for every open
-  action and every kind of record, what a stranger behind it sees of each
-  foreign scope (`leaks/open-wall`): only the rows the action's rule allows,
-  and nothing of any other kind.
-- **Passes:** run it once more as the holder of a pass on one record, with
-  the giving scope's other records as the foreign ids: a pass on one must
-  answer not-found for another.
-- **A visitor's records:** an endpoint whose action a kind gives a visitor
-  is asked twice more with the foreign ids, as another visitor and as a
-  signed-in stranger; both must answer not-found.
+- **Open words:** an action a sentence gives `:anyone` or `:signed-in` is
+  called as a stranger (nobody, or a person who belongs nowhere): it may
+  answer, and what it answers must hold none of the `:sealed` ids you give
+  (`:sealed #{an-unpublished-package an-order}`): the ids no stranger may
+  see. An open write that answers refused or an error changed nothing and
+  showed nothing: checked, not leaked.
+- **The wall itself** (`leaks/wall-check`): for every kind of record and
+  every foreign scope, what nobody, a signed-in stranger and the person see
+  behind it must be exactly the rows the sentences give them there. A row
+  shown that no sentence gives is in `:leaked`; one a sentence gives that
+  the wall hides, in `:hidden`. Every function that narrows a list by an
+  action (`leaks/may-check`) must answer exactly the rows the wall shows
+  that the action's sentences give.
+- **A related row:** run it once more as someone a via gives one record
+  (the receiver of a handoff), with the giving scope's other records as the
+  foreign ids: one must answer not-found for another.
+- **A visitor's records:** an endpoint whose action a sentence gives a
+  visitor is asked twice more with the foreign ids, as another visitor and
+  as a signed-in stranger; both must answer not-found.
 - Public and signed-in endpoints are skipped, and so is one that needs a
   foreign id nobody gave; the report says which and why.
 - Generating needs `org.clojure/test.check` on the test classpath.
@@ -1332,7 +1301,8 @@ and not saved to a file is gone on the next start.
 (repl/ask (:app dev) :jobs/list {:shop/id acme} :as peter)
 (repl/why (:app dev) peter :orders/edit [:order order-id])
 ;=> {:allowed? false
-;    :because ["The order … is in shop …."
+;    :because ["Rule 0 {:allow #{:orders/see :orders/edit} …}: it doesn't hold."
+;              "The order … is in shop …."
 ;              "… is Production in shop …, but Production doesn't hold :orders/edit."]}
 (repl/why (:app dev) pia :orders/see acme)              ; in a scope
 (repl/lines (:app dev))          ; open websocket lines: who, session, what they watch
@@ -1368,9 +1338,10 @@ and not saved to a file is gone on the next start.
   machine as the Clojure tool `mcp`.
 - **ask** goes through every check a browser's ask does; a write runs too,
   with a fresh one-time key.
-- **why** says it in plain words: the record's scope, the person's
-  memberships, roles and extra actions there and above, the links followed,
-  a person column, an only-when, a session's flags.
+- **why** says it in plain words, sentence by sentence: whether each that
+  gives the action holds, and why (the record's scope, the person's
+  memberships, roles and extra actions there and above, a person column, a
+  related row, a condition), and the deny that said no.
 - **Previews: the eval bridge.** With `:web :eval-bridge {:secret …
   :timeout-ms 30000 :max-chars 20000}` (nil turns it off; production refuses
   to start with it), `POST /groundwork/eval` with `X-Eval-Secret` and Clojure

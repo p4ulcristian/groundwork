@@ -20,12 +20,9 @@
 (def stranger (UUID/randomUUID))
 
 (def description
-  {:scopes         {:shop {:actions #{:notes/see :notes/add} :roles {} :parent nil}}
-   :records        {:note {:table :notes :id :note/id :in [:shop :note/shop-id]}}
-   :links          []
-   :passes []
-   :open {:anyone #{} :signed-in #{}}
-   :session-blocks {}})
+  {:scopes  {:shop {:actions {:notes/see #{:read} :notes/add #{:read :insert}} :roles {} :parent nil}}
+   :records {:note {:table :notes :id :note/id :whose {:note/shop-id :shop}}}
+   :rules   [{:allow #{:notes/see :notes/add} :on :note :to [:member :note/shop-id]}]})
 
 (pg/defsql pq-notes-of-shop)
 (pg/defsql pq-add-note)

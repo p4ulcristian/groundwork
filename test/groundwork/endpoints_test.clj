@@ -21,17 +21,17 @@
 (def acme-machine (id)) (def zinc-machine (id))
 
 (def description
-  {:scopes  {:shop {:actions #{:orders/see :jobs/move}
+  {:scopes  {:shop {:actions {:orders/see #{:read} :jobs/move #{:read :update}}
                     :roles   {"Production" #{:orders/see :jobs/move}}
                     :parent  nil}}
-   :records {:order   {:table :orders :id :order/id :in [:shop :order/shop-id]
-                       :people {:orders/see :order/customer-id}}
-             :job     {:table :jobs :id :job/id :in [:shop :job/shop-id] :parent [:order :job/order-id]}
-             :machine {:table :machines :id :machine/id :in [:shop :machine/shop-id]}}
-   :links   []
-   :passes []
-   :open {:anyone #{} :signed-in #{}}
-   :session-blocks {:impersonated #{:jobs/move}}})
+   :records {:order   {:table :orders :id :order/id :whose {:order/shop-id :shop :order/customer-id :person}}
+             :job     {:table :jobs :id :job/id :whose {:job/shop-id :shop} :parent [:order :job/order-id]}
+             :machine {:table :machines :id :machine/id :whose {:machine/shop-id :shop}}}
+   :rules   [{:allow :orders/see :on :order :to [:member :order/shop-id]}
+             {:allow :orders/see :on :order :to [:me :order/customer-id]}
+             {:allow #{:orders/see :jobs/move} :on :job :to [:member :job/shop-id]}
+             {:allow #{:orders/see :jobs/move} :on :machine :to [:member :machine/shop-id]}
+             {:deny :jobs/move :session :impersonated}]})
 
 (def tables
   "DROP TABLE IF EXISTS jobs, orders, machines;

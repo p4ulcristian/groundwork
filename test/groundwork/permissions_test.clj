@@ -1,7 +1,7 @@
 (ns groundwork.permissions-test
-  "Shops under a company, a partner linked to shops by agreements, records
-   under other records that keep their shop themselves, customers on their
-   orders."
+  "Shops under a company, a partner that sees a shop's orders while their
+   agreement is active, records under other records that keep their shop
+   themselves, customers on their orders."
   (:require
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
@@ -28,39 +28,46 @@
 (def acme-agreement (id)) (def zinc-agreement (id))
 
 (def description
-  {:scopes  {:company {:actions #{:company/report}
+  {:scopes  {:company {:actions {:company/report #{:read}}
                        :roles   {"Director" #{:company/report :orders/see}}
                        :parent  nil}
-             :shop    {:actions #{:orders/see :orders/edit :jobs/move :invoices/edit :money/move :machines/use}
+             :shop    {:actions {:orders/see    #{:read}
+                                 :orders/edit   #{:read :update}
+                                 :jobs/move     #{:read :insert :update}
+                                 :invoices/edit #{:read :update}
+                                 :money/move    #{:read :update}
+                                 :machines/use  #{:read :insert :update}}
                        :roles   {"Manager"    #{:orders/see :orders/edit :jobs/move :invoices/edit
                                                 :machines/use :groundwork/team}
                                  "Production" #{:orders/see :jobs/move :machines/use}}
                        :parent  :company}
-             :partner {:actions #{:agreements/see}
+             :partner {:actions {:agreements/see #{:read}}
                        :roles   {"Member" #{:agreements/see}}
                        :parent  nil}}
-   :records {:order     {:table :orders :id :order/id :in [:shop :order/shop-id]
-                         :people {:orders/see :order/customer-id}}
-             :job       {:table :jobs :id :job/id :in [:shop :job/shop-id] :parent [:order :job/order-id]}
-             :invoice   {:table :invoices :id :invoice/id :in [:shop :invoice/shop-id]
-                         :only-when {:invoices/edit [:= :invoice/status "draft"]}}
-             :machine   {:table :machines :id :machine/id :in [:shop :machine/shop-id]}
+   :records {:order     {:table :orders :id :order/id :whose {:order/shop-id :shop :order/customer-id :person}}
+             :job       {:table :jobs :id :job/id :whose {:job/shop-id :shop} :parent [:order :job/order-id]}
+             :invoice   {:table :invoices :id :invoice/id :whose {:invoice/shop-id :shop}}
+             :machine   {:table :machines :id :machine/id :whose {:machine/shop-id :shop}}
              :agreement {:table :agreements :id :agreement/id
-                         :in [[:shop :agreement/shop-id] [:partner :agreement/partner-id]]}}
-   :links   [{:table  :agreements
-              :from   [:partner :agreement/partner-id]
-              :to     [:shop :agreement/shop-id]
-              :when   [:= :agreement/status "active"]
-              :grants {:orders/see :agreements/see}}]
-   :passes []
-   :open {:anyone #{} :signed-in #{}}
-   :session-blocks {:impersonated #{:money/move}}})
+                         :whose {:agreement/shop-id :shop :agreement/partner-id :partner}}}
+   :rules   [{:allow #{:orders/see :orders/edit} :on :order :to [:member :order/shop-id]}
+             {:allow :orders/see :on :order :to [:me :order/customer-id]}
+             {:allow :orders/see :on :order
+              :via   {:table :agreements :match {:order/shop-id :agreement/shop-id}
+                      :to [:member :agreement/partner-id :agreements/see] :when [:= :agreement/status "active"]}}
+             {:allow #{:orders/see :jobs/move} :on :job :to [:member :job/shop-id]}
+             {:allow :invoices/edit :on :invoice :to [:member :invoice/shop-id] :when [:= :invoice/status "draft"]}
+             {:allow :money/move :on :invoice :to [:member :invoice/shop-id]}
+             {:allow #{:machines/use :jobs/move} :on :machine :to [:member :machine/shop-id]}
+             {:allow :agreements/see :on :agreement :to [:member :agreement/partner-id]}
+             {:deny :money/move :session :impersonated}]})
 
 (def tables
   "DROP TABLE IF EXISTS parts, jobs, orders, invoices, machines, agreements;
    CREATE TABLE orders (order__id uuid PRIMARY KEY, order__shop_id uuid NOT NULL,
                         order__customer_id uuid, order__status text NOT NULL,
                         UNIQUE (order__id, order__shop_id));
+   CREATE INDEX ON orders (order__shop_id);
    CREATE TABLE jobs (job__id uuid PRIMARY KEY, job__order_id uuid NOT NULL, job__shop_id uuid NOT NULL,
                       UNIQUE (job__id, job__shop_id),
                       FOREIGN KEY (job__order_id, job__shop_id)
@@ -69,7 +76,9 @@
                           invoice__status text NOT NULL);
    CREATE TABLE machines (machine__id uuid PRIMARY KEY, machine__shop_id uuid NOT NULL);
    CREATE TABLE agreements (agreement__id uuid PRIMARY KEY, agreement__shop_id uuid NOT NULL,
-                            agreement__partner_id uuid NOT NULL, agreement__status text NOT NULL);")
+                            agreement__partner_id uuid NOT NULL, agreement__status text NOT NULL);
+   CREATE INDEX ON agreements (agreement__shop_id);
+   CREATE INDEX ON agreements (agreement__partner_id);")
 
 (def ^:dynamic *perms* nil)
 
@@ -136,7 +145,7 @@
   (is (not (may? dora :orders/see [:order zinc-order])) "Zinc isn't the company's")
   (is (may? carl :money/move [:invoice draft-invoice]) "the company's owner owns its shops too"))
 
-(deftest a-link-gives-access-while-its-condition-holds
+(deftest a-via-gives-access-while-its-condition-holds
   (is (may? pia :orders/see [:order acme-order]) "Acme's agreement with the partner is active")
   (is (not (may? pia :orders/see [:order zinc-order])) "Zinc's agreement ended")
   (testing "the agreement ending ends the access, on the next check"
@@ -260,11 +269,13 @@
                                (fn [tx] (jdbc/execute! (::pg/conn tx) ["INSERT INTO jobs (job__id, job__order_id) VALUES (?, ?)"
                                                                        (id) zinc-order]))))))
   (testing "the wall compares the row's own column, no lookup"
-    (is (= "groundwork.wall_allows(\"jobs\".\"job__shop_id\")" (rules/wall-sql description :job)))))
+    (let [{:keys [select]} (rules/policies description :job)]
+      (is (str/includes? select "\"jobs\".\"job__shop_id\" IN (SELECT groundwork.wall_scope_set())"))
+      (is (not (str/includes? select "\"orders\"")) "nothing reaches for the order"))))
 
 (deftest start-refuses-a-deep-table-without-its-scope-or-link
   (let [d     (assoc-in description [:records :part]
-                        {:table :parts :id :part/id :in [:shop :part/shop-id] :parent [:job :part/job-id]})
+                        {:table :parts :id :part/id :whose {:part/shop-id :shop} :parent [:job :part/job-id]})
         start (fn [ddl]
                 (sql! (str "DROP TABLE IF EXISTS parts; " ddl))
                 (error #(perm/start {:settings d :db (:db *perms*)})))]
@@ -297,9 +308,12 @@
       (finally (sql! "DROP TABLE IF EXISTS parts")))))
 
 (deftest a-record-not-in-a-scope-yet
-  (let [d       (assoc-in description [:records :draft]
-                          {:table :drafts :id :draft/id :in [:shop :draft/shop-id]
-                           :people {:orders/see :draft/author-id}})
+  (let [d       (-> description
+                    (assoc-in [:records :draft] {:table :drafts :id :draft/id
+                                                 :whose {:draft/shop-id :shop :draft/author-id :person}})
+                    (update :rules conj
+                            {:allow :orders/see :on :draft :to [:member :draft/shop-id]}
+                            {:allow :orders/see :on :draft :to [:me :draft/author-id]}))
         loose   (UUID/randomUUID)
         placed  (UUID/randomUUID)]
     (sql! (str "DROP TABLE IF EXISTS drafts;"
@@ -384,18 +398,18 @@
            (problem (assoc-in description [:scopes :partner :roles "Member"] #{:money/move})))
         "a role holding another kind's action")
     (is (= ::rules/bad-description
-           (problem (assoc-in description [:scopes :partner :actions] #{:agreements/see :orders/see})))
+           (problem (assoc-in description [:scopes :partner :actions] {:agreements/see #{:read} :orders/see #{:read}})))
         "an action in two kinds")
     (is (= ::rules/bad-description
            (problem (assoc-in description [:scopes :shop :parent] :region)))
         "an unknown parent")
     (is (= ::rules/bad-description
-           (problem (assoc-in description [:records :job :in] [:batch :job/order-id])))
-        "an arrow to an unknown kind")
+           (problem (assoc-in description [:records :job :whose] {:job/shop-id :batch})))
+        "a column naming an unknown kind")
     (is (= ::rules/bad-description
-           (problem (assoc-in description [:records :job :in] [:order :job/order-id])))
-        "an arrow to another record: it keeps its own scope column and names the parent")
+           (problem (assoc-in description [:records :job :whose] {:job/order-id :order})))
+        "a column naming another record: it keeps its own scope column and names the parent")
     (is (= ::rules/bad-description
            (problem (assoc-in description [:records :job :parent] [:agreement :job/order-id])))
         "a parent that belongs to two scopes")
-    (is (= ::gs/invalid (problem (dissoc description :links))) "a missing key, by the settings schema")))
+    (is (= ::gs/invalid (problem (dissoc description :rules))) "a missing key, by the settings schema")))

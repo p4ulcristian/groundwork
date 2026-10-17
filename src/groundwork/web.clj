@@ -455,7 +455,7 @@
          (every? keyword? (:record access)))
     (let [{:keys [action] [kind _] :record} access]
       (when-not (permissions/declared? permissions action kind)
-        (throw (ex-info (str "Route " path ": no permission rule for " action " on " kind)
+        (throw (ex-info (str "Route " path ": no sentence gives " action " on " kind)
                         {:type ::bad-route :path path :access access})))
       access)
 

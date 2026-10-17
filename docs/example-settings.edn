@@ -185,29 +185,19 @@
  :permissions
  {;; The kinds of scope: where data belongs and people are members
   :scopes {:shop
-           {:actions #{:orders/see :orders/edit},
+           {:actions #:orders{:see #{:read}, :edit #{:read :update}},
             :roles {"Manager" #{:orders/see :orders/edit}},
             :parent nil}}
 
-  ;; The kinds of record, each in a scope
-  :records {:order {:table :orders, :id :order/id, :in [:shop :order/shop-id]}}
+  ;; The kinds of record, and whose row each column names
+  :records {:order
+            {:table :orders,
+             :id :order/id,
+             :whose #:order{:shop-id :shop, :customer-id :person}}}
 
-  ;; Scopes reaching other scopes through a linking record
-  :links []
-
-  ;; Rows that are a pass to one record: a reading action on the record a row names, for the receiving scope's people or one person, while a condition holds
-  :passes []
-
-  ;; The open actions, the one list of them: reading actions anyone, or anyone signed in, may do without a membership. No role holds one; each reaches only the record kinds that list it
-  :open
-  {;; Open to everyone, signed in or not
-   :anyone #{:catalogue/see}
-
-   ;; Open to everyone who is signed in
-   :signed-in #{:shops/name}}
-
-  ;; A session flag blocks actions: flag → actions
-  :session-blocks {:impersonated #{:money/move}}}
+  ;; Who may do what: one list of sentences, read at start (see groundwork.permissions.rules)
+  :rules [{:allow :orders/see, :on :order, :to [:member :order/shop-id]}
+          {:deny :money/move, :session :impersonated}]}
 
  ;; How often a caller may ask
  :limits

@@ -19,15 +19,12 @@
 (def paul (id)) (def peter (id)) (def ana (id)) (def mia (id))
 
 (def description
-  {:scopes  {:shop {:actions #{:orders/see :orders/edit :money/move}
+  {:scopes  {:shop {:actions {:orders/see #{:read} :orders/edit #{:read :update} :money/move #{:read :update}}
                     :roles   {"Manager"    #{:orders/see :orders/edit :groundwork/team}
                               "Production" #{:orders/see}}
                     :parent  nil}}
    :records {}
-   :links   []
-   :passes []
-   :open {:anyone #{} :signed-in #{}}
-   :session-blocks {}})
+   :rules   []})
 
 (def ^:dynamic *part* nil)
 
