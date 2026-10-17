@@ -118,10 +118,12 @@
   (build/compile! example styles)
   (testing "the development build's file, under its plain name"
     (is (.exists (io/file (:output-dir browser) "main.js"))))
-  (testing "a bundle for each module with stylesheets, as written, and the manifest"
+  (testing "a bundle for each module with stylesheets, readable, and the manifest"
     (is (= {:modules {:main "main.css" :reports "reports.css"}}
            (edn/read-string (slurp (io/file (:output-dir styles) "manifest.edn")))))
-    (is (str/includes? (slurp (io/file (:output-dir styles) "main.css")) "/* test/example/hello/views.css */\n.nav-bar")))
+    (is (str/includes? (slurp (io/file (:output-dir styles) "main.css")) "/* test/example/hello/views.css */\n.nav-bar"))
+    (is (str/includes? (slurp (io/file (:output-dir styles) "main.css")) "\n.nav-bar a {\n  text-decoration: none;\n}")
+        "built for the example's :targets, as a release is: nesting flattened"))
   (let [app (gw/start (-> app-settings
                           (assoc :browser example :styles styles)
                           (assoc-in [:page :stylesheets] ["/app.css"])
@@ -169,6 +171,7 @@
           (let [{:keys [status body cache]} (get-text app (str "/example-hello-css/" (get-in css [:modules :main])))]
             (is (= 200 status))
             (is (str/starts-with? body ".nav-bar{"))
+            (is (str/includes? body ".nav-bar a{text-decoration:none}") "nesting flattened for the example's :targets")
             (is (= "public, max-age=31536000, immutable" cache))))
         (finally (gw/stop app))))
     (testing "production doesn't start without the stylesheets' manifest"

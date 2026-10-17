@@ -18,7 +18,8 @@
   [folder]
   {:sources    ["test/example"]
    :output-dir (str "test/public/" folder)
-   :asset-path (str "/" folder)})
+   :asset-path (str "/" folder)
+   :targets    "safari >= 16.4, chrome >= 119"})
 
 (def dev
   (-> app-settings

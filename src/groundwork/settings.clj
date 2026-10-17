@@ -413,7 +413,11 @@
             ["src"] texts)
      (entry :output-dir "Where the bundles and their manifest go, a folder whose public/ is served" "resources/public/css" text)
      (entry :asset-path "Where the browser fetches them" "/css"
-            [:re {:error/message "must be a path like \"/css\"" :doc/type "path"} #"^/.*"])]]
+            [:re {:error/message "must be a path like \"/css\"" :doc/type "path"} #"^/.*"])
+     (entry :targets "The browsers the stylesheets are built for, a browserslist query: lightningcss flattens nesting and writes vendor prefixes for them, in development and release; every build stops on a query browserslist doesn't know or that names no browser"
+            "safari >= 16.4, chrome >= 119"
+            (pred "browserslist query" "must be a browserslist query, like \"safari >= 16.4, chrome >= 119\""
+                  #(and (string? %) (not (str/blank? %)))))]]
 
    :web
    [:map {:closed true}
