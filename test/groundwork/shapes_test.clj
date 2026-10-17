@@ -76,7 +76,7 @@
   (system! perms "INSERT INTO sh_orders VALUES (?, ?, ?, 'a'), (?, ?, NULL, 'z')"
            acme-order acme vic zinc-order zinc)
   (system! perms "INSERT INTO sh_orders VALUES (?, ?, NULL, 'b')" acme-order-2 acme)
-  (system! perms "INSERT INTO sh_jobs VALUES (?, ?, ?, 'blast'), (?, ?, ?, 'coat'), (?, ?, ?, 'zinc job')"
+  (system! perms "INSERT INTO sh_jobs VALUES (?, ?, ?, 'cut'), (?, ?, ?, 'paint'), (?, ?, ?, 'pack job')"
            acme-job acme-order acme acme-job-2 acme-order-2 acme zinc-job zinc-order zinc)
   ;; a handoff that is done: a pass that gives nothing any more
   (system! perms (str "INSERT INTO sh_handoffs (handoff__id, handoff__order_id, handoff__from_shop_id,"
@@ -89,7 +89,7 @@
   (system! perms "INSERT INTO sh_price_sheets (price_sheet__id, price_sheet__agreement_id, price_sheet__cents) VALUES (?, ?, 900)"
            zinc-price zinc-pine)
   (system! perms (str "INSERT INTO sh_order_services (order_service__id, order_service__order_id, order_service__name)"
-                      " VALUES (?, ?, 'Zinc blasting')")
+                      " VALUES (?, ?, 'Deep cleaning')")
            zinc-service zinc-order)
   (system! perms "INSERT INTO sh_conversations VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, NULL), (?, ?, ?, ?, NULL)"
            talk acme pine shapes/platform vic
@@ -338,7 +338,7 @@
   (testing "the order's shop sees both, the partner the one that names it, another shop neither"
     (is (= {:status :ok :data ["Blasting" "Masking"]} (call stella :services/mine {})))
     (is (= {:status :ok :data ["Blasting"]} (call piet :services/mine {})))
-    (is (= {:status :ok :data ["Zinc blasting"]} (call olga :services/mine {}))))
+    (is (= {:status :ok :data ["Deep cleaning"]} (call olga :services/mine {}))))
   (testing "seeing the service gives nothing else: the partner doesn't see the order"
     (is (= {:status :not-found} (call piet :orders/note {:order/id acme-order})))
     (is (= {:status :ok :data "a"} (call stella :orders/note {:order/id acme-order})))))
@@ -392,8 +392,8 @@
     (try
       (testing "the receiving shop's production sees that order, and its jobs"
         (is (= {:status :ok :data "a"} (call petra :orders/note {:order/id acme-order})))
-        (is (= {:status :ok :data ["blast"]} (call petra :jobs/of-order {:order/id acme-order})))
-        (is (= {:status :ok :data "blast"} (call petra :jobs/one {:job/id acme-job})))
+        (is (= {:status :ok :data ["cut"]} (call petra :jobs/of-order {:order/id acme-order})))
+        (is (= {:status :ok :data "cut"} (call petra :jobs/one {:job/id acme-job})))
         (is (= {:status :ok :data ["a"]} (call petra :orders/incoming {}))))
       (testing "a pass names one record: Acme's other order isn't there, with the right id"
         (is (= {:status :not-found} (call petra :orders/note {:order/id acme-order-2})))

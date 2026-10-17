@@ -1,20 +1,21 @@
 (ns example.hello.views
   "The example app's screens: small, with an id on everything a check
    clicks or reads."
+  {:css ["views.css"]}
   (:require
    [groundwork.browser :as gb]
    [re-frame.core :as rf]
    [shadow.lazy :as lazy]))
 
 (defn nav []
-  [:nav {:class :css.nav/bar}
+  [:nav.nav-bar
    [:a#nav-home {:href (gb/href :home)} "Home"] " "
    [:a#nav-orders {:href (gb/href :orders)} "Orders"] " "
    [:a#nav-form {:href (gb/href :form)} "Form"] " "
    [:a#nav-reports {:href (gb/href :reports)} "Reports"]])
 
 (defn home []
-  [:p#screen {:class :css.panel/frame} "Hello, " (or @(rf/subscribe [::gb/person]) "visitor") "."])
+  [:p#screen.panel "Hello, " (or @(rf/subscribe [::gb/person]) "visitor") "."])
 
 (defn orders []
   [:div#screen

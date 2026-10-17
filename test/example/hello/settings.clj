@@ -16,10 +16,7 @@
 (defn styles
   "The example's :styles, its bundles under test/public/<folder>."
   [folder]
-  {:dir        "test/example/styles"
-   :sources    ["test/example"]
-   :base       ["base/base.css"]
-   :vendor     []
+  {:sources    ["test/example"]
    :output-dir (str "test/public/" folder)
    :asset-path (str "/" folder)})
 

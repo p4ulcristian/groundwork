@@ -21,7 +21,7 @@
    ["/customize" {:access :public :get web/page :embeddable true}]
    ["/partner-widget" {:access :public :get web/page :embeddable ["https://shop.example" "https://other.example"]}]
    ["/api/big" {:access :public :get (fn [_] {:status 200 :headers {"Content-Type" "application/json"}
-                                              :body (str "[" (apply str (interpose "," (repeat 600 "\"powder\""))) "]")})}]
+                                              :body (str "[" (apply str (interpose "," (repeat 600 "\"item\""))) "]")})}]
    ["/api/png" {:access :public :get (fn [_] {:status 200 :headers {"Content-Type" "image/png"}
                                               :body (apply str (repeat 3000 "x"))})}]
    ["/label-editor" {:access :public :get web/page :embeddable :same-origin}]
@@ -30,14 +30,14 @@
                                               :body   (pr-str [(sessions/person request)
                                                                (contains? request ::sessions/sessions)])})
                          :server-to-server true}]
-   ["/coaters/:slug" {:access :public :get  web/page
+   ["/shops/:slug" {:access :public :get  web/page
                       :page (fn [request]
                               (let [slug (get-in request [:path-params :slug])]
-                                {:title       (str "Coater " slug)
-                                 :description "Powder coating & more"
-                                 :canonical   (str "https://acme.example/coaters/" slug)
-                                 :alternates  [{:lang "de" :href (str "https://acme.example/de/coaters/" slug)}]
-                                 :stylesheets ["/coaters.css"]
+                                {:title       (str "Shop " slug)
+                                 :description "Orders & more"
+                                 :canonical   (str "https://acme.example/shops/" slug)
+                                 :alternates  [{:lang "de" :href (str "https://acme.example/de/shops/" slug)}]
+                                 :stylesheets ["/shops.css"]
                                  :scripts     ["/js/map.js"]
                                  :body        (str "<h1>" slug "</h1>")}))}]
    ["/about" {:access :public :get web/page :page {:title "About us"}}]
@@ -63,7 +63,7 @@
   (fn [t]
     (let [app (gw/start (-> app-settings
                             (assoc-in [:web :routes] routes)
-                            (assoc-in [:page :title] "Acme <Coating> & Co")))]
+                            (assoc-in [:page :title] "Acme <Orders> & Co")))]
       (try (binding [*app* app] (t))
            (finally (gw/stop app))))))
 
@@ -211,16 +211,16 @@
       (is (= "no-store" (headers "cache-control")))))
   (testing "the title is escaped"
     (is (str/includes? (:body (request "/" {:headers html}))
-                       "<title>Acme &lt;Coating&gt; &amp; Co</title>"))))
+                       "<title>Acme &lt;Orders&gt; &amp; Co</title>"))))
 
 (deftest a-route-gives-its-own-page
-  (let [body (:body (request "/coaters/zinc" {:headers html}))]
-    (is (str/includes? body "<title>Coater zinc</title>"))
-    (is (str/includes? body "<meta name=\"description\" content=\"Powder coating &amp; more\">"))
-    (is (str/includes? body "<link rel=\"canonical\" href=\"https://acme.example/coaters/zinc\">"))
-    (is (str/includes? body "<link rel=\"alternate\" hreflang=\"de\" href=\"https://acme.example/de/coaters/zinc\">"))
+  (let [body (:body (request "/shops/zinc" {:headers html}))]
+    (is (str/includes? body "<title>Shop zinc</title>"))
+    (is (str/includes? body "<meta name=\"description\" content=\"Orders &amp; more\">"))
+    (is (str/includes? body "<link rel=\"canonical\" href=\"https://acme.example/shops/zinc\">"))
+    (is (str/includes? body "<link rel=\"alternate\" hreflang=\"de\" href=\"https://acme.example/de/shops/zinc\">"))
     (is (str/includes? body "<link rel=\"stylesheet\" href=\"/app.css\">") "the app's stylesheets stay")
-    (is (str/includes? body "<link rel=\"stylesheet\" href=\"/coaters.css\">"))
+    (is (str/includes? body "<link rel=\"stylesheet\" href=\"/shops.css\">"))
     (is (re-find #"<script nonce=\"[^\"]+\" src=\"/js/main.js\" defer></script>" body))
     (is (re-find #"<script nonce=\"[^\"]+\" src=\"/js/map.js\" defer></script>" body))
     (is (str/includes? body "<div id=\"app\"><h1>zinc</h1></div>")))
@@ -247,7 +247,7 @@
                                 (catch Exception e e))))))))
 
 (deftest a-strict-content-security-policy
-  (let [{:keys [body headers]} (request "/coaters/zinc" {:headers html})
+  (let [{:keys [body headers]} (request "/shops/zinc" {:headers html})
         policy                 (headers "content-security-policy")
         nonce                  (second (re-find #"'nonce-([^']+)'" policy))]
     (testing "scripts and styles only from the app or with this request's nonce"
@@ -260,7 +260,7 @@
     (testing "the shell's scripts carry the nonce"
       (is (str/includes? body (str "<script nonce=\"" nonce "\" src=\"/js/main.js\""))))
     (testing "a new nonce every request"
-      (is (not= policy ((:headers (request "/coaters/zinc" {:headers html})) "content-security-policy"))))))
+      (is (not= policy ((:headers (request "/shops/zinc" {:headers html})) "content-security-policy"))))))
 
 (deftest unsafe-inline-styles-get-no-nonce
   (testing "an app that allows inline styles keeps them working: a nonce would make browsers ignore 'unsafe-inline'"

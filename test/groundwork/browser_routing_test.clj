@@ -3,8 +3,9 @@
    served, and driven in headless Chrome over its debugging protocol. What
    the node tests can't see is checked here: the browser's own history,
    links, titles, and unsaved changes holding Back; and the styles: the
-   bundles a page loads, a screen loaded on demand bringing its own, and in
-   development a saved stylesheet showing in the open page.
+   bundles a page loads, a screen loaded on demand bringing its own before
+   its code runs, and in development a saved stylesheet showing in the open
+   page.
 
    Needs Chrome: GROUNDWORK_CHROME names it, else the usual places are tried.
    Without one the test says so and passes."
@@ -17,7 +18,6 @@
    [groundwork.build :as build]
    [groundwork.core :as gw]
    [groundwork.repl :as repl]
-   [groundwork.styles :as styles]
    [groundwork.test-support :refer [app-settings]]
    [groundwork.web :as web]
    [jsonista.core :as json])
@@ -70,23 +70,28 @@
              (deliver address url))))))
     {:process process :address (deref address 20000 nil)}))
 
-(defn- connect [address]
-  (let [pending  (atom {})
-        buffer   (StringBuilder.)
-        listener (reify WebSocket$Listener
-                   (onText [_ ws data last?]
-                     (.append buffer data)
-                     (when last?
-                       (let [message (json/read-value (str buffer) json/keyword-keys-object-mapper)]
-                         (.setLength buffer 0)
-                         (when-let [answer (get @pending (:id message))]
-                           (deliver answer message))))
-                     (.request ws 1)
-                     nil))]
-    {:ws      (.get (.buildAsync (.newWebSocketBuilder (HttpClient/newHttpClient)) (URI. address) listener)
-                    10 TimeUnit/SECONDS)
-     :pending pending
-     :next-id (atom 0)}))
+(defn- connect
+  "A line to Chrome. Its answers go to the call waiting for them, its
+   events to (on-event message)."
+  ([address] (connect address (fn [_])))
+  ([address on-event]
+   (let [pending  (atom {})
+         buffer   (StringBuilder.)
+         listener (reify WebSocket$Listener
+                    (onText [_ ws data last?]
+                      (.append buffer data)
+                      (when last?
+                        (let [message (json/read-value (str buffer) json/keyword-keys-object-mapper)]
+                          (.setLength buffer 0)
+                          (if-let [answer (get @pending (:id message))]
+                            (deliver answer message)
+                            (when (:method message) (on-event message)))))
+                      (.request ws 1)
+                      nil))]
+     {:ws      (.get (.buildAsync (.newWebSocketBuilder (HttpClient/newHttpClient)) (URI. address) listener)
+                     10 TimeUnit/SECONDS)
+      :pending pending
+      :next-id (atom 0)})))
 
 (defn- send!
   ([chrome method params] (send! chrome method params nil))
@@ -105,13 +110,34 @@
        (:result message)))))
 
 (defn- open-page
-  "A new tab at a URL: a function that evaluates JavaScript in it."
+  "A new tab at a URL: a function that evaluates JavaScript in it, its
+   session in its metadata."
   [chrome url]
   (let [target  (:targetId (send! chrome "Target.createTarget" {:url url}))
         session (:sessionId (send! chrome "Target.attachToTarget" {:targetId target :flatten true}))]
-    (fn [expression]
-      (get-in (send! chrome "Runtime.evaluate" {:expression expression :returnByValue true :awaitPromise true} session)
-              [:result :value]))))
+    (with-meta
+      (fn [expression]
+        (get-in (send! chrome "Runtime.evaluate" {:expression expression :returnByValue true :awaitPromise true} session)
+                [:result :value]))
+      {:session session})))
+
+(defn- slow-down!
+  "From now on the tab's requests for addresses like the pattern wait
+   before they go out: a stylesheet that arrives late."
+  [chrome js pattern]
+  (send! chrome "Fetch.enable" {:patterns [{:urlPattern pattern :requestStage "Request"}]} (:session (meta js))))
+
+(defn- on-paused
+  "What a tab's paused request does: go on after a while."
+  [chrome-ref ms]
+  (fn [{:keys [method params sessionId]}]
+    (when (= "Fetch.requestPaused" method)
+      (Thread/startVirtualThread
+       (fn []
+         (Thread/sleep (long ms))
+         ;; the tab may be gone by then
+         (try (send! @chrome-ref "Fetch.continueRequest" {:requestId (:requestId params)} sessionId)
+              (catch Exception _ nil)))))))
 
 (defn- eventually
   "Whether (check) comes true within a few seconds (or tries tenths of one)."
@@ -130,11 +156,14 @@
           f   (reverse (file-seq (io/file dir)))]
     (io/delete-file f true)))
 
+(def ^:private sheets-js
+  "The stylesheets the page links, by address, in order."
+  "Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(l => new URL(l.href).pathname).join(' ')")
+
 (deftest routing-in-a-real-browser
   (if-let [path (chrome)]
     (let [;; a release: one file, as production serves it, under the strict policy
-          _       (build/release! browser)
-          _       (styles/release! {:styles styles :browser browser})
+          _       (build/release! browser styles)
           app     (gw/start (-> app-settings
                                 (assoc :environment :production)
                                 (assoc-in [:web :test-sign-in] nil)
@@ -148,16 +177,18 @@
       (try
         (is (some? address) "Chrome started")
         (when address
-          (let [js       (open-page (connect address) (str origin "/orders?stage=curing"))
+          (let [line     (promise)
+                chrome   (connect address (on-paused line 800))
+                _        (deliver line chrome)
+                js       (open-page chrome (str origin "/orders?stage=curing"))
                 text     #(js (str "(document.querySelector('" % "') || {}).textContent || null"))
                 click!   #(js (str "document.querySelector('" % "').click()"))
                 location #(js "location.pathname + location.search")
                 at?      (fn [address screen] (eventually #(and (= address (location)) (= screen (text "#screen")))))]
-            (testing "the page loads the base bundle and its module's, fingerprinted, and not the reports module's"
-              (let [sheets (fn [] (js "Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(l => l.getAttribute('href')).join(' ')"))]
-                (is (eventually #(= "flex" (js "(n => n && getComputedStyle(n).display)(document.querySelector('nav'))")))
-                    "a class keyword in the code is the class the stylesheet styles")
-                (is (re-find #"^/example-routing-css/base\.[0-9A-F]{8}\.css /example-routing-css/main\.[0-9A-F]{8}\.css$" (sheets)))))
+            (testing "the page loads its module's bundle, fingerprinted, and not the reports module's"
+              (is (eventually #(= "flex" (js "(n => n && getComputedStyle(n).display)(document.querySelector('nav'))")))
+                  "a class in the code is the class the stylesheet styles")
+              (is (re-matches #"/example-routing-css/main\.[0-9A-F]{8}\.css" (js sheets-js))))
             (testing "the page's own address is the first route, with its query and title"
               (is (eventually #(= "stage: curing" (text "#query"))))
               (is (= "Orders" (js "document.title")) "the server's title and the route's agree"))
@@ -178,15 +209,19 @@
               (js "history.back()")
               (is (eventually #(= "stage: curing" (text "#query")))))
             (testing "a screen whose code loads on demand shows its placeholder first"
+              ;; its bundle arrives late, its code doesn't
+              (slow-down! chrome js "*/example-routing-css/reports.*.css")
               (click! "#nav-reports")
               (is (at? "/reports" "Loading"))
               (is (eventually #(= "Reports" (text "#screen"))))
-              (testing "and brings its module's stylesheets with it"
-                (is (re-find #"/example-routing-css/reports\.[0-9A-F]{8}\.css"
-                             (js "Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(l => l.getAttribute('href')).join(' ')")))
-                (is (eventually #(= "rgb(1, 2, 3)" (js "getComputedStyle(document.querySelector('#screen')).color"))))
+              (testing "and brings its module's bundle with it, in before its code ran"
+                (is (re-matches #"/example-routing-css/main\.[0-9A-F]{8}\.css /example-routing-css/reports\.[0-9A-F]{8}\.css"
+                                (js sheets-js)))
+                (is (= "in" (js "document.querySelector('#screen').dataset.bundleAtLoad"))
+                    "the module's code saw its bundle the moment it ran")
+                (is (= "rgb(1, 2, 3)" (js "getComputedStyle(document.querySelector('#screen')).color")))
                 (is (= "20px" (js "getComputedStyle(document.querySelector('#screen')).paddingTop"))
-                    "it sets the shared look's own variable")))
+                    "it sets the shared look's variable")))
             (testing "unsaved changes hold a link"
               (click! "#nav-form")
               (is (eventually #(= "/form" (location))))
@@ -224,17 +259,14 @@
 
 (deftest styles-while-developing
   (if-let [path (chrome)]
-    (let [;; a copy of the example's styles, since the test saves into it
-          tree     (str (Files/createTempDirectory "groundwork-styles-dev" (make-array FileAttribute 0)))
-          _        (doseq [^File f (file-seq (io/file (:dir styles))) :when (.isFile f)]
-                     (let [to (io/file tree (subs (.getPath f) (inc (count (:dir styles)))))]
-                       (io/make-parents to)
-                       (io/copy f to)))
+    (let [views    (io/file "test/example/hello/views.css")
+          stray    (io/file "test/example/hello/stray.css")
+          before   (slurp views)
           browser  (assoc browser :build :example-styles-dev :watch? true
                           :output-dir "test/public/example-styles-dev" :asset-path "/example-styles-dev")
-          styles   (assoc (example/styles "example-styles-dev-css") :dir tree)
+          styles   (example/styles "example-styles-dev-css")
           dir      (str (Files/createTempDirectory "groundwork-dev" (make-array FileAttribute 0)))
-          ;; the development start: the app, the build's watcher, the styles' watcher
+          ;; the development start: the app, the build's watcher, the stylesheets' watcher
           dev      (repl/start! (-> app-settings
                                     (assoc :environment :development)
                                     (assoc-in [:server :port] 0)
@@ -250,37 +282,32 @@
         (when address
           (let [js      (open-page (connect address) (str origin "/"))
                 padding #(js "getComputedStyle(document.querySelector('#screen')).paddingTop")
-                sheets  #(js (str "Array.from(document.querySelectorAll('link[rel=stylesheet]'))"
-                                  ".map(l => new URL(l.href).pathname).join(' ')"))
-                panel   (io/file tree "looks/panel.css")]
-            (testing "the bundles under their plain names, and every class told to the page"
+                log     #(slurp (io/file dir ".groundwork" "dev.log"))]
+            (testing "the bundles under their plain names"
               (is (eventually 300 #(= "8px" (padding))))
-              (is (= "/example-styles-dev-css/base.css /example-styles-dev-css/main.css" (sheets)))
-              (is (= "nav__bar panel__frame reports__screen"
-                     (js "JSON.parse(document.getElementById('groundwork').textContent).classes.join(' ')"))))
+              (is (= "/example-styles-dev-css/main.css" (js sheets-js))))
             (testing "a saved stylesheet shows in the open page, which is not loaded again"
               (js "window.stillHere = true")
-              (spit panel (str/replace (slurp panel) "8px" "31px"))
+              (spit views (str/replace before "8px" "31px"))
               (is (eventually 300 #(= "31px" (padding))))
               (is (true? (js "window.stillHere"))))
-            (testing "a screen loaded on demand brings its module's stylesheet, once each"
+            (testing "a screen loaded on demand brings its module's bundle first"
               (js "document.querySelector('#nav-reports').click()")
               (is (eventually #(= "Reports" (js "(document.querySelector('#screen') || {}).textContent"))))
+              (is (= "in" (js "document.querySelector('#screen').dataset.bundleAtLoad")))
               (is (= "rgb(1, 2, 3)" (js "getComputedStyle(document.querySelector('#screen')).color")))
               (is (= "20px" (padding)))
-              (is (= (str "/example-styles-dev-css/base.css /example-styles-dev-css/main.css "
-                          "/example-styles-dev-css/reports.css")
-                     (sheets))))
-            (testing "a mistake saved is reported, with its file and line"
-              (spit panel (str (slurp panel) ".panel__ghost { color: red; }\n"))
-              (is (eventually 100 #(str/includes? (slurp (io/file dir ".groundwork" "dev.log"))
-                                                  (str tree "/looks/panel.css:3  .panel__ghost is named by no code"))))
-              (is (str/starts-with? (repl/styles-report (:app dev)) "The styles have 1 problem:")))))
+              (is (= "/example-styles-dev-css/main.css /example-styles-dev-css/reports.css" (js sheets-js))))
+            (testing "a stylesheet no namespace names stops the build, which says so"
+              (spit stray ".stray { color: red; }\n")
+              (is (eventually 300 #(str/includes? (log) "test/example/hello/stray.css  is named by no namespace's {:css […]}"))))))
         (finally
           (.destroy process)
           (.waitFor process 5 TimeUnit/SECONDS)
+          (spit views before)
+          (.delete stray)
           (repl/stop! dev)
-          (doseq [folder [profile tree dir (:output-dir browser) (:output-dir styles)]
+          (doseq [folder [profile dir (:output-dir browser) (:output-dir styles)]
                   ^File f (reverse (file-seq (io/file folder)))]
             (.delete f)))))
     (println "groundwork.browser-routing-test: no Chrome found (GROUNDWORK_CHROME), skipped")))

@@ -1,0 +1,4 @@
+.nav-bar { display: flex; gap: 8px; }
+
+/* A shared look: the home screen and the reports screen both carry it. */
+.panel { padding: var(--panel-padding, 8px); }

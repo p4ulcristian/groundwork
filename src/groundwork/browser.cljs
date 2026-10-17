@@ -18,7 +18,7 @@
 
    Groundwork then, in order: reads what the page shell put in the page (the
    person signed in, their session's flags, the language and the app's
-   languages, the styles' bundles for groundwork.css); sets up
+   languages, each module's stylesheet bundle for groundwork.loader); sets up
    re-frame with the store, which opens the /parquery websocket; asks for the person's grants, so \"can I?\" answers; starts
    routing at the page's address; and mounts :root into <div id=\"app\">
    with Reagent. A save reloads the code and renders again.
@@ -49,8 +49,7 @@
      (gb/stay!)                     ; stay
      (gb/unsaved! false)            ; saved"
   (:require
-   [groundwork.css :as css]
-   [groundwork.loader]
+   [groundwork.loader :as loader]
    [groundwork.parquery-store :as store]
    [groundwork.routing :as routing]
    [re-frame.core :as rf]
@@ -68,8 +67,7 @@
      :language  (get data "language")
      :languages (when languages
                   {:supported (vec (get languages "supported")) :default (get languages "default")})
-     :styles    (get data "styles")
-     :classes   (get data "classes")}))
+     :styles    (get data "styles")}))
 
 (rf/reg-event-db ::-init
                  (fn [db [_ initial]]
@@ -123,8 +121,8 @@
    splash); :store adds to the store's start (:on-read-failed, :line)."
   [{:keys [root routes shapes max-asks mount store] :as options}]
   (let [initial (read-initial (some-> (js/document.getElementById "groundwork") .-textContent))]
-    (css/start! initial)
-    (rf/dispatch-sync [::-init (dissoc initial :styles :classes)])
+    (loader/start! (:styles initial))
+    (rf/dispatch-sync [::-init (dissoc initial :styles)])
     (rf/dispatch-sync [::store/start (merge {:shapes shapes :max-asks max-asks} store)])
     (when (:person initial)
       (rf/dispatch [::store/ensure ::session [{:endpoint :groundwork/grants :params {}}]]))

@@ -372,9 +372,9 @@
    :page
    [:map {:closed true}
     (entry :lang "The page's language" "en" text)
-    (entry :title "The browser tab's title" "Acme Coating" text)
+    (entry :title "The browser tab's title" "Acme Orders" text)
     (entry :description "A one-sentence summary for search results and link previews, or nil"
-           "Powder coating, ordered online" text-or-nil)
+           "Orders and invoices for small shops" text-or-nil)
     (entry :icon "The tab's icon" "/icon.svg" text)
     (entry :stylesheets "The CSS files every page loads" ["/app.css"] texts)
     (entry :head "Extra tags at the end of <head>, as HTML text" [] texts)]
@@ -409,19 +409,9 @@
    :styles
    [:maybe
     [:map {:closed true}
-     (entry :dir "The styles tree: base/, vendor/, looks/ and areas/ under it" "styles" text)
-     (entry :sources "Where the browser code is: the class keywords in it are read from here" ["src"] texts)
-     (entry :base "The base files (tokens, fonts, resets, themes), in loading order" ["base/tokens.css" "base/reset.css"] texts)
-     (entry :vendor "Outside libraries' stylesheets: the file, how its classes start, and the one namespace that wraps it"
-            [{:file "vendor/calendar.vendor.css" :prefixes ["vc-"] :wrapper "calendar"}]
-            [:vector {:error/message "must be a list of {:file :prefixes :wrapper}" :doc/type "list of libraries"}
-             [:map {:closed true}
-              (entry :file "The library's own stylesheet, under vendor/; it is never checked" "vendor/calendar.vendor.css" text)
-              (entry :prefixes "How the library's class names start" ["vc-"]
-                     [:vector {:min 1 :error/message "must be a list of at least one prefix" :doc/type "list of text"} text])
-              (entry :wrapper "The one namespace that may style the library's classes, inside its own element" "calendar"
-                     name-text)]])
-     (entry :output-dir "Where the bundles go, a folder whose public/ is served" "resources/public/css" text)
+     (entry :sources "Where the browser code and its stylesheets are: every .css under them is named by a namespace's {:css […]}, and in development a saved one rebuilds the bundles"
+            ["src"] texts)
+     (entry :output-dir "Where the bundles and their manifest go, a folder whose public/ is served" "resources/public/css" text)
      (entry :asset-path "Where the browser fetches them" "/css"
             [:re {:error/message "must be a path like \"/css\"" :doc/type "path"} #"^/.*"])]]
 
@@ -539,14 +529,14 @@
     (entry :on-answer "After every ask over HTTP: (fn [{:keys [endpoint status ms person request-id]}] …), or nil"
            'app.metrics/on-answer function-or-nil)
     (entry :bells "How the tables outside the permission description ring"
-           {:global {:powder_colours "reference data only the platform's staff change"}
+           {:global {:countries "reference data only the platform's staff change"}
             :personal {:notifications :notification/person-id}}
            [:map {:closed true}
             (entry :global
                    (str "Tables every watcher of them hears about: table → the reason. A global table is one "
                         "whose rows belong to nobody, or whose every row is read by everyone; "
                         "a table whose rows belong to a scope goes in the permission description")
-                   {:powder_colours "reference data only the platform's staff change"}
+                   {:countries "reference data only the platform's staff change"}
                    [:map-of {:error/message "must map tables to the reason they are global" :doc/type "table → reason"}
                     :keyword text])
             (entry :personal "Tables only their person hears about: table → person column"
@@ -578,7 +568,7 @@
    :migrations  "The schema's changes, run at start"
    :page        "The page shell every screen loads into"
    :browser     "The app's browser code and its build"
-   :styles      "The app's stylesheets, checked against its code and bundled; nil or left out when the app brings its own through :page :stylesheets"
+   :styles      "The app's stylesheets, named by its namespaces and bundled per browser module; nil or left out when the app brings its own through :page :stylesheets"
    :web         "Requests: the app's routes, limits, hooks, languages"
    :server      "The web server"
    :sessions    "Who is signed in"

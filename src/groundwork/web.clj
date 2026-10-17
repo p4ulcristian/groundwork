@@ -10,7 +10,7 @@
          list of origins: [\"https://shop.example\"], or :same-origin for
          only the app's own pages (an editor inside another page)
      [\"/payments/webhook\" {:post handle :server-to-server true}]
-     [\"/coaters/:slug\" {:get web/page :page (fn [request] {:title …})}]
+     [\"/shops/:slug\" {:get web/page :page (fn [request] {:title …})}]
          the page shell with the route's own title, description, links,
          scripts and server-written body; see groundwork.page
          called by another server (a payment provider's webhook), never by a
@@ -109,7 +109,6 @@
    [groundwork.postgres :as pg]
    [groundwork.sessions :as sessions]
    [groundwork.settings :as settings]
-   [reitit.core :as reitit]
    [reitit.ring :as ring]
    [ring.middleware.multipart-params :refer [wrap-multipart-params]]
    [ring.middleware.multipart-params.temp-file :refer [temp-file-store]]
@@ -782,7 +781,7 @@
    With a page (a map of a route's :page keys), the shell with that page,
    for a handler that has to look before it knows what to show; the answer
    is a Ring response the handler may change:
-   (assoc (web/page request {:title \"No such coater\"}) :status 404)."
+   (assoc (web/page request {:title \"No such shop\"}) :status 404)."
   ([request]
    ((::page request) request))
   ([request page]
@@ -918,27 +917,17 @@
     {:handler        (fn [request] (@current request))
      :max-body-bytes largest
      ::current       current
-     ::routes        (atom (:routes settings))
      ::inputs        inputs}))
 
 (defn swap-routes!
   "Serve new routes from now on, without restarting the server: for the
    REPL. Checked like at start; when they're wrong, the old routes stay. A
    route taking a bigger body than the server reads needs a restart."
-  [{::keys [current inputs] served ::routes :keys [max-body-bytes]} routes]
+  [{::keys [current inputs] :keys [max-body-bytes]} routes]
   (let [inputs (assoc inputs :routes routes)]
     (settings/check-part! :web (select-keys inputs settings-keys) (:environment inputs))
     (when (> (largest-body routes (:max-body-bytes inputs)) max-body-bytes)
       (throw (ex-info "A route takes a bigger body than the running server reads; restart the app"
                       {:type ::restart-needed})))
     (reset! current (handler inputs))
-    (reset! served routes)
     routes))
-
-(defn route-at
-  "The app's route that serves an address now, for the REPL:
-   {:template \"/orders/:order-id\" :data {…} :path-params {…}}, or nil for
-   an address no route of the app has."
-  [{served ::routes} path]
-  (when-let [match (reitit/match-by-path (reitit/router @served) path)]
-    (select-keys match [:template :data :path-params])))

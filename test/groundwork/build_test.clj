@@ -1,7 +1,7 @@
 (ns groundwork.build-test
   "The browser build, owned by Groundwork: a tiny example app (test/example)
    compiled for release, started, and its page loading the fingerprinted
-   file the build made."
+   files the build made, its stylesheets' bundles among them."
   (:require
    [clojure.edn :as edn]
    [clojure.java.io :as io]
@@ -27,8 +27,11 @@
   "The example app as it is built: its reports screen in a module of its own."
   (assoc browser :modules example/modules :loader? true))
 
+(def ^:private styles (example/styles "example-hello-css"))
+
 (defn- clean! []
-  (doseq [f (reverse (file-seq (io/file (:output-dir browser))))]
+  (doseq [dir [(:output-dir browser) (:output-dir styles)]
+          f   (reverse (file-seq (io/file dir)))]
     (io/delete-file f true)))
 
 (use-fixtures :once (fn [t] (clean!) (try (t) (finally (clean!)))))
@@ -112,27 +115,40 @@
       (finally (gw/stop app)))))
 
 (deftest a-build-once-without-watching
-  (build/compile! example)
+  (build/compile! example styles)
   (testing "the development build's file, under its plain name"
     (is (.exists (io/file (:output-dir browser) "main.js"))))
+  (testing "a bundle for each module with stylesheets, as written, and the manifest"
+    (is (= {:modules {:main "main.css" :reports "reports.css"}}
+           (edn/read-string (slurp (io/file (:output-dir styles) "manifest.edn")))))
+    (is (str/includes? (slurp (io/file (:output-dir styles) "main.css")) "/* test/example/hello/views.css */\n.nav-bar")))
   (let [app (gw/start (-> app-settings
-                          (assoc :browser example)
+                          (assoc :browser example :styles styles)
+                          (assoc-in [:page :stylesheets] ["/app.css"])
                           (assoc-in [:web :routes] [["/" {:get web/page :access :public}]])))]
     (try
-      (testing "the page loads it"
-        (is (str/includes? (:body (get-text app "/")) "src=\"/example-hello/main.js\" defer")))
+      (let [body (:body (get-text app "/"))]
+        (testing "the page loads it"
+          (is (str/includes? body "src=\"/example-hello/main.js\" defer")))
+        (testing "and links its module's bundle, before the app's own stylesheets"
+          (is (= ["/example-hello-css/main.css" "/app.css"]
+                 (mapv second (re-seq #"<link rel=\"stylesheet\" href=\"([^\"]+)\">" body)))))
+        (testing "it tells the browser every module's bundle, for code loaded on demand"
+          (is (str/includes? body "\"styles\":{\"main\":\"/example-hello-css/main.css\",\"reports\":\"/example-hello-css/reports.css\"}"))))
       (finally (gw/stop app))))
   (clean!))
 
 (deftest a-release-is-what-the-page-loads
-  (build/release! example)
+  (build/release! example styles)
   (let [manifest (edn/read-string (slurp (io/file (:output-dir browser) "manifest.edn")))
         name     (:output-name (first (filter #(= :main (:module-id %)) manifest)))]
     (testing "the release made a fingerprinted file and its manifest"
       (is (re-matches #"main\.[0-9A-F]+\.js" name))
       (is (.exists (io/file (:output-dir browser) name))))
-    (let [app (gw/start (-> app-settings
-                            (assoc :browser example)
+    (let [css (edn/read-string (slurp (io/file (:output-dir styles) "manifest.edn")))
+          app (gw/start (-> app-settings
+                            (assoc :browser example :styles styles :environment :production)
+                            (assoc-in [:web :test-sign-in] nil)
                             ;; shadow-cljs writes the fingerprint in capitals
                             (assoc-in [:web :hashed-files] "(?i)\\.[0-9a-f]{8,}\\.")
                             (assoc-in [:web :routes] [["/" {:get web/page :access :public}]])))]
@@ -146,4 +162,21 @@
             (is (= 200 status))
             (is (str/includes? body "Hello, ") "the app's code, compiled")
             (is (= "public, max-age=31536000, immutable" cache))))
-        (finally (gw/stop app))))))
+        (testing "the stylesheets: minified, fingerprinted, named in their manifest, linked by the page"
+          (is (re-matches #"main\.[0-9A-F]{8}\.css" (get-in css [:modules :main])))
+          (is (str/includes? (:body (get-text app "/"))
+                             (str "<link rel=\"stylesheet\" href=\"/example-hello-css/" (get-in css [:modules :main]) "\">")))
+          (let [{:keys [status body cache]} (get-text app (str "/example-hello-css/" (get-in css [:modules :main])))]
+            (is (= 200 status))
+            (is (str/starts-with? body ".nav-bar{"))
+            (is (= "public, max-age=31536000, immutable" cache))))
+        (finally (gw/stop app))))
+    (testing "production doesn't start without the stylesheets' manifest"
+      (let [e (try (gw/start (-> app-settings
+                                 (assoc :browser example :environment :production
+                                        :styles (example/styles "example-hello-never-built"))
+                                 (assoc-in [:web :test-sign-in] nil)
+                                 (assoc-in [:web :routes] [["/" {:get web/page :access :public}]])))
+                   nil
+                   (catch Exception e e))]
+        (is (str/starts-with? (str (ex-message e)) "No styles manifest in test/public/example-hello-never-built"))))))
