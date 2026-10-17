@@ -39,7 +39,7 @@ the JVM tests against Postgres 18, clj-kondo, the browser half's tests on node.
 (def app (gw/start {:environment :development
                     :db          {…}                          ; see Postgres, Start
                     :migrations  {:schema-snapshot "schema.sql"}
-                    :page        {:lang "en" :title "Acme Coating" :description nil
+                    :page        {:lang "en" :title "Acme Orders" :description nil
                                   :icon "/icon.svg" :stylesheets ["/app.css"] :head []}
                     :browser     {:build :app :entry 'app.browser/start      ; see In the browser
                                   :output-dir "resources/public/js" :asset-path "/js"
@@ -125,7 +125,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | Key | Type | What it is | Example |
 |-----|------|------------|---------|
 | `:page :lang` | text | The page's language | `"en"` |
-| `:page :title` | text | The browser tab's title | `"Acme Coating"` |
+| `:page :title` | text | The browser tab's title | `"Acme Orders"` |
 | `:page :description` | text or nil | A one-sentence summary for search results and link previews, or nil | `"Orders and invoices for small shops"` |
 | `:page :icon` | text | The tab's icon | `"/icon.svg"` |
 | `:page :stylesheets` | list of text | The CSS files every page loads | `["/app.css"]` |
@@ -568,14 +568,14 @@ resources/migrations/
   `<div id="app">` for search engines and the first paint.
 
 ```clojure
-["/coaters/:slug" {:get    web/page
+["/shops/:slug" {:get    web/page
                    :access :public
-                   :page (fn [request] {:title (str "Coater " …) :body (render-coater …)})}]
+                   :page (fn [request] {:title (str "Shop " …) :body (render-shop …)})}]
 ```
 
 - **A handler that has to look first** (a record that may not exist) gives
   the page itself, and may change the answer:
-  `(assoc (web/page request {:title "No such coater"}) :status 404)`.
+  `(assoc (web/page request {:title "No such shop"}) :status 404)`.
 - **Security headers** on every answer: no sniffing, no framing, a strict
   referrer; in production also Strict-Transport-Security.
 - **A strict Content-Security-Policy:** scripts and styles only from the

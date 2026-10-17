@@ -10,7 +10,7 @@
          list of origins: [\"https://shop.example\"], or :same-origin for
          only the app's own pages (an editor inside another page)
      [\"/payments/webhook\" {:post handle :server-to-server true}]
-     [\"/coaters/:slug\" {:get web/page :page (fn [request] {:title …})}]
+     [\"/shops/:slug\" {:get web/page :page (fn [request] {:title …})}]
          the page shell with the route's own title, description, links,
          scripts and server-written body; see groundwork.page
          called by another server (a payment provider's webhook), never by a
@@ -781,7 +781,7 @@
    With a page (a map of a route's :page keys), the shell with that page,
    for a handler that has to look before it knows what to show; the answer
    is a Ring response the handler may change:
-   (assoc (web/page request {:title \"No such coater\"}) :status 404)."
+   (assoc (web/page request {:title \"No such shop\"}) :status 404)."
   ([request]
    ((::page request) request))
   ([request page]

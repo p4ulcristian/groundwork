@@ -46,7 +46,7 @@
   :lang "en"
 
   ;; The browser tab's title
-  :title "Acme Coating"
+  :title "Acme Orders"
 
   ;; A one-sentence summary for search results and link previews, or nil
   :description "Orders and invoices for small shops"

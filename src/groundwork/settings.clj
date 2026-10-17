@@ -372,7 +372,7 @@
    :page
    [:map {:closed true}
     (entry :lang "The page's language" "en" text)
-    (entry :title "The browser tab's title" "Acme Coating" text)
+    (entry :title "The browser tab's title" "Acme Orders" text)
     (entry :description "A one-sentence summary for search results and link previews, or nil"
            "Orders and invoices for small shops" text-or-nil)
     (entry :icon "The tab's icon" "/icon.svg" text)

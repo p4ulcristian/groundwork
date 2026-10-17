@@ -3,8 +3,8 @@
    details as settings, every one required:
 
      :lang         \"en\"
-     :title        \"Acme Coating\"
-     :description  \"Powder coating, ordered online\"   or nil
+     :title        \"Acme Orders\"
+     :description  \"Orders and invoices for small shops\"   or nil
      :icon         \"/icon.svg\"
      :stylesheets  [\"/app.css\"]
      :head         []                extra tags, as HTML text, placed at the end of <head>
@@ -18,16 +18,16 @@
    A route can give its own page, a map or a function of the request
    returning one, merged over these:
 
-     [\"/coaters/:slug\" {:get web/page
+     [\"/shops/:slug\" {:get web/page
                          :page (fn [request] {:title … :description … :body …})}]
 
    A handler that has to look first (a record that may not exist) gives the
    page itself and may change the answer:
 
      (fn [request]
-       (if-let [coater (find-coater request)]
-         (web/page request {:title (:name coater) :body …})
-         (assoc (web/page request {:title \"No such coater\"}) :status 404)))
+       (if-let [shop (find-shop request)]
+         (web/page request {:title (:name shop) :body …})
+         (assoc (web/page request {:title \"No such shop\"}) :status 404)))
 
      :lang :title :description   replace the app's
      :canonical  \"https://…\"     <link rel=canonical>
