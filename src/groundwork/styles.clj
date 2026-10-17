@@ -236,9 +236,11 @@
 const fs = require('fs');
 const path = require('path');
 const need = require('module').createRequire(path.join(process.cwd(), 'package.json'));
-const answer = x => { process.stdout.write(JSON.stringify(x)); process.exit(0); };
-const load = name => { try { return need(name); } catch (e) { answer({missing: name}); } };
 const job = JSON.parse(fs.readFileSync(0, 'utf8'));
+// The answer goes to a file: process.exit() right after writing to a pipe cuts
+// off anything past the pipe's buffer (64 KB), and bundles are larger.
+const answer = x => { fs.writeFileSync(job.answer, JSON.stringify(x)); process.exit(0); };
+const load = name => { try { return need(name); } catch (e) { answer({missing: name}); } };
 const lightningcss = load('lightningcss');
 
 if (job.query !== undefined) {
@@ -297,7 +299,9 @@ answer({bundles: out});
 (defn- run-node
   "node-script run on a job, answering what it wrote."
   [job]
-  (let [process (try (.start (ProcessBuilder. ^java.util.List ["node" "-e" node-script]))
+  (let [file    (doto (File/createTempFile "groundwork-styles" ".json") (.deleteOnExit))
+        job     (assoc job :answer (.getPath file))
+        process (try (.start (ProcessBuilder. ^java.util.List ["node" "-e" node-script]))
                      (catch java.io.IOException e
                        (throw (ex-info (str "The stylesheets are built by lightningcss, through node: "
                                             (ex-message e))
@@ -307,7 +311,8 @@ answer({bundles: out});
         out     (future (slurp (.getInputStream process)))
         err     (future (slurp (.getErrorStream process)))
         exit    (.waitFor process)
-        answer  (try (json/read-value @out json/keyword-keys-object-mapper) (catch Exception _ nil))]
+        answer  (try (json/read-value file json/keyword-keys-object-mapper) (catch Exception _ nil))
+        _       (.delete file)]
     (cond
       (:missing answer)
       (throw (ex-info (str "The stylesheets are built by lightningcss for the browsers browserslist finds for "

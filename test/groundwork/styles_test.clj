@@ -210,6 +210,19 @@
     (is (= ".glass{-webkit-backdrop-filter:blur(4px)}"
            (built older ".glass { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(4px); }")))))
 
+(deftest a-bundle-larger-than-a-pipe-comes-back-whole
+  ;; node's answer once went through a pipe, and exiting cut it at 64 KB
+  (let [dir  (temp-dir)
+        text (apply str (for [i (range 6000)] (str ".rule-" i " { color: red; }\n")))]
+    (try
+      (doseq [release? [false true]]
+        (let [css (:main (styles/build-bundles {:targets "chrome >= 119"}
+                                               {:main [(write dir "big.css" text)]} release?))]
+          (is (< 65536 (count text)))
+          (is (str/includes? css ".rule-0"))
+          (is (str/includes? css ".rule-5999"))))
+      (finally (delete dir)))))
+
 (defn- refused [styles]
   (try (styles/targets styles) nil (catch clojure.lang.ExceptionInfo e e)))
 
