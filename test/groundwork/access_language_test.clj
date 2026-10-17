@@ -145,8 +145,6 @@
 (use-fixtures :once
   (fn [t]
     (sql! tables)
-    (sql! "TRUNCATE groundwork.scopes, groundwork.roles, groundwork.role_actions, groundwork.memberships,
-                    groundwork.extra_actions, groundwork.invitations CASCADE")
     (sql! (str "INSERT INTO lg_shops VALUES (?, 'active'), (?, 'active');"
                "INSERT INTO lg_orders (order__id, order__shop_id, order__customer_id, order__status)"
                " VALUES (?, ?, ?, 'open'), (?, ?, NULL, 'open'), (?, ?, NULL, 'open'), (?, ?, NULL, 'closed');"
@@ -156,6 +154,9 @@
                             (assoc :permissions description)
                             (assoc-in [:parquery :endpoints] [endpoint-map])))]
       (try
+        ;; after the start, which migrates a fresh database
+        (sql! "TRUNCATE groundwork.scopes, groundwork.roles, groundwork.role_actions, groundwork.memberships,
+                        groundwork.extra_actions, groundwork.invitations CASCADE")
         (let [perms (gw/permissions app)]
           (perm/create-scope! perms {:kind :shop :id acme :parent nil :owner acme-owner})
           (perm/create-scope! perms {:kind :shop :id zinc :parent nil :owner zinc-owner})
