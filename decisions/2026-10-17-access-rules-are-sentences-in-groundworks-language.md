@@ -30,3 +30,13 @@ A kind of scope may have exactly one scope (the platform's back office): its mem
 - adding the missing words to the shapes as they are: smallest change, but the rules stay scattered, and the next case risks a new shape again
 - conditions in a policy language (Cedar, Oso Polar): says anything, but hard to turn into list filters and bells
 - the app writing Postgres row rules itself: Groundwork can't read them, so no bells, no "can I?", a blind leak test
+
+**Settled while building (2026-10-17):**
+- Each action says whether it reads or writes, or both; a write-only action can't read.
+- `[:member <scope> <action>]` may name the action the person must hold there (a partner reaches an order through an agreement only while holding the agreement's action).
+- An action open to anyone through a `:via` counts as open for endpoints too: what the wall allows, an endpoint can ask.
+- A list shows every row the person may read. To narrow a list by another action ("only the orders I may edit"), a query file calls a SQL function Groundwork generates per action and record kind.
+- A record kind's `:parent` stays: it keeps a child's scope equal to its parent's, which is data integrity, not access.
+- A `:via` needs indexes on both sides of what it matches and on the related row's who column.
+- Changing a related row's matched or who columns needs the right to create such a row.
+- A scope-state deny on a writing action makes the scope read-only, lifted by the system (the app's billing); on a reading action it hides the scope. On a row of two scopes, a deny in either applies.

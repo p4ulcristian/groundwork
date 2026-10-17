@@ -9,7 +9,7 @@ What Groundwork does with it:
 - **Bundles:** one stylesheet bundle per browser module, gathered from the namespaces in that module, in the order they are found.
 - **Loading:** the page links the bundles of the modules it starts with. A module loaded on demand brings its bundle, and its code runs only once the bundle is in, so nothing shows unstyled.
 - **Development:** saving a stylesheet rebuilds its bundles and updates the open page.
-- **Release:** every bundle is minified by lightningcss, and a stylesheet it can't parse stops the build, naming the file. Bundles get a content fingerprint in their name; the page reads the names from the build's manifest.
+- **Release:** every bundle is minified by lightningcss for the browsers the app names in a required `:targets` setting (`"safari >= 16.4, chrome >= 119"`), so nesting is flattened and vendor prefixes are right for them; and a stylesheet it can't parse stops the build, naming the file. Bundles get a content fingerprint in their name; the page reads the names from the build's manifest.
 - **Checks at every build:** every stylesheet under the sources is named by some namespace, and every named file exists. Otherwise the build stops with the list.
 
 The app's own taste in CSS (design tokens, no raw colours, no `!important`) stays the app's to check.
@@ -22,5 +22,6 @@ The app's own taste in CSS (design tokens, no raw colours, no `!important`) stay
 - lightningcss runs through the build's node tools.
 
 **Instead of:**
+- a default browser floor inside Groundwork: an app's floor would be hidden, and a change of the default would move every app
 - keeping the stricter method next to this one: two ways to do one thing, and the strict one has no user
 - every module's bundle in the first page: every visitor downloads every area's styles
