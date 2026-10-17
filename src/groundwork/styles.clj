@@ -308,7 +308,7 @@ answer({bundles: out});
                                        {:type ::no-node}))))
         _       (with-open [in (.getOutputStream process)]
                   (.write in (.getBytes (json/write-value-as-string job) "UTF-8")))
-        out     (future (slurp (.getInputStream process)))
+        _       (future (slurp (.getInputStream process)))   ; drained, so node never blocks on a full pipe
         err     (future (slurp (.getErrorStream process)))
         exit    (.waitFor process)
         answer  (try (json/read-value file json/keyword-keys-object-mapper) (catch Exception _ nil))
