@@ -12,24 +12,29 @@
 
      :styles {:sources    [\"src\"]                  ; where the browser code and its stylesheets are
               :output-dir \"resources/public/css\"   ; where the bundles go
-              :asset-path \"/css\"}                  ; where the browser fetches them
+              :asset-path \"/css\"                   ; where the browser fetches them
+              :targets    \"safari >= 16.4, chrome >= 119\"} ; the browsers they're built for
 
    The browser build (groundwork.build) does the rest, through a build hook
    of its own:
 
-   - every build first checks that every .css under :sources is named by
-     some namespace and every named file exists; otherwise it stops with the
-     list
+   - every build first checks the :styles settings and the :targets query
+     (browserslist must know it and find browsers for it), and that every
+     .css under :sources is named by some namespace and every named file
+     exists; otherwise it stops, saying what's wrong
    - each browser module gets one bundle: the stylesheets its namespaces
      name, in the order the build loads them (a namespace's after those of
      the namespaces it requires), each file once; a file a module it depends
      on carries already is left out
-   - development writes the bundles under plain names (main.css); a saved
-     stylesheet makes the build run again, and the open page swaps the
-     changed bundle in
-   - a release minifies every bundle with lightningcss (the npm package
-     lightningcss, in the app's package.json), stops on a stylesheet it
-     can't parse, naming the file, and writes fingerprinted names
+   - every bundle is made by lightningcss for the :targets browsers, in
+     development as in a release: nesting flattened when one of them lacks
+     it, the vendor prefixes they need written. lightningcss and browserslist
+     are npm packages in the app's package.json. A stylesheet lightningcss
+     can't parse stops the build, naming the file
+   - development writes the bundles readable, each file under a comment with
+     its path, under plain names (main.css); a saved stylesheet makes the
+     build run again, and the open page swaps the changed bundle in
+   - a release minifies every bundle and writes fingerprinted names
      (main.3F2A91C0.css)
    - either way it writes manifest.edn next to the bundles; the page shell
      reads it (links, module-links) and links the bundles of the modules a
@@ -40,6 +45,7 @@
    [clojure.java.io :as io]
    [clojure.string :as str]
    [groundwork.build :as build]
+   [groundwork.settings :as settings]
    [jsonista.core :as json])
   (:import
    (java.io File PushbackReader)
@@ -189,10 +195,6 @@
                 :when (seq sheets)]
             [module-id sheets]))))
 
-(defn- bundle-text [sheets]
-  (str/join "\n" (for [^File sheet sheets]
-                   (str "/* " (relative sheet) " */\n" (slurp sheet)))))
-
 (defn- fingerprint [^String text]
   (let [digest (.digest (MessageDigest/getInstance "SHA-256") (.getBytes text "UTF-8"))]
     (str/upper-case (subs (apply str (map #(format "%02x" %) digest)) 0 8))))
@@ -207,86 +209,167 @@
       (Files/move (.toPath tmp) (.toPath file)
                   (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING StandardCopyOption/ATOMIC_MOVE])))))
 
-(def ^:private minify-script
-  "Run by node in the app's folder: reads [{name files}] on stdin, checks
-   every file on its own (so a problem names its file), then minifies each
-   bundle whole. Answers {bundles: {name: css}} or {error: …}."
+;; =============================================================================
+;; lightningcss, through node
+;; =============================================================================
+
+(def ^:private node-script
+  "Run by node in the app's folder, with a job on stdin, the packages taken
+   from the app's node_modules. Two jobs:
+
+   {query}: the lightningcss targets for a browserslist query, as
+   {targets: …}, or {badQuery: why}.
+
+   {targets, release, bundles: [{name, files: [[path, label]]}]}: every file
+   read on its own (so a problem names its file) for the targets; in
+   development each one as it comes out, under a comment with its label, in
+   a release the bundle's files together, minified. Answers {bundles: {name:
+   css}} or {error: …}.
+
+   Before lightningcss writes a rule, a vendor-prefixed declaration that
+   repeats an unprefixed one before it in the rule, with the same value, is
+   dropped: lightningcss would keep only the prefixed one (backdrop-filter,
+   then -webkit-backdrop-filter), and it writes the prefixes the targets
+   need itself. Either job answers {missing: package} when a package isn't
+   installed."
   "
 const fs = require('fs');
 const path = require('path');
-let lightningcss;
-try {
-  lightningcss = require('module').createRequire(path.join(process.cwd(), 'package.json'))('lightningcss');
-} catch (e) {
-  process.stdout.write(JSON.stringify({missing: true}));
-  process.exit(0);
+const need = require('module').createRequire(path.join(process.cwd(), 'package.json'));
+const answer = x => { process.stdout.write(JSON.stringify(x)); process.exit(0); };
+const load = name => { try { return need(name); } catch (e) { answer({missing: name}); } };
+const job = JSON.parse(fs.readFileSync(0, 'utf8'));
+const lightningcss = load('lightningcss');
+
+if (job.query !== undefined) {
+  const browserslist = load('browserslist');
+  let browsers;
+  try { browsers = browserslist(job.query); } catch (e) { answer({badQuery: e.message}); }
+  if (!browsers.length) answer({badQuery: 'it names no browser'});
+  answer({targets: lightningcss.browserslistToTargets(browsers)});
 }
-const jobs = JSON.parse(fs.readFileSync(0, 'utf8'));
-const out = {};
-for (const {name, files} of jobs) {
-  const texts = [];
-  for (const file of files) {
-    const code = fs.readFileSync(file);
-    try {
-      lightningcss.transform({filename: file, code});
-    } catch (e) {
-      process.stdout.write(JSON.stringify({error: {file, message: e.message,
-                                                   line: e.loc && e.loc.line, column: e.loc && e.loc.column}}));
-      process.exit(0);
+
+// Within one style rule, a prefixed declaration repeating the unprefixed
+// one before it is dropped. Run only on text with a prefixed property in
+// it: going through the visitor slows lightningcss down several times.
+const repeats = () => {
+  const rules = [];
+  return {
+    Rule: {style() { rules.push(new Map()); }},
+    RuleExit: {style() { rules.pop(); }},
+    Declaration(d) {
+      const plain = rules[rules.length - 1];
+      if (!plain || !Array.isArray(d.vendorPrefix)) return;
+      const value = JSON.stringify(d.value);
+      if (d.vendorPrefix.length === 0) { plain.set(d.property, value); return; }
+      if (plain.get(d.property) === value) return [];
     }
-    texts.push(code.toString('utf8'));
+  };
+};
+const prefixed = /-(webkit|moz|ms|o)-[a-z-]+\\s*:/i;
+const transform = (options, text) =>
+  lightningcss.transform(prefixed.test(text) ? {...options, visitor: repeats()} : options);
+
+const {targets, release} = job;
+const out = {};
+for (const {name, files} of job.bundles) {
+  const texts = [];
+  for (const [file, label] of files) {
+    const code = fs.readFileSync(file);
+    const text = code.toString('utf8');
+    let result;
+    try {
+      result = release ? lightningcss.transform({filename: file, code})
+                       : transform({filename: file, code, targets}, text);
+    } catch (e) {
+      answer({error: {file, message: e.message, line: e.loc && e.loc.line, column: e.loc && e.loc.column}});
+    }
+    texts.push(release ? text : '/* ' + label + ' */\\n' + result.code.toString('utf8'));
   }
-  out[name] = lightningcss.transform({filename: name + '.css', code: Buffer.from(texts.join('\\n')),
-                                      minify: true}).code.toString('utf8');
+  const whole = texts.join('\\n');
+  out[name] = release
+    ? transform({filename: name + '.css', code: Buffer.from(whole), minify: true, targets}, whole).code.toString('utf8')
+    : whole;
 }
-process.stdout.write(JSON.stringify({bundles: out}));
+answer({bundles: out});
 ")
 
-(defn minify
-  "Every bundle minified by lightningcss, through node: {module css-text}.
-   A stylesheet it can't parse throws, naming the file and the place."
-  [plan]
-  (let [process (try (.start (ProcessBuilder. ^java.util.List ["node" "-e" minify-script]))
+(defn- run-node
+  "node-script run on a job, answering what it wrote."
+  [job]
+  (let [process (try (.start (ProcessBuilder. ^java.util.List ["node" "-e" node-script]))
                      (catch java.io.IOException e
-                       (throw (ex-info (str "A release minifies the stylesheets with lightningcss, through node: "
+                       (throw (ex-info (str "The stylesheets are built by lightningcss, through node: "
                                             (ex-message e))
                                        {:type ::no-node}))))
         _       (with-open [in (.getOutputStream process)]
-                  (.write in (.getBytes (json/write-value-as-string
-                                         (for [[module sheets] plan]
-                                           {:name (name module) :files (mapv str sheets)}))
-                                        "UTF-8")))
+                  (.write in (.getBytes (json/write-value-as-string job) "UTF-8")))
         out     (future (slurp (.getInputStream process)))
         err     (future (slurp (.getErrorStream process)))
         exit    (.waitFor process)
         answer  (try (json/read-value @out json/keyword-keys-object-mapper) (catch Exception _ nil))]
     (cond
       (:missing answer)
-      (throw (ex-info "A release minifies the stylesheets with lightningcss: npm install --save-dev lightningcss"
-                      {:type ::no-lightningcss}))
+      (throw (ex-info (str "The stylesheets are built by lightningcss for the browsers browserslist finds for "
+                           ":styles :targets: npm install --save-dev " (:missing answer))
+                      {:type ::missing-package :package (:missing answer)}))
 
-      (:error answer)
-      (let [{:keys [file message line column]} (:error answer)]
-        (throw (ex-info (str "lightningcss can't read " (relative (io/file file))
-                             (when line (str ":" line (when column (str ":" column)))) ": " message)
-                        {:type ::unreadable :file (relative (io/file file)) :line line :message message})))
+      (or (not (zero? exit)) (nil? answer))
+      (throw (ex-info (str "lightningcss didn't run (node exited " exit "): " @err) {:type ::node-failed}))
 
-      (or (not (zero? exit)) (nil? (:bundles answer)))
-      (throw (ex-info (str "lightningcss didn't run (node exited " exit "): " @err) {:type ::minify-failed}))
+      :else answer)))
 
-      :else
+(def ^:private example-query "\"safari >= 16.4, chrome >= 119\"")
+
+(defonce ^:private resolved
+  ;; query → targets: every build asks, and the query rarely changes
+  (atom {}))
+
+(defn targets
+  "The lightningcss targets for the app's :styles :targets, a browserslist
+   query: {\"safari\" 1049600 …}. Throws, saying why, when :targets is
+   missing or empty, isn't a query browserslist knows, or names no browser."
+  [{query :targets}]
+  (when-not (and (string? query) (not (str/blank? query)))
+    (throw (ex-info (str ":styles :targets must name the browsers the stylesheets are built for, "
+                         "a browserslist query like " example-query ", got " (pr-str query))
+                    {:type ::bad-targets :targets query})))
+  (or (get @resolved query)
+      (let [answer (run-node {:query query})]
+        (when-let [why (:badQuery answer)]
+          (throw (ex-info (str ":styles :targets " (pr-str query) " isn't a browserslist query for some browsers: "
+                               why ". Like " example-query)
+                          {:type ::bad-targets :targets query :message why})))
+        (let [found (into {} (for [[browser version] (:targets answer)] [(name browser) version]))]
+          (swap! resolved assoc query found)
+          found))))
+
+(defn build-bundles
+  "Every bundle made by lightningcss for the app's targets: {module
+   css-text}. In development each file as lightningcss writes it, under a
+   comment with its path; in a release the whole bundle minified. A
+   stylesheet it can't parse throws, naming the file and the place."
+  [styles plan release?]
+  (let [found  (targets styles)
+        answer (run-node {:targets found
+                          :release (boolean release?)
+                          :bundles (for [[module sheets] plan]
+                                     {:name  (name module)
+                                      :files (mapv (fn [^File f] [(str f) (relative f)]) sheets)})})]
+    (if-let [{:keys [file message line column]} (:error answer)]
+      (throw (ex-info (str "lightningcss can't read " (relative (io/file file))
+                           (when line (str ":" line (when column (str ":" column)))) ": " message)
+                      {:type ::unreadable :file (relative (io/file file)) :line line :message message}))
       (into (sorted-map) (for [[k text] (:bundles answer)] [(keyword (name k)) text])))))
 
 (defn write-bundles!
   "Write the bundles and the manifest the page shell reads,
-   {:modules {:main \"main.css\"}}: as they are under plain names, or for a
-   release minified under fingerprinted ones. A file is written only when
-   its content changed. Returns the manifest."
-  [{:keys [output-dir]} plan release?]
+   {:modules {:main \"main.css\"}}: under plain names, or for a release
+   minified under fingerprinted ones. A file is written only when its
+   content changed. Returns the manifest."
+  [{:keys [output-dir] :as styles} plan release?]
   (let [out   (io/file output-dir)
-        texts (if release?
-                (minify plan)
-                (into {} (for [[module sheets] plan] [module (bundle-text sheets)])))
+        texts (build-bundles styles plan release?)
         _     (.mkdirs out)
         files (into (sorted-map)
                     (for [[module text] texts]
@@ -320,12 +403,14 @@ process.stdout.write(JSON.stringify({bundles: out}));
 
 (defn hook
   "The browser build's hook (groundwork.build adds it when the app has
-   :styles): before compiling, the check; after, the bundles and their
-   manifest."
+   :styles): before compiling, the :styles settings, the browsers they name
+   and the check; after, the bundles and their manifest."
   {:shadow.build/stages #{:compile-prepare :flush}}
   [build-state styles]
   (case (:shadow.build/stage build-state)
-    :compile-prepare (check! styles)
+    :compile-prepare (do (settings/check-part! :styles styles)
+                         (targets styles)
+                         (check! styles))
     :flush           (let [modules (module-namespaces build-state)]
                        ;; namespaces from outside :sources are checked here
                        (fail! (distinct (missing (mapcat :namespaces modules))))

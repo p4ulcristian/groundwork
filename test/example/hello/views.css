@@ -1,4 +1,10 @@
-.nav-bar { display: flex; gap: 8px; }
+.nav-bar {
+  display: flex;
+  gap: 8px;
+
+  /* Nested: a release for the example's browsers flattens it. */
+  & a { text-decoration: none; }
+}
 
 /* A shared look: the home screen and the reports screen both carry it. */
 .panel { padding: var(--panel-padding, 8px); }
