@@ -1,7 +1,8 @@
 (ns groundwork.styles-test
   "A namespace names its stylesheets: what a namespace's file names, the
    check that every stylesheet is named and every named file is there, the
-   bundles of each module, and a release's minified, fingerprinted bundles.
+   bundles of each module, built by lightningcss for the browsers in
+   :targets, and a release's minified, fingerprinted bundles.
    The whole build, with the example app, is in groundwork.build-test and in
    a real browser in groundwork.browser-routing-test."
   (:require
@@ -11,6 +12,7 @@
    [clojure.test :refer [deftest is testing]]
    [example.hello.settings :as example]
    [groundwork.build :as build]
+   [groundwork.settings :as settings]
    [groundwork.styles :as styles])
   (:import
    (java.io File)
@@ -29,6 +31,14 @@
 
 (defn- delete [dir]
   (doseq [^File f (reverse (file-seq (io/file dir)))] (.delete f)))
+
+(def ^:private older
+  "Browsers of which some lack nesting and need -webkit- prefixes."
+  "safari >= 16.4, chrome >= 119")
+
+(def ^:private newer
+  "Browsers that all have nesting and the unprefixed properties."
+  "chrome >= 120, safari >= 18, firefox >= 120")
 
 (defn- app-tree
   "A small app's sources, as they should be: every stylesheet named."
@@ -67,7 +77,7 @@
 (deftest every-stylesheet-is-named-and-every-named-file-is-there
   (let [dir    (temp-dir)
         _      (app-tree dir)
-        styles {:sources [(str dir)] :output-dir (str dir "/public/css") :asset-path "/css"}]
+        styles {:sources [(str dir)] :output-dir (str dir "/public/css") :asset-path "/css" :targets older}]
     (try
       (testing "a tree where they agree, the server's own code and the bundles' folder aside"
         (write dir "public/css/main.css" ".bundled { color: red; }\n")
@@ -92,8 +102,8 @@
 
 (deftest each-module-gets-one-bundle
   (let [dir (temp-dir)
-        [base nav orders shared maps] (for [p ["base.css" "nav.css" "orders.css" "shared.css" "maps.css"]]
-                                        (write dir p (str "/* " p " */\n")))
+        [base nav orders shared maps] (for [p ["base" "nav" "orders" "shared" "maps"]]
+                                        (write dir (str p ".css") (str "." p " { color: red; }\n")))
         ns* (fn [& sheets] {:css (vec sheets)})]
     (try
       (let [plan (styles/plan [{:module-id :main :depends-on #{}
@@ -111,16 +121,18 @@
           (is (not (contains? plan :admin)) "a module with nothing of its own has no bundle"))
         (testing "a module beside another carries its own copy"
           (is (= [orders maps] (:maps plan))))
-        (testing "development: plain names, the files as written, and the manifest"
+        (testing "development: plain names, each file readable under its path, and the manifest"
           (let [out      (io/file dir "out")
-                manifest (styles/write-bundles! {:output-dir (str out)} plan false)]
+                manifest (styles/write-bundles! {:output-dir (str out) :targets older} plan false)]
             (is (= {:modules {:main "main.css" :orders "orders.css" :maps "maps.css"}} manifest))
             (is (= manifest (edn/read-string (slurp (io/file out "manifest.edn")))))
-            (is (re-matches #"(?s)/\* .*nav\.css \*/\n/\* nav\.css \*/\n\n/\* .*shared\.css \*/\n.*base\.css \*/\n"
-                            (slurp (io/file out "main.css"))))
+            (is (= (str "/* " nav " */\n.nav {\n  color: red;\n}\n\n"
+                        "/* " shared " */\n.shared {\n  color: red;\n}\n\n"
+                        "/* " base " */\n.base {\n  color: red;\n}\n")
+                   (slurp (io/file out "main.css"))))
             (testing "a bundle that didn't change isn't written again"
               (.setLastModified (io/file out "main.css") 1000)
-              (styles/write-bundles! {:output-dir (str out)} plan false)
+              (styles/write-bundles! {:output-dir (str out) :targets older} plan false)
               (is (= 1000 (.lastModified (io/file out "main.css"))))))))
       (finally (delete dir)))))
 
@@ -134,11 +146,11 @@
         b    (write dir "b.css" ".card:hover { color: rgb(0, 0, 255); }\n.list { & .row { margin: 0px; } }\n")
         out  (io/file dir "out")]
     (try
-      (let [manifest (styles/write-bundles! {:output-dir (str out)} {:main [a b] :maps [b]} true)
+      (let [manifest (styles/write-bundles! {:output-dir (str out) :targets older} {:main [a b] :maps [b]} true)
             main     (get-in manifest [:modules :main])
             text     (slurp (io/file out main))]
-        (testing "minified by lightningcss, nesting kept as written"
-          (is (= ".card{color:red;padding:4px}.card:hover{color:#00f}.list{& .row{margin:0}}" (str/trim text))))
+        (testing "minified by lightningcss, the bundle's files together"
+          (is (= ".card{color:red;padding:4px}.card:hover{color:#00f}.list .row{margin:0}" (str/trim text))))
         (testing "named by what's in it, and the manifest says so"
           (is (re-matches #"main\.[0-9A-F]{8}\.css" main))
           (is (= (str "main." (sha8 text) ".css") main))
@@ -151,7 +163,7 @@
         ok  (write dir "app/ok.css" ".ok { color: red; }\n")
         bad (write dir "app/orders/orders.css" ".orders { color: red; }\n.orders:not( { color: blue; }\n")
         out (io/file dir "out")
-        e   (try (styles/write-bundles! {:output-dir (str out)} {:main [ok bad]} true) nil
+        e   (try (styles/write-bundles! {:output-dir (str out) :targets older} {:main [ok bad]} true) nil
                  (catch clojure.lang.ExceptionInfo e e))]
     (try
       (is (= ::styles/unreadable (:type (ex-data e))))
@@ -159,6 +171,86 @@
           "the file it can't read, by name, not the bundle")
       (is (not (.exists (io/file out "manifest.edn"))) "nothing written")
       (finally (delete dir)))))
+
+;; -----------------------------------------------------------------------------
+;; Built for the browsers in :targets
+;; -----------------------------------------------------------------------------
+
+(defn- built
+  "One stylesheet's text as a release writes it for a browserslist query."
+  [query text]
+  (let [dir (temp-dir)]
+    (try
+      (str/trim (:main (styles/build-bundles {:targets query} {:main [(write dir "a.css" text)]} true)))
+      (finally (delete dir)))))
+
+(deftest a-bundle-is-built-for-the-browsers-in-targets
+  (let [nested ".list { color: red; & .row { margin: 0; } }"]
+    (testing "nesting flattened when a browser lacks it"
+      (is (= ".list{color:red}.list .row{margin:0}" (built older nested)))
+      (is (= ".list{color:red}.list .row{margin:0}" (built "safari >= 16.4" nested))))
+    (testing "nesting kept when every browser has it"
+      (is (= ".list{color:red;& .row{margin:0}}" (built newer nested)))))
+  (testing "the vendor prefixes the browsers need, and only those"
+    (let [both ".glass{-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}"]
+      (is (= both (built older ".glass { backdrop-filter: blur(2px); }")) "the prefix written for Safari before 18")
+      (is (= both (built older ".glass { -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }"))
+          "a pair written prefixed first is kept")
+      (is (= both (built older ".glass { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }"))
+          "a pair written prefixed last is kept too: lightningcss alone would keep only the prefixed one")
+      (is (= ".glass{backdrop-filter:blur(2px)}"
+             (built newer ".glass { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }"))
+          "no prefix for browsers that don't need it")
+      (is (= ".nav a{-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}"
+             (built older ".nav { & a { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); } }"))
+          "in a nested rule too")
+      (is (= ".glass{-webkit-user-select:none;user-select:none}"
+             (built older ".glass { user-select: none; -webkit-user-select: none; }")))))
+  (testing "a prefixed declaration with a value of its own is left to lightningcss"
+    (is (= ".glass{-webkit-backdrop-filter:blur(4px)}"
+           (built older ".glass { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(4px); }")))))
+
+(deftest a-bundle-larger-than-a-pipe-comes-back-whole
+  ;; node's answer once went through a pipe, and exiting cut it at 64 KB
+  (let [dir  (temp-dir)
+        text (apply str (for [i (range 6000)] (str ".rule-" i " { color: red; }\n")))]
+    (try
+      (doseq [release? [false true]]
+        (let [css (:main (styles/build-bundles {:targets "chrome >= 119"}
+                                               {:main [(write dir "big.css" text)]} release?))]
+          (is (< 65536 (count text)))
+          (is (str/includes? css ".rule-0"))
+          (is (str/includes? css ".rule-5999"))))
+      (finally (delete dir)))))
+
+(defn- refused [styles]
+  (try (styles/targets styles) nil (catch clojure.lang.ExceptionInfo e e)))
+
+(deftest targets-are-required-and-checked
+  (testing "missing or empty, refused at start by the settings"
+    (let [at-start #(settings/part-problems :styles (merge {:sources ["src"] :output-dir "resources/public/css"
+                                                            :asset-path "/css"} %))]
+      (is (= [{:in [:styles :targets] :message "is missing"}] (at-start {})))
+      (is (= [{:in [:styles :targets]
+               :message "must be a browserslist query, like \"safari >= 16.4, chrome >= 119\", got \" \""}]
+             (at-start {:targets " "})))
+      (is (= [] (at-start {:targets older})))))
+  (testing "missing or empty, refused by the build"
+    (doseq [styles [{} {:targets ""} {:targets 16}]]
+      (let [e (refused styles)]
+        (is (= ::styles/bad-targets (:type (ex-data e))))
+        (is (str/starts-with? (ex-message e) ":styles :targets must name the browsers the stylesheets are built for")))))
+  (testing "a query browserslist doesn't know"
+    (let [e (refused {:targets "safari >= 16.4, nosuchbrowser >= 1"})]
+      (is (= ::styles/bad-targets (:type (ex-data e))))
+      (is (= (str ":styles :targets \"safari >= 16.4, nosuchbrowser >= 1\" isn't a browserslist query for some browsers: "
+                  "Unknown browser nosuchbrowser. Like \"safari >= 16.4, chrome >= 119\"")
+             (ex-message e)))))
+  (testing "a query that names no browser"
+    (is (str/includes? (ex-message (refused {:targets "safari >= 99"})) "it names no browser")))
+  (testing "a query it knows: lightningcss's targets"
+    (is (= {"chrome" (bit-shift-left 119 16) "safari" (bit-or (bit-shift-left 16 16) (bit-shift-left 4 8))}
+           (styles/targets {:targets older})))))
 
 ;; -----------------------------------------------------------------------------
 ;; The build runs them
@@ -185,7 +277,8 @@
   (let [dir    (temp-dir)
         _      (app-tree dir)
         _      (write dir "app/orders/old.css" ".old {}\n")
-        styles {:sources [(str dir)] :output-dir "test/public/example-styles-stopped" :asset-path "/example-styles-stopped"}
+        styles {:sources [(str dir)] :output-dir "test/public/example-styles-stopped" :asset-path "/example-styles-stopped"
+                :targets older}
         e      (try (build/compile! (assoc browser :build :example-styles-stopped) styles) nil
                     (catch Exception e e))]
     (try
@@ -197,4 +290,22 @@
       (finally
         (delete dir)
         (delete "test/public/example-styles-stopped")
+        (delete "test/public/example-styles")))))
+
+(deftest a-build-stops-without-targets
+  (let [dir    (temp-dir)
+        _      (app-tree dir)
+        styles {:sources [(str dir)] :output-dir "test/public/example-styles-no-targets"
+                :asset-path "/example-styles-no-targets"}
+        e      (try (build/compile! (assoc browser :build :example-styles-no-targets) styles) nil
+                    (catch Exception e e))]
+    (try
+      (is (some? e) "the build failed")
+      (is (some #(str/includes? (str (ex-message %)) ":styles :targets is missing")
+                (take-while some? (iterate ex-cause e)))
+          "saying so, as the start does")
+      (is (not (.exists (io/file "test/public/example-styles-no-targets" "manifest.edn"))) "and no bundles")
+      (finally
+        (delete dir)
+        (delete "test/public/example-styles-no-targets")
         (delete "test/public/example-styles")))))

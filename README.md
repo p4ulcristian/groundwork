@@ -155,6 +155,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:styles :sources` | list of text | Where the browser code and its stylesheets are: every .css under them is named by a namespace's {:css […]}, and in development a saved one rebuilds the bundles | `["src"]` |
 | `:styles :output-dir` | text | Where the bundles and their manifest go, a folder whose public/ is served | `"resources/public/css"` |
 | `:styles :asset-path` | path | Where the browser fetches them | `"/css"` |
+| `:styles :targets` | browserslist query | The browsers the stylesheets are built for, a browserslist query: lightningcss flattens nesting and writes vendor prefixes for them, in development and release; every build stops on a query browserslist doesn't know or that names no browser | `"safari >= 16.4, chrome >= 119"` |
 
 #### `:web`: Requests: the app's routes, limits, hooks, languages
 
@@ -1118,8 +1119,10 @@ pages once, in a `.cljc` file the server and the browser both read:
   names). `:options` are extra shadow-cljs build options, merged over
   Groundwork's.
 - Groundwork's own npm packages are in its `src/deps.cljs`; the app's
-  `package.json` holds only its own, and `lightningcss` with `:styles`. The build needs `thheller/shadow-cljs`
-  on the classpath (an app's `:dev` and `:build` aliases).
+  `package.json` holds only its own, and with `:styles` the two the
+  stylesheets are built with: `npm install --save-dev lightningcss
+  browserslist`. The build needs `thheller/shadow-cljs` on the classpath
+  (an app's `:dev` and `:build` aliases).
 
 Then the store, under the screens:
 
@@ -1222,7 +1225,8 @@ Classes are plain text, stylesheets plain CSS.
 ```clojure
 :styles {:sources    ["src"]                  ; where the browser code and its stylesheets are
          :output-dir "resources/public/css"   ; where the bundles go
-         :asset-path "/css"}                  ; where the browser fetches them
+         :asset-path "/css"                   ; where the browser fetches them
+         :targets    "safari >= 16.4, chrome >= 119"}  ; the browsers they're built for
 ```
 
 `:styles` is the one part an app may leave out (or set to nil): then it
@@ -1245,13 +1249,23 @@ With it, the browser build (`groundwork.build`) does the rest:
     src/app/orders/old.css  is named by no namespace's {:css […]}
     src/app/orders/list.cljs  names src/app/orders/gone.css, which isn't there
   ```
-- **Development:** bundles under plain names (`main.css`). Saving a
-  stylesheet runs the build again, and the open page swaps the changed
-  bundle in without a reload.
-- **Release** (`groundwork.build/release`): every bundle minified by
-  lightningcss, which needs the npm package `lightningcss` in the app's
-  `package.json`. A stylesheet it can't parse stops the release, naming
-  the file and the line. Bundles get fingerprinted names
+- **Built for the app's browsers:** `:targets` is required, a
+  [browserslist](https://browsersl.ist) query. Every bundle, in development
+  as in a release, is made by lightningcss for the browsers it names:
+  nesting is flattened when one of them lacks it, and the vendor prefixes
+  they need are written (write `backdrop-filter`, and `-webkit-backdrop-filter`
+  comes with it for Safari before 18). A prefixed declaration right after
+  the same unprefixed one is dropped first, since lightningcss would keep
+  only the prefixed one. Every build checks the query: one browserslist
+  doesn't know, or that names no browser, stops it. The app's
+  `package.json` needs both: `npm install --save-dev lightningcss
+  browserslist`. A stylesheet lightningcss can't parse stops the build,
+  naming the file and the line.
+- **Development:** bundles under plain names (`main.css`), readable, each
+  file under a comment with its path. Saving a stylesheet runs the build
+  again, and the open page swaps the changed bundle in without a reload.
+- **Release** (`groundwork.build/release`): every bundle minified. Bundles
+  get fingerprinted names
   (`main.3F2A91C0.css`) and a `manifest.edn` the page shell reads; in
   production the app doesn't start without it.
 - A bundle is served from `:asset-path`, not from where its stylesheets

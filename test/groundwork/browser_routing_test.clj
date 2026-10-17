@@ -188,7 +188,9 @@
             (testing "the page loads its module's bundle, fingerprinted, and not the reports module's"
               (is (eventually #(= "flex" (js "(n => n && getComputedStyle(n).display)(document.querySelector('nav'))")))
                   "a class in the code is the class the stylesheet styles")
-              (is (re-matches #"/example-routing-css/main\.[0-9A-F]{8}\.css" (js sheets-js))))
+              (is (re-matches #"/example-routing-css/main\.[0-9A-F]{8}\.css" (js sheets-js)))
+              (is (= "none" (js "getComputedStyle(document.querySelector('#nav-home')).textDecorationLine"))
+                  "a nested rule, flattened for the example's :targets, styles the page"))
             (testing "the page's own address is the first route, with its query and title"
               (is (eventually #(= "stage: curing" (text "#query"))))
               (is (= "Orders" (js "document.title")) "the server's title and the route's agree"))
