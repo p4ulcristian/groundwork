@@ -26,7 +26,7 @@
 (pg/defsql set-bypass "groundwork/permissions/check/set_bypass.sql")
 (pg/defsql set-wall "groundwork/permissions/check/set_wall.sql")
 (pg/defsql set-member-scopes "groundwork/permissions/check/set_member_scopes.sql")
-(pg/defsql holds-sql "groundwork/permissions/check/holds.sql")
+(pg/defsql holds "groundwork/permissions/check/holds.sql")
 (pg/defsql scope-of-kind "groundwork/permissions/check/scope_of_kind.sql")
 (pg/defsql memberships-above "groundwork/permissions/check/memberships_above.sql")
 
@@ -563,8 +563,8 @@
   [perms person action scope-id]
   (as-system perms
              (fn [tx]
-               (:holding/yes (pg/row tx holds-sql {:scope/id scope-id :person (str person)
-                                                   :action   (description/action-name action)})))))
+               (:holding/yes (pg/row tx holds {:scope/id scope-id :person (str person)
+                                               :action   (description/action-name action)})))))
 
 ;; =============================================================================
 ;; What checking needs, read once

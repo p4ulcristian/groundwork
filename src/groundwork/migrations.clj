@@ -37,9 +37,9 @@
 (pg/defsql lock "groundwork/migrator/lock.sql")
 (pg/defsql unlock "groundwork/migrator/unlock.sql")
 (pg/defsql applied "groundwork/migrator/applied.sql")
-(pg/defsql record "groundwork/migrator/record.sql")
+(pg/defsql insert-migration "groundwork/migrator/insert.sql")
 (pg/defsql no-time-limit "groundwork/migrator/no_time_limit.sql")
-(pg/defsql ran-sql "groundwork/migrator/ran.sql")
+(pg/defsql ran "groundwork/migrator/ran.sql")
 
 (def sources
   "Where migrations come from, in the order they run: Groundwork's own, then
@@ -130,9 +130,9 @@
       (let [tx-db (assoc db ::pg/conn tx)]
         (pg/execute! tx-db no-time-limit)
         (execute-text! tx text)
-        (pg/execute! tx-db record {:migration/source      source
-                                   :migration/file        file
-                                   :migration/fingerprint fingerprint})))
+        (pg/execute! tx-db insert-migration {:migration/source      source
+                                             :migration/file        file
+                                             :migration/fingerprint fingerprint})))
     (catch Exception e
       (throw (ex-info (str "Migration " source "/" file " failed: " (ex-message e))
                       {:type ::migration-failed :source source :file file}
@@ -170,7 +170,7 @@
    :file}]}. Changed and missing files would stop the next start."
   ([db] (status db sources))
   ([db sources]
-   (let [ran (group-by :migration/source (pg/rows db ran-sql))]
+   (let [ran (group-by :migration/source (pg/rows db ran))]
      (reduce (fn [report [source path]]
                (let [files   (into {} (map (juxt :file identity)) (files path))
                      applied (ran source)

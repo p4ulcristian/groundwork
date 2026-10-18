@@ -1,8 +1,9 @@
 (ns groundwork.web.languages
-  "The request's language: a /de/… prefix is taken off before routing; the
-   language comes from the address, then the cookie (when named), then the
-   browser's Accept-Language, then the default. The page shell's lang and
-   its alternate links follow it (groundwork.web/language reads it)."
+  "The request's language. With more than one: a /de/… prefix is taken off
+   before routing; the language comes from the address, then the cookie
+   (when named), then the browser's Accept-Language, then the default. With
+   one, every request is in it. The page shell's lang and its alternate
+   links follow it (groundwork.web/language reads it)."
   (:require
    [clojure.string :as str]
    [groundwork.web.page :as-alias page]))
@@ -33,10 +34,12 @@
 
 (defn wrap-languages
   "Take a /xx/ prefix off the path and pick the request's language; give the
-   page shell the language and the same page's address in each language."
+   page shell the language and the same page's address in each language.
+   An app of one language: the language only."
   [handler languages origin]
-  (if (nil? languages)
-    handler
+  (if (= 1 (count (:supported languages)))
+    (let [language (:default languages)]
+      (fn [request] (handler (assoc request ::page/language language))))
     (let [{:keys [supported default]} languages
           prefix (re-pattern (str "^/(" (str/join "|" supported) ")(/.*)?$"))]
       (fn [request]

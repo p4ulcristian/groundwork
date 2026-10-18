@@ -1,6 +1,6 @@
 (ns groundwork.permissions.leaks
-  "The built-in leak test, for an app's own tests: every endpoint with an
-   action permission is called as a member of one scope, with ids from
+  "The built-in leak test, for an app's own tests: every endpoint whose
+   :access is an action is called as a member of one scope, with ids from
    another, and must answer not-found. It catches what the declarations
    can't: a sentence that gives too much, a via whose condition forgot
    something. It proves the wall matches the sentences, not that the
@@ -16,7 +16,7 @@
          (is (empty? (:leaked report)) (pr-str (:leaked report)))))
 
    Each endpoint's params are generated from its input shape, then every
-   id it carries (its permission's own, and every marked field) is set to
+   id it carries (its :access's own, and every marked field) is set to
    the foreign one of that kind, as text (the way a JSON ask brings ids).
    An endpoint is skipped when no foreign id of a kind it needs was given,
    its shape can't be generated, or what was generated doesn't fit it; public
@@ -65,8 +65,8 @@
 (defn- foreign-ids
   "The params with every id the endpoint carries set to the foreign one of
    its kind; nil when a kind has no foreign id."
-  [{:keys [permission ids]} params foreign scope-kinds]
-  (let [{:keys [record scope]} permission
+  [{:keys [access ids]} params foreign scope-kinds]
+  (let [{:keys [record scope]} access
         [own-kind own-param]   (or record scope)
         ;; held in any kind of scope (:groundwork/team): any foreign scope
         own-kind               (if (= :groundwork/any own-kind)
@@ -75,7 +75,7 @@
         needed                 (cond-> (set (vals ids)) own-kind (conj own-kind))]
     (when (every? #(contains? foreign %) needed)
       ;; ids go in as text, the way a JSON ask brings them; a fixed scope
-      ;; (an id in the permission itself) has no param to set
+      ;; (an id in the :access itself) has no param to set
       (let [text   #(str (foreign %))
             params (cond-> params (keyword? own-param) (assoc own-param (text own-kind)))]
         (walk/postwalk (fn [x]
@@ -198,10 +198,10 @@
    in :hidden."
   [part {:keys [person flags foreign sealed]}]
   (reduce (fn [report [k entry]]
-            (let [permission (:permission entry)
-                  open       (when (map? permission) (check/open-level (:perms part) (:action permission)))]
+            (let [access (:access entry)
+                  open   (when (map? access) (check/open-level (:perms part) (:action access)))]
               (cond
-                (#{:public :signed-in} permission)
+                (#{:public :signed-in} access)
                 (assoc-in report [:skipped k] "carries no ids")
 
                 open
@@ -235,7 +235,7 @@
                         :else
                         (update report :leaked conj {:endpoint k :params params :answer answer})))))
 
-                (and (:list permission) (empty? (:ids entry)))
+                (and (:list access) (empty? (:ids entry)))
                 (let [generated (try (generate (:input entry)) (catch Exception e e))]
                   (if (instance? Exception generated)
                     (assoc-in report [:skipped k] (str "its input can't be generated: " (ex-message generated)))

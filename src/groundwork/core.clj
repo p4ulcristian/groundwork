@@ -20,7 +20,7 @@
      :permissions  the app's permission description, see groundwork.permissions.description
      :limits       how often a caller may ask, see groundwork.limits
      :jobs         background jobs and schedules, or nil; see groundwork.jobs
-     :parquery     the app's endpoints and how they're asked, see groundwork.endpoints
+     :endpoints    the app's endpoints and how they're asked, see groundwork.endpoints
 
    Inside, each part is an Integrant key and Integrant starts them in order,
    hands them to each other and stops them in reverse. That wiring is
@@ -73,20 +73,20 @@
                            :needs    [:groundwork/db :groundwork/migrations :groundwork/permissions]
                            :start    jobs/start
                            :stop     jobs/stop}
-   :groundwork/endpoints  {:settings :parquery
+   :groundwork/endpoints  {:settings :endpoints
                            :needs    [:groundwork/db :groundwork/migrations :groundwork/permissions
                                       :groundwork/limits :groundwork/jobs]
                            :start    endpoints/start}
-   :groundwork/parquery   {:settings :parquery
-                           :needs    [:groundwork/db :groundwork/endpoints :groundwork/sessions]
-                           :start    route/start
-                           :stop     route/stop}
+   :groundwork/endpoints-transport {:settings :endpoints
+                                    :needs    [:groundwork/db :groundwork/endpoints :groundwork/sessions]
+                                    :start    route/start
+                                    :stop     route/stop}
    :groundwork/page       {:settings :page
                            :needs    []
                            :start    page/start}
    :groundwork/router     {:settings :web
                            :needs    [:groundwork/migrations :groundwork/sessions :groundwork/permissions
-                                      :groundwork/page :groundwork/parquery :groundwork/limits]
+                                      :groundwork/page :groundwork/endpoints-transport :groundwork/limits]
                            :start    web/start}
    :groundwork/server     {:settings :server
                            :needs    [:groundwork/router]

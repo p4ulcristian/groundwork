@@ -5,31 +5,35 @@
 
    Route data Groundwork reads:
 
-     [\"/customize\" {:get web/page :embeddable true}]
+     [\"/customize\" {:get web/page :embeddable? true}]
          a page other sites may show in a frame; true for any https site, a
          list of origins: [\"https://shop.example\"], or :same-origin for
          only the app's own pages (an editor inside another page)
-     [\"/payments/webhook\" {:post handle :server-to-server true}]
-     [\"/shops/:slug\" {:get web/page :page (fn [request] {:title …})}]
-         the page shell with the route's own title, description, links,
-         scripts and server-written body; see groundwork.web.page
+     [\"/payments/webhook\" {:post handle :server-to-server? true}]
          called by another server (a payment provider's webhook), never by a
          browser: no session is read or made and the Origin check doesn't
          apply, so the handler authenticates the call itself (a signature)
+     [\"/shops/:slug\" {:get web/page :page (fn [request] {:title …})}]
+         the page shell with the route's own title, description, links,
+         scripts and server-written body; see groundwork.web.page
 
    Every other route is a browser route: it gets the session, and a request
    that changes something must come from the app's own pages.
 
-   Every route declares who may use it, or the app doesn't start:
+   Every route declares who may use it, or the app doesn't start. :access
+   has an endpoint's shape (see groundwork.endpoints); a route checks these:
 
      :access :public       anyone
      :access :signed-in    someone signed in; a signed-out browser asking for
                            a page goes to :login-path?next=…, anything else 401
      :access {:action :orders/see :record [:order :order-id]}
-                           a permission on the record whose id is the path
+                           the action on the record whose id is the path
                            parameter (or form/query parameter) :order-id;
                            not allowed answers 404, like a record that isn't there
-     :server-to-server true    instead of :access: the handler checks the call
+     :server-to-server? true   instead of :access: the handler checks the call
+
+   An action on a :scope or a :list is an endpoint's: a route naming one
+   stops the start.
 
    Hooks, for logs and metrics (nil for none):
 
@@ -46,14 +50,16 @@
                :client-ip-header  \"cf-connecting-ip\"   ; or nil
                :request-id-header \"x-request-id\"}      ; or nil
 
-   Languages (or nil for one language):
+   Languages, the one place a language is set:
 
      :languages {:supported [\"en\" \"de\"] :default \"en\" :cookie \"lang\"}
+     :languages {:supported [\"en\"] :default \"en\" :cookie nil}   ; one language
 
-   A /de/… prefix is taken off before routing; the request's language comes
-   from the address, then the cookie (when named), then the browser's
-   Accept-Language, then the default (see language). The page shell's lang
-   and its alternate links follow it.
+   With more than one, a /de/… prefix is taken off before routing; the
+   request's language comes from the address, then the cookie (when named),
+   then the browser's Accept-Language, then the default (see language). The
+   page shell's lang and its alternate links follow it. With one, every
+   request is in it: no prefix, no alternate links.
 
    GET /health answers 200 when the database answers, 503 when it doesn't,
    for a load balancer or a monitor.
@@ -88,7 +94,7 @@
    is answered for every GET route, like GET without the body.
 
    Every answer carries the standard security headers, and no page may be
-   framed by another site unless its route is :embeddable. In production also
+   framed by another site unless its route is :embeddable?. In production also
    Strict-Transport-Security. The Content-Security-Policy is strict: scripts
    and styles only from the app's own origin or carrying this request's
    nonce (the page shell stamps it on its own tags), plus what the app adds
@@ -138,7 +144,7 @@
   (::http/client-ip request))
 
 (defn language
-  "The request's language, or nil when the app has one."
+  "The request's language: one of the app's :languages."
   [request]
   (::page/language request))
 
@@ -157,16 +163,16 @@
 
 (defn- sessions-middleware
   "Every browser route gets the session and the Origin check; a
-   :server-to-server route gets neither."
+   :server-to-server? route gets neither."
   [sessions]
   {:name    ::sessions
-   :compile (fn [{:keys [server-to-server embeddable]} {::keys [path]}]
-              (when-not (or (nil? server-to-server) (boolean? server-to-server))
-                (throw (ex-info (str "Route " path ": :server-to-server must be true or false")
-                                {:type ::bad-route :path path :server-to-server server-to-server})))
-              (when-not server-to-server
+   :compile (fn [{:keys [server-to-server? embeddable?]} {::keys [path]}]
+              (when-not (or (nil? server-to-server?) (boolean? server-to-server?))
+                (throw (ex-info (str "Route " path ": :server-to-server? must be true or false")
+                                {:type ::bad-route :path path :server-to-server? server-to-server?})))
+              (when-not server-to-server?
                 ;; only another site's frame needs the embed cookie
-                #(sessions/wrap-sessions % sessions (and (some? embeddable) (not= :same-origin embeddable)))))})
+                #(sessions/wrap-sessions % sessions (and (some? embeddable?) (not= :same-origin embeddable?)))))})
 
 ;; =============================================================================
 ;; Access
@@ -218,6 +224,11 @@
                         {:type ::bad-route :path path :access access})))
       access)
 
+    (and (map? access) (keyword? (:action access)) (some #{:scope :list} (keys access)))
+    (throw (ex-info (str "Route " path ": a route checks an action on a :record; "
+                         "an action on a :scope or a :list is an endpoint's")
+                    {:type ::bad-route :path path :access access}))
+
     :else
     (throw (ex-info (str "Route " path " must declare :access: :public, :signed-in, "
                          "or {:action … :record [kind param]}")
@@ -228,8 +239,8 @@
    start."
   [permissions login-path]
   {:name    ::access
-   :compile (fn [{:keys [access server-to-server]} {::keys [path]}]
-              (if server-to-server
+   :compile (fn [{:keys [access server-to-server?]} {::keys [path]}]
+              (if server-to-server?
                 (when (some? access)
                   (throw (ex-info (str "Route " path ": a server-to-server route checks the call itself; "
                                        "it has no :access")
@@ -296,7 +307,7 @@
 
 (defn page
   "A Ring handler answering with the page shell, for a route of the app's own:
-   [\"/customize\" {:get web/page :embeddable true}].
+   [\"/customize\" {:get web/page :embeddable? true}].
 
    With a page (a map of a route's :page keys), the shell with that page,
    for a handler that has to look before it knows what to show; the answer
@@ -324,7 +335,7 @@
    and the server's settings take them, with the routes only the server has:
 
      :routes (into (web/page-routes app.routes/routes)
-                   [[\"/webhooks/payments\" {:post payments/webhook :server-to-server true}]])
+                   [[\"/webhooks/payments\" {:post payments/webhook :server-to-server? true}]])
 
    Each record becomes a page: the page shell under the record's :access,
    with its :page details; a :title that is text is the page's own title
@@ -350,7 +361,7 @@
   [{:keys [secret]} sessions]
   (let [secret-bytes (.getBytes ^String secret "UTF-8")]
     ["/groundwork/test-sign-in"
-     {:server-to-server true
+     {:server-to-server? true
       :post             (fn [request]
                           (let [given  (get-in request [:headers "x-test-secret"] "")
                                 params (let [p (codec/form-decode (or (:query-string request) "") "UTF-8")]
@@ -379,10 +390,10 @@
                 (http/plain 503 "database unreachable")))}])
 
 (defn groundwork-routes
-  "Groundwork's own routes, mounted next to the app's: /health, parquery's
-   /parquery, and the test sign-in when it's on."
-  [{:keys [test-sign-in sessions parquery]}]
-  (cond-> (into [(health-route (:db sessions))] (:routes parquery))
+  "Groundwork's own routes, mounted next to the app's: /health, the
+   endpoints' /parquery, and the test sign-in when it's on."
+  [{:keys [test-sign-in sessions endpoints-transport]}]
+  (cond-> (into [(health-route (:db sessions))] (:routes endpoints-transport))
     test-sign-in (conj (test-sign-in-route test-sign-in sessions))))
 
 (def ^:private settings-keys
@@ -424,10 +435,10 @@
   "The router part: {:handler … :max-body-bytes …}, the most any route
    accepts, which the server reads at most. The handler can be swapped for
    one with new routes while the server runs (swap-routes!)."
-  [{:keys [settings environment page sessions permissions parquery limits]}]
+  [{:keys [settings environment page sessions permissions endpoints-transport limits]}]
   (settings/check-part! :web settings environment)
   (let [inputs  (assoc settings :page page :sessions sessions :permissions permissions :environment environment
-                       :parquery parquery :limits limits)
+                       :endpoints-transport endpoints-transport :limits limits)
         current (atom (handler inputs))
         largest (body/largest-body (:routes settings) (:max-body-bytes settings))]
     {:handler        (fn [request] (@current request))

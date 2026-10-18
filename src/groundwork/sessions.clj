@@ -28,7 +28,7 @@
    refused. With the cookie's SameSite=Lax, another site can't act as the
    person who is signed in.
 
-   A page shown in another site's frame (an :embeddable route) gets no Lax
+   A page shown in another site's frame (an :embeddable? route) gets no Lax
    cookie from the browser. A visitor session made there uses a second
    cookie, <cookie-name>_embed (SameSite=None; Secure; Partitioned), which
    the framed page's own requests carry. It only ever holds a visitor: sign-in
@@ -50,10 +50,10 @@
 (pg/defsql delete-for-person "groundwork/sessions/delete_for_person.sql")
 (pg/defsql delete-expired "groundwork/sessions/delete_expired.sql")
 (pg/defsql update-data "groundwork/sessions/update_data.sql")
-(pg/defsql extend-visitor "groundwork/sessions/extend_visitor.sql")
-(pg/defsql keep-visitor "groundwork/sessions/keep_visitor.sql")
+(pg/defsql update-visitor-expiry "groundwork/sessions/update_visitor_expiry.sql")
+(pg/defsql update-visitor-keep-hours "groundwork/sessions/update_visitor_keep_hours.sql")
 (pg/defsql live-of "groundwork/sessions/live_of.sql")
-(pg/defsql of-person-sql "groundwork/sessions/of_person.sql")
+(pg/defsql sessions-of-person "groundwork/sessions/of_person.sql")
 
 ;; =============================================================================
 ;; Keys
@@ -118,7 +118,7 @@
       (when (and (nil? (:session/person-id row))
                  (.isBefore ^OffsetDateTime (:session/expires-at row)
                             (.plusHours (OffsetDateTime/now) (dec hours))))
-        (pg/execute! db extend-visitor {:session/key-hash (key-hash key) :hours hours}))
+        (pg/execute! db update-visitor-expiry {:session/key-hash (key-hash key) :hours hours}))
       {:key       key
        :id        (:session/id row)
        :cookie    cookie
@@ -182,12 +182,12 @@
   "A person's live sessions, for the REPL: the first characters of each
    session's hash, when it began and ends, its flags."
   [{:keys [db]} person-id]
-  (pg/rows db of-person-sql {:session/person-id person-id}))
+  (pg/rows db sessions-of-person {:session/person-id person-id}))
 
 (defn visitor-session!
   "A visitor session for a request that has none, made now: {:id … :cookie
    \"…\"}, its id and the Set-Cookie value to send. For a write that keeps
-   something for someone not signed in (an endpoint's :keeps-for-visitor)."
+   something for someone not signed in (an endpoint's :keeps-for-visitor?)."
   [request]
   (let [{:keys [db settings]} (::sessions request)
         key                   (new-key)
@@ -236,7 +236,7 @@
                                        :session/data      stored
                                        :hours             (:visitor-hours settings)}))
      (when (and keep-days (nil? (:person-id session)))
-       (pg/execute! db keep-visitor {:session/key-hash (key-hash key) :hours (* 24 keep-days)}))
+       (pg/execute! db update-visitor-keep-hours {:session/key-hash (key-hash key) :hours (* 24 keep-days)}))
      (cond-> response
        (or (nil? session) (and keep-days (nil? (:person-id session)))) set-cookie))))
 
@@ -319,7 +319,7 @@
 (defn wrap-sessions
   "Put the session (if any) and the sessions part on every request, and
    refuse a changing request that doesn't come from the app's own origin.
-   On an :embeddable route (embedded? true), a new visitor session uses the
+   On an :embeddable? route (embedded? true), a new visitor session uses the
    embed cookie."
   [handler {:keys [settings] :as sessions} embedded?]
   (fn [request]

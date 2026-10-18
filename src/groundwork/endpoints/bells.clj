@@ -31,9 +31,9 @@
 
 (pg/defsql app-tables "groundwork/endpoints/bells/app_tables.sql")
 (pg/defsql set-tag "groundwork/endpoints/bells/set_tag.sql")
-(pg/defsql rang-sql "groundwork/endpoints/bells/rang.sql")
-(pg/defsql remember-file "groundwork/endpoints/bells/remember_file.sql")
-(pg/defsql files-of-sql "groundwork/endpoints/bells/files_of.sql")
+(pg/defsql rang-setting "groundwork/endpoints/bells/rang.sql")
+(pg/defsql insert-file "groundwork/endpoints/bells/insert_file.sql")
+(pg/defsql endpoint-files "groundwork/endpoints/bells/files_of.sql")
 
 (def ^:private ^System$Logger logger (System/getLogger "groundwork.endpoints.bells"))
 
@@ -75,7 +75,7 @@
                   (seq missing) (str "These tables are named but aren't in the database: " (str/join ", " missing))
                   (seq unsaid)  (str "These tables don't say how they ring: " (str/join ", " unsaid)
                                      ". Each belongs in the permission description (:records), or in"
-                                     " :parquery :bells as :global (with the reason it is nobody's), :personal or :silent (with the reason)"))]
+                                     " :endpoints :bells as :global (with the reason it is nobody's), :personal or :silent (with the reason)"))]
     (when problem
       (throw (ex-info problem {:type ::tables-not-declared :twice (vec twice) :missing (vec missing)
                                :undeclared (vec unsaid)})))))
@@ -126,7 +126,7 @@
 (defn rang
   "The bells rung in this transaction: :any, or the bells as maps, or nil."
   [tx]
-  (let [text (:bell/rang (pg/row tx rang-sql))]
+  (let [text (:bell/rang (pg/row tx rang-setting))]
     (cond
       (str/blank? text) nil
       (= "any" text)    :any
@@ -156,7 +156,7 @@
   [{:keys [db known-files]} endpoint files]
   (doseq [file files
           :when (not (contains? (get @known-files endpoint) file))]
-    (pg/execute! db remember-file {:endpoint-file/endpoint (wire/endpoint-name endpoint) :endpoint-file/file file})
+    (pg/execute! db insert-file {:endpoint-file/endpoint (wire/endpoint-name endpoint) :endpoint-file/file file})
     (swap! known-files update endpoint (fnil conj #{}) file)))
 
 (defn files-of
@@ -165,7 +165,7 @@
   [{:keys [db known-files]} endpoint]
   (or (not-empty (get @known-files endpoint))
       (let [files (into #{} (map :endpoint-file/file)
-                        (pg/rows db files-of-sql {:endpoint-file/endpoint (wire/endpoint-name endpoint)}))]
+                        (pg/rows db endpoint-files {:endpoint-file/endpoint (wire/endpoint-name endpoint)}))]
         (when (seq files) (swap! known-files assoc endpoint files))
         files)))
 

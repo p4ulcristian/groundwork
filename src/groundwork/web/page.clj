@@ -2,12 +2,14 @@
   "The page shell: the one HTML page that loads an app. The app gives its
    details as settings, every one required:
 
-     :lang         \"en\"
      :title        \"Acme Orders\"
      :description  \"Orders and invoices for small shops\"   or nil
      :icon         \"/icon.svg\"
-     :stylesheets  [\"/app.css\"]
+     :stylesheets  [\"/app.css\"]       files the app brings itself (fonts, a library's sheet)
      :head         []                extra tags, as HTML text, placed at the end of <head>
+
+   Its language is the request's (see groundwork.web): :web :languages is
+   the one place a language is set.
 
    The app's compiled browser code is the build's own (see groundwork.build):
    after a release, its fingerprinted file from the build's manifest. An app
@@ -29,7 +31,7 @@
          (web/page request {:title (:name shop) :body …})
          (assoc (web/page request {:title \"No such shop\"}) :status 404)))
 
-     :lang :title :description   replace the app's
+     :title :description   replace the app's
      :canonical  \"https://…\"     <link rel=canonical>
      :alternates [{:lang \"de\" :href \"https://…/de/…\"}]   <link rel=alternate hreflang>
      :stylesheets :scripts :head added after the app's
@@ -39,15 +41,15 @@
      :body       HTML text the server writes inside <div id=\"app\">, for
                  search engines and the first paint; the app replaces it
 
-   With languages (see groundwork.web), the page's lang is the request's
-   language unless the route gives its own, and the alternate links name the
-   same page in every language unless the route gives its own.
+   The page's lang is the request's language. With more than one language,
+   the alternate links name the same page in every language unless the
+   route gives its own.
 
    The page has one element for the app to render into, <div id=\"app\">,
    and what the browser start reads first, as JSON in
    <script type=\"application/json\" id=\"groundwork\">: the person signed in
-   (or null), their session's flags, the page's language and, with
-   languages, the ones the app speaks (the browser's routing reads them),
+   (or null), their session's flags, the page's language and, with more
+   than one language, the ones the app speaks (the browser's routing reads them),
    and with :styles each module's bundle, for code loaded on demand. It is never
    cached: a deploy is seen on the next load. Every <script> and
    <style> on it, the app's :head and :body included, carries the request's
@@ -61,7 +63,7 @@
    [jsonista.core :as json]))
 
 (def ^:private route-keys
-  #{:lang :title :description :canonical :alternates :stylesheets :scripts :head :body :module})
+  #{:title :description :canonical :alternates :stylesheets :scripts :head :body :module})
 
 (defn check-route-page
   "A route's :page: a map of route-keys or a function of the request."
@@ -80,7 +82,7 @@
 (defn merged
   "The app's page settings with a route's page over them."
   [app route]
-  (-> (merge app (select-keys route [:lang :title :description :canonical :alternates :body :module]))
+  (-> (merge app (select-keys route [:title :description :canonical :alternates :body :module]))
       (update :stylesheets into (:stylesheets route))
       (update :head into (:head route))
       (assoc :scripts (vec (:scripts route)))))
@@ -178,13 +180,15 @@
         modules* (fn [] (when styles (styles/module-links styles)))
         modules  (if dev? modules* (memoize modules*))]
     (fn [request]
-      (let [page (merged (cond-> (assoc settings
-                                        :person    (sessions/person request)
-                                        :flags     (sessions/flags request)
-                                        :languages (get-in app-settings [:web :languages]))
-                           (::language request)   (assoc :lang (::language request))
-                           (::alternates request) (assoc :alternates (::alternates request)))
-                         (route-page request))]
+      (let [languages (get-in app-settings [:web :languages])
+            page      (merged (cond-> (assoc settings
+                                             :person    (sessions/person request)
+                                             :flags     (sessions/flags request)
+                                             :lang      (or (::language request) (:default languages))
+                                             ;; the browser's routing reads them when there is a choice
+                                             :languages (when (< 1 (count (:supported languages))) languages))
+                                (::alternates request) (assoc :alternates (::alternates request)))
+                              (route-page request))]
         {:status  200
          :headers {"Content-Type"  "text/html; charset=utf-8"
                    "Cache-Control" "no-store"}

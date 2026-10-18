@@ -1,7 +1,7 @@
 (ns groundwork.web.http
   "What every answer gets on its way out, around the router: the security
    headers and the Content-Security-Policy with this request's nonce, who
-   may frame a page (:embeddable), the request's id and the client's
+   may frame a page (:embeddable?), the request's id and the client's
    address (believed from a trusted proxy only), the :on-request and
    :on-error hooks, gzip, HEAD answered like GET, and search engines kept
    out outside production. See groundwork.web for the settings."
@@ -76,7 +76,7 @@
 (defn wrap-security-headers
   "The headers on every answer, with a nonce made for each request. A
    response that says which sites may frame it (::frame-ancestors, from an
-   :embeddable route) names them in frame-ancestors, and gets no
+   :embeddable? route) names them in frame-ancestors, and gets no
    X-Frame-Options, which can't name another site."
   [handler environment csp]
   (let [headers (cond-> security-headers
@@ -94,7 +94,7 @@
                 (update :headers #(merge headers %)))))))))
 
 (defn- frame-ancestors
-  "The frame-ancestors value for a route's :embeddable, checked when the
+  "The frame-ancestors value for a route's :embeddable?, checked when the
    router is built."
   [path embeddable]
   (cond
@@ -109,14 +109,14 @@
     (str/join " " embeddable)
 
     :else
-    (throw (ex-info (str "Route " path ": :embeddable must be true, :same-origin, or a list of origins like \"https://shop.example\"")
-                    {:type ::web/bad-route :path path :embeddable embeddable}))))
+    (throw (ex-info (str "Route " path ": :embeddable? must be true, :same-origin, or a list of origins like \"https://shop.example\"")
+                    {:type ::web/bad-route :path path :embeddable? embeddable}))))
 
 (def embeddable-middleware
   {:name    ::web/embeddable
-   :compile (fn [{:keys [embeddable]} {::web/keys [path]}]
-              (when (some? embeddable)
-                (let [ancestors (frame-ancestors path embeddable)]
+   :compile (fn [{:keys [embeddable?]} {::web/keys [path]}]
+              (when (some? embeddable?)
+                (let [ancestors (frame-ancestors path embeddable?)]
                   (fn [handler]
                     (fn [request]
                       (some-> (handler request) (assoc ::frame-ancestors ancestors)))))))})

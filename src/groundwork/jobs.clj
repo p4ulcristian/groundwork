@@ -14,7 +14,7 @@
                       :params     [:map [:order/id :uuid]]
                       :timeout-ms 60000
                       :attempts   5
-                      :scope      [:order :order/id]}}  ; optional, see below
+                      :runs-in    [:order :order/id]}}  ; optional, see below
 
      ;; in an endpoint's handler (or another job's): only there if it commits
      (jobs/enqueue! ctx :app.mail/send {:order/id id})
@@ -32,7 +32,7 @@
    Since a job can run twice, its work must be safe to repeat.
 
    A job runs in one transaction behind the database wall as the system
-   (every row), unless its kind names a :scope [kind param]: then the wall
+   (every row), unless its kind says where it runs, :runs-in [kind param]: then the wall
    shows only that scope, the one named by the param (a scope's id), or the
    scope of the record it names.
 
@@ -57,15 +57,15 @@
 
 (pg/defsql insert-job "groundwork/jobs/insert.sql")
 (pg/defsql claim "groundwork/jobs/claim.sql")
-(pg/defsql done "groundwork/jobs/done.sql")
+(pg/defsql update-to-done "groundwork/jobs/update_to_done.sql")
 (pg/defsql failed "groundwork/jobs/failed.sql")
-(pg/defsql requeue-stuck "groundwork/jobs/requeue_stuck.sql")
-(pg/defsql forget-done "groundwork/jobs/forget_done.sql")
-(pg/defsql upsert-schedule "groundwork/jobs/upsert_schedule.sql")
+(pg/defsql update-stuck-to-queued "groundwork/jobs/update_stuck_to_queued.sql")
+(pg/defsql delete-done "groundwork/jobs/delete_done.sql")
+(pg/defsql insert-schedule "groundwork/jobs/insert_schedule.sql")
 (pg/defsql due-schedules "groundwork/jobs/due_schedules.sql")
-(pg/defsql move-schedule "groundwork/jobs/move_schedule.sql")
+(pg/defsql update-schedule "groundwork/jobs/update_schedule.sql")
 (pg/defsql by-state "groundwork/jobs/by_state.sql")
-(pg/defsql retry-sql "groundwork/jobs/retry.sql")
+(pg/defsql retry "groundwork/jobs/retry.sql")
 
 (def ^:private ^System$Logger logger (System/getLogger "groundwork.jobs"))
 
@@ -181,10 +181,10 @@
 
 (defn- run-in-transaction
   "The job's handler in one transaction behind the wall."
-  [{:keys [perms] :as part} {:keys [run scope]} ctx params]
+  [{:keys [perms] :as part} {:keys [run runs-in]} ctx params]
   (let [go (fn [tx] (run (assoc ctx :db tx :jobs part) params))]
-    (if scope
-      (check/in-scopes perms (scopes-for part scope params) go)
+    (if runs-in
+      (check/in-scopes perms (scopes-for part runs-in params) go)
       (check/as-system perms go))))
 
 (defn give-up
@@ -224,7 +224,7 @@
         result  (deref outcome timeout-ms ::timeout)]
     (when (= ::timeout result) (.interrupt thread))
     (if (= :ok result)
-      (do (pg/execute! db done {:job/id (str id)}) :done)
+      (do (pg/execute! db update-to-done {:job/id (str id)}) :done)
       (let [message (if (= ::timeout result)
                       (str "Ran longer than " timeout-ms " ms")
                       (str (.getName (class result)) ": " (ex-message result)))]
@@ -240,13 +240,13 @@
   "Queue every due schedule's job, once across servers."
   [{:keys [db schedules] :as part}]
   (pg/with-transaction [tx db]
-    (doseq [{key :schedule/key} (pg/rows tx due-schedules)
+    (doseq [{key :job-schedule/key} (pg/rows tx due-schedules)
             :let [{:keys [job params cron]} (get schedules key)]
             :when job]
       (enqueue! {:db tx :jobs part} job params)
-      (pg/execute! tx move-schedule {:schedule/key key
-                                     :schedule/next-at (OffsetDateTime/ofInstant (next-time cron (Instant/now))
-                                                                                 ZoneOffset/UTC)}))))
+      (pg/execute! tx update-schedule {:job-schedule/key     key
+                                       :job-schedule/next-at (OffsetDateTime/ofInstant (next-time cron (Instant/now))
+                                                                                       ZoneOffset/UTC)}))))
 
 (defn- dispatch!
   "Until stopped: queue due schedules, put stuck jobs back, and give every
@@ -255,7 +255,7 @@
   (while (not @stopped)
     (try
       (run-schedules! part)
-      (pg/execute! db requeue-stuck)
+      (pg/execute! db update-stuck-to-queued)
       (loop []
         (when (and (not @stopped) (.tryAcquire free))
           (if-let [job (pg/row db claim)]
@@ -321,7 +321,7 @@
 (defn retry!
   "Run a dead (or waiting) job again now, its attempts counted afresh."
   [{:keys [db]} id]
-  (some? (pg/row db retry-sql {:job/id (str id)})))
+  (some? (pg/row db retry {:job/id (str id)})))
 
 ;; =============================================================================
 ;; The part
@@ -363,11 +363,11 @@
                      :stopped     (atom false)
                      :free        (Semaphore. (int (:workers settings)))
                      :wake        (ArrayBlockingQueue. 1)}]
-      (pg/execute! db forget-done)
+      (pg/execute! db delete-done)
       (doseq [[key {:keys [cron]}] schedules]
-        (pg/execute! db upsert-schedule {:schedule/key key
-                                         :schedule/next-at (OffsetDateTime/ofInstant (next-time cron (Instant/now))
-                                                                                     ZoneOffset/UTC)}))
+        (pg/execute! db insert-schedule {:job-schedule/key     key
+                                         :job-schedule/next-at (OffsetDateTime/ofInstant (next-time cron (Instant/now))
+                                                                                         ZoneOffset/UTC)}))
       (if (:on? settings)
         (assoc part
                :dispatcher (Thread/startVirtualThread #(dispatch! part))

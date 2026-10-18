@@ -2,7 +2,7 @@
   "The browser's answers from parquery, kept by question: an endpoint and its
    params. It is the browser's end of the endpoints area,
    named for whose answers it keeps. It lives in re-frame's db under
-   :groundwork/parquery-store; the app's own state is beside it.
+   :groundwork/endpoints-store; the app's own state is beside it.
 
      (rf/dispatch [::store/start {:shapes {…}}])                  ; once, at boot; nothing asks before it
      (rf/dispatch [::store/ensure :jobs-page [{:endpoint :jobs/list :params {:shop/id id}}]])
@@ -342,7 +342,7 @@
 ;; Events
 ;; =============================================================================
 
-(defn- store-of [db] (get db :groundwork/parquery-store empty-store))
+(defn- store-of [db] (get db :groundwork/endpoints-store empty-store))
 
 (defn- started!
   "Throws when the app hasn't started: nothing asks before the start. The
@@ -350,7 +350,7 @@
    before it would be answered into nothing, and its screen would wait
    forever. `asks` are the questions, to name them."
   [db what asks]
-  (when-not (contains? db :groundwork/parquery-store)
+  (when-not (contains? db :groundwork/endpoints-store)
     (let [endpoints (distinct (keep :endpoint asks))]
       (throw (ex-info (str "Asked " (if (seq endpoints) (str/join ", " endpoints) "the store") " (" what
                            ") before the app's start. Nothing asks before groundwork.browser/start!: "
@@ -392,7 +392,7 @@
                  (fn [{:keys [db]} [_ {:keys [shapes max-asks line on-read-failed]}]]
                    (http/set-shapes! shapes)
                    (when max-asks (http/set-max-asks! max-asks))
-                   {:db          (assoc db :groundwork/parquery-store
+                   {:db          (assoc db :groundwork/endpoints-store
                                         (cond-> empty-store on-read-failed (assoc :on-read-failed on-read-failed)))
                     ::start-line (or line {})}))
 
@@ -402,7 +402,7 @@
                    (started! db "ensure" asks)
                    (let [[store ks]      (ensure-asks (collect (store-of db) now) owner asks now)
                          [store fetches] (fetching store ks)]
-                     {:db     (assoc db :groundwork/parquery-store store)
+                     {:db     (assoc db :groundwork/endpoints-store store)
                       ::fetch fetches
                       ::watch (watched store)})))
 
@@ -412,7 +412,7 @@
                    (started! db "own" asks)
                    (let [[store ks]      (own-asks (collect (store-of db) now) owner asks now)
                          [store fetches] (fetching store ks)]
-                     {:db     (assoc db :groundwork/parquery-store store)
+                     {:db     (assoc db :groundwork/endpoints-store store)
                       ::fetch fetches
                       ::watch (watched store)})))
 
@@ -421,13 +421,13 @@
                  (fn [{:keys [db now]} [_ owner]]
                    (let [store (-> (collect (release-owner (store-of db) owner now) now)
                                    (update :hearing dissoc owner))]
-                     {:db (assoc db :groundwork/parquery-store store) ::watch (watched store)})))
+                     {:db (assoc db :groundwork/endpoints-store store) ::watch (watched store)})))
 
 (rf/reg-event-fx ::hear
                  (fn [{:keys [db]} [_ owner asks event]]
                    (started! db "hear" asks)
                    (let [store (hearing (store-of db) owner asks event)]
-                     {:db (assoc db :groundwork/parquery-store store) ::watch (watched store)})))
+                     {:db (assoc db :groundwork/endpoints-store store) ::watch (watched store)})))
 
 (rf/reg-event-fx ::-answered
                  ;; A bell that rang while the question was out left the entry stale:
@@ -446,7 +446,7 @@
                                            (:on-read-failed store))
                          tell            (cond-> (mapv #(conj % (:data answer)) told)
                                            failed (conj (conj failed (get-in store [:entries k :ask]) answer)))]
-                     (cond-> {:db (assoc db :groundwork/parquery-store
+                     (cond-> {:db (assoc db :groundwork/endpoints-store
                                          (cond-> store again? (assoc :refresh-pending? true)))}
                        (seq fetches) (assoc ::fetch fetches)
                        (seq tell)    (assoc :fx (mapv (fn [event] [:dispatch event]) tell))
@@ -456,7 +456,7 @@
                  (fn [{:keys [db]} [_ ask event]]
                    (started! db "once-answered" [ask])
                    (let [[store now?] (once-answered (store-of db) ask event)]
-                     (cond-> {:db (assoc db :groundwork/parquery-store store)}
+                     (cond-> {:db (assoc db :groundwork/endpoints-store store)}
                        now? (assoc :dispatch (conj event (get-in store [:entries (key-of ask) :data])))))))
 
 (rf/reg-event-fx ::ask-again
@@ -464,7 +464,7 @@
                    (started! db "ask-again" [ask])
                    (let [[store ks]      (ask-again (store-of db) ask)
                          [store fetches] (fetching store ks)]
-                     {:db (assoc db :groundwork/parquery-store store) ::fetch fetches})))
+                     {:db (assoc db :groundwork/endpoints-store store) ::fetch fetches})))
 
 (rf/reg-event-fx ::-changed
                  (fn [{:keys [db]} [_ forms tag]]
@@ -474,15 +474,15 @@
                          store   (rang before forms tag)
                          tell    (mapv (fn [event] [:dispatch event]) (hearers store news))]
                      (if (:refresh-pending? store)
-                       {:db (assoc db :groundwork/parquery-store store) :fx tell}
-                       {:db             (assoc db :groundwork/parquery-store (assoc store :refresh-pending? true))
+                       {:db (assoc db :groundwork/endpoints-store store) :fx tell}
+                       {:db             (assoc db :groundwork/endpoints-store (assoc store :refresh-pending? true))
                         :fx             tell
                         :dispatch-later [{:ms gather-ms :dispatch [::-refresh]}]}))))
 
 (rf/reg-event-fx ::-reconnected
                  (fn [{:keys [db]} _]
                    (let [store (store-of db)]
-                     {:db (assoc db :groundwork/parquery-store (mark-all-stale store))
+                     {:db (assoc db :groundwork/endpoints-store (mark-all-stale store))
                       :fx (into [[:dispatch [::-refresh]]]
                                 (map (fn [[_ {:keys [event]}]] [:dispatch event]))
                                 (:hearing store))})))
@@ -491,7 +491,7 @@
                  (fn [{:keys [db]} _]
                    (let [store           (assoc (store-of db) :refresh-pending? false)
                          [store fetches] (fetching store (stale-on-screen store))]
-                     {:db (assoc db :groundwork/parquery-store store) ::fetch fetches})))
+                     {:db (assoc db :groundwork/endpoints-store store) ::fetch fetches})))
 
 (rf/reg-event-fx ::write
                  (fn [{:keys [db]} [_ ask on-answer]]
@@ -509,7 +509,7 @@
                                            (rang-in-answer before (:tag answer) watching (:changed answer))
                                            [before []])
                          [store fetches] (fetching store ks)]
-                     {:db     (assoc db :groundwork/parquery-store store)
+                     {:db     (assoc db :groundwork/endpoints-store store)
                       ::fetch fetches
                       :fx     (cond-> (mapv (fn [event] [:dispatch event]) (hearers store news))
                                 on-answer (conj [:dispatch (conj on-answer (dissoc answer :changed :tag))]))})))

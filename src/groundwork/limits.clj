@@ -38,7 +38,7 @@
    (java.util.concurrent ConcurrentHashMap)))
 
 (pg/defsql count-today "groundwork/limits/count_today.sql")
-(pg/defsql forget-old-days "groundwork/limits/forget_old_days.sql")
+(pg/defsql delete-old-days "groundwork/limits/delete_old_days.sql")
 
 (def ^:private ^System$Logger logger (System/getLogger "groundwork.limits"))
 
@@ -118,5 +118,5 @@
   "The limits part: the buckets, and yesterday's counts forgotten."
   [{:keys [settings db]}]
   (settings/check-part! :limits settings)
-  (pg/execute! db forget-old-days)
+  (pg/execute! db delete-old-days)
   {:db db :settings settings :buckets (ConcurrentHashMap.)})
