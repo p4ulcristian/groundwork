@@ -28,7 +28,7 @@
    [groundwork.parquery.websocket :as websocket]
    [groundwork.permissions.check :as check]
    [groundwork.sessions :as sessions]
-   [groundwork.settings :as settings]))
+   [groundwork.settings.docs :as docs]))
 
 ;; =============================================================================
 ;; Asking as a person
@@ -110,13 +110,13 @@
   "What goes at a place in the settings: its type, what it is, an example.
    (explain-setting [:sessions :visitor-hours])"
   [path]
-  (settings/explain path))
+  (docs/explain path))
 
 (defn settings
   "Every setting gw/start takes, in order, each a line: its place, its type
    and what it is. docs/example-settings.edn has them with examples."
   []
-  (for [{:keys [path type description]} (settings/all)]
+  (for [{:keys [path type description]} (docs/all)]
     (str (str/join " " (map pr-str path)) "  (" type ")  " description)))
 
 ;; =============================================================================

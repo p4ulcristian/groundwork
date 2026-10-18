@@ -9,6 +9,7 @@
    [clojure.test :refer [deftest is testing]]
    [groundwork.repl :as repl]
    [groundwork.settings :as settings]
+   [groundwork.settings.docs :as docs]
    [groundwork.test-support :refer [app-settings]]))
 
 (def ^:private example-file "docs/example-settings.edn")
@@ -27,16 +28,16 @@
   "Regenerate docs/example-settings.edn and the README's settings reference."
   []
   (io/make-parents example-file)
-  (spit example-file (settings/example))
-  (spit readme (readme-with (slurp readme) (settings/reference))))
+  (spit example-file (docs/example))
+  (spit readme (readme-with (slurp readme) (docs/reference))))
 
 (deftest the-docs-are-up-to-date
   (testing "docs/example-settings.edn"
-    (is (= (settings/example) (slurp example-file))
+    (is (= (docs/example) (slurp example-file))
         "Out of date: run (groundwork.settings-test/write-docs!)"))
   (testing "the README's settings reference"
     (let [text (slurp readme)]
-      (is (= text (readme-with text (settings/reference)))
+      (is (= text (readme-with text (docs/reference)))
           "Out of date: run (groundwork.settings-test/write-docs!)"))))
 
 (deftest the-example-is-edn-and-follows-the-schema
