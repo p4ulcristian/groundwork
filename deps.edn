@@ -27,9 +27,9 @@
                        {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                        ;; HikariCP logs through SLF4J; the app picks a logger, tests pick none
                        org.slf4j/slf4j-nop {:mvn/version "2.0.20"}
-                       ;; groundwork.leaks generates params
+                       ;; groundwork.permissions.leaks generates params
                        org.clojure/test.check {:mvn/version "1.1.1"}
-                       ;; groundwork.repl's development start
+                       ;; groundwork.repl.dev, the development start
                        nrepl/nrepl {:mvn/version "1.8.0"}
                        ;; groundwork.build, compiling the example app in build-test
                        thheller/shadow-cljs {:mvn/version "3.5.5"}}
