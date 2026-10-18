@@ -4,7 +4,7 @@
   (:require
    [clojure.java.io :as io]
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [groundwork.names :as names]
+   [groundwork.postgres.names :as names]
    [groundwork.postgres :as pg]
    [groundwork.settings :as settings]
    [groundwork.test-support :refer [sql!]])

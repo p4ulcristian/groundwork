@@ -1,7 +1,7 @@
-(ns groundwork.sql-test
+(ns groundwork.postgres.sql-test
   (:require
    [clojure.test :refer [deftest is are testing]]
-   [groundwork.sql :as sql]))
+   [groundwork.postgres.sql :as sql]))
 
 (deftest params-become-positions
   (is (= {:sql "SELECT post__id FROM posts WHERE post__author_id = ? LIMIT ?"

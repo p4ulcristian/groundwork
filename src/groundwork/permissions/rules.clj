@@ -60,7 +60,7 @@
    table: the same text checks one record and filters a list."
   (:require
    [clojure.string :as str]
-   [groundwork.names :as names]))
+   [groundwork.postgres.names :as names]))
 
 (def team-action :groundwork/team)
 

@@ -23,7 +23,7 @@
   (:require
    [clojure.set :as set]
    [clojure.string :as str]
-   [groundwork.names :as names]
+   [groundwork.postgres.names :as names]
    [groundwork.permissions.rules :as rules]
    [groundwork.postgres :as pg]
    [groundwork.settings :as settings]

@@ -1,7 +1,7 @@
-(ns groundwork.names-test
+(ns groundwork.postgres.names-test
   (:require
    [clojure.test :refer [deftest is are]]
-   [groundwork.names :as names]))
+   [groundwork.postgres.names :as names]))
 
 (deftest both-directions
   (are [k column] (and (= column (names/key->column k))

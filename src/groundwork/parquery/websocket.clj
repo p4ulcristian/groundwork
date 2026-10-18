@@ -45,7 +45,7 @@
    [clojure.string :as str]
    [clojure.walk :as walk]
    [groundwork.endpoints :as endpoints]
-   [groundwork.names :as names]
+   [groundwork.postgres.names :as names]
    [groundwork.parquery.wire :as wire]
    [groundwork.permissions :as permissions]
    [groundwork.permissions.rules :as rules]

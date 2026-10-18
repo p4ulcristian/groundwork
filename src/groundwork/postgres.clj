@@ -5,7 +5,7 @@
      (pg/defsql list-recent)                 ; list_recent.sql next to this ns
      (pg/rows db list-recent {:limit 20})    ;=> [{:post/id … :post/title …}]
 
-   For each column of a result, the key (through groundwork.names) and the
+   For each column of a result, the key (through groundwork.postgres.names) and the
    way to read its value are chosen once; every row reuses them. Values are
    real types: UUID, java.time, BigDecimal. In json/jsonb, keys shaped
    entity__field become :entity/field; every other key stays a string. A
@@ -17,9 +17,9 @@
   (:require
    [clojure.java.io :as io]
    [clojure.string :as str]
-   [groundwork.names :as names]
+   [groundwork.postgres.names :as names]
    [groundwork.settings :as settings]
-   [groundwork.sql :as sql]
+   [groundwork.postgres.sql :as sql]
    [jsonista.core :as json]
    [next.jdbc :as jdbc]
    [next.jdbc.connection :as connection])

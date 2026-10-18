@@ -1,4 +1,4 @@
-(ns groundwork.names
+(ns groundwork.postgres.names
   "One name for a piece of data, from the column to the browser.
 
      :post/created-at  <->  \"post__created_at\"
@@ -7,7 +7,7 @@
    Both directions are exact: (= k (column->key (key->column k))) for every
    valid k. A part is lowercase letters and digits, words joined by single
    hyphens (keyword) or single underscores (column). Anything else throws
-   ex-info {:type :groundwork.names/invalid}; nothing is guessed."
+   ex-info {:type :groundwork.postgres.names/invalid}; nothing is guessed."
   (:require
    [clojure.string :as str]))
 

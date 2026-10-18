@@ -1,4 +1,4 @@
-(ns groundwork.sql
+(ns groundwork.postgres.sql
   "SQL text with :name params -> a JDBC statement with ? and the param order.
 
      SELECT post__id FROM posts WHERE post__author_id = :post/author-id LIMIT :limit
