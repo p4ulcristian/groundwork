@@ -1,11 +1,11 @@
-(ns groundwork.loader-test
+(ns groundwork.browser.loader-test
   "Code loaded on demand brings its stylesheets first: the module loader's
    own loading waits for the bundles. On node there is no page; the order is
    checked here with a stand-in for linking, and in a real browser by
    groundwork.browser-routing-test."
   (:require
    [cljs.test :refer [async deftest is]]
-   [groundwork.loader :as loader]))
+   [groundwork.browser.loader :as loader]))
 
 (deftest a-module-s-code-loads-after-its-bundles
   (async done

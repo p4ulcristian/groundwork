@@ -308,7 +308,7 @@
    ((::page request) (assoc request ::page/route-page page))))
 
 (def ^:private browser-only
-  "What only the browser reads in a route record (see groundwork.routing)."
+  "What only the browser reads in a route record (see groundwork.browser.routing)."
   #{:view :reads :load :placeholder})
 
 (defn page-routes

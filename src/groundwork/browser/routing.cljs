@@ -1,4 +1,4 @@
-(ns groundwork.routing
+(ns groundwork.browser.routing
   "Routing in the browser: an address leads to a screen. groundwork.browser
    starts it and is the door an app uses (navigate!, href, the query
    functions, screen); this namespace is the engine behind it.
@@ -15,7 +15,7 @@
      :load         instead of :view, for a screen whose code loads on demand:
                    (fn [] promise-of-the-view); :placeholder shows meanwhile.
                    The module the code arrives in brings its stylesheets
-                   before its code runs (groundwork.loader)
+                   before its code runs (groundwork.browser.loader)
      :placeholder  a component, for this route (else the app's)
 
    and whatever the server reads from the same record (:access, :page…; see

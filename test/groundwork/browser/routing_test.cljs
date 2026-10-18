@@ -1,4 +1,4 @@
-(ns groundwork.routing-test
+(ns groundwork.browser.routing-test
   "Routing in the browser, with the browser itself replaced: addresses and
    routes, what every move does (title, scrolling, the route's reads, the
    hook), the query as state, languages, code loaded on demand, and unsaved
@@ -9,7 +9,7 @@
    [groundwork.parquery.websocket :as websocket]
    [groundwork.parquery.wire :as wire]
    [groundwork.parquery.store :as store]
-   [groundwork.routing :as routing]
+   [groundwork.browser.routing :as routing]
    [re-frame.core :as rf]
    [re-frame.db :as rf-db]
    [reitit.frontend :as rfr]))

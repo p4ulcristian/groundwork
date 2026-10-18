@@ -2,7 +2,7 @@
   (:require
    [cljs.test :refer [deftest is]]
    [groundwork.browser :as gb]
-   [groundwork.routing :as routing]
+   [groundwork.browser.routing :as routing]
    [re-frame.core :as rf]
    [re-frame.db :as rf-db]))
 

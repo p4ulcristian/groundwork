@@ -1,4 +1,4 @@
-(ns groundwork.loader
+(ns groundwork.browser.loader
   "Code loaded on demand (a build with :loader? true).
 
    It arrives as a <script> tag, never as text that is evaluated: the page's

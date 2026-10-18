@@ -39,7 +39,7 @@
    - either way it writes manifest.edn next to the bundles; the page shell
      reads it (links, module-links) and links the bundles of the modules a
      page starts with. A module loaded on demand brings its own bundle
-     before its code runs (groundwork.loader)."
+     before its code runs (groundwork.browser.loader)."
   (:require
    [clojure.edn :as edn]
    [clojure.java.io :as io]
