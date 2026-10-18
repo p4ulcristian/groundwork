@@ -20,7 +20,7 @@
      :loader? true
      :options {…}        extra shadow-cljs build options, merged over these
 
-   In development (groundwork.repl/start!), starting the app also starts the
+   In development (groundwork.repl.dev/start!), starting the app also starts the
    watcher; compile! builds the same once, without watching. A release
    (release!, before packaging the app) compiles with fingerprinted names,
    like main.3F2A9C.js, and writes manifest.edn next to them; the page shell

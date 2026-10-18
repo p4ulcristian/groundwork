@@ -9,6 +9,7 @@
    [groundwork.permissions :as perm]
    [groundwork.postgres :as pg]
    [groundwork.repl :as repl]
+   [groundwork.repl.dev :as dev]
    [jsonista.core :as json]
    [groundwork.sessions :as sessions]
    [groundwork.test-support :refer [app-settings sql!]]
@@ -158,11 +159,11 @@
 
 (deftest the-development-start
   (testing "only in development"
-    (is (= ::repl/not-development
-           (:type (ex-data (try (repl/start! settings {}) (catch Exception e e)))))))
+    (is (= ::dev/not-development
+           (:type (ex-data (try (dev/start! settings {}) (catch Exception e e)))))))
   (testing "the app, an nREPL and a log, from one call"
     (let [dir (str (Files/createTempDirectory "groundwork-dev" (make-array FileAttribute 0)))
-          dev (repl/start! (-> settings (assoc :environment :development) (assoc-in [:server :port] 0))
+          dev (dev/start! (-> settings (assoc :environment :development) (assoc-in [:server :port] 0))
                            {:dir dir})]
       (try
         (is (pos-int? (gw/port (:app dev))))
@@ -172,26 +173,26 @@
           (is (= ["-Tmcp" "start" ":config-profile" ":repl" ":port" (str (:port (:nrepl dev)))]
                  (get-in (json/read-value (io/file dir ".mcp.json")) ["mcpServers" "clojure-mcp" "args"]))))
         (println "a line for the log")
-        (finally (repl/stop! dev)))
+        (finally (dev/stop! dev)))
       (is (not (.exists (io/file dir ".nrepl-port"))) "stopped: the port file is gone")
       (let [log (slurp (io/file dir ".groundwork" "dev.log"))]
         (is (str/includes? log "Groundwork is running"))
         (is (str/includes? log "a line for the log")))
       (testing "the next run keeps the last log"
-        (let [dev (repl/start! (-> settings (assoc :environment :development) (assoc-in [:server :port] 0))
+        (let [dev (dev/start! (-> settings (assoc :environment :development) (assoc-in [:server :port] 0))
                                {:dir dir})]
-          (repl/stop! dev)
+          (dev/stop! dev)
           (is (str/includes? (slurp (io/file dir ".groundwork" "dev.log.1")) "a line for the log")))))))
 
 (deftest the-mcp-json-keeps-other-servers
   (let [dir (str (Files/createTempDirectory "groundwork-mcp" (make-array FileAttribute 0)))
         f   (io/file dir ".mcp.json")]
     (spit f "{\"mcpServers\": {\"other\": {\"type\": \"stdio\", \"command\": \"x\"}}}")
-    (repl/write-mcp-json! dir 7888)
+    (dev/write-mcp-json! dir 7888)
     (let [servers (get (json/read-value f) "mcpServers")]
       (is (= #{"other" "clojure-mcp"} (set (keys servers))))
       (is (= "7888" (last (get-in servers ["clojure-mcp" "args"])))))
     (let [modified (.lastModified f)]
       (Thread/sleep 20)
-      (repl/write-mcp-json! dir 7888)
+      (dev/write-mcp-json! dir 7888)
       (is (= modified (.lastModified f)) "unchanged: not written again"))))

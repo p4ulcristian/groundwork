@@ -1,8 +1,8 @@
-(ns groundwork.repl-test
+(ns groundwork.repl.browser-test
   "The browser's REPL helpers read the store."
   (:require
    [cljs.test :refer [deftest is]]
-   [groundwork.repl :as repl]
+   [groundwork.repl.browser :as repl]
    [re-frame.db :as rf-db]))
 
 (deftest the-store-from-the-repl

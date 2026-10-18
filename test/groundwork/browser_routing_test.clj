@@ -17,7 +17,7 @@
    [example.hello.settings :as example]
    [groundwork.build :as build]
    [groundwork.core :as gw]
-   [groundwork.repl :as repl]
+   [groundwork.repl.dev :as dev]
    [groundwork.test-support :refer [app-settings]]
    [groundwork.web :as web]
    [jsonista.core :as json])
@@ -269,7 +269,7 @@
           styles   (example/styles "example-styles-dev-css")
           dir      (str (Files/createTempDirectory "groundwork-dev" (make-array FileAttribute 0)))
           ;; the development start: the app, the build's watcher, the stylesheets' watcher
-          dev      (repl/start! (-> app-settings
+          dev      (dev/start! (-> app-settings
                                     (assoc :environment :development)
                                     (assoc-in [:server :port] 0)
                                     (assoc :browser browser :styles styles)
@@ -308,7 +308,7 @@
           (.waitFor process 5 TimeUnit/SECONDS)
           (spit views before)
           (.delete stray)
-          (repl/stop! dev)
+          (dev/stop! dev)
           (doseq [folder [profile dir (:output-dir browser) (:output-dir styles)]
                   ^File f (reverse (file-seq (io/file folder)))]
             (.delete f)))))

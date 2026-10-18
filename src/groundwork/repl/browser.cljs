@@ -1,10 +1,10 @@
-(ns groundwork.repl
+(ns groundwork.repl.browser
   "The browser's side of talking to a running app: what the store holds,
    from the browser build's REPL (shadow-cljs).
 
-     (repl/entries)                          ; every question, its status and owners
-     (repl/answer :jobs/list {:shop/id id})  ; one entry, data included
-     (repl/store)                            ; all of it"
+     (browser/entries)                       ; every question, its status and owners
+     (browser/answer :jobs/list {:shop/id id})  ; one entry, data included
+     (browser/store)                         ; all of it"
   (:require
    [re-frame.db :as rf-db]))
 
