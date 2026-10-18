@@ -84,11 +84,15 @@
 
 (defn files
   "The migration files of a classpath folder, in number order. A .sql file
-   whose name isn't NNN_snake_case.sql, or two files with one number, throw."
+   whose name isn't NNN_snake_case.sql, or two files with one number, throw.
+   The folder is read wherever the classpath has it: a source folder of the
+   same name (groundwork/migrations/ holds code too) doesn't hide the files."
   [path]
-  (if-let [url (io/resource path)]
-    (let [files (->> (names-in url path)
+  (if-let [urls (seq (enumeration-seq (.getResources (.getContextClassLoader (Thread/currentThread)) path)))]
+    (let [files (->> urls
+                     (mapcat #(names-in % path))
                      (filter #(str/ends-with? % ".sql"))
+                     distinct
                      (map (fn [name]
                             (let [[_ number] (re-matches file-name name)]
                               (when-not number
