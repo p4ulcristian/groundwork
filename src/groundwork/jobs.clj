@@ -42,7 +42,7 @@
   (:require
    [clojure.string :as str]
    [groundwork.parquery.wire :as wire]
-   [groundwork.permissions :as permissions]
+   [groundwork.permissions.check :as check]
    [groundwork.postgres :as pg]
    [groundwork.settings :as settings]
    [next.jdbc.connection :as connection])
@@ -177,15 +177,15 @@
   (let [id (get params param)]
     (if (contains? (get-in perms [:description :scopes]) kind)
       #{id}
-      (permissions/scopes-of perms [kind id]))))
+      (check/scopes-of perms [kind id]))))
 
 (defn- run-in-transaction
   "The job's handler in one transaction behind the wall."
   [{:keys [perms] :as part} {:keys [run scope]} ctx params]
   (let [go (fn [tx] (run (assoc ctx :db tx :jobs part) params))]
     (if scope
-      (permissions/in-scopes perms (scopes-for part scope params) go)
-      (permissions/as-system perms go))))
+      (check/in-scopes perms (scopes-for part scope params) go)
+      (check/as-system perms go))))
 
 (defn give-up
   "The exception a job's work throws to end the job for good: no retry can

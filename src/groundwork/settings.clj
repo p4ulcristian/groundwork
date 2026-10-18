@@ -6,6 +6,10 @@
    the README and the example settings file (docs/example-settings.edn), and
    answer the REPL's explain-setting.
 
+   The README's settings reference, the example file and the REPL's
+   explain-setting are written from these schemas by
+   groundwork.settings.docs.
+
    At start every problem is reported at once, each with its exact place:
 
      :sessions :visitor-hours must be a positive whole number, got \"24\"
@@ -14,7 +18,6 @@
    a column the database lacks, a route the permissions can't check) is
    checked by the part itself, after this."
   (:require
-   [clojure.pprint :as pprint]
    [clojure.string :as str]
    [groundwork.parquery.wire :as wire]
    [malli.core :as m]
@@ -134,7 +137,7 @@
            false))))
 
 (def ^:private condition
-  (pred "condition" "must be a condition like [:= :order/status \"open\"] (see groundwork.permissions.rules)"
+  (pred "condition" "must be a condition like [:= :order/status \"open\"] (see groundwork.permissions.description)"
         condition?))
 
 ;; =============================================================================
@@ -235,7 +238,7 @@
           {:order {:table :orders :id :order/id :whose {:order/shop-id :shop :order/customer-id :person}}}
           [:map-of {:error/message "must map record kinds to their table, id and :whose" :doc/type "kind → record kind"}
            kind-name record-kind])
-   (entry :rules "Who may do what: one list of sentences, read at start (see groundwork.permissions.rules)"
+   (entry :rules "Who may do what: one list of sentences, read at start (see groundwork.permissions.description)"
           [{:allow :orders/see :on :order :to [:member :order/shop-id]}
            {:deny :money/move :session :impersonated}]
           [:vector {:error/message "must be a list of sentences" :doc/type "list of sentences"} sentence])])
@@ -560,7 +563,8 @@
         (map (fn [[k s]] [k (if (optional-parts k) {:optional true} {}) s]))
         parts))
 
-(def ^:private part-descriptions
+(def part-descriptions
+  "What each part of the settings is, for the docs."
   {:environment "Where the app runs"
    :db          "The database"
    :migrations  "The schema's changes, run at start"
@@ -579,7 +583,9 @@
 ;; Problems
 ;; =============================================================================
 
-(defn- shown [v]
+(defn shown
+  "A value as the docs and the messages show it: cut short when long."
+  [v]
   (let [s (pr-str v)]
     (if (< 60 (count s)) (str (subs s 0 57) "…") s)))
 
@@ -658,129 +664,3 @@
   [schema value prefix]
   (fail! (vec (explained schema value prefix)))
   value)
-
-;; =============================================================================
-;; Reading the schemas: the REPL, the README, the example file
-;; =============================================================================
-
-(defn- props [s] (m/properties (m/schema s)))
-
-(defn- map-schema
-  "The :map inside a schema, through :maybe and :and, or nil."
-  [s]
-  (let [s (m/schema s)]
-    (case (m/type s)
-      :map   s
-      :maybe (map-schema (first (m/children s)))
-      :and   (some map-schema (m/children s))
-      nil)))
-
-(defn- type-text [s]
-  (let [s (m/schema s)
-        p (m/properties s)]
-    (or (:doc/type p)
-        (case (m/type s)
-          :map     "map"
-          :maybe   (str (type-text (first (m/children s))) " or nil")
-          :and     (type-text (first (m/children s)))
-          :enum    (str/join ", " (map pr-str (m/children s)))
-          :string  "text"
-          :boolean "true or false"
-          :int     "whole number"
-          :keyword "keyword"
-          :vector  "list"
-          "value"))))
-
-(defn- rows
-  "Every documented key under a schema: {:path :type :description :example}."
-  [s path]
-  (when-let [ms (map-schema s)]
-    (mapcat (fn [[k p child]]
-              (let [here   (conj path k)
-                    nested (map-schema child)
-                    values (let [c (m/schema child)]
-                             (when (#{:map-of :vector :sequential} (m/type c))
-                               (map-schema (last (m/children c)))))]
-                (cons {:path here :type (type-text child) :description (:description p) :example (:example p)
-                       :optional? (boolean (:optional p))}
-                      (cond
-                        nested (rows nested here)
-                        values (rows values (conj here (or (:doc/key (props (last (m/children (m/schema child))))) "…")))))))
-            (m/children ms))))
-
-(defn all
-  "Every documented key of the settings, in order."
-  []
-  (mapcat (fn [[part s]]
-            (cons {:path [part] :type (type-text s) :description (part-descriptions part)
-                   :example (when-not (map-schema s) (:example (props s)))}
-                  (rows s [part])))
-          parts))
-
-(defn explain
-  "What goes at a path of the settings: (explain [:sessions :visitor-hours])."
-  [path]
-  (or (some #(when (= path (:path %)) %) (all))
-      (throw (ex-info (str "No setting " (pr-str path)) {:type ::no-setting :path path}))))
-
-(defn- cell [s] (str/replace (str s) "|" "\\|"))
-
-(defn- table [entries]
-  (str "| Key | Type | What it is | Example |\n"
-       "|-----|------|------------|---------|\n"
-       (apply str (for [{:keys [path type description example optional?]} entries]
-                    (str "| `" (str/join " " (map #(if (keyword? %) (pr-str %) %) path)) "`"
-                         (when optional? " (optional)")
-                         " | " (cell type) " | " (cell description) " | "
-                         (if (some? example) (str "`" (cell (shown example)) "`") "") " |\n")))))
-
-(defn reference
-  "The README's settings reference, as Markdown."
-  []
-  (str "Generated from `groundwork.settings`; `(groundwork.repl/explain-setting [:sessions :visitor-hours])`\n"
-       "answers the same in the REPL, and `docs/example-settings.edn` holds every key with an example.\n\n"
-       (apply str
-              (for [[part s] parts]
-                (str "#### `" (pr-str part) "`: " (part-descriptions part) "\n\n"
-                     (if-let [entries (seq (rows s [part]))]
-                       (table entries)
-                       (str "`" (type-text s) "`\n"))
-                     "\n")))
-       "#### A route's data (in `:web :routes`)\n\n" (table (rows route ["<path>"])) "\n"
-       "#### An endpoint's entry (in `:parquery :endpoints`)\n\n" (table (rows endpoint ["<endpoint name>"]))))
-
-(defn- pretty [v indent]
-  (let [lines (str/split-lines (str/trimr (with-out-str (pprint/pprint v))))]
-    (str/join (str "\n" (apply str (repeat indent " "))) lines)))
-
-(defn- example-map [s indent]
-  (let [pad (apply str (repeat indent " "))]
-    (str "{"
-         (str/join (str "\n\n" pad " ")
-                   (for [[k p child] (m/children (map-schema s))]
-                     (let [nested (map-schema child)
-                           key-s  (pr-str k)]
-                       (str ";; " (:description p) (when (:optional p) " (optional)") "\n" pad " "
-                            (if (and nested (not (some? (:example p))) (not= :maybe (m/type (m/schema child))))
-                              (str key-s "\n" pad " " (example-map nested (inc indent)))
-                              (if (and nested (= :maybe (m/type (m/schema child))))
-                                (str key-s " " (pretty (:example p) (+ indent 2 (count key-s))))
-                                (if nested
-                                  (str key-s "\n" pad " " (example-map nested (inc indent)))
-                                  (str key-s " " (pretty (:example p) (+ indent 2 (count key-s)))))))))))
-         "}")))
-
-(defn example
-  "The example settings file: every key, an example value and a comment."
-  []
-  (str ";; Every setting gw/start takes, with an example and what it is.\n"
-       ";; Generated from groundwork.settings; don't edit by hand.\n"
-       "{"
-       (str/join "\n\n "
-                 (for [[part s] parts]
-                   (let [key-s (pr-str part)]
-                     (str ";; " (part-descriptions part) "\n "
-                          (cond
-                            (map-schema s)     (str key-s "\n " (example-map s 1))
-                            :else              (str key-s " " (pr-str (first (m/children (m/schema s))))))))))
-       "}\n"))

@@ -1,5 +1,7 @@
 (ns groundwork.parquery.websocket
-  "parquery over a websocket, the server half: the bells.
+  "parquery over a websocket, the server half: the lines that carry the
+   bells (what rings and what each read waits for is
+   groundwork.parquery.bells).
 
    A browser opens one line to /parquery and says which reads it shows,
    {\"watch\": [[endpoint params] …]}, the whole list each time it changes.
@@ -42,173 +44,20 @@
    from a scope stops hearing about it."
   (:require
    [clojure.set :as set]
-   [clojure.string :as str]
-   [clojure.walk :as walk]
    [groundwork.endpoints :as endpoints]
-   [groundwork.names :as names]
+   [groundwork.parquery.bells :as bells]
    [groundwork.parquery.wire :as wire]
-   [groundwork.permissions :as permissions]
-   [groundwork.permissions.rules :as rules]
-   [groundwork.postgres :as pg]
+   [groundwork.permissions.check :as check]
+   [groundwork.permissions.description :as description]
    [groundwork.sessions :as sessions]
    [jsonista.core :as json]
-   [next.jdbc :as jdbc]
-   [next.jdbc.connection :as connection]
-   [next.jdbc.result-set :as rs]
    [org.httpkit.server :as http])
   (:import
    (java.lang System$Logger System$Logger$Level)
-   (java.sql Connection DriverManager)
-   (java.util Properties)
+   (java.sql Connection)
    (org.postgresql PGConnection PGNotification)))
 
 (def ^:private ^System$Logger logger (System/getLogger "groundwork.parquery.websocket"))
-
-;; =============================================================================
-;; Which tables ring
-;; =============================================================================
-
-(defn- ringing-tables
-  "Every table that rings: {table {:id col :scopes [cols] :people [cols]
-   :universal? bool}}."
-  [description {:keys [global personal]}]
-  (merge
-   (into {} (map (fn [[kind {t :table id :id}]]
-                   [(name t) (assoc (rules/ringing description kind) :id (names/key->column id))]))
-         (:records description))
-   (into {} (map (fn [t] [(name t) {:id nil :scopes [] :people [] :global? true}])) (keys global))
-   (into {} (map (fn [[t col]] [(name t) {:id nil :scopes [] :people [(names/key->column col)]}])) personal)))
-
-(pg/defsql app-tables "groundwork/parquery/app_tables.sql")
-
-(def every-other-table
-  "In :bells :silent: every table not named anywhere is silent, with the
-   reason given. For a database the app shares with something else (tests);
-   an app's own database names its tables."
-  :groundwork/every-other-table)
-
-(defn- check-every-table-rings!
-  "Every table of the app says how it rings: in the permission description
-   (:records), or in :bells as :global, :personal or :silent. Throws naming
-   every table that doesn't, a table named twice, and a table named that
-   isn't there."
-  [db ringing {:keys [silent]}]
-  (let [quiet   (into #{} (map name) (keys (dissoc silent every-other-table)))
-        rest?   (contains? silent every-other-table)
-        actual  (into #{} (map :table/name) (pg/rows db app-tables))
-        twice   (sort (filter quiet (keys ringing)))
-        missing (sort (remove actual (into quiet (keys ringing))))
-        unsaid  (when-not rest? (sort (remove (into quiet (keys ringing)) actual)))
-        problem (cond
-                  (seq twice)   (str "These tables ring and are :silent too: " (str/join ", " twice))
-                  (seq missing) (str "These tables are named but aren't in the database: " (str/join ", " missing))
-                  (seq unsaid)  (str "These tables don't say how they ring: " (str/join ", " unsaid)
-                                     ". Each belongs in the permission description (:records), or in"
-                                     " :parquery :bells as :global (with the reason it is nobody's), :personal or :silent (with the reason)"))]
-    (when problem
-      (throw (ex-info problem {:type ::tables-not-declared :twice (vec twice) :missing (vec missing)
-                               :undeclared (vec unsaid)})))))
-
-(def ^:private stale-bells
-  "The app's tables that carry a ring trigger: [{:trigger/table … :trigger/name …}]."
-  (str "SELECT c.relname AS trigger__table, t.tgname AS trigger__name"
-       " FROM pg_catalog.pg_trigger t"
-       " JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid"
-       " JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace"
-       " WHERE n.nspname = 'public' AND NOT t.tgisinternal"
-       "   AND t.tgname IN ('groundwork_ring_insert', 'groundwork_ring_update', 'groundwork_ring_delete')"))
-
-(defn- install-bells!
-  "A trigger per table and kind of change, calling groundwork.ring. Safe to
-   run again. A table that rang under an earlier start and is silent now
-   loses its triggers: left on, it would go on ringing in a database that
-   was there before, and stay quiet only in a new one."
-  [db tables]
-  (pg/with-transaction [tx db]
-    (doseq [{trigger_table :trigger__table trigger_name :trigger__name}
-            (jdbc/execute! (::pg/conn tx) [stale-bells] {:builder-fn rs/as-unqualified-lower-maps})
-            :when (not (contains? tables trigger_table))]
-      (jdbc/execute! (::pg/conn tx)
-                     [(str "DROP TRIGGER IF EXISTS " trigger_name " ON " (rules/quote-table trigger_table))]))
-    (doseq [[t {:keys [id scopes people universal?]}] tables
-            [op referencing] [["INSERT" "NEW TABLE AS new_rows"]
-                              ["UPDATE" "NEW TABLE AS new_rows OLD TABLE AS old_rows"]
-                              ["DELETE" "OLD TABLE AS old_rows"]]]
-      (jdbc/execute! (::pg/conn tx)
-                     [(str "CREATE OR REPLACE TRIGGER " "groundwork_ring_" (str/lower-case op)
-                           " AFTER " op " ON " (rules/quote-table t)
-                           " REFERENCING " referencing " FOR EACH STATEMENT"
-                           " EXECUTE FUNCTION groundwork.ring('" (or id "") "', '"
-                           (str/join "," scopes) "', '" (str/join "," people) "'"
-                           (when universal? ", 'u'") ")")]))))
-
-;; =============================================================================
-;; Which tables a read uses
-;; =============================================================================
-
-(defn- connect
-  "A connection of the bells' own, outside the pool."
-  ^Connection [{:keys [host port database user password]} more]
-  (let [props (doto (Properties.)
-                (.setProperty "user" (str user))
-                (.setProperty "ApplicationName" "groundwork-bells"))]
-    (when password (.setProperty props "password" password))
-    (doseq [[k v] more] (.setProperty props k v))
-    (DriverManager/getConnection (connection/jdbc-url {:dbtype "postgresql" :host host :port port :dbname database})
-                                 props)))
-
-(defn- numbered
-  "JDBC's ? as Postgres's $1, $2…; ?? stays a ?."
-  [sql]
-  (let [n (atom 0)]
-    (str/replace sql #"\?\?|\?" (fn [m] (if (= "??" m) "?" (str "$" (swap! n inc)))))))
-
-(defn- relations
-  "Every table a plan reads, named as its bell names it: a table outside the
-   app's own schema with its schema, \"groundwork.memberships\"."
-  [plan]
-  (let [found (atom #{})]
-    (walk/postwalk (fn [x]
-                     (when-let [table (and (map? x) (get x "Relation Name"))]
-                       (let [schema (get x "Schema")]
-                         (swap! found conj (if (or (nil? schema) (= "public" schema)) table (str schema "." table)))))
-                     x)
-                   plan)
-    @found))
-
-(defn- tables-of-file
-  "The tables a SQL file reads, from Postgres's plan; nil when Postgres can't
-   plan it without values."
-  [{:keys [db-settings plans]} file]
-  (let [sql   (pg/sql-text (pg/->Query file))
-        known (get @plans file)]
-    (if (and known (= sql (:sql known)))
-      (:tables known)
-      (let [tables (try
-                     ;; the simple protocol sends $1 as text, for EXPLAIN to plan without values
-                     (with-open [conn (connect db-settings {"preferQueryMode" "simple"})
-                                 st   (.createStatement conn)]
-                       (.execute st "SET search_path = public")
-                       (with-open [rs (.executeQuery st (str "EXPLAIN (GENERIC_PLAN, VERBOSE, FORMAT JSON) " (numbered sql)))]
-                         (.next rs)
-                         (relations (json/read-value (.getString rs 1)))))
-                     (catch Exception e
-                       (.log logger System$Logger$Level/DEBUG (str "No plan for " file ": " (ex-message e)))
-                       nil))]
-        (swap! plans assoc file {:sql sql :tables tables})
-        tables))))
-
-(defn- tables-of-endpoint
-  "The tables a read endpoint uses, or nil when that isn't known (yet)."
-  [{:keys [endpoints] :as part} endpoint]
-  (let [files  (endpoints/files-of endpoints endpoint)
-        labels (map name (:reads (endpoints/endpoint endpoints endpoint)))
-        each   (map #(tables-of-file part %) files)]
-    (cond
-      (and (seq files) (every? some? each)) (into (set labels) cat each)
-      ;; an endpoint with its own transactions runs no file Groundwork sees:
-      ;; its :reads say it all
-      (and (empty? files) (seq labels))     (set labels))))
 
 ;; =============================================================================
 ;; Lines and their watches
@@ -235,7 +84,7 @@
    one a related row names (a via): a change there changes what they see."
   [{:keys [endpoints]} {:keys [person visitor flags]} asks]
   (let [tables    (get-in endpoints [:perms :description :records])
-        listening (delay (permissions/listening (:perms endpoints) person))]
+        listening (delay (check/listening (:perms endpoints) person))]
     (vec (keep (fn [[endpoint params]]
                  (when-let [{:keys [scopes record] only :tables}
                             (endpoints/watch endpoints {:endpoint endpoint :params params
@@ -300,7 +149,7 @@
    table."
   [part person {:keys [endpoint scopes listening record-table record-id only-tables visitor]} {:keys [t s p i u]}]
   (let [ringing (get (:tables part) t)
-        tables  (tables-of-endpoint part endpoint)
+        tables  (bells/tables-of-endpoint part endpoint)
         gives   (get (:via-tables part) t)]
     (and (or (nil? tables) (contains? tables t)
              ;; a row a via looks for changes who sees the rows it gives
@@ -332,7 +181,7 @@
 (defn changed-for
   "Of the reads a browser shows (`watching`, [endpoint params] as they
    travel), the ones a write's own bells concern, each checked like an ask
-   first. `rang` is the write's bells (see groundwork.endpoints/bell), or
+   first. `rang` is the write's bells (see groundwork.parquery.bells/bell), or
    :any: everything it shows that it may ask."
   [part {:keys [person visitor flags]} watching rang]
   (let [asks    (vec (keep read-watch watching))
@@ -340,7 +189,7 @@
                   (into (set (map :t rang)) (mapcat #(get (:via-tables part) (:t %))) rang))
         maybe   (if rung
                   (filterv (fn [[endpoint _]]
-                             (let [tables (tables-of-endpoint part endpoint)]
+                             (let [tables (bells/tables-of-endpoint part endpoint)]
                                (or (nil? tables) (seq (set/intersection tables rung)))))
                            asks)
                   asks)
@@ -378,7 +227,7 @@
 ;; =============================================================================
 
 (defn- listening-connection ^Connection [db-settings]
-  (doto (connect db-settings {})
+  (doto (bells/connect db-settings {})
     (-> (.createStatement) (.execute "LISTEN groundwork"))))
 
 (defn- listen!
@@ -462,19 +311,19 @@
   "The bells: triggers installed, a connection listening, the lines' sweep."
   [{:keys [endpoints db db-settings settings sessions]}]
   (let [description (get-in endpoints [:perms :description])
-        tables      (ringing-tables description (:bells settings))
+        tables      (bells/ringing-tables description (:bells settings))
         part        {:endpoints   endpoints
                      :sessions    sessions
                      :db          db
                      :db-settings db-settings
                      :tables      tables
-                     :via-tables  (rules/via-tables description)
+                     :via-tables  (description/via-tables description)
                      :plans       (atom {})
                      :lines       (atom {})
                      :recent      (atom [])
                      :stopped     (atom false)}]
-    (check-every-table-rings! db tables (:bells settings))
-    (install-bells! db tables)
+    (bells/check-every-table-rings! db tables (:bells settings))
+    (bells/install-bells! db tables)
     (assoc part
            :listener (Thread/startVirtualThread #(listen! part))
            :sweeper  (Thread/startVirtualThread #(sweep! part)))))

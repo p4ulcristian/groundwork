@@ -66,7 +66,7 @@
    commits only when everything succeeded, its answer fitting its shape
    included. A write's answer knows what it changed: the bells rung in its
    transaction (tables, scopes, ids) and the tag they carry, as the answer's
-   metadata (bell); parquery's HTTP part turns them into the reads the asking
+   metadata (groundwork.parquery.bells/bell); parquery's HTTP part turns them into the reads the asking
    browser shows that changed. Work an endpoint commits outside its own
    transaction (after-commit work, a job, an endpoint with its own
    transactions) isn't in it; that reaches screens through the websocket. Both see only the verified scopes (the database wall). A write
@@ -105,9 +105,11 @@
    [clojure.string :as str]
    [clojure.walk :as walk]
    [groundwork.limits :as limits]
+   [groundwork.parquery.bells :as bells]
    [groundwork.parquery.wire :as wire]
-   [groundwork.permissions :as permissions]
-   [groundwork.permissions.rules :as rules]
+   [groundwork.permissions :as-alias permissions]
+   [groundwork.permissions.check :as check]
+   [groundwork.permissions.description :as description]
    [groundwork.postgres :as pg]
    [groundwork.settings :as settings]
    [malli.core :as m])
@@ -118,10 +120,6 @@
 (pg/defsql claimed-key "groundwork/endpoints/claimed_key.sql")
 (pg/defsql keep-answer "groundwork/endpoints/keep_answer.sql")
 (pg/defsql forget-old-keys "groundwork/endpoints/forget_old_keys.sql")
-(pg/defsql remember-file "groundwork/endpoints/remember_file.sql")
-(pg/defsql files-of-sql "groundwork/endpoints/files_of.sql")
-(pg/defsql set-tag "groundwork/endpoints/set_tag.sql")
-(pg/defsql rang-sql "groundwork/endpoints/rang.sql")
 
 (def ^:private ^System$Logger logger (System/getLogger "groundwork.endpoints"))
 
@@ -175,14 +173,14 @@
    action a sentence gives :anyone."
   [perms permission]
   (or (= :public permission)
-      (and (map? permission) (= :anyone (permissions/open-level perms (:action permission))))))
+      (and (map? permission) (= :anyone (check/open-level perms (:action permission))))))
 
 (defn- open-only?
   "Whether every sentence giving an action gives it to someone who belongs
    nowhere (:anyone, :signed-in): it verifies only the scope a request names."
   [perms action]
   (let [ss (get-in perms [:by-action action])]
-    (and (seq ss) (every? rules/open-word ss))))
+    (and (seq ss) (every? description/open-word ss))))
 
 (defn- check-permission [perms k permission input read?]
   (let [kinds   (set (keys (get-in perms [:description :records])))
@@ -198,18 +196,18 @@
 
       :else
       (let [{:keys [action record scope list]} permission
-            team? (= rules/team-action action)
+            team? (= description/team-action action)
             ss    (get-in perms [:by-action action])]
         (when (and team? (not (and scope (= :groundwork/any (first scope)))))
-          (bad k (str rules/team-action " goes with {:scope [:groundwork/any param]}: it is held in any kind of scope")))
-        (when-not (or team? (permissions/action-kind perms action))
+          (bad k (str description/team-action " goes with {:scope [:groundwork/any param]}: it is held in any kind of scope")))
+        (when-not (or team? (check/action-kind perms action))
           (bad k (str "no action " action " in the permission description")))
-        (when (and (not read?) (not team?) (not (permissions/writes? perms action)))
+        (when (and (not read?) (not team?) (not (check/writes? perms action)))
           (bad k (str action " only reads; a write declares an action that inserts, updates or deletes"
                       " (its commands, in the scope kind's :actions)")))
         (when record
           (let [[kind param] record]
-            (when-not (permissions/declared? perms action kind)
+            (when-not (check/declared? perms action kind)
               (bad k (str "no sentence gives " action " on " kind)))
             (when-not (in-map? param)
               (bad k (str "the record's param " param " isn't in :input")))))
@@ -224,7 +222,7 @@
                 (bad k (str "no sentence gives " action)))
               (when (open-only? perms action)
                 (let [open-kinds (set (for [{s-kind :kind} ss
-                                            v (vals (rules/scope-columns (get-in perms [:description :records s-kind])))]
+                                            v (vals (description/scope-columns (get-in perms [:description :records s-kind])))]
                                         v))]
                   (when-not (open-kinds kind)
                     (bad k (str action " is open on rows of a " (str/join " or a " (map name (sort open-kinds)))
@@ -232,9 +230,9 @@
         (when list
           (when-not (kinds list)
             (bad k (str "no record kind " list)))
-          (when-not (permissions/declared? perms action list)
+          (when-not (check/declared? perms action list)
             (bad k (str "no sentence gives " action " on " list)))
-          (when (every? #(and (rules/open-word %) (not (:universal? %)))
+          (when (every? #(and (description/open-word %) (not (:universal? %)))
                         (get-in perms [:by-action-kind [action list]]))
             (bad k (str action " is open on " list " only in the scope a request names: a :list of every scope's"
                         " has none to show; ask about a :scope or a :record"))))
@@ -260,9 +258,9 @@
                   (bad k (str "the field " key " is marked as two kinds"))
                   (#{:public :signed-in} permission)
                   (bad k (str "the field " key " holds ids, so the endpoint needs an action permission"))
-                  (and (permissions/open-level perms (:action permission))
-                       (not (permissions/declared? perms (:action permission) mark))
-                       (not (permissions/via-kind? perms (:action permission) mark)))
+                  (and (check/open-level perms (:action permission))
+                       (not (check/declared? perms (:action permission) mark))
+                       (not (check/via-kind? perms (:action permission) mark)))
                   (bad k (str "the field " key " holds ids of " mark ", and no sentence gives the open action "
                               (:action permission) " on it"))
                   :else                    (assoc found key mark))))
@@ -287,7 +285,7 @@
            :ids        (id-fields perms k permission input)
            :public?    (public? perms permission)
            ;; an action a sentence gives a visitor: asked signed out too
-           :visitors?  (boolean (and (map? permission) (permissions/visitor-action? perms (:action permission))))
+           :visitors?  (boolean (and (map? permission) (check/visitor-action? perms (:action permission))))
            :read?      (contains? entry :read)
            :handler    (or (:read entry) (:write entry)))))
 
@@ -305,15 +303,15 @@
   (let [description (:description perms)]
     {:groundwork/grants (with-meta
                           {:read       (fn [{:keys [perms person visitor flags]} _]
-                                         (permissions/grants perms {:person person :visitor visitor :flags flags}))
+                                         (check/grants perms {:person person :visitor visitor :flags flags}))
                            :permission :signed-in
                            :input      [:map]
                            :answer     [:vector [:map [:grant/scope-id [:maybe :uuid]] [:grant/action :keyword]]]
                            ;; it runs past the wall, through functions: these are what it reads
                            :reads      (vec (concat [:groundwork.memberships :groundwork.role_actions
                                                      :groundwork.extra_actions :groundwork.roles :groundwork.scopes]
-                                                    (map keyword (keys (rules/via-tables description)))
-                                                    (distinct (for [{:keys [scope]} (rules/denies description)
+                                                    (map keyword (keys (description/via-tables description)))
+                                                    (distinct (for [{:keys [scope]} (description/denies description)
                                                                     :when scope]
                                                                 (keyword (name (get-in description [:scopes scope :table])))))))}
                           {::own-transaction true})}))
@@ -360,7 +358,7 @@
   (doseq [[kind ids] also
           id         ids]
     (when (and (not= :every scopes)
-               (empty? (set/intersection scopes (permissions/scopes-of perms [kind id]))))
+               (empty? (set/intersection scopes (check/scopes-of perms [kind id]))))
       (throw (ex-info "Not found" {:type ::permissions/not-found :record [kind id]})))))
 
 (defn- verified-scopes
@@ -374,37 +372,37 @@
     (case permission
       (:public :signed-in) {:read #{} :write #{}}
       (let [{:keys [action record scope list]} permission
-            open? (some? (permissions/open-level perms action))]
+            open? (some? (check/open-level perms action))]
         ;; an open action's other ids are each held to its sentences, not
         ;; only to its scope: an id it doesn't show answers like one that isn't there
         (when open?
           (doseq [[kind ids] also
                   id         ids]
             (when-not (let [request {:person person :visitor visitor :flags flags :action action :record [kind id]}]
-                        (or (permissions/allowed? perms request) (permissions/via-allows? perms request)))
+                        (or (check/allowed? perms request) (check/via-allows? perms request)))
               (throw (ex-info "Not found" {:type ::permissions/not-found :record [kind id]})))))
         (cond
-          record (let [scopes (permissions/check! perms {:person person :visitor visitor :flags flags :action action
+          record (let [scopes (check/check! perms {:person person :visitor visitor :flags flags :action action
                                                          :record [(first record) (as-id (get params (second record)))]
                                                          :also   also})]
                    {:read scopes :write scopes})
           scope  (let [id      (scope-of permission params)
-                       held    (permissions/scopes-under perms {:person person :visitor visitor :flags flags
+                       held    (check/scopes-under perms {:person person :visitor visitor :flags flags
                                                                 :action action :scope id})
                        open    (when open?
-                                 (permissions/open-scope perms {:person person :flags flags :action action :scope id
+                                 (check/open-scope perms {:person person :flags flags :action action :scope id
                                                                 :kind (first scope)}))
                        found   (into (set held) open)
                        own     (set (filter #{id} found))]
                    (when (empty? found)
                      (throw (ex-info "Not found" {:type ::permissions/not-found :scope scope})))
-                   (let [{:keys [read write]} (permissions/with-denies perms {:action action :own own
+                   (let [{:keys [read write]} (check/with-denies perms {:action action :own own
                                                                                :more (remove own found)})]
                      (also-belongs! perms read also)
                      {:read read :write write :open? (empty? held)}))
-          list   (let [{:keys [scopes every?]} (permissions/scopes-listed perms {:person person :visitor visitor
+          list   (let [{:keys [scopes every?]} (check/scopes-listed perms {:person person :visitor visitor
                                                                                  :flags flags :action action :kind list})
-                       {:keys [read write]}    (permissions/with-denies perms {:action action :own #{}
+                       {:keys [read write]}    (check/with-denies perms {:action action :own #{}
                                                                                :more (if every? :every scopes)})]
                    (also-belongs! perms read also)
                    {:read read :write write}))))))
@@ -423,48 +421,6 @@
         (when-not (and (= person-id person) (= endpoint (wire/endpoint-name name)) stored)
           (throw (refuse "This key was used for something else")))
         (:value (wire/decode answer (wire/read-json stored)))))))
-
-(defn- rang
-  "The bells rung in this transaction: :any, or the bells as maps, or nil."
-  [tx]
-  (let [text (:bell/rang (pg/row tx rang-sql))]
-    (cond
-      (str/blank? text) nil
-      (= "any" text)    :any
-      :else             (mapv wire/read-json (str/split-lines text)))))
-
-(defn bell
-  "What a write's answer knows of what it changed, or nil:
-   {:tag … :rang [{:t table :s scopes :p people :i ids} …] or :any}."
-  [answer]
-  (::bell (meta answer)))
-
-(defn- collecting
-  "An on-query hook that notes each SQL file a read runs, and calls the
-   app's own hook too."
-  [files hook]
-  (fn [{:keys [file] :as q}]
-    (when file (swap! files conj file))
-    (when hook (hook q))))
-
-(defn- remember-files!
-  "Note which SQL files a read endpoint ran, here and in the database, so
-   every server knows which tables its watchers wait for."
-  [{:keys [db known-files]} endpoint files]
-  (doseq [file files
-          :when (not (contains? (get @known-files endpoint) file))]
-    (pg/execute! db remember-file {:endpoint-file/endpoint (wire/endpoint-name endpoint) :endpoint-file/file file})
-    (swap! known-files update endpoint (fnil conj #{}) file)))
-
-(defn files-of
-  "The SQL files a read endpoint has run, on any server: what its watchers
-   wait for. Empty when it has never run."
-  [{:keys [db known-files]} endpoint]
-  (or (not-empty (get @known-files endpoint))
-      (let [files (into #{} (map :endpoint-file/file)
-                        (pg/rows db files-of-sql {:endpoint-file/endpoint (wire/endpoint-name endpoint)}))]
-        (when (seq files) (swap! known-files assoc endpoint files))
-        files)))
 
 (defn- failed [{:keys [on-error]} e about]
   (if on-error
@@ -540,11 +496,11 @@
                 (let [files (atom #{})
                       tag   (when-not (:read? entry) (str (random-uuid)))
                       [data rang]
-                      (permissions/in-wall
+                      (check/in-wall
                        perms {:person person :visitor visitor :scopes read :write-scopes write :flags flags
                               :read-only? (:read? entry)}
                        (fn [tx]
-                         (let [tx  (cond-> tx (:read? entry) (assoc ::pg/on-query (collecting files (::pg/on-query tx))))
+                         (let [tx  (cond-> tx (:read? entry) (assoc ::pg/on-query (bells/collecting files (::pg/on-query tx))))
                                ctx (assoc ask :db tx :scopes scopes :every-scope? every? :flags flags :params decoded
                                           :jobs (:jobs part))
                                run (fn []
@@ -556,13 +512,13 @@
                                        data))]
                            (if (:read? entry)
                              [(run) nil]
-                             (do (pg/execute! tx set-tag {:tag tag})
+                             (do (bells/tag! tx tag)
                                  (let [data (run-write-once entry tx ask run)]
-                                   [data (rang tx)]))))))]
-                  (when (:read? entry) (remember-files! part endpoint @files))
+                                   [data (bells/rang tx)]))))))]
+                  (when (:read? entry) (bells/remember-files! part endpoint @files))
                   (run-after-commit! part @after about)
                   (cond-> (answer :ok :data data)
-                    rang (with-meta {::bell {:tag tag :rang rang}})))))))
+                    rang (with-meta {::bells/bell {:tag tag :rang rang}})))))))
             (catch clojure.lang.ExceptionInfo e
               (case (:type (ex-data e))
                 ::permissions/not-found (answer :not-found)
@@ -593,7 +549,7 @@
                          [kind (get decoded param)])
                ;; someone who belongs nowhere hears of the scope only through
                ;; the tables it shows them
-               :tables (when open? (permissions/open-tables perms))})
+               :tables (when open? (check/open-tables perms))})
             (catch clojure.lang.ExceptionInfo e
               (when-not (= ::permissions/not-found (:type (ex-data e)))
                 (throw e)))))))))

@@ -9,7 +9,7 @@
 
      (defn start []
        (gb/start! {:root        root
-                   :routes      routes/routes      ; route records, see groundwork.routing
+                   :routes      routes/routes      ; route records, see groundwork.browser.routing
                    :shapes      shapes/answers
                    :unknown     views/not-found    ; for an address no route has
                    :placeholder views/loading      ; while a screen's code loads on demand
@@ -18,8 +18,8 @@
 
    Groundwork then, in order: reads what the page shell put in the page (the
    person signed in, their session's flags, the language and the app's
-   languages, each module's stylesheet bundle for groundwork.loader); sets up
-   re-frame with the store, which opens the /parquery websocket; asks for the person's grants, so \"can I?\" answers; starts
+   languages, each module's stylesheet bundle for
+   groundwork.browser.loader); sets up re-frame with the store, which opens the /parquery websocket; asks for the person's grants, so \"can I?\" answers; starts
    routing at the page's address; and mounts :root into <div id=\"app\">
    with Reagent. A save reloads the code and renders again.
 
@@ -41,7 +41,7 @@
      (gb/href :order {:order-id id} nil {:language \"de\"})
 
    A route's own title, reads, and code loaded on demand are in its record
-   (groundwork.routing). Unsaved changes:
+   (groundwork.browser.routing). Unsaved changes:
 
      (gb/unsaved! true)             ; the screen's form is dirty: moves wait, closing the tab asks
      @(rf/subscribe [::held-move])  ; the route someone tried to go to, or nil: show \"save or discard?\"
@@ -49,9 +49,9 @@
      (gb/stay!)                     ; stay
      (gb/unsaved! false)            ; saved"
   (:require
-   [groundwork.loader :as loader]
-   [groundwork.parquery-store :as store]
-   [groundwork.routing :as routing]
+   [groundwork.browser.loader :as loader]
+   [groundwork.parquery.store :as store]
+   [groundwork.browser.routing :as routing]
    [re-frame.core :as rf]
    [reagent.dom.client :as rdc]))
 
