@@ -37,13 +37,13 @@
    parsed, files typed by their bytes."
   [default-limit]
   {:name    ::web/body
-   :compile (fn [{:keys [max-body-bytes server-to-server]} {::web/keys [path]}]
+   :compile (fn [{:keys [max-body-bytes server-to-server?]} {::web/keys [path]}]
               (when-not (or (nil? max-body-bytes) (pos-int? max-body-bytes))
                 (throw (ex-info (str "Route " path ": :max-body-bytes must be a positive integer")
                                 {:type ::web/bad-route :path path :max-body-bytes max-body-bytes})))
               (let [limit (or max-body-bytes default-limit)]
                 (fn [handler]
-                  (let [parsed (if server-to-server
+                  (let [parsed (if server-to-server?
                                  handler
                                  (-> (fn [request]
                                        (handler (cond-> request
