@@ -1,4 +1,4 @@
-(ns groundwork.access-language-test
+(ns groundwork.permissions.access-language-test
   "Each word of the access language, through a whole started app: the
    member words, a person on the row, a fixed scope and a kind with exactly
    one scope, :via in the direction the row points (a payout written by
@@ -12,10 +12,10 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.core :as gw]
    [groundwork.endpoints :as endpoints]
-   [groundwork.leaks :as leaks]
+   [groundwork.permissions.leaks :as leaks]
    [groundwork.parquery.wire :as wire]
    [groundwork.permissions :as perm]
-   [groundwork.permissions.rules :as rules]
+   [groundwork.permissions.description :as description]
    [groundwork.postgres :as pg]
    [groundwork.repl :as repl]
    [groundwork.test-support :refer [app-settings sql!]]
@@ -428,9 +428,9 @@
           (system! "DELETE FROM lg_replies")
           (system! "DELETE FROM lg_tickets")))))
   (testing "the start refuses an open write that nothing narrows, and says how to narrow it"
-    (is (= ::rules/bad-description
-           (:type (error #(rules/check (update description :rules conj {:allow :inquiries/send :on :inquiry :to :anyone}))))))
-    (let [message (try (rules/check (update description :rules conj {:allow :inquiries/send :on :inquiry :to :signed-in}))
+    (is (= ::perm/bad-description
+           (:type (error #(description/check (update description :rules conj {:allow :inquiries/send :on :inquiry :to :anyone}))))))
+    (let [message (try (description/check (update description :rules conj {:allow :inquiries/send :on :inquiry :to :signed-in}))
                        nil
                        (catch clojure.lang.ExceptionInfo e (ex-message e)))]
       (is (re-find #":inquiries/send writes, and it is given to :signed-in with nothing that narrows it" message))
@@ -578,30 +578,30 @@
 (defn- sentence-problem
   "The type of what the start says of the description with one more sentence."
   [sentence]
-  (:type (error #(rules/check (update description :rules conj sentence)))))
+  (:type (error #(description/check (update description :rules conj sentence)))))
 
 (deftest the-start-refuses-what-isnt-a-sentence
   (testing "an unknown word"
-    (is (= ::rules/bad-description (sentence-problem {:allow :orders/see :on :order :to [:owner :order/shop-id]}))))
+    (is (= ::perm/bad-description (sentence-problem {:allow :orders/see :on :order :to [:owner :order/shop-id]}))))
   (testing "a member of a column that names a person, not a scope"
-    (is (= ::rules/bad-description (sentence-problem {:allow :orders/see :on :order :to [:member :order/customer-id]}))))
+    (is (= ::perm/bad-description (sentence-problem {:allow :orders/see :on :order :to [:member :order/customer-id]}))))
   (testing "an action nobody in that scope can hold"
-    (is (= ::rules/bad-description (sentence-problem {:allow :orders/see :on :order :to [:member :order/shop-id :links/see]})))
-    (is (= ::rules/bad-description (sentence-problem {:allow :links/see :on :order :to [:member :order/shop-id]}))
+    (is (= ::perm/bad-description (sentence-problem {:allow :orders/see :on :order :to [:member :order/shop-id :links/see]})))
+    (is (= ::perm/bad-description (sentence-problem {:allow :links/see :on :order :to [:member :order/shop-id]}))
         "a shop's role can't hold a partner's action: name the action held there"))
   (testing "[:member <kind>] names a kind with exactly one scope"
-    (is (= ::rules/bad-description (sentence-problem {:allow :orders/see :on :order :to [:member :shop :orders/see]}))))
+    (is (= ::perm/bad-description (sentence-problem {:allow :orders/see :on :order :to [:member :shop :orders/see]}))))
   (testing "[:none …] of a column that isn't a scope column"
-    (is (= ::rules/bad-description (sentence-problem {:allow :orders/see :on :order :to :anyone
+    (is (= ::perm/bad-description (sentence-problem {:allow :orders/see :on :order :to :anyone
                                                       :when [:none :order/customer-id]}))))
   (testing "an unknown kind, an unknown action"
-    (is (= ::rules/bad-description (sentence-problem {:allow :orders/see :on :invoice :to :anyone})))
-    (is (= ::rules/bad-description (sentence-problem {:allow :orders/burn :on :order :to :anyone}))))
+    (is (= ::perm/bad-description (sentence-problem {:allow :orders/see :on :invoice :to :anyone})))
+    (is (= ::perm/bad-description (sentence-problem {:allow :orders/burn :on :order :to :anyone}))))
   (testing "a scope's state lives in the app's table, which the kind names"
-    (is (= ::rules/bad-description (sentence-problem {:deny :writes :scope :partner :when [:= :partner/status "x"]}))))
+    (is (= ::perm/bad-description (sentence-problem {:deny :writes :scope :partner :when [:= :partner/status "x"]}))))
   (testing "an action that updates without reading"
-    (is (= ::rules/bad-description
-           (:type (error #(rules/check (assoc-in description [:scopes :shop :actions :orders/edit] #{:update}))))))))
+    (is (= ::perm/bad-description
+           (:type (error #(description/check (assoc-in description [:scopes :shop :actions :orders/edit] #{:update}))))))))
 
 (deftest the-start-checks-the-sentences-against-the-database
   (let [start (fn [d] (error #(perm/start {:settings d :db (gw/db *app*)})))]

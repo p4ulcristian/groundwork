@@ -7,7 +7,7 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.migrations :as migrations]
    [groundwork.permissions :as perm]
-   [groundwork.permissions.rules :as rules]
+   [groundwork.permissions.sql :as sql]
    [groundwork.settings :as gs]
    [groundwork.postgres :as pg]
    [groundwork.test-support :refer [db-settings sql!]]
@@ -269,7 +269,7 @@
                                (fn [tx] (jdbc/execute! (::pg/conn tx) ["INSERT INTO jobs (job__id, job__order_id) VALUES (?, ?)"
                                                                        (id) zinc-order]))))))
   (testing "the wall compares the row's own column, no lookup"
-    (let [{:keys [select]} (rules/policies description :job)]
+    (let [{:keys [select]} (sql/policies description :job)]
       (is (str/includes? select "\"jobs\".\"job__shop_id\" IN (SELECT groundwork.wall_scope_set())"))
       (is (not (str/includes? select "\"orders\"")) "nothing reaches for the order"))))
 
@@ -394,22 +394,22 @@
     (is (= ::perm/bad-description
            (problem (assoc-in description [:records :machine :id] :machine/nope)))
         "a column that doesn't exist")
-    (is (= ::rules/bad-description
+    (is (= ::perm/bad-description
            (problem (assoc-in description [:scopes :partner :roles "Member"] #{:money/move})))
         "a role holding another kind's action")
-    (is (= ::rules/bad-description
+    (is (= ::perm/bad-description
            (problem (assoc-in description [:scopes :partner :actions] {:agreements/see #{:read} :orders/see #{:read}})))
         "an action in two kinds")
-    (is (= ::rules/bad-description
+    (is (= ::perm/bad-description
            (problem (assoc-in description [:scopes :shop :parent] :region)))
         "an unknown parent")
-    (is (= ::rules/bad-description
+    (is (= ::perm/bad-description
            (problem (assoc-in description [:records :job :whose] {:job/shop-id :batch})))
         "a column naming an unknown kind")
-    (is (= ::rules/bad-description
+    (is (= ::perm/bad-description
            (problem (assoc-in description [:records :job :whose] {:job/order-id :order})))
         "a column naming another record: it keeps its own scope column and names the parent")
-    (is (= ::rules/bad-description
+    (is (= ::perm/bad-description
            (problem (assoc-in description [:records :job :parent] [:agreement :job/order-id])))
         "a parent that belongs to two scopes")
     (is (= ::gs/invalid (problem (dissoc description :rules))) "a missing key, by the settings schema")))

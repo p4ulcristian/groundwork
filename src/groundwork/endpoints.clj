@@ -106,8 +106,9 @@
    [clojure.walk :as walk]
    [groundwork.limits :as limits]
    [groundwork.parquery.wire :as wire]
-   [groundwork.permissions :as permissions]
-   [groundwork.permissions.rules :as rules]
+   [groundwork.permissions :as-alias permissions]
+   [groundwork.permissions.check :as check]
+   [groundwork.permissions.description :as description]
    [groundwork.postgres :as pg]
    [groundwork.settings :as settings]
    [malli.core :as m])
@@ -175,14 +176,14 @@
    action a sentence gives :anyone."
   [perms permission]
   (or (= :public permission)
-      (and (map? permission) (= :anyone (permissions/open-level perms (:action permission))))))
+      (and (map? permission) (= :anyone (check/open-level perms (:action permission))))))
 
 (defn- open-only?
   "Whether every sentence giving an action gives it to someone who belongs
    nowhere (:anyone, :signed-in): it verifies only the scope a request names."
   [perms action]
   (let [ss (get-in perms [:by-action action])]
-    (and (seq ss) (every? rules/open-word ss))))
+    (and (seq ss) (every? description/open-word ss))))
 
 (defn- check-permission [perms k permission input read?]
   (let [kinds   (set (keys (get-in perms [:description :records])))
@@ -198,18 +199,18 @@
 
       :else
       (let [{:keys [action record scope list]} permission
-            team? (= rules/team-action action)
+            team? (= description/team-action action)
             ss    (get-in perms [:by-action action])]
         (when (and team? (not (and scope (= :groundwork/any (first scope)))))
-          (bad k (str rules/team-action " goes with {:scope [:groundwork/any param]}: it is held in any kind of scope")))
-        (when-not (or team? (permissions/action-kind perms action))
+          (bad k (str description/team-action " goes with {:scope [:groundwork/any param]}: it is held in any kind of scope")))
+        (when-not (or team? (check/action-kind perms action))
           (bad k (str "no action " action " in the permission description")))
-        (when (and (not read?) (not team?) (not (permissions/writes? perms action)))
+        (when (and (not read?) (not team?) (not (check/writes? perms action)))
           (bad k (str action " only reads; a write declares an action that inserts, updates or deletes"
                       " (its commands, in the scope kind's :actions)")))
         (when record
           (let [[kind param] record]
-            (when-not (permissions/declared? perms action kind)
+            (when-not (check/declared? perms action kind)
               (bad k (str "no sentence gives " action " on " kind)))
             (when-not (in-map? param)
               (bad k (str "the record's param " param " isn't in :input")))))
@@ -224,7 +225,7 @@
                 (bad k (str "no sentence gives " action)))
               (when (open-only? perms action)
                 (let [open-kinds (set (for [{s-kind :kind} ss
-                                            v (vals (rules/scope-columns (get-in perms [:description :records s-kind])))]
+                                            v (vals (description/scope-columns (get-in perms [:description :records s-kind])))]
                                         v))]
                   (when-not (open-kinds kind)
                     (bad k (str action " is open on rows of a " (str/join " or a " (map name (sort open-kinds)))
@@ -232,9 +233,9 @@
         (when list
           (when-not (kinds list)
             (bad k (str "no record kind " list)))
-          (when-not (permissions/declared? perms action list)
+          (when-not (check/declared? perms action list)
             (bad k (str "no sentence gives " action " on " list)))
-          (when (every? #(and (rules/open-word %) (not (:universal? %)))
+          (when (every? #(and (description/open-word %) (not (:universal? %)))
                         (get-in perms [:by-action-kind [action list]]))
             (bad k (str action " is open on " list " only in the scope a request names: a :list of every scope's"
                         " has none to show; ask about a :scope or a :record"))))
@@ -260,9 +261,9 @@
                   (bad k (str "the field " key " is marked as two kinds"))
                   (#{:public :signed-in} permission)
                   (bad k (str "the field " key " holds ids, so the endpoint needs an action permission"))
-                  (and (permissions/open-level perms (:action permission))
-                       (not (permissions/declared? perms (:action permission) mark))
-                       (not (permissions/via-kind? perms (:action permission) mark)))
+                  (and (check/open-level perms (:action permission))
+                       (not (check/declared? perms (:action permission) mark))
+                       (not (check/via-kind? perms (:action permission) mark)))
                   (bad k (str "the field " key " holds ids of " mark ", and no sentence gives the open action "
                               (:action permission) " on it"))
                   :else                    (assoc found key mark))))
@@ -287,7 +288,7 @@
            :ids        (id-fields perms k permission input)
            :public?    (public? perms permission)
            ;; an action a sentence gives a visitor: asked signed out too
-           :visitors?  (boolean (and (map? permission) (permissions/visitor-action? perms (:action permission))))
+           :visitors?  (boolean (and (map? permission) (check/visitor-action? perms (:action permission))))
            :read?      (contains? entry :read)
            :handler    (or (:read entry) (:write entry)))))
 
@@ -305,15 +306,15 @@
   (let [description (:description perms)]
     {:groundwork/grants (with-meta
                           {:read       (fn [{:keys [perms person visitor flags]} _]
-                                         (permissions/grants perms {:person person :visitor visitor :flags flags}))
+                                         (check/grants perms {:person person :visitor visitor :flags flags}))
                            :permission :signed-in
                            :input      [:map]
                            :answer     [:vector [:map [:grant/scope-id [:maybe :uuid]] [:grant/action :keyword]]]
                            ;; it runs past the wall, through functions: these are what it reads
                            :reads      (vec (concat [:groundwork.memberships :groundwork.role_actions
                                                      :groundwork.extra_actions :groundwork.roles :groundwork.scopes]
-                                                    (map keyword (keys (rules/via-tables description)))
-                                                    (distinct (for [{:keys [scope]} (rules/denies description)
+                                                    (map keyword (keys (description/via-tables description)))
+                                                    (distinct (for [{:keys [scope]} (description/denies description)
                                                                     :when scope]
                                                                 (keyword (name (get-in description [:scopes scope :table])))))))}
                           {::own-transaction true})}))
@@ -360,7 +361,7 @@
   (doseq [[kind ids] also
           id         ids]
     (when (and (not= :every scopes)
-               (empty? (set/intersection scopes (permissions/scopes-of perms [kind id]))))
+               (empty? (set/intersection scopes (check/scopes-of perms [kind id]))))
       (throw (ex-info "Not found" {:type ::permissions/not-found :record [kind id]})))))
 
 (defn- verified-scopes
@@ -374,37 +375,37 @@
     (case permission
       (:public :signed-in) {:read #{} :write #{}}
       (let [{:keys [action record scope list]} permission
-            open? (some? (permissions/open-level perms action))]
+            open? (some? (check/open-level perms action))]
         ;; an open action's other ids are each held to its sentences, not
         ;; only to its scope: an id it doesn't show answers like one that isn't there
         (when open?
           (doseq [[kind ids] also
                   id         ids]
             (when-not (let [request {:person person :visitor visitor :flags flags :action action :record [kind id]}]
-                        (or (permissions/allowed? perms request) (permissions/via-allows? perms request)))
+                        (or (check/allowed? perms request) (check/via-allows? perms request)))
               (throw (ex-info "Not found" {:type ::permissions/not-found :record [kind id]})))))
         (cond
-          record (let [scopes (permissions/check! perms {:person person :visitor visitor :flags flags :action action
+          record (let [scopes (check/check! perms {:person person :visitor visitor :flags flags :action action
                                                          :record [(first record) (as-id (get params (second record)))]
                                                          :also   also})]
                    {:read scopes :write scopes})
           scope  (let [id      (scope-of permission params)
-                       held    (permissions/scopes-under perms {:person person :visitor visitor :flags flags
+                       held    (check/scopes-under perms {:person person :visitor visitor :flags flags
                                                                 :action action :scope id})
                        open    (when open?
-                                 (permissions/open-scope perms {:person person :flags flags :action action :scope id
+                                 (check/open-scope perms {:person person :flags flags :action action :scope id
                                                                 :kind (first scope)}))
                        found   (into (set held) open)
                        own     (set (filter #{id} found))]
                    (when (empty? found)
                      (throw (ex-info "Not found" {:type ::permissions/not-found :scope scope})))
-                   (let [{:keys [read write]} (permissions/with-denies perms {:action action :own own
+                   (let [{:keys [read write]} (check/with-denies perms {:action action :own own
                                                                                :more (remove own found)})]
                      (also-belongs! perms read also)
                      {:read read :write write :open? (empty? held)}))
-          list   (let [{:keys [scopes every?]} (permissions/scopes-listed perms {:person person :visitor visitor
+          list   (let [{:keys [scopes every?]} (check/scopes-listed perms {:person person :visitor visitor
                                                                                  :flags flags :action action :kind list})
-                       {:keys [read write]}    (permissions/with-denies perms {:action action :own #{}
+                       {:keys [read write]}    (check/with-denies perms {:action action :own #{}
                                                                                :more (if every? :every scopes)})]
                    (also-belongs! perms read also)
                    {:read read :write write}))))))
@@ -540,7 +541,7 @@
                 (let [files (atom #{})
                       tag   (when-not (:read? entry) (str (random-uuid)))
                       [data rang]
-                      (permissions/in-wall
+                      (check/in-wall
                        perms {:person person :visitor visitor :scopes read :write-scopes write :flags flags
                               :read-only? (:read? entry)}
                        (fn [tx]
@@ -593,7 +594,7 @@
                          [kind (get decoded param)])
                ;; someone who belongs nowhere hears of the scope only through
                ;; the tables it shows them
-               :tables (when open? (permissions/open-tables perms))})
+               :tables (when open? (check/open-tables perms))})
             (catch clojure.lang.ExceptionInfo e
               (when-not (= ::permissions/not-found (:type (ex-data e)))
                 (throw e)))))))))

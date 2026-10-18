@@ -192,7 +192,7 @@
              :id :order/id,
              :whose #:order{:shop-id :shop, :customer-id :person}}}
 
-  ;; Who may do what: one list of sentences, read at start (see groundwork.permissions.rules)
+  ;; Who may do what: one list of sentences, read at start (see groundwork.permissions.description)
   :rules [{:allow :orders/see, :on :order, :to [:member :order/shop-id]}
           {:deny :money/move, :session :impersonated}]}
 

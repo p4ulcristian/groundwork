@@ -36,7 +36,7 @@
    and paying open on the app's own site, where the Lax cookie lives."
   (:require
    [clojure.string :as str]
-   [groundwork.permissions :as permissions]
+   [groundwork.permissions.check :as check]
    [groundwork.postgres :as pg]
    [groundwork.settings :as settings])
   (:import
@@ -271,7 +271,7 @@
                                               (when (and s (nil? (:person-id s))) (:data s)))]
      ;; the visitor's records first: once their session is gone, nobody's
      (when-let [perms (:permissions sessions)]
-       (permissions/move-visitor! perms (visitor request) person-id))
+       (check/move-visitor! perms (visitor request) person-id))
      (doseq [old [(cookie-key request (:cookie-name settings))
                   (some-> (::session request) (#(when (= :embed (:cookie %)) (:key %))))]
              :when old]

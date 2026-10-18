@@ -1,4 +1,4 @@
-(ns groundwork.access-language-example-test
+(ns groundwork.permissions.access-language-example-test
   "The access language on the example app (example.access-language.app), through a
    whole started app: real tables, real endpoints, the wall and the bells."
   (:require
@@ -7,10 +7,10 @@
    [example.access-language.app :as example]
    [groundwork.core :as gw]
    [groundwork.endpoints :as endpoints]
-   [groundwork.leaks :as leaks]
+   [groundwork.permissions.leaks :as leaks]
    [groundwork.parquery.wire :as wire]
    [groundwork.permissions :as perm]
-   [groundwork.permissions.rules :as rules]
+   [groundwork.permissions.description :as description]
    [groundwork.postgres :as pg]
    [groundwork.sessions :as sessions]
    [groundwork.test-support :refer [app-settings sql!]]
@@ -235,13 +235,13 @@
                              [:data :package/name])))
     (as-system! "UPDATE al_packages SET package__name = 'Gloss' WHERE package__id = ?" gloss))
   (testing "an open write needs a :when or a :via that narrows it; the start refuses one with neither"
-    (is (= ::rules/bad-description
-           (:type (error #(rules/check (update example/description :rules conj
+    (is (= ::perm/bad-description
+           (:type (error #(description/check (update example/description :rules conj
                                                {:allow :catalogue/edit :on :package :to :anyone}))))))
-    (is (some? (rules/check (update example/description :rules conj
+    (is (some? (description/check (update example/description :rules conj
                                     {:allow :catalogue/edit :on :package :to :signed-in
                                      :when [:= :package/published false]}))))
-    (is (some? (rules/check (update example/description :rules conj
+    (is (some? (description/check (update example/description :rules conj
                                     {:allow :catalogue/edit :on :package
                                      :via {:table :al_orders :match {:package/shop-id :order/shop-id}
                                            :to :anyone :when [:= :order/note "open"]}})))))
@@ -361,17 +361,17 @@
     (is (= {:status :ok :data "a"} (call stella :orders/note {:order/id acme-order})))))
 
 (deftest the-start-checks-what-a-record-carries
-  (let [check (fn [f] (:type (error #(rules/check (f example/description)))))
+  (let [check (fn [f] (:type (error #(description/check (f example/description)))))
         start (fn [f] (error #(perm/start {:settings (f example/description) :db (gw/db *app*)})))]
     (testing "more than one scope on either side: the description says what is carried"
-      (is (= ::rules/bad-description
+      (is (= ::perm/bad-description
              (check #(assoc-in % [:records :price-sheet :parent] [:agreement :price-sheet/agreement-id])))))
     (testing "a scope is carried from a scope of the same kind, a person from a person"
-      (is (= ::rules/bad-description
+      (is (= ::perm/bad-description
              (check #(assoc-in % [:records :price-sheet :parent]
                                [:agreement :price-sheet/agreement-id {:price-sheet/shop-id :agreement/id}])))))
     (testing "a record under another carries at least one scope"
-      (is (= ::rules/bad-description
+      (is (= ::perm/bad-description
              (check #(assoc-in % [:records :order-service :parent] [:order :order-service/order-id {}])))))
     (testing "the database must hold the matching link, for every column carried; the error carries the SQL"
       (sql! "DROP TABLE IF EXISTS al_loose; CREATE TABLE al_loose (loose__id uuid PRIMARY KEY, loose__agreement_id uuid NOT NULL,
@@ -479,18 +479,18 @@
       (finally (as-system! "DELETE FROM al_handoffs WHERE handoff__id = ?" handoff)))))
 
 (deftest the-start-checks-a-via
-  (let [check (fn [f] (:type (error #(rules/check (f example/description)))))]
-    (is (= ::rules/bad-description
+  (let [check (fn [f] (:type (error #(description/check (f example/description)))))]
+    (is (= ::perm/bad-description
            (check #(update % :rules conj {:allow :orders/see :on :order
                                           :via {:table :al_nowhere :match {:order/id :x/order-id}
                                                 :to [:member :x/shop-id]}})))
         "the table it looks in is a record kind's: walled, and ringing")
-    (is (= ::rules/bad-description
+    (is (= ::perm/bad-description
            (check #(update % :rules conj {:allow :orders/see :on :order
                                           :via {:table :al_handoffs :match {:order/id :handoff/order-id}
                                                 :to [:member :handoff/note-id]}})))
         "its who names a scope column of the other row")
-    (is (= ::rules/bad-description
+    (is (= ::perm/bad-description
            (check #(update % :rules conj {:allow :orders/see :on :order :to [:member :order/shop-id]
                                           :via {:table :al_handoffs :match {:order/id :handoff/order-id}
                                                 :to [:member :handoff/to-shop-id]}})))
@@ -627,15 +627,15 @@
 
 (deftest the-start-checks-a-visitor-column
   (testing "one visitor column a kind, and one person column for the row to move to"
-    (is (= ::rules/bad-description
-           (:type (error #(rules/check (assoc-in example/description [:records :design :whose :design/shop-id]
+    (is (= ::perm/bad-description
+           (:type (error #(description/check (assoc-in example/description [:records :design :whose :design/shop-id]
                                                  :person))))))
-    (is (= ::rules/bad-description
-           (:type (error #(rules/check (assoc-in example/description [:records :design :whose :design/customer-id]
+    (is (= ::perm/bad-description
+           (:type (error #(description/check (assoc-in example/description [:records :design :whose :design/customer-id]
                                                  :visitor)))))))
   (testing "[:me …] names a person or visitor column of the row"
-    (is (= ::rules/bad-description
-           (:type (error #(rules/check (update example/description :rules conj
+    (is (= ::perm/bad-description
+           (:type (error #(description/check (update example/description :rules conj
                                                {:allow :designs/mine :on :design :to [:me :design/shop-id]}))))))))
 
 ;; =============================================================================
@@ -684,8 +684,8 @@
                                   " VALUES (?, ?, 'sneaky')")
                              later-talk uma))))
   (testing "a person is carried from a person, never from a scope"
-    (is (= ::rules/bad-description
-           (:type (error #(rules/check (assoc-in example/description [:records :message :parent 2 :message/customer-id]
+    (is (= ::perm/bad-description
+           (:type (error #(description/check (assoc-in example/description [:records :message :parent 2 :message/customer-id]
                                                  :conversation/shop-id))))))))
 
 ;; =============================================================================

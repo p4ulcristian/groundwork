@@ -28,18 +28,12 @@
    [groundwork.jobs :as jobs]
    [groundwork.migrations :as migrations]
    [groundwork.parquery.websocket :as websocket]
-   [groundwork.permissions :as perm]
-   [groundwork.permissions.rules :as rules]
-   [groundwork.postgres :as pg]
+   [groundwork.permissions.check :as check]
    [groundwork.sessions :as sessions]
    [groundwork.settings :as settings]
-   [jsonista.core :as json]
-   [next.jdbc :as jdbc]
-   [next.jdbc.result-set :as rs])
+   [jsonista.core :as json])
   (:import
    (java.io FileOutputStream OutputStream PrintStream)))
-
-(pg/defsql memberships-above "groundwork/repl/memberships_above.sql")
 
 ;; =============================================================================
 ;; One start for development
@@ -226,177 +220,19 @@
 ;; Why
 ;; =============================================================================
 
-(defn- query-one [perms sql params]
-  (perm/as-system perms (fn [tx] (jdbc/execute-one! (::pg/conn tx) (into [sql] params)
-                                                    {:builder-fn rs/as-unqualified-maps}))))
-
-(defn- place [kind id] (str (name kind) " " id))
-
-(defn- membership-lines-of
-  [perms person action scope]
-  (let [rows (pg/rows (:db perms) memberships-above {:scope/id scope :person (str person)
-                                                     :action   (rules/action-name action)})
-        here (first rows)
-        said (for [{:why/keys [scope-id kind depth role owner role-holds extra]} rows
-                   :when (or role extra)
-                   :let [where (str (place kind scope-id) (when (pos? depth) " (above it)"))]]
-               (str/join " "
-                         (remove nil?
-                                 [(cond
-                                    owner      (str person " is the owner of " where ": an owner holds everything.")
-                                    role-holds (str person " is " role " in " where ", and " role " holds " action ".")
-                                    role       (str person " is " role " in " where ", but " role " doesn't hold " action "."))
-                                  (when extra (str person " has " action " as an extra action in " where "."))])))]
-    (if (seq said)
-      said
-      [(str person " has no membership in " (place (:why/kind here) scope) " or above.")])))
-
-(defn- membership-lines
-  "What the person holds in a scope and above it."
-  [perms person action scope]
-  (if (nil? person)
-    ["Nobody is signed in: no membership counts."]
-    (membership-lines-of perms person action scope)))
-
-(defn- holds-sql?
-  "Whether [sql params] holds for one row of a kind, bound for a person or
-   a visitor; read as the system."
-  [perms {t :table id-col :id} id [sql params] person visitor]
-  (boolean (:h (query-one perms (str "SELECT (" sql ") AS h FROM " (rules/quote-table t) " r WHERE r."
-                                     (rules/quote-column id-col) " = ?")
-                          (conj (rules/bind params person visitor) id)))))
-
-(defn- column-of-row [perms {t :table id-col :id} id col]
-  (:v (query-one perms (str "SELECT " (rules/quote-column col) " AS v FROM " (rules/quote-table t)
-                            " WHERE " (rules/quote-column id-col) " = ?")
-                 [id])))
-
-(defn- rule-text [{:keys [n rule]}]
-  (str "Rule " n " " (pr-str rule)))
-
-(defn- who-lines
-  "Why a who word holds, or doesn't, for one row."
-  [perms person visitor {:keys [word column holding visitor?] :as who} spec id kind]
-  (case word
-    :anyone    ["It is for anyone."]
-    :signed-in [(if person "It is for anyone signed in." "It is for anyone signed in, and nobody is.")]
-    :me        (let [v  (column-of-row perms spec id column)
-                     me (if visitor? visitor person)]
-                 [(if (and me (= (str v) (str me)))
-                    (str "The " (name kind) "'s " (name column) " is " me ": it's theirs.")
-                    (str "The " (name kind) "'s " (name column) " isn't " (or me "anyone signed in") "."))])
-    :member    (cond
-                 column (let [scope (column-of-row perms spec id column)]
-                          (if (nil? scope)
-                            [(str "The " (name kind) "'s " (name column) " names no scope.")]
-                            (cons (str "The " (name kind) " " id " is in " (place (:scope-kind who) scope) ".")
-                                  (membership-lines perms person holding scope))))
-                 (:kind who) (if-let [scope (:s (query-one perms "SELECT scope__id AS s FROM groundwork.scopes WHERE scope__kind = ?"
-                                                           [(name (:kind who))]))]
-                               (membership-lines perms person holding scope)
-                               [(str "There's no " (name (:kind who)) " yet.")])
-                 :else  (membership-lines perms person holding (:scope who)))))
-
-(defn- deny-lines
-  "The denies that say no to an action, for these scopes and flags."
-  [perms action scopes flags]
-  (concat
-   (when-let [d (perm/flag-deny perms action flags)]
-     [(str "Denied: the session is " (name (:session d)) ", and " (rule-text d) " says no to " action ".")])
-   (when (seq scopes)
-     (for [[scope d] (perm/as-system perms #(perm/denied-scopes perms % action scopes))]
-       (str "Denied: " (name (:scope d)) " " scope " is in the state " (pr-str (:when d)) ", and " (rule-text d)
-            " says no to " action ".")))))
-
-(defn- record-lines
-  "Why a person may or may not do an action on one record, sentence by
-   sentence, and the denies."
-  [perms person visitor action [kind id] flags]
-  (let [spec   (get-in perms [:description :records kind])
-        ss     (get-in perms [:by-action-kind [action kind]])
-        scopes (when spec (perm/scopes-of perms [kind id]))
-        there? (when spec (some? (query-one perms (str "SELECT 1 AS one FROM " (rules/quote-table (:table spec))
-                                                       " WHERE " (rules/quote-column (:id spec)) " = ?")
-                                            [id])))]
-    (cond
-      (nil? spec)   [(str "There's no record kind " kind " in the permission description.")]
-      (empty? ss)   [(str "No sentence gives " action " on a " (name kind) ": no endpoint can declare it.")]
-      (not there?)  [(str "There's no " (name kind) " " id ".")]
-      :else
-      (concat
-       (for [{:keys [who via] condition :when :as s} ss
-             line (let [holds? (holds-sql? perms spec id (rules/sentence-sql s "r") person visitor)]
-                    (concat
-                     [(str (rule-text s) (if holds? ": it holds." ": it doesn't hold."))]
-                     (when who (who-lines perms person visitor who spec id kind))
-                     (when via
-                       [(if (holds-sql? perms spec id (rules/sentence-sql (dissoc s :when :who) "r") person visitor)
-                          (str "A related row in " (:table via) " is there for them now.")
-                          (str "No related row in " (:table via) " is there for them now (it needs " (pr-str (:rule s)) ")."))])
-                     (when condition
-                       [(if (holds-sql? perms spec id (rules/condition-sql "r" condition) nil nil)
-                          (str "It needs " (pr-str condition) ": it holds now.")
-                          (str "It needs " (pr-str condition) ": it doesn't hold now, so nobody may."))])))]
-         line)
-       (deny-lines perms action scopes flags)))))
-
-(defn- scope-lines
-  "Why a person may or may not do an action in a scope."
-  [perms person action scope flags]
-  (let [kind (some-> (query-one perms "SELECT scope__kind AS k FROM groundwork.scopes WHERE scope__id = ?" [scope])
-                     :k keyword)
-        ss   (get-in perms [:by-action action])]
-    (cond
-      (nil? kind) [(str "There's no scope " scope ".")]
-      (empty? ss) [(str "No sentence gives " action ".")]
-      :else
-      (concat
-       (distinct
-        (for [{:keys [who via] :as s} ss
-              line (cond
-                     (and (= :member (:word who)) (:column who))
-                     (cons (str (rule-text s) ": a member of the " (name (:scope-kind who)) " holding "
-                                (:holding who) ".")
-                           (membership-lines perms person (:holding who) scope))
-                     (= :member (:word who))
-                     [(str (rule-text s) ": a member of a fixed scope holding " (:holding who) ", in every scope.")]
-                     (#{:anyone :signed-in} (:word who))
-                     [(str (rule-text s) ": open to " (name (:word who)) ", in the scope a request names.")]
-                     via
-                     [(str (rule-text s) ": through related rows in " (:table via) ".")]
-                     :else
-                     [(str (rule-text s) ": a person's own rows, not a whole scope.")])]
-          line))
-       (deny-lines perms action #{scope} flags)))))
-
 (defn why
   "Why a person may or may not do an action, on one record ([kind id]) or in
    a scope (its id), in plain words: each sentence that gives the action and
-   whether it holds (the record's scope, the person's memberships, roles and
-   extra actions there and above, a person column, a related row, a
-   condition), and the deny that said no.
+   whether it holds, and the deny that said no (see
+   groundwork.permissions.check/why).
 
      (why app peter :orders/edit [:order order-id])
      ;=> {:allowed? false
      ;    :because [\"Rule 2 {:allow :orders/edit …}: it doesn't hold.\" \"The order … is in shop ….\" …]}
      (why app pia :orders/see acme :flags #{})
      (why app nil :designs/mine [:design id] :visitor visitor-id)"
-  [app person action target & {:keys [flags visitor] :or {flags #{}}}]
-  (let [perms    (gw/permissions app)
-        record?  (vector? target)
-        visitor  (when (nil? person) visitor)
-        allowed? (if record?
-                   (and (some? (get-in perms [:description :records (first target)]))
-                        (perm/declared? perms action (first target))
-                        (perm/allowed? perms {:person person :visitor visitor :flags flags :action action :record target}))
-                   (and (contains? (perm/scopes-under perms {:person person :visitor visitor :flags flags :action action
-                                                             :scope target})
-                                   target)
-                        (empty? (perm/as-system perms #(perm/denied-scopes perms % action #{target})))))]
-    {:allowed? (boolean allowed?)
-     :because  (vec (if record?
-                      (record-lines perms person visitor action target flags)
-                      (scope-lines perms person action target flags)))}))
+  [app person action target & {:as options}]
+  (check/why (gw/permissions app) person action target options))
 
 ;; =============================================================================
 ;; Peeks

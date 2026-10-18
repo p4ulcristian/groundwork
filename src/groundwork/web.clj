@@ -101,7 +101,7 @@
    [clojure.walk :as walk]
    [groundwork.limits :as limits]
    [groundwork.page :as page]
-   [groundwork.permissions :as permissions]
+   [groundwork.permissions.check :as check]
    [groundwork.postgres :as pg]
    [groundwork.sessions :as sessions]
    [groundwork.settings :as settings]
@@ -450,7 +450,7 @@
          (vector? (:record access)) (= 2 (count (:record access)))
          (every? keyword? (:record access)))
     (let [{:keys [action] [kind _] :record} access]
-      (when-not (permissions/declared? permissions action kind)
+      (when-not (check/declared? permissions action kind)
         (throw (ex-info (str "Route " path ": no sentence gives " action " on " kind)
                         {:type ::bad-route :path path :access access})))
       access)
@@ -487,7 +487,7 @@
                             (let [{:keys [action] [kind param] :record} access
                                   id (record-id (param-value request param))]
                               (if (and (some? id)
-                                       (permissions/allowed? permissions
+                                       (check/allowed? permissions
                                                              {:person person
                                                               :flags  (sessions/flags request)
                                                               :action action

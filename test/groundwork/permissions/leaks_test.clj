@@ -1,10 +1,10 @@
-(ns groundwork.leaks-test
+(ns groundwork.permissions.leaks-test
   "The leak test: sealed endpoints pass; a via whose condition forgot the
    status lets another shop's notes out, and the test says which."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.endpoints :as endpoints]
-   [groundwork.leaks :as leaks]
+   [groundwork.permissions.leaks :as leaks]
    [groundwork.migrations :as migrations]
    [groundwork.permissions :as perm]
    [groundwork.postgres :as pg]

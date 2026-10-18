@@ -17,7 +17,7 @@
      :web          the app's routes and how requests are handled; see groundwork.web
      :server       see groundwork.server
      :sessions     see groundwork.sessions
-     :permissions  the app's permission description, see groundwork.permissions.rules
+     :permissions  the app's permission description, see groundwork.permissions.description
      :limits       how often a caller may ask, see groundwork.limits
      :jobs         background jobs and schedules, or nil; see groundwork.jobs
      :parquery     the app's endpoints and how they're asked, see groundwork.endpoints

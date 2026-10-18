@@ -1,4 +1,4 @@
-(ns groundwork.lists-test
+(ns groundwork.permissions.lists-test
   "Lists get their permission from the wall: a list's SQL has no WHERE, and
    still sees only rows a sentence gives the person. A via gives the rows
    its sentence is on and nothing else of that shop; a :when holds on what
@@ -6,7 +6,7 @@
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.endpoints :as endpoints]
-   [groundwork.leaks :as leaks]
+   [groundwork.permissions.leaks :as leaks]
    [groundwork.migrations :as migrations]
    [groundwork.permissions :as perm]
    [groundwork.postgres :as pg]

@@ -1,4 +1,4 @@
-(ns groundwork.leaks
+(ns groundwork.permissions.leaks
   "The built-in leak test, for an app's own tests: every endpoint with an
    action permission is called as a member of one scope, with ids from
    another, and must answer not-found. It catches what the declarations
@@ -52,8 +52,9 @@
    [clojure.walk :as walk]
    [groundwork.endpoints :as endpoints]
    [groundwork.parquery.wire :as wire]
-   [groundwork.permissions :as permissions]
-   [groundwork.permissions.rules :as rules]
+   [groundwork.permissions.check :as check]
+   [groundwork.permissions.description :as description]
+   [groundwork.permissions.sql :as sql]
    [groundwork.postgres :as pg]
    [next.jdbc :as jdbc]))
 
@@ -100,7 +101,7 @@
   (into #{}
         (map (comp str val first))
         (jdbc/execute! (::pg/conn tx)
-                       (into [(str "SELECT r." (rules/quote-column id) "::text AS id FROM " (rules/quote-table t) " r"
+                       (into [(str "SELECT r." (sql/quote-column id) "::text AS id FROM " (sql/quote-table t) " r"
                                    (when where (str " WHERE " where)))]
                              params))))
 
@@ -123,27 +124,27 @@
            [as caller]   [[:nobody nil] [:signed-in-stranger (random-uuid)] [:person person]]
            :when         (or caller (not= :person as))
            :let [ss      (filter #(and (= kind (:kind %))
-                                       (contains? (rules/commands-of description (:action %)) :read))
+                                       (contains? (description/commands-of description (:action %)) :read))
                                  (:sentences perms))
-                 seen    (permissions/in-wall perms {:person caller :scopes #{scope} :read-only? true}
+                 seen    (check/in-wall perms {:person caller :scopes #{scope} :read-only? true}
                                               #(ids-seen % record nil []))
-                 cols    (keys (rules/scope-columns record))
+                 cols    (keys (description/scope-columns record))
                  within  (str "{" scope "}")
                  parts   (for [s ss]
                            ;; the same rules as the wall's, written apart: the row's scope through
                            ;; the sentence's own column, none for a person's own row or one a
                            ;; related row gives (whose own scope the via's function holds to this one)
-                           (let [[w ps] (rules/sentence-sql s "r")
-                                 by     (rules/base-columns record s)
+                           (let [[w ps] (sql/sentence-sql s "r")
+                                 by     (sql/base-columns record s)
                                  base   (when (and (seq by) (seq cols))
-                                          (str "((" (str/join " OR " (map #(str "r." (rules/quote-column %) " = CAST(? AS uuid)") by)) ")"
+                                          (str "((" (str/join " OR " (map #(str "r." (sql/quote-column %) " = CAST(? AS uuid)") by)) ")"
                                                (when (:universal? s)
-                                                 (str " OR (" (str/join " AND " (map #(str "r." (rules/quote-column %) " IS NULL") cols)) ")"))
+                                                 (str " OR (" (str/join " AND " (map #(str "r." (sql/quote-column %) " IS NULL") cols)) ")"))
                                                ")"))]
                              [(str "(" (when base (str base " AND ")) w ")")
-                              (into (if base (vec (repeat (count by) (str scope))) []) (rules/bind ps caller nil within))]))
+                              (into (if base (vec (repeat (count by) (str scope))) []) (sql/bind ps caller nil within))]))
                  given   (if (seq parts)
-                           (permissions/as-system perms #(ids-seen % record (str/join " OR " (map first parts))
+                           (check/as-system perms #(ids-seen % record (str/join " OR " (map first parts))
                                                                    (vec (mapcat second parts))))
                            #{})
                  shown   (set/difference seen given)
@@ -153,7 +154,7 @@
 
 (defn may-check
   "What each function that narrows a list by an action answers (see
-   rules/may-function), against the sentences: for every action and kind,
+   sql/may-function), against the sentences: for every action and kind,
    every scope given, as nobody, a signed-in stranger and `person`, behind a
    wall verified for that one scope, it must answer exactly the rows the
    wall shows that the action's sentences give, but those a scope's state
@@ -168,20 +169,20 @@
            [as caller]     [[:nobody nil] [:signed-in-stranger (random-uuid)] [:person person]]
            :when           (or caller (not= :person as))
            :let [record  (records kind)
-                 answered (permissions/in-wall
+                 answered (check/in-wall
                            perms {:person caller :scopes #{scope} :read-only? true}
                            (fn [tx]
                              (into #{}
                                    (map (comp str val first))
                                    (jdbc/execute! (::pg/conn tx)
-                                                  [(str "SELECT x::text AS id FROM " (rules/may-function action kind) "() x")]))))
-                 seen     (permissions/in-wall perms {:person caller :scopes #{scope} :read-only? true}
+                                                  [(str "SELECT x::text AS id FROM " (sql/may-function action kind) "() x")]))))
+                 seen     (check/in-wall perms {:person caller :scopes #{scope} :read-only? true}
                                                #(ids-seen % record nil []))
-                 {:keys [sql params]} (rules/compile-sentences ss "r")
-                 denied   (permissions/as-system perms #(set (keys (permissions/denied-scopes perms % action #{scope}))))
-                 given    (if (or (seq denied) (permissions/blocked? perms action #{}))
+                 {where :sql params :params} (sql/compile-sentences ss "r")
+                 denied   (check/as-system perms #(set (keys (check/denied-scopes perms % action #{scope}))))
+                 given    (if (or (seq denied) (check/blocked? perms action #{}))
                             #{}
-                            (permissions/as-system perms #(ids-seen % record sql (rules/bind params caller nil (str "{" scope "}")))))
+                            (check/as-system perms #(ids-seen % record where (sql/bind params caller nil (str "{" scope "}")))))
                  expected (set/intersection seen given)
                  shown    (set/difference answered expected)
                  hidden   (set/difference expected answered)]
@@ -198,7 +199,7 @@
   [part {:keys [person flags foreign sealed]}]
   (reduce (fn [report [k entry]]
             (let [permission (:permission entry)
-                  open       (when (map? permission) (permissions/open-level (:perms part) (:action permission)))]
+                  open       (when (map? permission) (check/open-level (:perms part) (:action permission)))]
               (cond
                 (#{:public :signed-in} permission)
                 (assoc-in report [:skipped k] "carries no ids")

@@ -134,7 +134,7 @@
            false))))
 
 (def ^:private condition
-  (pred "condition" "must be a condition like [:= :order/status \"open\"] (see groundwork.permissions.rules)"
+  (pred "condition" "must be a condition like [:= :order/status \"open\"] (see groundwork.permissions.description)"
         condition?))
 
 ;; =============================================================================
@@ -235,7 +235,7 @@
           {:order {:table :orders :id :order/id :whose {:order/shop-id :shop :order/customer-id :person}}}
           [:map-of {:error/message "must map record kinds to their table, id and :whose" :doc/type "kind → record kind"}
            kind-name record-kind])
-   (entry :rules "Who may do what: one list of sentences, read at start (see groundwork.permissions.rules)"
+   (entry :rules "Who may do what: one list of sentences, read at start (see groundwork.permissions.description)"
           [{:allow :orders/see :on :order :to [:member :order/shop-id]}
            {:deny :money/move :session :impersonated}]
           [:vector {:error/message "must be a list of sentences" :doc/type "list of sentences"} sentence])])

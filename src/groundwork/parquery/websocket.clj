@@ -47,8 +47,9 @@
    [groundwork.endpoints :as endpoints]
    [groundwork.postgres.names :as names]
    [groundwork.parquery.wire :as wire]
-   [groundwork.permissions :as permissions]
-   [groundwork.permissions.rules :as rules]
+   [groundwork.permissions.check :as check]
+   [groundwork.permissions.description :as description]
+   [groundwork.permissions.sql :as sql]
    [groundwork.postgres :as pg]
    [groundwork.sessions :as sessions]
    [jsonista.core :as json]
@@ -74,7 +75,7 @@
   [description {:keys [global personal]}]
   (merge
    (into {} (map (fn [[kind {t :table id :id}]]
-                   [(name t) (assoc (rules/ringing description kind) :id (names/key->column id))]))
+                   [(name t) (assoc (description/ringing description kind) :id (names/key->column id))]))
          (:records description))
    (into {} (map (fn [t] [(name t) {:id nil :scopes [] :people [] :global? true}])) (keys global))
    (into {} (map (fn [[t col]] [(name t) {:id nil :scopes [] :people [(names/key->column col)]}])) personal)))
@@ -129,14 +130,14 @@
             (jdbc/execute! (::pg/conn tx) [stale-bells] {:builder-fn rs/as-unqualified-lower-maps})
             :when (not (contains? tables trigger_table))]
       (jdbc/execute! (::pg/conn tx)
-                     [(str "DROP TRIGGER IF EXISTS " trigger_name " ON " (rules/quote-table trigger_table))]))
+                     [(str "DROP TRIGGER IF EXISTS " trigger_name " ON " (sql/quote-table trigger_table))]))
     (doseq [[t {:keys [id scopes people universal?]}] tables
             [op referencing] [["INSERT" "NEW TABLE AS new_rows"]
                               ["UPDATE" "NEW TABLE AS new_rows OLD TABLE AS old_rows"]
                               ["DELETE" "OLD TABLE AS old_rows"]]]
       (jdbc/execute! (::pg/conn tx)
                      [(str "CREATE OR REPLACE TRIGGER " "groundwork_ring_" (str/lower-case op)
-                           " AFTER " op " ON " (rules/quote-table t)
+                           " AFTER " op " ON " (sql/quote-table t)
                            " REFERENCING " referencing " FOR EACH STATEMENT"
                            " EXECUTE FUNCTION groundwork.ring('" (or id "") "', '"
                            (str/join "," scopes) "', '" (str/join "," people) "'"
@@ -235,7 +236,7 @@
    one a related row names (a via): a change there changes what they see."
   [{:keys [endpoints]} {:keys [person visitor flags]} asks]
   (let [tables    (get-in endpoints [:perms :description :records])
-        listening (delay (permissions/listening (:perms endpoints) person))]
+        listening (delay (check/listening (:perms endpoints) person))]
     (vec (keep (fn [[endpoint params]]
                  (when-let [{:keys [scopes record] only :tables}
                             (endpoints/watch endpoints {:endpoint endpoint :params params
@@ -468,7 +469,7 @@
                      :db          db
                      :db-settings db-settings
                      :tables      tables
-                     :via-tables  (rules/via-tables description)
+                     :via-tables  (description/via-tables description)
                      :plans       (atom {})
                      :lines       (atom {})
                      :recent      (atom [])

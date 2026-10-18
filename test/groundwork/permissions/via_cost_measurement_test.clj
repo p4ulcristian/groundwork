@@ -1,4 +1,4 @@
-(ns groundwork.via-cost-measurement-test
+(ns groundwork.permissions.via-cost-measurement-test
   "A measurement, not a check: what a :via costs on a long list, 100 shops
    of 1 000 orders (100 000 rows) and as many payouts. Runs only with
    GROUNDWORK_MEASURE=1 (it fills the tables for a while); without it (as in
@@ -20,6 +20,7 @@
    [clojure.test :refer [deftest is use-fixtures]]
    [groundwork.migrations :as migrations]
    [groundwork.permissions :as perm]
+   [groundwork.permissions.check :as check]
    [groundwork.postgres :as pg]
    [groundwork.test-support :refer [db-settings sql!]]
    [next.jdbc :as jdbc]
@@ -130,7 +131,7 @@
                                           {:builder-fn rs/as-unqualified-maps})))))
 
 (defn- line [what person action kind table]
-  (let [{:keys [scopes every?]} (perm/scopes-listed *perms* {:person person :flags #{} :action action :kind kind})
+  (let [{:keys [scopes every?]} (check/scopes-listed *perms* {:person person :flags #{} :action action :kind kind})
         wall      #(perm/in-wall *perms* {:person person :scopes (if every? :every scopes) :read-only? true} %)
         system    #(perm/as-system *perms* %)
         {:keys [sql params]} (perm/list-filter *perms* {:person person :flags #{} :action action :kind kind})
@@ -154,7 +155,7 @@
       (println "|---|---|---|---|---|")
       (doseq [{:keys [what rows wall filter-rows filter]} lines]
         (println (str "| " what " | " rows " | " wall " | " filter-rows " | " filter " |")))
-      (let [{:keys [scopes]} (perm/scopes-listed *perms* {:person cashier :flags #{} :action :orders/pay :kind :order})
+      (let [{:keys [scopes]} (check/scopes-listed *perms* {:person cashier :flags #{} :action :orders/pay :kind :order})
             wall   #(perm/in-wall *perms* {:person cashier :scopes scopes :read-only? true} %)
             narrow "SELECT * FROM vc_orders WHERE order__id IN (SELECT * FROM groundwork.\"may orders/pay on order\"())"]
         (println (str "| the cashier's readable orders narrowed to those she may pay, through the wall | " (rows wall narrow [])

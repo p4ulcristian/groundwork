@@ -213,7 +213,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:permissions :records <record kind> :id` | column keyword | Its id column | `:order/id` |
 | `:permissions :records <record kind> :whose` | column → whose | Whose row each column names: column → a scope kind, :person or :visitor (the id of a visitor's session) | `#:order{:shop-id :shop, :customer-id :person}` |
 | `:permissions :records <record kind> :parent` (optional) | [kind column] or [kind column {column column}] | The record it hangs under: [record-kind its-column], and what it carries from it when either has more than one scope, or a person: [record-kind its-column {its column → the parent's}] | `[:order :job/order-id]` |
-| `:permissions :rules` | list of sentences | Who may do what: one list of sentences, read at start (see groundwork.permissions.rules) | `[{:allow :orders/see, :on :order, :to [:member :order/sho…` |
+| `:permissions :rules` | list of sentences | Who may do what: one list of sentences, read at start (see groundwork.permissions.description) | `[{:allow :orders/see, :on :order, :to [:member :order/sho…` |
 | `:permissions :rules […] :allow` (optional) | action or set of actions | Allows this action (or each of a set of them): a sentence {:allow … :on … :to-or-:via … :when …} | `:orders/see` |
 | `:permissions :rules […] :on` (optional) | keyword | The kind of record it is on | `:order` |
 | `:permissions :rules […] :to` (optional) | who | To whom: :anyone, :signed-in, [:member <column \| single-scope kind \| scope id> <action held, optional>], [:me <column>] | `[:member :order/shop-id]` |
