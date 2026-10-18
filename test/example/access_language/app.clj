@@ -340,7 +340,7 @@
    ;; opens exactly those
    :orders/of-shops   {:read       (fn [{:keys [db]} _] (mapv :order/id (pg/rows db orders-of-shops {})))
                        :access     {:action :orders/see :scopes [:shop :shop/ids]}
-                       :input      [:map [:shop/ids [:vector {:min 1} :uuid]]]
+                       :input      [:map [:shop/ids [:vector :uuid]]]
                        :answer     [:vector :uuid]}
    ;; open to anyone, about several shops
    :catalogue/of-shops {:read       (fn [{:keys [db]} _] (pg/rows db packages-of-shop {}))

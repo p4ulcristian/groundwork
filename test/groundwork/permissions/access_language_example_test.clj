@@ -792,7 +792,7 @@
             (is (= [] (as-system! "SELECT 1 FROM al_orders WHERE order__note IN ('x4', 'x5')"))))
           (finally (as-system! "DELETE FROM al_orders WHERE order__note LIKE 'x%'")))))
     (testing "an empty list names no scope: not found"
-      (is (= {:status :not-found} (call sven :orders/place-in-shops {:order/lines []}))))
+      (is (= {:status :not-found} (call sven :orders/of-shops {:shop/ids []}))))
     (testing "can I? the person's grants hold each scope"
       (is (every? (set (for [{:grant/keys [scope-id action]} (:data (call sven :groundwork/grants {}))
                              :when (= :orders/edit action)]
