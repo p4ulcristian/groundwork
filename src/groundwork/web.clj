@@ -65,9 +65,6 @@
      POST /groundwork/test-sign-in?person=<uuid>&flags=impersonated&hours=1
           with X-Test-Secret: <secret>   → the session cookie
 
-   A preview can be talked to from outside, given a secret (never in
-   production either): :eval-bridge, see groundwork.eval-bridge.
-
    Rate limits: a route's own :rate-limit, or for a :public route the app's
    :public limit (see groundwork.limits); over it, 429 with Retry-After.
 
@@ -102,7 +99,6 @@
   (:require
    [clojure.string :as str]
    [clojure.walk :as walk]
-   [groundwork.eval-bridge :as eval-bridge]
    [groundwork.limits :as limits]
    [groundwork.page :as page]
    [groundwork.permissions :as permissions]
@@ -860,15 +856,14 @@
 
 (defn groundwork-routes
   "Groundwork's own routes, mounted next to the app's: /health, parquery's
-   /parquery, and the test sign-in and the eval bridge when they're on."
-  [{:keys [test-sign-in eval-bridge sessions parquery]}]
+   /parquery, and the test sign-in when it's on."
+  [{:keys [test-sign-in sessions parquery]}]
   (cond-> (into [(health-route (:db sessions))] (:routes parquery))
-    test-sign-in (conj (test-sign-in-route test-sign-in sessions))
-    eval-bridge  (conj (eval-bridge/route eval-bridge))))
+    test-sign-in (conj (test-sign-in-route test-sign-in sessions))))
 
 (def ^:private settings-keys
   [:routes :max-body-bytes :content-security-policy :login-path :on-request :on-error :proxies :languages
-   :test-sign-in :eval-bridge :hashed-files :gzip-min-bytes :unknown-page])
+   :test-sign-in :hashed-files :gzip-min-bytes :unknown-page])
 
 (defn handler
   "The app's Ring handler, for settings already checked."

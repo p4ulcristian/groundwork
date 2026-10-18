@@ -128,8 +128,7 @@
 (defonce ^:private current-app (atom nil))
 
 (defn current
-  "The app started last in this JVM and still running, for code evaluated
-   from outside it (groundwork.eval-bridge) and the REPL."
+  "The app started last in this JVM and still running, for the REPL."
   []
   @current-app)
 

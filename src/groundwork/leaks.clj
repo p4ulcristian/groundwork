@@ -67,7 +67,7 @@
   [{:keys [permission ids]} params foreign scope-kinds]
   (let [{:keys [record scope]} permission
         [own-kind own-param]   (or record scope)
-        ;; held in any kind of scope (the team endpoints): any foreign scope
+        ;; held in any kind of scope (:groundwork/team): any foreign scope
         own-kind               (if (= :groundwork/any own-kind)
                                  (some #(when (contains? foreign %) %) scope-kinds)
                                  own-kind)

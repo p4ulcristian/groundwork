@@ -144,9 +144,6 @@
   ;; Lets automated tests sign in, given the secret; nil to switch off, never in production
   :test-sign-in nil
 
-  ;; Evaluates code from outside, given the secret; nil to switch off, never in production
-  :eval-bridge nil
-
   ;; Files whose names match (a regular expression, as text) are cached a year; nil for none
   :hashed-files "(?i)\\.[0-9a-f]{8,}\\."
 

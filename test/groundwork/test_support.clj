@@ -57,7 +57,6 @@
                  :proxies        {:trusted [] :client-ip-header nil :request-id-header nil}
                  :languages      nil
                  :test-sign-in   {:secret "a-secret-only-tests-know"}
-                 :eval-bridge    nil
                  :hashed-files   "\\.[0-9a-f]{8,}\\."
                  :gzip-min-bytes 1024}
    :server      {:ip "127.0.0.1" :port port}
