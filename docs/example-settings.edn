@@ -14,7 +14,7 @@
   ;; The database's name
   :database "app"
 
-  ;; The user Groundwork connects as
+  ;; The role the app connects as; in production one that owns nothing and can't pass by row-level security (migrate connects as the owner)
   :user "app"
 
   ;; Its password, or nil for none
@@ -29,13 +29,19 @@
   ;; The session's time zone: how times without an offset are read
   :time-zone "UTC"
 
+  ;; How the connection travels: :verified (encrypted; the server's certificate checked against the trusted certificates, and its name against :host) or :off (plain; in production only for a database on the same machine: localhost, 127.x.x.x or ::1)
+  :tls :verified
+
+  ;; With :tls :verified, a PEM file of the certificates the server's must lead to, instead of the Java runtime's trusted ones (a private certificate authority) (optional)
+  :tls-root-cert "/etc/app/db-root.pem"
+
   ;; Runs first in every with-transaction: (fn [tx] …) (optional)
   :on-transaction app.db/on-transaction
 
   ;; After every query: (fn [{:keys [file sql ms error]}] …) (optional)
   :on-query app.db/on-query}
 
- ;; The schema's changes, run at start
+ ;; The schema's changes: run by the start in development and tests, by migrate before it in production
  :migrations
  {;; The file development writes the whole schema to, or nil for none
   :schema-snapshot "schema.sql"}

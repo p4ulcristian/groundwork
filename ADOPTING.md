@@ -162,3 +162,41 @@ data isn't, so an old route key is ignored: rename them all in one step.
 `:page :stylesheets` stays, beside `:styles`, for files an app brings
 itself. Migration 019 runs at the next start; an app's development schema
 snapshot changes with it.
+
+## The database connection, and production's migrate
+
+Since 2026-10-18 ([TLS](decisions/2026-10-18-the-database-connection-is-encrypted-and-verified.md),
+[migrate](decisions/2026-10-18-production-migrates-before-it-starts.md)).
+
+**Every app:**
+
+- Add `:db :tls`: `:verified` for a database elsewhere (and `:tls-root-cert
+  "path.pem"` when its certificate comes from a private authority), `:off`
+  for one on the same machine. Production refuses `:off` for any host but
+  `localhost`, `127.x.x.x` or `::1`. Drop TLS options set elsewhere (an
+  `sslmode` in PgJDBC's `driverconfig.properties` on the classpath, a
+  `PGSSLMODE`): Groundwork sets them on every connection.
+- Migration 020 (`groundwork.installs`) runs at the next start in
+  development; the schema snapshot changes with it.
+
+**Production** (development and tests keep one role, and the start migrates):
+
+1. Two roles. The owner owns every table, view, sequence and function of
+   `public` and `groundwork`, and the two schemas; it may have BYPASSRLS.
+   The app's role (`:db :user`) owns nothing of them, is no member of the
+   owner, has no BYPASSRLS and is no superuser. A database where the app's
+   role owns objects hands them over once, as a role with the rights of
+   both: `REASSIGN OWNED BY <app role> TO <owner>`, and takes back what it
+   was given to create: `REVOKE CREATE ON SCHEMA public FROM <app role>`.
+2. The deploy runs migrate as the owner before the start:
+   `GROUNDWORK_OWNER_USER=… GROUNDWORK_OWNER_PASSWORD=… clojure -X:migrate`
+   with `:migrate {:exec-fn groundwork.core/migrate :exec-args {:settings app.settings/production}}`,
+   or `(gw/migrate! settings {:user … :password …})` from the app's own
+   migrate main. The owner's password goes to that command alone, never
+   into the running app's environment.
+3. Grants the app made itself for its role are no longer needed: migrate
+   grants what the list in the README's Production says, every time.
+4. A production start now refuses a database migrate hasn't brought up to
+   its settings: run migrate on every deploy, also when only the
+   permission description or `:endpoints :bells` changed. Tests that start
+   in production migrate first, as the owner.
