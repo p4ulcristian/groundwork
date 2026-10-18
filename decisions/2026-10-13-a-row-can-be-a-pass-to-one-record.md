@@ -1,5 +1,7 @@
 # A row can be a pass to one record
 
+> **Replaced** by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md) (2026-10-17): a pass is a `:via` sentence, which may also give an action that writes.
+
 > Adds to [Groundwork ships permissions](2026-10-12-groundwork-ships-permissions.md). A seventh rule shape.
 
 **Decision:** the permission description can say that a row of one table gives a scope, or a person, a reading action on the one record it names, while a condition on that row holds. A shop hands an order to another shop for one step of the work: the handoff row gives the receiving shop "see order" on that order, and on the kinds under it that the description lists, while the handoff is open.

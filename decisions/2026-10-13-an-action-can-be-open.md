@@ -1,5 +1,7 @@
 # An action can be open
 
+> **Replaced** by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md) (2026-10-17): an action is open through a sentence that gives it `:to :anyone` or `:to :signed-in`, and such a sentence may write when a `:when` or `:via` narrows it.
+
 > Adds to [Groundwork ships permissions](2026-10-12-groundwork-ships-permissions.md) and [Who is rung comes from who may see](2026-10-13-who-is-rung-comes-from-who-may-see.md).
 
 **Decision:** the permission description can mark a reading action as open: to anyone, or to anyone signed in. An open action needs no membership: a request for it is about the scope it names, that scope is verified for the transaction, and the wall shows the caller only the kinds of record the action has a rule for, as that rule allows (a condition such as "only while published" included). Everything else in the scope stays visible to members only.

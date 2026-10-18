@@ -1,6 +1,6 @@
 # Groundwork knows nothing about tenants
 
-> Replaced by [Groundwork ships permissions](2026-10-12-groundwork-ships-permissions.md).
+> **Replaced** by [Groundwork ships permissions](2026-10-12-groundwork-ships-permissions.md) (2026-10-12): Groundwork ships scopes, roles and memberships.
 
 **Decision:** multi-tenancy, shops, workspaces and roles belong to the app. Groundwork gives hooks (like `:on-transaction`) where the app plugs them in.
 

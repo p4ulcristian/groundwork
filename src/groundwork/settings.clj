@@ -460,13 +460,6 @@
            [:maybe [:map {:closed true}
                     (entry :secret "At least 16 characters" "a-secret-only-tests-know"
                            [:string {:min 16 :error/message "must be at least 16 characters" :doc/type "text, 16+ characters"}])]])
-    (entry :eval-bridge "Evaluates code from outside, given the secret; nil to switch off, never in production"
-           nil
-           [:maybe [:map {:closed true}
-                    (entry :secret "At least 16 characters" "a-secret-only-the-previews-know"
-                           [:string {:min 16 :error/message "must be at least 16 characters" :doc/type "text, 16+ characters"}])
-                    (entry :timeout-ms "How long one evaluation may run" 30000 positive)
-                    (entry :max-chars "The longest result sent back" 20000 positive)]])
     (entry :hashed-files "Files whose names match (a regular expression, as text) are cached a year; nil for none"
            "(?i)\\.[0-9a-f]{8,}\\."
            (pred "regular expression text or nil" "must be a regular expression as text, or nil"
@@ -616,7 +609,7 @@
 
 (defn- environment-problems [settings]
   (when (= :production (:environment settings))
-    (for [k [:test-sign-in :eval-bridge]
+    (for [k [:test-sign-in]
           :when (some? (get-in settings [:web k]))]
       {:in [:web k] :message "is never on in production"})))
 

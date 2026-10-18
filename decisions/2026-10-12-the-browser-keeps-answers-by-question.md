@@ -1,5 +1,7 @@
 # The browser keeps answers by question
 
+> **Changed in part** by [Asking again, and bells that miss nothing](2026-10-14-asking-again-and-bells-that-miss-nothing.md) (2026-10-14): the store can also ask a question again on request (a button, a timer, after a refused write), so "never on a timer" no longer holds.
+
 **Decision:** the browser half keeps every answer under its question: the endpoint plus its params. Two asks of the same question make one request and one entry.
 
 - A page or panel says what it needs when it opens; that fetches. Showing data never fetches by itself.

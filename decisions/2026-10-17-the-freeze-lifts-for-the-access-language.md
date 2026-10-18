@@ -1,6 +1,6 @@
 # The freeze lifts for the access language
 
-> **Replaced** by [Groundwork is no longer frozen](2026-10-17-groundwork-is-no-longer-frozen.md).
+> **Replaced** by [Groundwork is no longer frozen](2026-10-17-groundwork-is-no-longer-frozen.md) (2026-10-17): the whole freeze is lifted, not only for the access language.
 
 > Changes [Groundwork is frozen](2026-10-15-groundwork-is-frozen.md) in part.
 

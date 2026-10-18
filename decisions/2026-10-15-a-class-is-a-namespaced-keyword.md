@@ -1,6 +1,6 @@
 # A class is a namespaced keyword
 
-> **Replaced** by [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md).
+> **Replaced** by [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md) (2026-10-17): classes are plain text again.
 
 **Decision:** in a component a CSS class is a namespaced keyword with the marker `css.`, never typed text: `:css.job-card/title`. It converts to the class name by the same rule as a database column: `:css.job-card/title` ↔ `.job-card__title`. The stylesheets stay plain CSS, with everything CSS can do.
 

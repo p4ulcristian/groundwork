@@ -1,5 +1,7 @@
 # Who is rung comes from who may see
 
+> **Changed in part** by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md) (2026-10-17): the description is the app's sentences, and a case it can't express gains a word, not a shape.
+
 > Adds to [Postgres rings the bell](2026-10-12-postgres-rings-the-bell.md) and [Asking again, and bells that miss nothing](2026-10-14-asking-again-and-bells-that-miss-nothing.md).
 
 **Decision:**

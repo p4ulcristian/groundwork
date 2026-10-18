@@ -1,8 +1,8 @@
 # Who may see what is the app's; Groundwork enforces it
 
-> How the app says it: [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md).
+> **Changed in part** by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md) (2026-10-17): how the app says its rules, left open here, is decided there, and built.
 
-> Changes [Groundwork ships permissions](2026-10-12-groundwork-ships-permissions.md) in part. Decided, not built: Groundwork is frozen ([Groundwork is frozen](2026-10-15-groundwork-is-frozen.md)).
+> Changes [Groundwork ships permissions](2026-10-12-groundwork-ships-permissions.md) in part. Decided while [Groundwork is frozen](2026-10-15-groundwork-is-frozen.md).
 
 **Decision:** the line between the business and everything else runs through permissions too.
 

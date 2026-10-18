@@ -1,6 +1,6 @@
 # The styles tree's order is cascade layers
 
-> **Replaced** by [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md).
+> **Replaced** by [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md) (2026-10-17): there is no styles tree; bundles follow the order their namespaces are found in.
 
 > Adds to [The styles tree](2026-10-15-the-styles-tree.md) and [A page loads the stylesheets its code uses](2026-10-15-a-page-loads-the-stylesheets-its-code-uses.md).
 

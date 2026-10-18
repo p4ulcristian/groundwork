@@ -1,5 +1,7 @@
 # parquery is the transport
 
+> **Changed in part** by [Groundwork ships these parts](2026-10-18-groundwork-ships-these-parts.md) (2026-10-18): the browser's store of answers is named `parquery-store`.
+
 **Decision:** parquery is the transport between browser and server: it starts where something is handed to `/parquery` on one side and ends where it is handed over on the other. Its parts are named after the transport they use, each with a server half (`.clj`) and a browser half (`.cljs`) of the same name:
 
 - `parquery/http`: asks and answers (a POST to `/parquery`)

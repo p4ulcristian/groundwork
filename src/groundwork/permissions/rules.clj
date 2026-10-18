@@ -164,11 +164,6 @@
   [description kind above]
   (or (= kind above) (some #{above} (ancestors-of description kind))))
 
-(defn single-kinds
-  "The scope kinds that have exactly one scope."
-  [{:keys [scopes]}]
-  (into #{} (keep (fn [[k spec]] (when (:single? spec) k))) scopes))
-
 (defn allowed-in-role?
   "The actions a role of this kind may hold: its kind's and those of the
    kinds below it, and :groundwork/team."

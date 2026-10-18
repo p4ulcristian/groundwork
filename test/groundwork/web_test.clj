@@ -126,7 +126,7 @@
   (is (= ::web/bad-route
          (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :access :public :embeddable ["shop.example"]}]]
                                             :max-body-bytes 1000 :content-security-policy {} :login-path "/login"
-                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil :eval-bridge nil :hashed-files nil :gzip-min-bytes nil
+                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil :hashed-files nil :gzip-min-bytes nil
                                             :page (fn [_]) :sessions {} :environment :test})
                               (catch Exception e e)))))))
 
@@ -242,7 +242,7 @@
     (is (= ::page/bad-route
            (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :access :public :page {:titel "x"}}]]
                                               :max-body-bytes 1000 :content-security-policy {} :login-path "/login"
-                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil :eval-bridge nil :hashed-files nil :gzip-min-bytes nil
+                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil :hashed-files nil :gzip-min-bytes nil
                                               :page (fn [_]) :sessions {} :environment :test})
                                 (catch Exception e e))))))))
 

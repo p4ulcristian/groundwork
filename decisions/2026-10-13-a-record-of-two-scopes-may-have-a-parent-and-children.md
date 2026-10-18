@@ -1,5 +1,7 @@
 # A record of two scopes may have a parent and children
 
+> **Changed in part** by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md) (2026-10-17): who sees and is rung for such a row is what the app's sentences say, not every side it carries.
+
 > Adds to [Every scoped table names its scope](2026-10-12-every-scoped-table-names-its-scope.md).
 
 **Decision:** the rule that every row carries its own scope, tied to its parent's by a matching link and filled in by Groundwork, holds for records of two scopes too.

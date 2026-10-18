@@ -1,5 +1,7 @@
 # A record between fixed sides carries them
 
+> **Changed in part** by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md) (2026-10-17): passes, which this is weighed against, became `:via` sentences that can also write; carrying the sides in columns stands.
+
 > Adds to [A record of two scopes may have a parent and children](2026-10-13-a-record-of-two-scopes-may-have-a-parent-and-children.md) and [A row can be a pass to one record](2026-10-13-a-row-can-be-a-pass-to-one-record.md).
 
 **Decision:** a record shared by a small, fixed set of sides that all read and write it (a conversation between a customer, a shop, a partner and the platform's staff) carries those sides in its own columns: a scope column per scope side, a person column for the person. It is an ordinary record of several scopes; the records under it carry the same sides.

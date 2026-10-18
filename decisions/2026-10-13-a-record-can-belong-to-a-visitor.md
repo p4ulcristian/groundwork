@@ -1,5 +1,7 @@
 # A record can belong to a visitor
 
+> **Changed in part** by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md) (2026-10-17): the visitor reaches the row through a `[:me <column>]` sentence, and a scope through a `:via` sentence instead of a pass.
+
 > Adds to [Groundwork ships permissions](2026-10-12-groundwork-ships-permissions.md) and [Pages for other sites, visitors, and servers](2026-10-12-pages-for-other-sites-visitors-and-servers.md).
 
 **Decision:** a record kind can name a visitor column beside, or instead of, its person column. The wall shows such a row to the visitor session it names, to read and to change, and to nobody else.

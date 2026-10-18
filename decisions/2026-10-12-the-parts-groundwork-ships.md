@@ -1,6 +1,8 @@
 # The parts Groundwork ships
 
-> Since [Groundwork is an opinionated framework](2026-10-12-groundwork-is-an-opinionated-framework.md), apps don't replace parts. Added: [permissions](2026-10-12-groundwork-ships-permissions.md) and [the page shell](2026-10-12-groundwork-ships-the-page-shell.md).
+> **Replaced** by [Groundwork ships these parts](2026-10-18-groundwork-ships-these-parts.md) (2026-10-18): the list now matches what is built, jobs and styles included.
+
+> **Changed in part** by [Groundwork is an opinionated framework](2026-10-12-groundwork-is-an-opinionated-framework.md) (2026-10-12): apps don't replace parts; [permissions](2026-10-12-groundwork-ships-permissions.md) and [the page shell](2026-10-12-groundwork-ships-the-page-shell.md) were added.
 
 **Decision:** Groundwork ships these parts:
 

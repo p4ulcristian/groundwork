@@ -57,7 +57,6 @@ the JVM tests against Postgres 18, clj-kondo, the browser half's tests on node.
                                   :languages               {:supported ["en" "de"] :default "en"
                                                             :cookie "lang"}    ; or nil
                                   :test-sign-in            nil                ; or {:secret …}, never in production
-                                  :eval-bridge             nil                ; or {:secret … :timeout-ms … :max-chars …}, never in production
                                   :hashed-files            "(?i)\\.[0-9a-f]{8,}\\."   ; or nil
                                   :gzip-min-bytes          1024}               ; or nil
                     :server      {:ip "0.0.0.0" :port 8080}
@@ -177,10 +176,6 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:web :languages :cookie` | name or nil | A cookie holding the person's choice, or nil | `"lang"` |
 | `:web :test-sign-in` | map or nil | Lets automated tests sign in, given the secret; nil to switch off, never in production |  |
 | `:web :test-sign-in :secret` | text, 16+ characters | At least 16 characters | `"a-secret-only-tests-know"` |
-| `:web :eval-bridge` | map or nil | Evaluates code from outside, given the secret; nil to switch off, never in production |  |
-| `:web :eval-bridge :secret` | text, 16+ characters | At least 16 characters | `"a-secret-only-the-previews-know"` |
-| `:web :eval-bridge :timeout-ms` | positive whole number | How long one evaluation may run | `30000` |
-| `:web :eval-bridge :max-chars` | positive whole number | The longest result sent back | `20000` |
 | `:web :hashed-files` | regular expression text or nil | Files whose names match (a regular expression, as text) are cached a year; nil for none | `"(?i)\\.[0-9a-f]{8,}\\."` |
 | `:web :gzip-min-bytes` | positive whole number or nil | Text-like answers at least this big go gzipped; nil for none | `1024` |
 | `:web :unknown-page` (optional) | function or nil | What a browser gets at an address no route knows: nil (or left out) for the page shell, whose browser routing may know it; or a handler, for an app whose pages are all routes (its own 404) | `app.pages/not-found` |
@@ -852,35 +847,6 @@ Everything the browser, or a tool, can ask. The app lists them by area:
 - `:groundwork/grants` is built in: every action the sentences give the
   person, and where (no scope: every scope), for the browser's "can I?".
 
-### The team endpoints
-
-A scope's people and roles, for the app's own screens (Groundwork ships no
-UI). The app adds them to its list:
-`:parquery {:endpoints [groundwork.team/endpoints app.jobs/endpoints …]}`.
-
-| Endpoint | | |
-|---|---|---|
-| `:groundwork.team/members` | read | who is in the scope: role, owner, extra actions |
-| `:groundwork.team/roles` | read | the roles and their actions (the roles grid) |
-| `:groundwork.team/invite` | write | an email with a role → `{:invitation/token …}` for the link the app mails |
-| `:groundwork.team/accept` | write | the signed-in person joins; needs `:person/email` in the session |
-| `:groundwork.team/change-role` | write | a member gets another role |
-| `:groundwork.team/set-role-actions` | write | a role's actions (ticks in the grid) |
-| `:groundwork.team/create-role` | write | a new role with its actions |
-| `:groundwork.team/remove-member` | write | a person leaves the scope |
-| `:groundwork.team/grant-extra`, `revoke-extra` | write | one action on top of a role |
-
-- All but accept need `:groundwork/team` in the scope named by
-  `:team/scope-id`; another scope's id answers not-found. Every action
-  handed out or taken back must be one the person holds; only an owner makes
-  or removes owners, and a scope always keeps one.
-- The app's login keeps the person's email in the session as
-  `:person/email` (`sessions/put-data`), so an invitation can be accepted only
-  by the address it was sent to.
-- They run outside the wall: Groundwork's team functions check, then open
-  their own transactions as the system.
-
-
 ### Limits
 
 How often a caller may ask (`groundwork.limits`), for endpoints and plain
@@ -1160,7 +1126,7 @@ Then the store, under the screens:
   and those are asked again at once, with no wait and no websocket needed.
   The websocket's bell for that write carries the same tag, so nothing is
   asked twice. Work committed outside the endpoint's own transaction
-  (after-commit work, jobs, the team endpoints) isn't in the answer; it
+  (after-commit work, jobs) isn't in the answer; it
   reaches screens through the websocket. `ask-again` asks a question again now, for
   what no change in the database announces (a "try again" button, a refresh,
   a timer); out already, it's asked once more when its answer lands.
@@ -1291,9 +1257,11 @@ With it, the browser build (`groundwork.build`) does the rest:
 
 ## 10. The REPL
 
-Where a REPL into a running app may exist: development always; previews
-through the eval bridge; stage only over SSH; production off (see
-[the decision](decisions/2026-10-12-repls-by-environment.md)). What's tried
+Where a REPL into a running app may exist: development always; stage only
+over SSH; production off (see
+[the decision](decisions/2026-10-12-repls-by-environment.md)). Groundwork
+ships no bridge into a running preview
+([decision](decisions/2026-10-18-groundwork-ships-no-team-endpoints-and-no-eval-bridge.md)). What's tried
 and not saved to a file is gone on the next start.
 
 ```clojure
@@ -1342,14 +1310,6 @@ and not saved to a file is gone on the next start.
   gives the action holds, and why (the record's scope, the person's
   memberships, roles and extra actions there and above, a person column, a
   related row, a condition), and the deny that said no.
-- **Previews: the eval bridge.** With `:web :eval-bridge {:secret …
-  :timeout-ms 30000 :max-chars 20000}` (nil turns it off; production refuses
-  to start with it), `POST /groundwork/eval` with `X-Eval-Secret` and Clojure
-  code as the body evaluates it in the running app's `user` namespace and
-  answers `{"value": …, "out": …}` or `{"error": …}`; 504 when it ran too
-  long. `(groundwork.core/current)` is the running app. `?cljs=app` evaluates
-  in the browser tabs open on it, when the shadow-cljs build runs in that
-  server. Every evaluation is logged; a wrong secret is a plain 404.
 - **In the browser** (the build's REPL): `(groundwork.repl/entries)` lists
   every question the store holds, `(groundwork.repl/answer :jobs/list
   {:shop/id id})` one entry with its data.

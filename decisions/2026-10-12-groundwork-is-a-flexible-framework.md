@@ -1,6 +1,6 @@
 # Groundwork is a flexible framework
 
-> Replaced by [Groundwork is an opinionated framework](2026-10-12-groundwork-is-an-opinionated-framework.md).
+> **Replaced** by [Groundwork is an opinionated framework](2026-10-12-groundwork-is-an-opinionated-framework.md) (2026-10-12): an app's settings no longer list or replace parts.
 
 > Replaces [Groundwork is a library](2026-10-12-groundwork-is-a-library.md).
 

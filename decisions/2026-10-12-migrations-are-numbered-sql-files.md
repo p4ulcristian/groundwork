@@ -1,5 +1,7 @@
 # Migrations are numbered SQL files
 
+> **Changed in part** by [The schema snapshot is written when the start is done](2026-10-13-the-schema-snapshot-is-written-when-the-start-is-done.md) (2026-10-13): the development snapshot is written at the end of the start, not right after migrating.
+
 **Decision:** an app's migrations are numbered plain SQL files in `resources/migrations/` (`001_create_shops.sql`, `002_…`). At start Groundwork takes a lock in Postgres, runs its own new migrations first and then the app's, in number order, each in its own transaction, and remembers each file with its fingerprint. A failed file rolls back and the app doesn't start. A file that already ran and was changed afterwards stops the start: a fix is a new file. In development, Groundwork writes a snapshot of the whole schema into one file after migrating.
 
 **Why:** one mechanism, and nothing is ever dropped unless a migration says so. Every change is explicit and runs once. The snapshot keeps the whole current schema visible in one place.

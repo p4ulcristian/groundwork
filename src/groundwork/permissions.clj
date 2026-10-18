@@ -41,7 +41,6 @@
 (pg/defsql groundwork-policies "groundwork/permissions/groundwork_policies.sql")
 (pg/defsql groundwork-guards "groundwork/permissions/groundwork_guards.sql")
 (pg/defsql groundwork-functions "groundwork/permissions/groundwork_functions.sql")
-(pg/defsql old-via-functions "groundwork/permissions/old_via_functions.sql")
 (pg/defsql links-between "groundwork/permissions/links_between.sql")
 (pg/defsql connecting-role "groundwork/permissions/connecting_role.sql")
 (pg/defsql holds-sql "groundwork/permissions/holds.sql")
@@ -602,20 +601,6 @@
                (:holding/yes (pg/row tx holds-sql {:scope/id scope-id :person (str person)
                                                    :action   (rules/action-name action)})))))
 
-(defn member?
-  "Whether a person is a member of a scope, or of one above it, in any role."
-  [perms person scope-id]
-  (boolean
-   (and person
-        (as-system perms
-                   (fn [tx]
-                     (seq (query tx (str "WITH RECURSIVE up(scope) AS (SELECT CAST(? AS uuid)"
-                                         " UNION SELECT s.scope__parent_id FROM groundwork.scopes s"
-                                         " JOIN up u ON s.scope__id = u.scope WHERE s.scope__parent_id IS NOT NULL)"
-                                         " SELECT 1 FROM groundwork.memberships m JOIN up u"
-                                         " ON m.membership__scope_id = u.scope WHERE m.membership__person_id = CAST(? AS uuid)")
-                                 [(str scope-id) (str person)])))))))
-
 ;; =============================================================================
 ;; Scopes, roles and members
 ;; =============================================================================
@@ -994,15 +979,10 @@
       (exec! tx (str "CREATE POLICY groundwork_update ON " table " FOR UPDATE USING (" (first update)
                      ") WITH CHECK (" (second update) ")"))
       (exec! tx (str "CREATE POLICY groundwork_delete ON " table " FOR DELETE USING (" delete ")")))
-    ;; a via's function from before its related row was held to the
-    ;; request's scopes took two arguments; nothing calls those now
-    (doseq [{:function/keys [name]} (pg/rows tx old-via-functions {})]
-      (exec! tx (str "DROP FUNCTION IF EXISTS groundwork.\"" name "\"(uuid, uuid)")))
     (let [guarded (set (map #(name (get-in description [:records % :table])) (rules/guarded-kinds description)))]
-      ;; a guard from an earlier start on a table no via looks into any more
-      ;; (or a pass's, from before the access language) goes
+      ;; a guard from an earlier start on a table no via looks into any more goes
       (doseq [{:guard/keys [table name]} (pg/rows tx groundwork-guards {})
-              :when (or (not= "groundwork_via_guard" name) (not (guarded table)))]
+              :when (not (guarded table))]
         (exec! tx (str "DROP TRIGGER IF EXISTS \"" name "\" ON \"" table "\"")))
       (doseq [kind      (rules/guarded-kinds description)
               statement (rules/guard-sql description kind)]

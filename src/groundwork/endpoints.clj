@@ -118,7 +118,6 @@
 (pg/defsql claimed-key "groundwork/endpoints/claimed_key.sql")
 (pg/defsql keep-answer "groundwork/endpoints/keep_answer.sql")
 (pg/defsql forget-old-keys "groundwork/endpoints/forget_old_keys.sql")
-(pg/defsql grants-sql "groundwork/endpoints/grants.sql")
 (pg/defsql remember-file "groundwork/endpoints/remember_file.sql")
 (pg/defsql files-of-sql "groundwork/endpoints/files_of.sql")
 (pg/defsql set-tag "groundwork/endpoints/set_tag.sql")
@@ -293,8 +292,8 @@
            :handler    (or (:read entry) (:write entry)))))
 
 (defn- own-transaction?
-  "Groundwork's team endpoints (groundwork.team) open their own transactions
-   after their own checks, outside the wall."
+  "Groundwork's own endpoints (:groundwork/grants) open their own
+   transactions after their own checks, outside the wall."
   [entry]
   (boolean (::own-transaction (meta entry))))
 

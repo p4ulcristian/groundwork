@@ -1,10 +1,10 @@
-(ns groundwork.shapes-test
-  "The access language on the example app (example.shapes.app), through a
+(ns groundwork.access-language-example-test
+  "The access language on the example app (example.access-language.app), through a
    whole started app: real tables, real endpoints, the wall and the bells."
   (:require
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
-   [example.shapes.app :as shapes]
+   [example.access-language.app :as example]
    [groundwork.core :as gw]
    [groundwork.endpoints :as endpoints]
    [groundwork.leaks :as leaks]
@@ -68,47 +68,52 @@
   (perm/as-system perms (fn [tx] (jdbc/execute! (::pg/conn tx) (into [sql] params)))))
 
 (defn- seed! [perms]
-  (system! perms (str "INSERT INTO sh_packages VALUES (?, ?, 'Gloss', true), (?, ?, 'Secret', false),"
+  (system! perms (str "INSERT INTO al_packages VALUES (?, ?, 'Gloss', true), (?, ?, 'Secret', false),"
                       " (?, ?, 'Zinc Matte', true), (?, ?, 'Zinc Secret', false)")
            gloss acme acme-secret acme zinc-matte zinc zinc-secret zinc)
-  (system! perms "INSERT INTO sh_packages VALUES (?, NULL, 'Shared Primer', true), (?, NULL, 'Shared Draft', false)"
+  (system! perms "INSERT INTO al_packages VALUES (?, NULL, 'Shared Primer', true), (?, NULL, 'Shared Draft', false)"
            shared shared-draft)
-  (system! perms "INSERT INTO sh_orders VALUES (?, ?, ?, 'a'), (?, ?, NULL, 'z')"
+  (system! perms "INSERT INTO al_orders VALUES (?, ?, ?, 'a'), (?, ?, NULL, 'z')"
            acme-order acme vic zinc-order zinc)
-  (system! perms "INSERT INTO sh_orders VALUES (?, ?, NULL, 'b')" acme-order-2 acme)
-  (system! perms "INSERT INTO sh_jobs VALUES (?, ?, ?, 'cut'), (?, ?, ?, 'paint'), (?, ?, ?, 'pack job')"
+  (system! perms "INSERT INTO al_orders VALUES (?, ?, NULL, 'b')" acme-order-2 acme)
+  (system! perms "INSERT INTO al_jobs VALUES (?, ?, ?, 'cut'), (?, ?, ?, 'paint'), (?, ?, ?, 'pack job')"
            acme-job acme-order acme acme-job-2 acme-order-2 acme zinc-job zinc-order zinc)
-  ;; a handoff that is done: a pass that gives nothing any more
-  (system! perms (str "INSERT INTO sh_handoffs (handoff__id, handoff__order_id, handoff__from_shop_id,"
+  ;; a handoff that is done: it shows nothing any more
+  (system! perms (str "INSERT INTO al_handoffs (handoff__id, handoff__order_id, handoff__from_shop_id,"
                       " handoff__to_shop_id, handoff__status) VALUES (?, ?, ?, ?, 'done')")
            zinc-handoff zinc-order zinc acme)
-  (system! perms (str "INSERT INTO sh_handoffs (handoff__id, handoff__order_id, handoff__from_shop_id,"
+  (system! perms (str "INSERT INTO al_handoffs (handoff__id, handoff__order_id, handoff__from_shop_id,"
                       " handoff__to_shop_id, handoff__status) VALUES (?, ?, ?, ?, 'done')")
            zinc-pine-handoff zinc-order zinc pine)
-  (system! perms "INSERT INTO sh_agreements VALUES (?, ?, ?), (?, ?, ?)" acme-pine acme pine zinc-pine zinc pine)
-  (system! perms "INSERT INTO sh_price_sheets (price_sheet__id, price_sheet__agreement_id, price_sheet__cents) VALUES (?, ?, 900)"
+  (system! perms "INSERT INTO al_agreements VALUES (?, ?, ?), (?, ?, ?)" acme-pine acme pine zinc-pine zinc pine)
+  (system! perms "INSERT INTO al_price_sheets (price_sheet__id, price_sheet__agreement_id, price_sheet__cents) VALUES (?, ?, 900)"
            zinc-price zinc-pine)
-  (system! perms (str "INSERT INTO sh_order_services (order_service__id, order_service__order_id, order_service__name)"
+  (system! perms (str "INSERT INTO al_order_services (order_service__id, order_service__order_id, order_service__name)"
                       " VALUES (?, ?, 'Deep cleaning')")
            zinc-service zinc-order)
-  (system! perms "INSERT INTO sh_conversations VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, NULL), (?, ?, ?, ?, NULL)"
-           talk acme pine shapes/platform vic
-           later-talk acme pine shapes/platform
-           zinc-talk zinc pine shapes/platform)
-  (system! perms "INSERT INTO sh_messages (message__id, message__conversation_id, message__text) VALUES (?, ?, 'zinc says')"
+  (system! perms "INSERT INTO al_conversations VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, NULL), (?, ?, ?, ?, NULL)"
+           talk acme pine example/platform vic
+           later-talk acme pine example/platform
+           zinc-talk zinc pine example/platform)
+  (system! perms "INSERT INTO al_messages (message__id, message__conversation_id, message__text) VALUES (?, ?, 'zinc says')"
            zinc-message zinc-talk))
 
 (use-fixtures :once
   (fn [t]
-    (sql! shapes/tables)
-    (sql! "TRUNCATE groundwork.scopes, groundwork.roles, groundwork.role_actions, groundwork.memberships,
-                    groundwork.extra_actions, groundwork.invitations CASCADE")
-    (let [app (gw/start (settings shapes/description shapes/endpoints))]
+    (sql! example/tables)
+    ;; a fresh database has no groundwork schema until the start migrates it
+    (sql! "DO $$ BEGIN
+             IF to_regclass('groundwork.scopes') IS NOT NULL THEN
+               TRUNCATE groundwork.scopes, groundwork.roles, groundwork.role_actions, groundwork.memberships,
+                        groundwork.extra_actions, groundwork.invitations CASCADE;
+             END IF;
+           END $$")
+    (let [app (gw/start (settings example/description example/endpoints))]
       (try
         (let [perms (gw/permissions app)]
           (perm/create-scope! perms {:kind :shop :id acme :parent nil :owner sam})
           (perm/create-scope! perms {:kind :shop :id zinc :parent nil :owner olga})
-          (perm/create-scope! perms {:kind :platform :id shapes/platform :parent nil :owner pat})
+          (perm/create-scope! perms {:kind :platform :id example/platform :parent nil :owner pat})
           (perm/create-scope! perms {:kind :shop :id pine :parent nil :owner piet})
           (join! perms sam acme stella "Staff")
           (join! perms piet pine petra "Production")
@@ -117,7 +122,7 @@
         (binding [*app* app] (t))
         (finally
           (gw/stop app)
-          (sql! shapes/drop-tables))))))
+          (sql! example/drop-tables))))))
 
 (defn- call
   ([person endpoint params] (call person endpoint params nil))
@@ -228,20 +233,20 @@
     (is (= {:status :not-found} (call vic :catalogue/rename {:package/id gloss :package/name "X"})))
     (is (= "Gloss 2" (get-in (call stella :catalogue/rename {:package/id gloss :package/name "Gloss 2"})
                              [:data :package/name])))
-    (as-system! "UPDATE sh_packages SET package__name = 'Gloss' WHERE package__id = ?" gloss))
+    (as-system! "UPDATE al_packages SET package__name = 'Gloss' WHERE package__id = ?" gloss))
   (testing "an open write needs a :when or a :via that narrows it; the start refuses one with neither"
     (is (= ::rules/bad-description
-           (:type (error #(rules/check (update shapes/description :rules conj
+           (:type (error #(rules/check (update example/description :rules conj
                                                {:allow :catalogue/edit :on :package :to :anyone}))))))
-    (is (some? (rules/check (update shapes/description :rules conj
+    (is (some? (rules/check (update example/description :rules conj
                                     {:allow :catalogue/edit :on :package :to :signed-in
                                      :when [:= :package/published false]}))))
-    (is (some? (rules/check (update shapes/description :rules conj
+    (is (some? (rules/check (update example/description :rules conj
                                     {:allow :catalogue/edit :on :package
-                                     :via {:table :sh_orders :match {:package/shop-id :order/shop-id}
+                                     :via {:table :al_orders :match {:package/shop-id :order/shop-id}
                                            :to :anyone :when [:= :order/note "open"]}})))))
   (testing "a write can't declare a reading action, nor a list of what is open only in a named scope"
-    (let [start (fn [entry] (error #(endpoints/start {:settings     (assoc (get-in (settings shapes/description {}) [:parquery])
+    (let [start (fn [entry] (error #(endpoints/start {:settings     (assoc (get-in (settings example/description {}) [:parquery])
                                                                           :endpoints [{:x/y entry}])
                                                       :db           (gw/db *app*)
                                                       :permissions  (gw/permissions *app*)
@@ -290,13 +295,13 @@
                                                 :foreign {:shop acme :order acme-order-2 :job acme-job-2
                                                           :package acme-secret}
                                                 :sealed  sealed}))))
-          (finally (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff)))))
+          (finally (as-system! "DELETE FROM al_handoffs WHERE handoff__id = ?" handoff)))))
     (testing "the wall, asked directly: what it shows is what the sentences give, of every kind"
       (is (= [] (leaks/wall-check (gw/permissions *app*) {:shop acme} {:person olga}))))
     (testing "a sentence that forgot its condition shows the unpublished rows, and the test says so"
-      (let [broken (update shapes/description :rules (fn [rs] (assoc rs 0 (dissoc (rs 0) :when))))
+      (let [broken (update example/description :rules (fn [rs] (assoc rs 0 (dissoc (rs 0) :when))))
             perms  (perm/start {:settings broken :db (gw/db *app*)})
-            part   (endpoints/start {:settings     (get-in (settings broken shapes/endpoints) [:parquery])
+            part   (endpoints/start {:settings     (get-in (settings broken example/endpoints) [:parquery])
                                      :db           (gw/db *app*)
                                      :permissions  perms
                                      :app-settings {}})]
@@ -308,7 +313,7 @@
                                                                   :sealed  sealed}))))))
           (finally
             ;; the app's own wall back
-            (perm/start {:settings shapes/description :db (gw/db *app*)})))))))
+            (perm/start {:settings example/description :db (gw/db *app*)})))))))
 
 ;; =============================================================================
 ;; A record of two scopes may have a parent and children
@@ -318,8 +323,8 @@
   (testing "a price added under an agreement: the SQL names no scope, both are the agreement's"
     (let [price (:data (call sam :prices/add {:agreement/id acme-pine :price-sheet/cents 1200}))]
       (is (uuid? price))
-      (is (= [{:sh_price_sheets/price_sheet__shop_id acme :sh_price_sheets/price_sheet__partner_id pine}]
-             (as-system! "SELECT price_sheet__shop_id, price_sheet__partner_id FROM sh_price_sheets WHERE price_sheet__id = ?"
+      (is (= [{:al_price_sheets/price_sheet__shop_id acme :al_price_sheets/price_sheet__partner_id pine}]
+             (as-system! "SELECT price_sheet__shop_id, price_sheet__partner_id FROM al_price_sheets WHERE price_sheet__id = ?"
                          price)))))
   (testing "either side reads and writes it; nobody else sees it"
     (is (= {:status :ok :data [1200]} (call piet :prices/of-agreement {:agreement/id acme-pine})) "the partner")
@@ -330,14 +335,14 @@
         "the partner's other agreement, and only its own prices"))
   (testing "the database refuses a row whose scopes aren't its parent's"
     (is (thrown? org.postgresql.util.PSQLException
-                 (as-system! (str "INSERT INTO sh_price_sheets (price_sheet__agreement_id, price_sheet__shop_id,"
+                 (as-system! (str "INSERT INTO al_price_sheets (price_sheet__agreement_id, price_sheet__shop_id,"
                                   " price_sheet__partner_id, price_sheet__cents) VALUES (?, ?, ?, 1)")
                              acme-pine zinc pine))))
   (testing "the agreement moving to another partner takes its prices along"
-    (as-system! "UPDATE sh_agreements SET agreement__partner_id = ? WHERE agreement__id = ?" zinc acme-pine)
+    (as-system! "UPDATE al_agreements SET agreement__partner_id = ? WHERE agreement__id = ?" zinc acme-pine)
     (is (= {:status :not-found} (call piet :prices/of-agreement {:agreement/id acme-pine})))
     (is (= {:status :ok :data [1200 1500]} (call olga :prices/of-agreement {:agreement/id acme-pine})))
-    (as-system! "UPDATE sh_agreements SET agreement__partner_id = ? WHERE agreement__id = ?" pine acme-pine)
+    (as-system! "UPDATE al_agreements SET agreement__partner_id = ? WHERE agreement__id = ?" pine acme-pine)
     (is (= {:status :ok :data [1200 1500]} (call piet :prices/of-agreement {:agreement/id acme-pine})))))
 
 (deftest one-scope-from-the-parent-and-one-of-its-own
@@ -356,8 +361,8 @@
     (is (= {:status :ok :data "a"} (call stella :orders/note {:order/id acme-order})))))
 
 (deftest the-start-checks-what-a-record-carries
-  (let [check (fn [f] (:type (error #(rules/check (f shapes/description)))))
-        start (fn [f] (error #(perm/start {:settings (f shapes/description) :db (gw/db *app*)})))]
+  (let [check (fn [f] (:type (error #(rules/check (f example/description)))))
+        start (fn [f] (error #(perm/start {:settings (f example/description) :db (gw/db *app*)})))]
     (testing "more than one scope on either side: the description says what is carried"
       (is (= ::rules/bad-description
              (check #(assoc-in % [:records :price-sheet :parent] [:agreement :price-sheet/agreement-id])))))
@@ -369,12 +374,12 @@
       (is (= ::rules/bad-description
              (check #(assoc-in % [:records :order-service :parent] [:order :order-service/order-id {}])))))
     (testing "the database must hold the matching link, for every column carried; the error carries the SQL"
-      (sql! "DROP TABLE IF EXISTS sh_loose; CREATE TABLE sh_loose (loose__id uuid PRIMARY KEY, loose__agreement_id uuid NOT NULL,
+      (sql! "DROP TABLE IF EXISTS al_loose; CREATE TABLE al_loose (loose__id uuid PRIMARY KEY, loose__agreement_id uuid NOT NULL,
                loose__shop_id uuid NOT NULL, loose__partner_id uuid NOT NULL,
-               FOREIGN KEY (loose__agreement_id, loose__shop_id) REFERENCES sh_orders (order__id, order__shop_id))")
+               FOREIGN KEY (loose__agreement_id, loose__shop_id) REFERENCES al_orders (order__id, order__shop_id))")
       (try
         (let [problem (start #(assoc-in % [:records :loose]
-                                        {:table :sh_loose :id :loose/id
+                                        {:table :al_loose :id :loose/id
                                          :whose {:loose/shop-id :shop :loose/partner-id :shop}
                                          :parent [:agreement :loose/agreement-id
                                                   {:loose/shop-id    :agreement/shop-id
@@ -382,8 +387,8 @@
           (is (= ::perm/bad-description (:type problem)))
           (is (str/includes? (:sql problem) "ADD FOREIGN KEY (loose__agreement_id, loose__")))
         (finally
-          (sql! "DROP TABLE IF EXISTS sh_loose")
-          (perm/start {:settings shapes/description :db (gw/db *app*)}))))))
+          (sql! "DROP TABLE IF EXISTS al_loose")
+          (perm/start {:settings example/description :db (gw/db *app*)}))))))
 
 ;; =============================================================================
 ;; :via: an open handoff shows one order to another shop
@@ -432,18 +437,18 @@
         (is (= {:status :ok :data "open"} (call stella :handoffs/set-status {:handoff/id handoff :handoff/status "open"})))
         (is (= {:status :ok :data "a"} (call petra :orders/note {:order/id acme-order}))))
       (finally
-        (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff)))))
+        (as-system! "DELETE FROM al_handoffs WHERE handoff__id = ?" handoff)))))
 
 (deftest a-shop-cant-hand-itself-an-order
   (testing "the receiving shop's person, behind their own shop's wall, storing a handoff from Acme: refused"
     (is (thrown-with-msg? org.postgresql.util.PSQLException #"row-level security"
                           (in-wall! petra #{pine}
-                                    (str "INSERT INTO sh_handoffs (handoff__order_id, handoff__from_shop_id,"
+                                    (str "INSERT INTO al_handoffs (handoff__order_id, handoff__from_shop_id,"
                                          " handoff__to_shop_id) VALUES (?, ?, ?)")
                                     acme-order-2 acme pine))))
   (testing "a handoff 'from Pine' for Acme's order: the database ties the giver to the order's own shop"
     (is (thrown? org.postgresql.util.PSQLException
-                 (as-system! (str "INSERT INTO sh_handoffs (handoff__order_id, handoff__from_shop_id,"
+                 (as-system! (str "INSERT INTO al_handoffs (handoff__order_id, handoff__from_shop_id,"
                                   " handoff__to_shop_id) VALUES (?, ?, ?)")
                              acme-order-2 pine pine))))
   (testing "nor through the endpoint: giving needs the giving action on the order"
@@ -452,55 +457,55 @@
   (testing "pointing an existing handoff at another order, or at another receiver, is making one"
     (let [handoff (:data (call sam :handoffs/give {:order/id acme-order :handoff/to-shop-id pine :handoff/driver-id nil}))]
       (try
-        (is (thrown-with-msg? org.postgresql.util.PSQLException #"Only someone who may create a row of sh_handoffs"
+        (is (thrown-with-msg? org.postgresql.util.PSQLException #"Only someone who may create a row of al_handoffs"
                               (in-wall! petra #{pine acme}
-                                        "UPDATE sh_handoffs SET handoff__order_id = ? WHERE handoff__id = ?"
+                                        "UPDATE al_handoffs SET handoff__order_id = ? WHERE handoff__id = ?"
                                         acme-order-2 handoff)))
-        (is (thrown-with-msg? org.postgresql.util.PSQLException #"Only someone who may create a row of sh_handoffs"
+        (is (thrown-with-msg? org.postgresql.util.PSQLException #"Only someone who may create a row of al_handoffs"
                               (in-wall! petra #{pine acme}
-                                        "UPDATE sh_handoffs SET handoff__driver_id = ? WHERE handoff__id = ?"
+                                        "UPDATE al_handoffs SET handoff__driver_id = ? WHERE handoff__id = ?"
                                         petra handoff)))
-        (finally (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff))))))
+        (finally (as-system! "DELETE FROM al_handoffs WHERE handoff__id = ?" handoff))))))
 
-(deftest a-pass-to-one-person
+(deftest a-handoff-to-one-person
   (let [handoff (:data (call sam :handoffs/give {:order/id acme-order :handoff/to-shop-id nil :handoff/driver-id uma}))]
     (try
       (is (= {:status :ok :data "a"} (call uma :orders/note {:order/id acme-order})) "the driver")
       (is (= {:status :not-found} (call uma :orders/note {:order/id acme-order-2})) "that order alone")
-      (is (= {:status :not-found} (call uma :jobs/one {:job/id acme-job})) "and nothing under it: this pass lists none")
+      (is (= {:status :not-found} (call uma :jobs/one {:job/id acme-job})) "and nothing under it: this handoff lists none")
       (is (= {:status :not-found} (call petra :orders/note {:order/id acme-order})) "nobody else")
-      (as-system! "UPDATE sh_handoffs SET handoff__status = 'done' WHERE handoff__id = ?" handoff)
+      (as-system! "UPDATE al_handoffs SET handoff__status = 'done' WHERE handoff__id = ?" handoff)
       (is (= {:status :not-found} (call uma :orders/note {:order/id acme-order})))
-      (finally (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff)))))
+      (finally (as-system! "DELETE FROM al_handoffs WHERE handoff__id = ?" handoff)))))
 
 (deftest the-start-checks-a-via
-  (let [check (fn [f] (:type (error #(rules/check (f shapes/description)))))]
+  (let [check (fn [f] (:type (error #(rules/check (f example/description)))))]
     (is (= ::rules/bad-description
            (check #(update % :rules conj {:allow :orders/see :on :order
-                                          :via {:table :sh_nowhere :match {:order/id :x/order-id}
+                                          :via {:table :al_nowhere :match {:order/id :x/order-id}
                                                 :to [:member :x/shop-id]}})))
         "the table it looks in is a record kind's: walled, and ringing")
     (is (= ::rules/bad-description
            (check #(update % :rules conj {:allow :orders/see :on :order
-                                          :via {:table :sh_handoffs :match {:order/id :handoff/order-id}
+                                          :via {:table :al_handoffs :match {:order/id :handoff/order-id}
                                                 :to [:member :handoff/note-id]}})))
         "its who names a scope column of the other row")
     (is (= ::rules/bad-description
            (check #(update % :rules conj {:allow :orders/see :on :order :to [:member :order/shop-id]
-                                          :via {:table :sh_handoffs :match {:order/id :handoff/order-id}
+                                          :via {:table :al_handoffs :match {:order/id :handoff/order-id}
                                                 :to [:member :handoff/to-shop-id]}})))
         "a sentence says :to or :via, not both"))
   (testing "the matched columns need an index, on both sides; the error carries the SQL"
-    (sql! "DROP INDEX sh_handoffs_order")
+    (sql! "DROP INDEX al_handoffs_order")
     (try
-      (let [problem (error #(perm/start {:settings shapes/description :db (gw/db *app*)}))]
+      (let [problem (error #(perm/start {:settings example/description :db (gw/db *app*)}))]
         (is (= ::perm/bad-description (:type problem)))
-        (is (= "CREATE INDEX ON sh_handoffs (handoff__order_id);" (:sql problem))))
+        (is (= "CREATE INDEX ON al_handoffs (handoff__order_id);" (:sql problem))))
       (finally
-        (sql! "CREATE INDEX sh_handoffs_order ON sh_handoffs (handoff__order_id)")
-        (perm/start {:settings shapes/description :db (gw/db *app*)})))))
+        (sql! "CREATE INDEX al_handoffs_order ON al_handoffs (handoff__order_id)")
+        (perm/start {:settings example/description :db (gw/db *app*)})))))
 
-(deftest a-pass-rings-who-holds-it
+(deftest a-handoff-rings-who-it-shows
   (let [cookie   (sign-in petra)
         _        (ask! cookie "orders/incoming" {})
         line     (open-line cookie)
@@ -508,24 +513,24 @@
         note     ["orders/note" {:order/id (str acme-order)}]]
     (try
       (watch! line incoming)
-      (testing "a pass given to her shop: her list of incoming orders is asked again"
+      (testing "a handoff to her shop: her list of incoming orders is asked again"
         (let [handoff (:data (call sam :handoffs/give {:order/id acme-order :handoff/to-shop-id pine
                                                        :handoff/driver-id nil}))]
           (try
             (is (= [incoming] (next-bell line 3000)))
             (ask! cookie "orders/note" {:order/id (str acme-order)})
             (watch! line incoming note)
-            (testing "the order she holds a pass on changes: both her reads of it"
-              (as-system! "UPDATE sh_orders SET order__note = 'a' WHERE order__id = ?" acme-order)
+            (testing "the order a handoff shows her changes: both her reads of it"
+              (as-system! "UPDATE al_orders SET order__note = 'a' WHERE order__id = ?" acme-order)
               (is (= #{incoming note} (set (next-bell line 3000)))))
             (testing "Acme's other order: her list hears of the shop it now reads from, her one order doesn't"
-              (as-system! "UPDATE sh_orders SET order__note = 'b' WHERE order__id = ?" acme-order-2)
+              (as-system! "UPDATE al_orders SET order__note = 'b' WHERE order__id = ?" acme-order-2)
               (is (= [incoming] (next-bell line 3000))))
-            (testing "the pass ends: both are asked again, and answer without the order"
-              (as-system! "UPDATE sh_handoffs SET handoff__status = 'done' WHERE handoff__id = ?" handoff)
+            (testing "the handoff ends: both are asked again, and answer without the order"
+              (as-system! "UPDATE al_handoffs SET handoff__status = 'done' WHERE handoff__id = ?" handoff)
               (is (= #{incoming note} (set (next-bell line 3000))))
               (is (= "not-found" (:status (ask! cookie "orders/note" {:order/id (str acme-order)})))))
-            (finally (as-system! "DELETE FROM sh_handoffs WHERE handoff__id = ?" handoff)))))
+            (finally (as-system! "DELETE FROM al_handoffs WHERE handoff__id = ?" handoff)))))
       (finally (close! line)))))
 
 ;; =============================================================================
@@ -578,8 +583,8 @@
       (is (= "not-found" (:status (ask! nil "designs/one" {:design/id (str rim)}))))
       (is (= {:status "ok" :data []} (ask! nil "designs/mine" {})) "someone with no session has no designs"))
     (testing "the visitor's id never comes from the request: an ask that names another visitor is still its sender's"
-      (let [annas-visitor (:sh_designs/design__visitor_id
-                           (first (as-system! "SELECT design__visitor_id FROM sh_designs WHERE design__id = ?" rim)))
+      (let [annas-visitor (:al_designs/design__visitor_id
+                           (first (as-system! "SELECT design__visitor_id FROM al_designs WHERE design__id = ?" rim)))
             [_ body]      (post! bela "/parquery"
                                  (wire/write-json [{:endpoint "designs/mine" :params {}
                                                     :visitor (str annas-visitor) :person (str annas-visitor)}]))]
@@ -593,8 +598,8 @@
       (let [[tibor _] (post! anna (str "/login-as/" vic) "")]
         (is (string? tibor))
         (is (= #{"Rim 2" "Rim!"} (set (:data (ask! tibor "designs/mine" {})))) "signed in: still theirs")
-        (is (= #{{:sh_designs/design__customer_id vic :sh_designs/design__visitor_id nil}}
-               (set (as-system! "SELECT design__customer_id, design__visitor_id FROM sh_designs WHERE design__id = ?" rim)))
+        (is (= #{{:al_designs/design__customer_id vic :al_designs/design__visitor_id nil}}
+               (set (as-system! "SELECT design__customer_id, design__visitor_id FROM al_designs WHERE design__id = ?" rim)))
             "the person is set, the visitor emptied")
         (is (= {:status "ok" :data []} (ask! anna "designs/mine" {})) "the visitor's old cookie opens nothing")
         (is (= {:status "ok" :data "Rim!!"} (ask! tibor "designs/rename" {:design/id (str rim) :design/name "Rim!!"})))))
@@ -602,7 +607,7 @@
       (as-system! "DELETE FROM groundwork.sessions WHERE session__person_id IS NULL")
       (is (= {:status "ok" :data []} (ask! bela "designs/mine" {})))
       (is (= "not-found" (:status (ask! bela "designs/one" {:design/id (str frame)}))))
-      (is (= 1 (count (as-system! "SELECT 1 FROM sh_designs WHERE design__id = ?" frame))) "the row is still there"))))
+      (is (= 1 (count (as-system! "SELECT 1 FROM al_designs WHERE design__id = ?" frame))) "the row is still there"))))
 
 (deftest a-visitor-hears-of-their-own-records
   (let [[anna rim] (save-design! nil "Bell")
@@ -613,7 +618,7 @@
     (try
       (watch! line mine)
       (testing "their own design changes"
-        (as-system! "UPDATE sh_designs SET design__name = 'Bell 2' WHERE design__id = ?" rim)
+        (as-system! "UPDATE al_designs SET design__name = 'Bell 2' WHERE design__id = ?" rim)
         (is (= [mine] (next-bell line 3000))))
       (testing "another visitor saves one: nothing"
         (save-design! bela "Other 2")
@@ -623,14 +628,14 @@
 (deftest the-start-checks-a-visitor-column
   (testing "one visitor column a kind, and one person column for the row to move to"
     (is (= ::rules/bad-description
-           (:type (error #(rules/check (assoc-in shapes/description [:records :design :whose :design/shop-id]
+           (:type (error #(rules/check (assoc-in example/description [:records :design :whose :design/shop-id]
                                                  :person))))))
     (is (= ::rules/bad-description
-           (:type (error #(rules/check (assoc-in shapes/description [:records :design :whose :design/customer-id]
+           (:type (error #(rules/check (assoc-in example/description [:records :design :whose :design/customer-id]
                                                  :visitor)))))))
   (testing "[:me …] names a person or visitor column of the row"
     (is (= ::rules/bad-description
-           (:type (error #(rules/check (update shapes/description :rules conj
+           (:type (error #(rules/check (update example/description :rules conj
                                                {:allow :designs/mine :on :design :to [:me :design/shop-id]}))))))))
 
 ;; =============================================================================
@@ -651,10 +656,10 @@
     (is (= {:status :signed-out} (call nil :talk/messages {:conversation/id talk})))
     (is (= {:status :not-found} (call uma :talk/say {:conversation/id talk :message/text "let me in"}))))
   (testing "a message carries its conversation's sides, the person too: the SQL named none"
-    (is (= #{{:sh_messages/message__shop_id acme :sh_messages/message__partner_id pine
-              :sh_messages/message__staff_id shapes/platform :sh_messages/message__customer_id vic}}
+    (is (= #{{:al_messages/message__shop_id acme :al_messages/message__partner_id pine
+              :al_messages/message__staff_id example/platform :al_messages/message__customer_id vic}}
            (set (as-system! (str "SELECT message__shop_id, message__partner_id, message__staff_id, message__customer_id"
-                                 " FROM sh_messages WHERE message__conversation_id = ?")
+                                 " FROM al_messages WHERE message__conversation_id = ?")
                             talk))))))
 
 (deftest a-person-is-carried-down-like-a-scope
@@ -662,25 +667,25 @@
   (testing "no customer on the conversation yet: Vic isn't in it"
     (is (= {:status :not-found} (call vic :talk/messages {:conversation/id later-talk}))))
   (testing "a customer named on the conversation later reaches the messages already under it"
-    (as-system! "UPDATE sh_conversations SET conversation__customer_id = ? WHERE conversation__id = ?" vic later-talk)
+    (as-system! "UPDATE al_conversations SET conversation__customer_id = ? WHERE conversation__id = ?" vic later-talk)
     (is (= {:status :ok :data ["anyone there?"]} (call vic :talk/messages {:conversation/id later-talk}))))
   (testing "the conversation going to another person takes its messages along"
-    (as-system! "UPDATE sh_conversations SET conversation__customer_id = ? WHERE conversation__id = ?" uma later-talk)
+    (as-system! "UPDATE al_conversations SET conversation__customer_id = ? WHERE conversation__id = ?" uma later-talk)
     (is (= {:status :not-found} (call vic :talk/messages {:conversation/id later-talk})))
     (is (= {:status :ok :data ["anyone there?"]} (call uma :talk/messages {:conversation/id later-talk}))))
   (testing "and nobody's again"
-    (as-system! "UPDATE sh_conversations SET conversation__customer_id = NULL WHERE conversation__id = ?" later-talk)
+    (as-system! "UPDATE al_conversations SET conversation__customer_id = NULL WHERE conversation__id = ?" later-talk)
     (is (= {:status :not-found} (call uma :talk/messages {:conversation/id later-talk})))
-    (is (= [{:sh_messages/message__customer_id nil}]
-           (as-system! "SELECT message__customer_id FROM sh_messages WHERE message__conversation_id = ?" later-talk))))
+    (is (= [{:al_messages/message__customer_id nil}]
+           (as-system! "SELECT message__customer_id FROM al_messages WHERE message__conversation_id = ?" later-talk))))
   (testing "the database refuses a message whose person isn't its conversation's"
     (is (thrown? org.postgresql.util.PSQLException
-                 (as-system! (str "INSERT INTO sh_messages (message__conversation_id, message__customer_id, message__text)"
+                 (as-system! (str "INSERT INTO al_messages (message__conversation_id, message__customer_id, message__text)"
                                   " VALUES (?, ?, 'sneaky')")
                              later-talk uma))))
   (testing "a person is carried from a person, never from a scope"
     (is (= ::rules/bad-description
-           (:type (error #(rules/check (assoc-in shapes/description [:records :message :parent 2 :message/customer-id]
+           (:type (error #(rules/check (assoc-in example/description [:records :message :parent 2 :message/customer-id]
                                                  :conversation/shop-id))))))))
 
 ;; =============================================================================
@@ -696,10 +701,10 @@
                                     [:data :package/name])))
     (is (= {:status :not-found} (call stella :catalogue/rename {:package/id shared :package/name "Mine"}))
         "Acme's staff don't")
-    (as-system! "UPDATE sh_packages SET package__name = 'Shared Primer' WHERE package__id = ?" shared))
+    (as-system! "UPDATE al_packages SET package__name = 'Shared Primer' WHERE package__id = ?" shared))
   (testing "nor can the back office move one into a shop: a changed row keeps belonging to nobody"
     (is (thrown? org.postgresql.util.PSQLException
-                 (in-wall! pat #{acme} "UPDATE sh_packages SET package__shop_id = ? WHERE package__id = ?" acme shared))))
+                 (in-wall! pat #{acme} "UPDATE al_packages SET package__shop_id = ? WHERE package__id = ?" acme shared))))
   (testing "a kind with exactly one scope refuses a second"
     (is (= ::perm/single-scope
            (:type (error #(perm/create-scope! (gw/permissions *app*) {:kind :platform :id (id) :parent nil :owner pat})))))))
@@ -711,13 +716,13 @@
     (try
       (watch! line list)
       (testing "the shop's own package"
-        (as-system! "UPDATE sh_packages SET package__name = 'Gloss' WHERE package__id = ?" gloss)
+        (as-system! "UPDATE al_packages SET package__name = 'Gloss' WHERE package__id = ?" gloss)
         (is (= [list] (next-bell line 3000))))
       (testing "a universal one: everyone showing a catalogue shows that row"
-        (as-system! "UPDATE sh_packages SET package__name = 'Shared Primer' WHERE package__id = ?" shared)
+        (as-system! "UPDATE al_packages SET package__name = 'Shared Primer' WHERE package__id = ?" shared)
         (is (= [list] (next-bell line 3000))))
       (testing "another shop's: nothing"
-        (as-system! "UPDATE sh_packages SET package__name = 'Zinc Matte' WHERE package__id = ?" zinc-matte)
+        (as-system! "UPDATE al_packages SET package__name = 'Zinc Matte' WHERE package__id = ?" zinc-matte)
         (is (nil? (next-bell line 500))))
       (finally (close! line)))))
 
@@ -730,12 +735,12 @@
     (try
       (watch! line list busy)
       (testing "a package of that shop changes: the visitor's list is asked again"
-        (as-system! "UPDATE sh_packages SET package__name = 'Gloss' WHERE package__id = ?" gloss)
+        (as-system! "UPDATE al_packages SET package__name = 'Gloss' WHERE package__id = ?" gloss)
         (is (= [list] (next-bell line 3000))))
       (testing "another shop's package: nothing"
-        (as-system! "UPDATE sh_packages SET package__name = 'Zinc Matte' WHERE package__id = ?" zinc-matte)
+        (as-system! "UPDATE al_packages SET package__name = 'Zinc Matte' WHERE package__id = ?" zinc-matte)
         (is (nil? (next-bell line 500))))
       (testing "an order of that shop, a kind no open word gives: nothing, though the read's SQL names the table"
-        (as-system! "UPDATE sh_orders SET order__note = 'a' WHERE order__id = ?" acme-order)
+        (as-system! "UPDATE al_orders SET order__note = 'a' WHERE order__id = ?" acme-order)
         (is (nil? (next-bell line 500))))
       (finally (close! line)))))
