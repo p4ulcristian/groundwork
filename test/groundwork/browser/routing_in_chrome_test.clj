@@ -1,4 +1,4 @@
-(ns groundwork.browser-routing-test
+(ns groundwork.browser.routing-in-chrome-test
   "Routing in a real browser: the example app (test/example), compiled,
    served, and driven in headless Chrome over its debugging protocol. What
    the node tests can't see is checked here: the browser's own history,
@@ -257,7 +257,7 @@
           (doseq [^File f (reverse (file-seq (io/file profile)))] (.delete f))
           (gw/stop app)
           (clean!))))
-    (println "groundwork.browser-routing-test: no Chrome found (GROUNDWORK_CHROME), skipped")))
+    (println "groundwork.browser.routing-in-chrome-test: no Chrome found (GROUNDWORK_CHROME), skipped")))
 
 (deftest styles-while-developing
   (if-let [path (chrome)]
@@ -312,4 +312,4 @@
           (doseq [folder [profile dir (:output-dir browser) (:output-dir styles)]
                   ^File f (reverse (file-seq (io/file folder)))]
             (.delete f)))))
-    (println "groundwork.browser-routing-test: no Chrome found (GROUNDWORK_CHROME), skipped")))
+    (println "groundwork.browser.routing-in-chrome-test: no Chrome found (GROUNDWORK_CHROME), skipped")))

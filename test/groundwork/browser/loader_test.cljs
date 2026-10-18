@@ -2,7 +2,7 @@
   "Code loaded on demand brings its stylesheets first: the module loader's
    own loading waits for the bundles. On node there is no page; the order is
    checked here with a stand-in for linking, and in a real browser by
-   groundwork.browser-routing-test."
+   groundwork.browser.routing-in-chrome-test."
   (:require
    [cljs.test :refer [async deftest is]]
    [groundwork.browser.loader :as loader]))

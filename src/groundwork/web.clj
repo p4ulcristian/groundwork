@@ -366,7 +366,7 @@
                                                   (get params "hours") (assoc :hours (parse-long (get params "hours")))))
                               (http/plain 404 "Not found"))))}]))
 
-(pg/defsql health-check "groundwork/health.sql")
+(pg/defsql health-check "groundwork/web/health.sql")
 
 (defn- health-route
   "GET /health: 200 when the database answers, 503 when it doesn't."

@@ -4,7 +4,7 @@
    bundles of each module, built by lightningcss for the browsers in
    :targets, and a release's minified, fingerprinted bundles.
    The whole build, with the example app, is in groundwork.build-test and in
-   a real browser in groundwork.browser-routing-test."
+   a real browser in groundwork.browser.routing-in-chrome-test."
   (:require
    [clojure.edn :as edn]
    [clojure.java.io :as io]
