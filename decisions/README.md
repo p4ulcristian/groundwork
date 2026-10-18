@@ -84,6 +84,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 ### Endpoints, parquery and live updates
 
 - [What every endpoint declares](2026-10-12-what-every-endpoint-declares.md)
+- [One request may name several scopes](2026-10-18-one-request-may-name-several-scopes.md)
 - [Every endpoint declares its answer](2026-10-12-every-endpoint-declares-its-answer.md)
 - [Reads and writes share one path](2026-10-12-reads-and-writes-share-one-path.md)
 - [parquery is the transport](2026-10-12-parquery-is-the-transport.md), changed in part by [Groundwork ships these parts](2026-10-18-groundwork-ships-these-parts.md)

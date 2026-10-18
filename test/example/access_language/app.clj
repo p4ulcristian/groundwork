@@ -3,12 +3,14 @@
    public reads, universal packages the platform keeps for every shop,
    orders that stay the shop's own, handoffs that show one order to another
    shop, agreements between two shops, conversations between fixed sides,
-   and designs made before signing in.
+   designs made before signing in, and requests that name several shops.
 
    Its tables are made by `tables` (a test's fixture runs it; an app's own
    would be migrations), its permission description is `description`, its
    endpoints `endpoints`."
   (:require
+   [clojure.string :as str]
+   [groundwork.endpoints :as endpoints]
    [groundwork.postgres :as pg]))
 
 (def platform
@@ -213,6 +215,8 @@
 (pg/defsql rename-design)
 (pg/defsql messages)
 (pg/defsql say)
+(pg/defsql orders-of-shops)
+(pg/defsql place-order)
 
 (def package-shape [:map [:package/id :uuid] [:package/name :string]])
 
@@ -331,4 +335,27 @@
    :orders/of-shop    {:read       (fn [{:keys [db]} params] (mapv :order/id (pg/rows db orders-of-shop params)))
                        :access     {:action :orders/see :scope [:shop :shop/id]}
                        :input      [:map [:shop/id :uuid]]
-                       :answer     [:vector :uuid]}})
+                       :answer     [:vector :uuid]}
+   ;; several shops in one request: the action is checked in each, the wall
+   ;; opens exactly those
+   :orders/of-shops   {:read       (fn [{:keys [db]} _] (mapv :order/id (pg/rows db orders-of-shops {})))
+                       :access     {:action :orders/see :scopes [:shop :shop/ids]}
+                       :input      [:map [:shop/ids [:vector {:min 1} :uuid]]]
+                       :answer     [:vector :uuid]}
+   ;; open to anyone, about several shops
+   :catalogue/of-shops {:read       (fn [{:keys [db]} _] (pg/rows db packages-of-shop {}))
+                        :access     {:action :catalogue/see :scopes [:shop :shop/ids]}
+                        :input      [:map [:shop/ids [:vector {:min 1} :uuid]]]
+                        :answer     [:vector package-shape]}
+   ;; one order in each shop a line names, in one transaction: a line
+   ;; without a note refuses the whole request, the orders before it too
+   :orders/place-in-shops {:write      (fn [{:keys [db]} {:order/keys [lines]}]
+                                         (mapv (fn [{:order/keys [note] :as line}]
+                                                 (when (str/blank? note)
+                                                   (throw (endpoints/refuse "Every line needs a note")))
+                                                 (:order/id (pg/row db place-order line)))
+                                               lines))
+                           :access     {:action :orders/edit :scopes [:shop [:order/lines :order/shop-id]]}
+                           :input      [:map [:order/lines [:vector {:min 1}
+                                                            [:map [:order/shop-id :uuid] [:order/note :string]]]]]
+                           :answer     [:vector :uuid]}})

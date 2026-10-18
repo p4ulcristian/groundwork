@@ -16,6 +16,7 @@
      (rf/dispatch [::store/hear :jobs-table [{:endpoint :jobs/list :params {:shop/id id}}] [:jobs-table/reload]])
      (rf/dispatch [::store/write {:endpoint :jobs/move :params {…}} [:jobs/moved]])
      @(rf/subscribe [::store/can? :jobs/move shop-id])
+     @(rf/subscribe [::store/can? :orders/place [shop-id other-shop-id]])   ; in every one of them
 
    - A page or panel says what it needs when it opens (ensure), and lets go
      when it closes (release); showing data never fetches by itself.
@@ -332,11 +333,15 @@
 
 (defn can?
   "Whether the sentences give the person an action in a scope, from their
-   grants. A grant with no scope is for every scope."
+   grants. A grant with no scope is for every scope. Asked about several
+   scopes (a list of ids, as an endpoint with :scopes takes them), whether
+   it gives it in every one; an empty list is no."
   [store action scope-id]
-  (boolean (some #(and (= action (:grant/action %))
-                       (or (nil? (:grant/scope-id %)) (= (str scope-id) (:grant/scope-id %))))
-                 (get-in store [:entries [:groundwork/grants {}] :data]))))
+  (if (sequential? scope-id)
+    (boolean (and (seq scope-id) (every? #(can? store action %) scope-id)))
+    (boolean (some #(and (= action (:grant/action %))
+                         (or (nil? (:grant/scope-id %)) (= (str scope-id) (:grant/scope-id %))))
+                   (get-in store [:entries [:groundwork/grants {}] :data])))))
 
 ;; =============================================================================
 ;; Events

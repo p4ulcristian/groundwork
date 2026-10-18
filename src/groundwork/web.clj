@@ -224,9 +224,9 @@
                         {:type ::bad-route :path path :access access})))
       access)
 
-    (and (map? access) (keyword? (:action access)) (some #{:scope :list} (keys access)))
+    (and (map? access) (keyword? (:action access)) (some #{:scope :scopes :list} (keys access)))
     (throw (ex-info (str "Route " path ": a route checks an action on a :record; "
-                         "an action on a :scope or a :list is an endpoint's")
+                         "an action on a :scope, :scopes or a :list is an endpoint's")
                     {:type ::bad-route :path path :access access}))
 
     :else
