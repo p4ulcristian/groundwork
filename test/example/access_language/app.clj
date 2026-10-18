@@ -1,4 +1,4 @@
-(ns example.shapes.app
+(ns example.access-language.app
   "An example app for the access language: shops with a catalogue the
    public reads, universal packages the platform keeps for every shop,
    orders that stay the shop's own, handoffs that show one order to another
@@ -17,80 +17,80 @@
   #uuid "00000000-0000-4000-8000-000000000001")
 
 (def tables
-  "DROP TABLE IF EXISTS sh_packages, sh_price_sheets, sh_agreements, sh_order_services, sh_handoffs, sh_jobs,
-                        sh_orders, sh_messages, sh_conversations, sh_designs;
+  "DROP TABLE IF EXISTS al_packages, al_price_sheets, al_agreements, al_order_services, al_handoffs, al_jobs,
+                        al_orders, al_messages, al_conversations, al_designs;
    -- made before signing in: a design is its visitor's, then its person's; its shop may wait
-   CREATE TABLE sh_designs (design__id uuid PRIMARY KEY DEFAULT gen_random_uuid(), design__shop_id uuid,
+   CREATE TABLE al_designs (design__id uuid PRIMARY KEY DEFAULT gen_random_uuid(), design__shop_id uuid,
                             design__customer_id uuid, design__visitor_id uuid, design__name text NOT NULL);
    -- a shop's packages, and universal ones that belong to nobody (no shop)
-   CREATE TABLE sh_packages (package__id uuid PRIMARY KEY, package__shop_id uuid,
+   CREATE TABLE al_packages (package__id uuid PRIMARY KEY, package__shop_id uuid,
                              package__name text NOT NULL, package__published boolean NOT NULL);
-   CREATE TABLE sh_orders (order__id uuid PRIMARY KEY, order__shop_id uuid NOT NULL,
+   CREATE TABLE al_orders (order__id uuid PRIMARY KEY, order__shop_id uuid NOT NULL,
                            order__customer_id uuid, order__note text NOT NULL,
                            UNIQUE (order__id, order__shop_id));
-   CREATE TABLE sh_jobs (job__id uuid PRIMARY KEY, job__order_id uuid NOT NULL, job__shop_id uuid NOT NULL,
+   CREATE TABLE al_jobs (job__id uuid PRIMARY KEY, job__order_id uuid NOT NULL, job__shop_id uuid NOT NULL,
                          job__name text NOT NULL,
                          FOREIGN KEY (job__order_id, job__shop_id)
-                           REFERENCES sh_orders (order__id, order__shop_id) ON UPDATE CASCADE);
-   CREATE INDEX sh_jobs_order ON sh_jobs (job__order_id);
+                           REFERENCES al_orders (order__id, order__shop_id) ON UPDATE CASCADE);
+   CREATE INDEX al_jobs_order ON al_jobs (job__order_id);
    -- a handoff: while it is open, the receiving shop (or the driver) sees the one order it names.
    -- Its giver is tied to the order's own shop, so nobody stores one for an order that isn't theirs
-   CREATE TABLE sh_handoffs (handoff__id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+   CREATE TABLE al_handoffs (handoff__id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                              handoff__order_id uuid NOT NULL,
                              handoff__from_shop_id uuid NOT NULL, handoff__to_shop_id uuid,
                              handoff__driver_id uuid, handoff__status text NOT NULL DEFAULT 'open',
                              FOREIGN KEY (handoff__order_id, handoff__from_shop_id)
-                               REFERENCES sh_orders (order__id, order__shop_id));
-   CREATE INDEX sh_handoffs_order ON sh_handoffs (handoff__order_id);
-   CREATE INDEX sh_handoffs_to ON sh_handoffs (handoff__to_shop_id);
-   CREATE INDEX sh_handoffs_driver ON sh_handoffs (handoff__driver_id);
+                               REFERENCES al_orders (order__id, order__shop_id));
+   CREATE INDEX al_handoffs_order ON al_handoffs (handoff__order_id);
+   CREATE INDEX al_handoffs_to ON al_handoffs (handoff__to_shop_id);
+   CREATE INDEX al_handoffs_driver ON al_handoffs (handoff__driver_id);
    -- between two scopes: a shop and the partner it works with
-   CREATE TABLE sh_agreements (agreement__id uuid PRIMARY KEY, agreement__shop_id uuid NOT NULL,
+   CREATE TABLE al_agreements (agreement__id uuid PRIMARY KEY, agreement__shop_id uuid NOT NULL,
                                agreement__partner_id uuid NOT NULL,
                                UNIQUE (agreement__id, agreement__shop_id, agreement__partner_id));
    -- under it: both scopes are the agreement's, tied by the matching link
-   CREATE TABLE sh_price_sheets (price_sheet__id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+   CREATE TABLE al_price_sheets (price_sheet__id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                                  price_sheet__agreement_id uuid NOT NULL,
                                  price_sheet__shop_id uuid NOT NULL, price_sheet__partner_id uuid NOT NULL,
                                  price_sheet__cents bigint NOT NULL,
                                  FOREIGN KEY (price_sheet__agreement_id, price_sheet__shop_id, price_sheet__partner_id)
-                                   REFERENCES sh_agreements (agreement__id, agreement__shop_id, agreement__partner_id)
+                                   REFERENCES al_agreements (agreement__id, agreement__shop_id, agreement__partner_id)
                                    ON UPDATE CASCADE);
    -- under an order: the order's shop, and a partner of its own, which may wait empty
-   CREATE TABLE sh_order_services (order_service__id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+   CREATE TABLE al_order_services (order_service__id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                                    order_service__order_id uuid NOT NULL,
                                    order_service__shop_id uuid NOT NULL, order_service__partner_id uuid,
                                    order_service__name text NOT NULL,
                                    FOREIGN KEY (order_service__order_id, order_service__shop_id)
-                                     REFERENCES sh_orders (order__id, order__shop_id) ON UPDATE CASCADE);
+                                     REFERENCES al_orders (order__id, order__shop_id) ON UPDATE CASCADE);
    -- between fixed sides, which all read and write: a shop, a partner, the platform's back office, a customer
-   CREATE TABLE sh_conversations (conversation__id uuid PRIMARY KEY, conversation__shop_id uuid NOT NULL,
+   CREATE TABLE al_conversations (conversation__id uuid PRIMARY KEY, conversation__shop_id uuid NOT NULL,
                                   conversation__partner_id uuid NOT NULL, conversation__staff_id uuid NOT NULL,
                                   conversation__customer_id uuid,
                                   UNIQUE (conversation__id, conversation__shop_id, conversation__partner_id,
                                           conversation__staff_id),
                                   UNIQUE (conversation__id, conversation__customer_id));
    -- a message carries its conversation's sides: the scopes in one key, the person in a key of its own
-   CREATE TABLE sh_messages (message__id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+   CREATE TABLE al_messages (message__id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                              message__conversation_id uuid NOT NULL,
                              message__shop_id uuid NOT NULL, message__partner_id uuid NOT NULL,
                              message__staff_id uuid NOT NULL, message__customer_id uuid,
                              message__text text NOT NULL,
                              FOREIGN KEY (message__conversation_id, message__shop_id, message__partner_id, message__staff_id)
-                               REFERENCES sh_conversations (conversation__id, conversation__shop_id,
+                               REFERENCES al_conversations (conversation__id, conversation__shop_id,
                                                             conversation__partner_id, conversation__staff_id)
                                ON UPDATE CASCADE,
                              FOREIGN KEY (message__conversation_id, message__customer_id)
-                               REFERENCES sh_conversations (conversation__id, conversation__customer_id)
+                               REFERENCES al_conversations (conversation__id, conversation__customer_id)
                                ON UPDATE CASCADE);")
 
 (def drop-tables
-  "DROP TABLE IF EXISTS sh_packages, sh_price_sheets, sh_agreements, sh_order_services, sh_handoffs, sh_jobs,
-                        sh_orders, sh_messages, sh_conversations, sh_designs")
+  "DROP TABLE IF EXISTS al_packages, al_price_sheets, al_agreements, al_order_services, al_handoffs, al_jobs,
+                        al_orders, al_messages, al_conversations, al_designs")
 
 (def ^:private open-handoff
   "An open handoff of the row's order: the receiving shop's people who work handoffs there."
-  {:table :sh_handoffs :match {:order/id :handoff/order-id}
+  {:table :al_handoffs :match {:order/id :handoff/order-id}
    :to [:member :handoff/to-shop-id :handoffs/work] :when [:= :handoff/status "open"]})
 
 (def description
@@ -119,28 +119,28 @@
                         :roles   {}
                         :parent  nil
                         :single? true}}
-   :records {:package       {:table :sh_packages :id :package/id :whose {:package/shop-id :shop}}
-             :order         {:table :sh_orders :id :order/id
+   :records {:package       {:table :al_packages :id :package/id :whose {:package/shop-id :shop}}
+             :order         {:table :al_orders :id :order/id
                              :whose {:order/shop-id :shop :order/customer-id :person}}
-             :design        {:table :sh_designs :id :design/id
+             :design        {:table :al_designs :id :design/id
                              :whose {:design/shop-id :shop :design/customer-id :person :design/visitor-id :visitor}}
-             :job           {:table :sh_jobs :id :job/id :whose {:job/shop-id :shop} :parent [:order :job/order-id]}
-             :handoff       {:table :sh_handoffs :id :handoff/id
+             :job           {:table :al_jobs :id :job/id :whose {:job/shop-id :shop} :parent [:order :job/order-id]}
+             :handoff       {:table :al_handoffs :id :handoff/id
                              :whose {:handoff/from-shop-id :shop :handoff/to-shop-id :shop :handoff/driver-id :person}}
-             :agreement     {:table :sh_agreements :id :agreement/id
+             :agreement     {:table :al_agreements :id :agreement/id
                              :whose {:agreement/shop-id :shop :agreement/partner-id :shop}}
-             :price-sheet   {:table :sh_price_sheets :id :price-sheet/id
+             :price-sheet   {:table :al_price_sheets :id :price-sheet/id
                              :whose {:price-sheet/shop-id :shop :price-sheet/partner-id :shop}
                              :parent [:agreement :price-sheet/agreement-id
                                       {:price-sheet/shop-id    :agreement/shop-id
                                        :price-sheet/partner-id :agreement/partner-id}]}
-             :order-service {:table :sh_order_services :id :order-service/id
+             :order-service {:table :al_order_services :id :order-service/id
                              :whose {:order-service/shop-id :shop :order-service/partner-id :shop}
                              :parent [:order :order-service/order-id {:order-service/shop-id :order/shop-id}]}
-             :conversation  {:table :sh_conversations :id :conversation/id
+             :conversation  {:table :al_conversations :id :conversation/id
                              :whose {:conversation/shop-id :shop :conversation/partner-id :shop
                                      :conversation/staff-id :platform :conversation/customer-id :person}}
-             :message       {:table :sh_messages :id :message/id
+             :message       {:table :al_messages :id :message/id
                              :whose {:message/shop-id :shop :message/partner-id :shop
                                      :message/staff-id :platform :message/customer-id :person}
                              :parent [:conversation :message/conversation-id

@@ -8,6 +8,7 @@
    [groundwork.jobs :as jobs]
    [groundwork.permissions :as perm]
    [groundwork.postgres :as pg]
+   [groundwork.repl :as repl]
    [groundwork.test-support :refer [app-settings sql!]])
   (:import
    (java.time Instant)
@@ -140,6 +141,20 @@
     (testing "retry! brings it back, its attempts afresh"
       (is (true? (jobs/retry! (part) broken)))
       (is (= "queued" (state broken))))))
+
+(deftest the-repl-lists-jobs-and-retries-a-dead-one
+  (let [broken (enqueue! :test/broken {})]
+    (claim-and-run)
+    (sql! "UPDATE groundwork.jobs SET job__run_at = now() WHERE job__id = ?" broken)
+    (is (= :dead (claim-and-run)))
+    (let [waiting (enqueue! :test/ok {:n 5})]
+      (is (= [waiting] (mapv :job/id (repl/queued-jobs *app*))))
+      (is (= [broken] (mapv :job/id (repl/dead-jobs *app*))))
+      (is (re-find #"always" (:job/last-error (first (repl/dead-jobs *app*)))))
+      (is (true? (repl/retry-job! *app* broken)))
+      (is (= #{waiting broken} (set (map :job/id (repl/queued-jobs *app*)))))
+      (is (empty? (repl/dead-jobs *app*)))
+      (is (false? (repl/retry-job! *app* (id))) "no such job"))))
 
 (deftest a-job-can-give-up-for-good
   (let [job (enqueue! :test/gone {})]

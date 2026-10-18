@@ -5,7 +5,7 @@
    whoever may pay its order) and through a shared column (a partner's
    link), both denies, the browser's \"can I?\", the bells when who sees a
    row changes, and the start refusing what isn't a sentence. The direction
-   where the related row points to this one is in shapes-test (handoffs),
+   where the related row points to this one is in access-language-example-test (handoffs),
    universal rows too."
   (:require
    [clojure.string :as str]

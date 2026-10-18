@@ -1,8 +1,9 @@
-(ns groundwork.via-cost-test
-  "What a :via costs on a long list, measured: 100 shops of 1 000 orders
-   (100 000 rows), and as many payouts. Runs only with GROUNDWORK_MEASURE=1
-   (it fills the tables for a while); prints Postgres's own execution time
-   (EXPLAIN ANALYZE), the median of five runs, for:
+(ns groundwork.via-cost-measurement-test
+  "A measurement, not a check: what a :via costs on a long list, 100 shops
+   of 1 000 orders (100 000 rows) and as many payouts. Runs only with
+   GROUNDWORK_MEASURE=1 (it fills the tables for a while); without it (as in
+   CI) it does nothing and asserts nothing. Prints Postgres's own execution
+   time (EXPLAIN ANALYZE), the median of five runs, for:
 
    - a member's list of their shop's orders, and of every shop's, through
      their role (no via: the baseline);
@@ -141,7 +142,7 @@
      :filter-rows (rows system filtered params)
      :filter (ms system filtered params)}))
 
-(deftest the-cost-of-a-via
+(deftest measure-the-cost-of-a-via
   (when measure?
     (let [lines [(line "member, one shop (no via)" clerk :orders/see :order "vc_orders")
                  (line "member of all 100 shops (no via)" boss :orders/see :order "vc_orders")
