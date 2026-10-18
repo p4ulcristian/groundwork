@@ -1,6 +1,6 @@
 # Groundwork is a library
 
-> Replaced by [Groundwork is a flexible framework](2026-10-12-groundwork-is-a-flexible-framework.md).
+> **Replaced** by [Groundwork is a flexible framework](2026-10-12-groundwork-is-a-flexible-framework.md) (2026-10-12): a framework of parts, itself replaced by [Groundwork is an opinionated framework](2026-10-12-groundwork-is-an-opinionated-framework.md).
 
 **Decision:** Groundwork is a library that apps depend on, not a template that copies files.
 

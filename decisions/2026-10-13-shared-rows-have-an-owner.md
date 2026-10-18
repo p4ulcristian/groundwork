@@ -1,6 +1,6 @@
 # Shared rows have an owner
 
-> **Replaced** by [Shared rows may belong to nobody](2026-10-16-shared-rows-may-belong-to-nobody.md).
+> **Replaced** by [Shared rows may belong to nobody](2026-10-16-shared-rows-may-belong-to-nobody.md) (2026-10-16): a row every scope reads may have no owner.
 
 > Adds to [A record may wait for its scope](2026-10-13-a-record-may-wait-for-its-scope.md) and [An action can be open](2026-10-13-an-action-can-be-open.md).
 

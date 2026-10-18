@@ -1,6 +1,6 @@
 # The styles tree
 
-> **Replaced** by [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md).
+> **Replaced** by [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md) (2026-10-17): stylesheets live next to the namespaces that name them.
 
 **Decision:** stylesheets live in their own tree, apart from the code and organised by design, and its order is the load order:
 

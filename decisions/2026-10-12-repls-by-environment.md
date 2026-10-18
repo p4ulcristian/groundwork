@@ -1,5 +1,7 @@
 # REPLs by environment
 
+> **Changed in part** by [Groundwork ships no team endpoints and no eval bridge](2026-10-18-groundwork-ships-no-team-endpoints-and-no-eval-bridge.md) (2026-10-18): there is no eval bridge, so Groundwork gives previews no REPL.
+
 > Builds on [We try queries in the REPL](2026-10-12-we-try-queries-in-the-repl.md).
 
 **Decision:** where a REPL into a running app may exist:

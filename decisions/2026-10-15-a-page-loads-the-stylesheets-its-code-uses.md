@@ -1,6 +1,6 @@
 # A page loads the stylesheets its code uses
 
-> **Replaced** by [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md).
+> **Replaced** by [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md) (2026-10-17): a namespace names its stylesheets, instead of the build deriving them from class keywords.
 
 **Decision:** the build works out from the code which namespaces each browser module uses (classes are marked keywords, so this is exact) and gathers those stylesheets, whole and as written, into one fingerprinted bundle per module; a namespace several modules use goes into the bundle they share, and a module loaded on demand brings its own. Base and the libraries' files come first, in the settings' order. Nothing is generated, renamed or cut apart: what the browser gets is what was written.
 

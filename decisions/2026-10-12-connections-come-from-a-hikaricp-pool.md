@@ -1,6 +1,6 @@
 # Connections come from a HikariCP pool
 
-> The default of 10 is gone: [settings are required data](2026-10-12-settings-are-required-data.md).
+> **Changed in part** by [Settings are required data](2026-10-12-settings-are-required-data.md) (2026-10-12): `:pool-size` has no default of 10; the app must set it.
 
 **Decision:** `pg/start` makes a HikariCP pool with a fixed number of connections (`:pool-size`). `pg/stop` closes it.
 

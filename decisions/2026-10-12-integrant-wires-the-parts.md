@@ -1,6 +1,6 @@
 # Integrant wires the parts
 
-> Since [Groundwork is an opinionated framework](2026-10-12-groundwork-is-an-opinionated-framework.md), Integrant is Groundwork's own wiring: an app's settings don't list or replace parts. The test helper that swaps parts for fakes stays.
+> **Changed in part** by [Groundwork is an opinionated framework](2026-10-12-groundwork-is-an-opinionated-framework.md) (2026-10-12): Integrant is Groundwork's own wiring and an app's settings don't list or replace parts; the test helper that swaps parts for fakes stays.
 
 **Decision:** an app's config is an Integrant config: pure EDN, one key per part, `#ig/ref` between them. Integrant starts the parts in order, passes them to each other, stops them cleanly, and restarts them in the REPL. Groundwork checks each part's settings at start (`assert-key`) and adds a helper that starts an app with chosen parts replaced by fakes, for tests.
 

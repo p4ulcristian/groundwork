@@ -1,8 +1,8 @@
 # Groundwork ships permissions
 
-> Changed by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md): the shapes become words of a language.
+> **Changed in part** by [Who may see what is the app's; Groundwork enforces it](2026-10-15-who-may-see-what-is-the-apps.md) (2026-10-15): who may see and do what is the app's to say; Groundwork only enforces it.
 
-> Changed in part by [Who may see what is the app's; Groundwork enforces it](2026-10-15-who-may-see-what-is-the-apps.md).
+> **Changed in part** by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md) (2026-10-17): the six rule shapes become words of a language in which the app writes its rules as sentences.
 
 > Replaces [Groundwork knows nothing about tenants](2026-10-12-groundwork-knows-no-tenants.md): Groundwork knows about scopes, not what they are.
 
