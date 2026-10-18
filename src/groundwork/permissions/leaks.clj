@@ -108,12 +108,12 @@
 
 (defn- own-scope
   "A scope of a kind where the person holds an action, from their grants,
-   or nil."
-  [perms {:keys [person flags]} action kind]
+   other than the foreign one; or nil."
+  [perms {:keys [person flags]} action kind foreign]
   (when person
     (let [held (keep (fn [{:grant/keys [scope-id] a :grant/action}] (when (= a action) scope-id))
                      (check/grants perms {:person person :flags (or flags #{})}))]
-      (first (sort-by str (check/of-kind perms (set held) kind))))))
+      (first (sort-by str (disj (check/of-kind perms (set held) kind) foreign))))))
 
 (defn- foreign-ids
   "The params with every id the endpoint carries set to the foreign one of
@@ -306,7 +306,8 @@
                 :else
                 (let [generated (try (generate-for entry) (catch Exception e e))
                       own       (when-let [[kind] (:scopes access)]
-                                  (own-scope (:perms part) {:person person :flags flags} (:action access) kind))]
+                                  (own-scope (:perms part) {:person person :flags flags} (:action access) kind
+                                             (some-> (get foreign kind) str parse-uuid)))]
                   (if (instance? Exception generated)
                     (assoc-in report [:skipped k] (str "its input can't be generated: " (ex-message generated)))
                     (if-let [params (foreign-ids entry generated foreign (keys (get-in part [:perms :description :scopes])) own)]
