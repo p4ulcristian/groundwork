@@ -1,4 +1,4 @@
-(ns groundwork.hooks-test
+(ns groundwork.web.hooks-test
   "Request ids, the visitor's address behind a proxy, and the hooks."
   (:require
    [clojure.string :as str]
@@ -6,7 +6,8 @@
    [groundwork.core :as gw]
    [groundwork.sessions :as sessions]
    [groundwork.test-support :refer [app-settings]]
-   [groundwork.web :as web])
+   [groundwork.web :as web]
+   [groundwork.web.http :as http])
   (:import
    (java.net URI)
    (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)
@@ -83,7 +84,7 @@
     (is (= 500 (:status (last @requests))))))
 
 (deftest addresses-and-ranges
-  (let [matches? (fn [entry addr] (boolean ((#'web/address-matcher entry) addr)))]
+  (let [matches? (fn [entry addr] (boolean ((http/address-matcher entry) addr)))]
     (is (matches? "10.0.0.0/8" "10.200.3.4"))
     (is (not (matches? "10.0.0.0/8" "11.0.0.1")))
     (is (matches? "173.245.48.0/20" "173.245.63.255"))

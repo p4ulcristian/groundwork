@@ -12,7 +12,7 @@
      [\"/payments/webhook\" {:post handle :server-to-server true}]
      [\"/shops/:slug\" {:get web/page :page (fn [request] {:title …})}]
          the page shell with the route's own title, description, links,
-         scripts and server-written body; see groundwork.page
+         scripts and server-written body; see groundwork.web.page
          called by another server (a payment provider's webhook), never by a
          browser: no session is read or made and the Origin check doesn't
          apply, so the handler authenticates the call itself (a signature)
@@ -73,9 +73,9 @@
    refused with 413. A browser route's form body is parsed into :form-params,
    a multipart one into :multipart-params, its files kept as temporary files
    (deleted after an hour) with the type their bytes really are under
-   :real-type (see sniff-type), whatever the browser claimed. Other bodies,
-   like JSON, and every server-to-server route's body stay untouched, so a
-   webhook can check a signature over the exact bytes.
+   :real-type (see groundwork.web.files/sniff-type), whatever the browser
+   claimed. Other bodies, like JSON, and every server-to-server route's body
+   stay untouched, so a webhook can check a signature over the exact bytes.
 
    A file whose name carries its content's hash (it matches the regular
    expression :hashed-files, like \"\\\\.[0-9a-f]{8,}\\\\.\", or nil) is cached a year;
@@ -95,79 +95,30 @@
    per directive in :content-security-policy, like
    {:script-src [\"https://js.payments.example\"] :frame-src […]}. Development
    also allows eval, which its build needs. Files are revalidated on every load (a 304 when
-   unchanged), so a deploy is never hidden behind a stale cache."
+   unchanged), so a deploy is never hidden behind a stale cache.
+
+   The machinery, one job each: groundwork.web.http (headers, CSP, the
+   request's id and address, hooks, gzip, HEAD, no indexing), .files,
+   .body, .languages, .page (the page shell) and .server (http-kit)."
   (:require
    [clojure.string :as str]
    [clojure.walk :as walk]
    [groundwork.limits :as limits]
-   [groundwork.page :as page]
    [groundwork.permissions.check :as check]
    [groundwork.postgres :as pg]
    [groundwork.sessions :as sessions]
    [groundwork.settings :as settings]
+   [groundwork.web.body :as body]
+   [groundwork.web.files :as files]
+   [groundwork.web.http :as http]
+   [groundwork.web.languages :as languages]
+   [groundwork.web.page :as page]
    [reitit.ring :as ring]
-   [ring.middleware.multipart-params :refer [wrap-multipart-params]]
-   [ring.middleware.multipart-params.temp-file :refer [temp-file-store]]
-   [ring.middleware.not-modified :refer [wrap-not-modified]]
-   [ring.middleware.params :refer [wrap-params]]
-   [ring.util.codec :as codec])
-  (:import
-   (java.io File FileInputStream InputStream)
-   (java.lang System$Logger System$Logger$Level)
-   (java.net InetAddress)
-   (java.nio.charset StandardCharsets)
-   (java.util UUID)))
+   [ring.util.codec :as codec]))
 
 ;; =============================================================================
-;; Security headers and frames
+;; What a request carries
 ;; =============================================================================
-
-(def ^:private csp-directives
-  "The directives an app can add sources to, and what each allows already."
-  (array-map
-   :default-src ["'self'"]
-   :script-src  ["'self'"]
-   :style-src   ["'self'"]
-   :img-src     ["'self'" "data:" "blob:"]
-   :font-src    ["'self'" "data:"]
-   :connect-src ["'self'"]
-   :media-src   ["'self'" "blob:"]
-   :frame-src   ["'self'"]
-   :worker-src  ["'self'" "blob:"]
-   :form-action ["'self'"]))
-
-(defn- csp-header
-  "The policy for one answer: Groundwork's strict defaults, the app's added
-   sources, this request's nonce for scripts and styles, and who may frame
-   it. Style attributes stay allowed (style-src-attr): components set them.
-   An app that adds 'unsafe-inline' to :style-src gets no nonce there: a
-   nonce makes browsers ignore 'unsafe-inline', so its inline <style> tags
-   would stop working."
-  [csp environment nonce ancestors]
-  (let [nonce-src (str "'nonce-" nonce "'")
-        inline?   (fn [directive] (some #{"'unsafe-inline'"} (get csp directive)))
-        sources   (fn [directive]
-                    (cond-> (into (csp-directives directive) (get csp directive))
-                      (or (= :script-src directive)
-                          (and (= :style-src directive) (not (inline? :style-src)))) (conj nonce-src)
-                      ;; the development build loads code with eval
-                      (and (= :script-src directive) (= :development environment)) (conj "'unsafe-eval'")
-                      ;; and hears from its watcher (new code, a changed
-                      ;; stylesheet) over a websocket on the watcher's own port
-                      (and (= :connect-src directive) (= :development environment)) (conj "ws:" "wss:")))]
-    (str/join "; " (concat (for [directive (keys csp-directives)]
-                             (str (name directive) " " (str/join " " (sources directive))))
-                           ["style-src-attr 'unsafe-inline'"
-                            "object-src 'none'"
-                            "base-uri 'self'"
-                            (str "frame-ancestors " (or ancestors "'none'"))]))))
-
-(def ^:private random (java.security.SecureRandom.))
-
-(defn- new-nonce []
-  (let [bytes (byte-array 16)]
-    (.nextBytes random bytes)
-    (.encodeToString (java.util.Base64/getEncoder) bytes)))
 
 (defn nonce
   "This request's nonce, for a handler that writes its own HTML:
@@ -175,49 +126,25 @@
   [request]
   (::page/nonce request))
 
-(def ^:private security-headers
-  {"X-Content-Type-Options" "nosniff"
-   "X-Frame-Options"        "DENY"
-   "Referrer-Policy"        "strict-origin-when-cross-origin"})
+(defn request-id
+  "This request's id, also sent back as X-Request-Id."
+  [request]
+  (::http/request-id request))
 
-(defn- wrap-security-headers
-  "The headers on every answer, with a nonce made for each request. A
-   response that says which sites may frame it (::frame-ancestors, from an
-   :embeddable route) names them in frame-ancestors, and gets no
-   X-Frame-Options, which can't name another site."
-  [handler environment csp]
-  (let [headers (cond-> security-headers
-                  (= :production environment)
-                  (assoc "Strict-Transport-Security" "max-age=31536000; includeSubDomains"))]
-    (fn [request]
-      (let [nonce (new-nonce)]
-        (when-let [response (handler (assoc request ::page/nonce nonce))]
-          (let [ancestors (::frame-ancestors response)
-                headers   (cond-> (assoc headers "Content-Security-Policy"
-                                         (csp-header csp environment nonce ancestors))
-                            ancestors                (dissoc "X-Frame-Options")
-                            (= "'self'" ancestors)   (assoc "X-Frame-Options" "SAMEORIGIN"))]
-            (-> (dissoc response ::frame-ancestors)
-                (update :headers #(merge headers %)))))))))
+(defn client-ip
+  "The visitor's address: the proxy's header when the request came through a
+   trusted proxy, else the connection's."
+  [request]
+  (::http/client-ip request))
 
-(defn- frame-ancestors
-  "The frame-ancestors value for a route's :embeddable, checked when the
-   router is built."
-  [path embeddable]
-  (cond
-    (true? embeddable)
-    "https:"
+(defn language
+  "The request's language, or nil when the app has one."
+  [request]
+  (::page/language request))
 
-    (= :same-origin embeddable)
-    "'self'"
-
-    (and (vector? embeddable) (seq embeddable)
-         (every? #(and (string? %) (re-matches #"https?://[^/\s;,]+" %)) embeddable))
-    (str/join " " embeddable)
-
-    :else
-    (throw (ex-info (str "Route " path ": :embeddable must be true, :same-origin, or a list of origins like \"https://shop.example\"")
-                    {:type ::bad-route :path path :embeddable embeddable}))))
+;; =============================================================================
+;; The page shell and sessions per route
+;; =============================================================================
 
 (def ^:private page-middleware
   {:name    ::page
@@ -227,19 +154,6 @@
                 (fn [handler]
                   (fn [request]
                     (handler (assoc request ::page/route-page page))))))})
-
-(def ^:private embeddable-middleware
-  {:name    ::embeddable
-   :compile (fn [{:keys [embeddable]} {::keys [path]}]
-              (when (some? embeddable)
-                (let [ancestors (frame-ancestors path embeddable)]
-                  (fn [handler]
-                    (fn [request]
-                      (some-> (handler request) (assoc ::frame-ancestors ancestors)))))))})
-
-;; =============================================================================
-;; Sessions per route
-;; =============================================================================
 
 (defn- sessions-middleware
   "Every browser route gets the session and the Origin check; a
@@ -253,157 +167,6 @@
               (when-not server-to-server
                 ;; only another site's frame needs the embed cookie
                 #(sessions/wrap-sessions % sessions (and (some? embeddable) (not= :same-origin embeddable)))))})
-
-;; =============================================================================
-;; Request ids, the client's address, hooks
-;; =============================================================================
-
-(def ^:private ^System$Logger logger (System/getLogger "groundwork.web"))
-
-(defn- plain [status body]
-  {:status status :headers {"Content-Type" "text/plain; charset=utf-8"} :body body})
-
-(defn- address-bytes ^bytes [s]
-  (when (and (string? s) (re-matches #"[0-9A-Fa-f:.]+" s))
-    (try (.getAddress (InetAddress/getByName s)) (catch Exception _ nil))))
-
-(defn- address-matcher
-  "A predicate for an address or a range, like \"10.0.0.0/8\" or \"::1\"."
-  [entry]
-  (let [[address bits] (str/split entry #"/" 2)
-        ^bytes prefix  (address-bytes address)
-        bits           (if bits (parse-long bits) (some-> prefix alength (* 8)))]
-    (when (or (nil? prefix) (nil? bits) (neg? bits) (> bits (* 8 (alength prefix))))
-      (throw (ex-info (str "Not an address or range: " entry)
-                      {:type ::bad-setting :setting :proxies :value entry})))
-    (fn [s]
-      (let [^bytes b (address-bytes s)]
-        (and b (= (alength b) (alength prefix))
-             (every? (fn [i]
-                       (let [mask (unchecked-byte (bit-and 0xFF (bit-shift-left 0xFF (- 8 (min 8 (- bits (* 8 i)))))))]
-                         (= (bit-and (aget b i) mask) (bit-and (aget prefix i) mask))))
-                     (range (quot (+ bits 7) 8))))))))
-
-(defn request-id
-  "This request's id, also sent back as X-Request-Id."
-  [request]
-  (::request-id request))
-
-(defn client-ip
-  "The visitor's address: the proxy's header when the request came through a
-   trusted proxy, else the connection's."
-  [request]
-  (::client-ip request))
-
-(defn- call-hook [hook name m]
-  (when hook
-    (try (hook m)
-         (catch Throwable e
-           (.log logger System$Logger$Level/WARNING (str "The " name " hook threw") e)))))
-
-(defn- wrap-context
-  "The outermost layer: the request id and client address, the hooks, and a
-   plain 500 for an exception no handler caught."
-  [handler {:keys [on-request on-error proxies]}]
-  (let [trusted?  (let [matchers (mapv address-matcher (:trusted proxies))]
-                    (fn [addr] (some #(% addr) matchers)))
-        id-header (some-> (:request-id-header proxies) str/lower-case)
-        ip-header (some-> (:client-ip-header proxies) str/lower-case)]
-    (fn [request]
-      (let [started  (System/nanoTime)
-            from-proxy? (trusted? (:remote-addr request))
-            client-ip   (or (when (and from-proxy? ip-header)
-                              (some-> (get-in request [:headers ip-header]) (str/split #",") first str/trim not-empty))
-                            (:remote-addr request))
-            request-id  (or (when (and from-proxy? id-header)
-                              (some->> (get-in request [:headers id-header]) (re-matches #"[A-Za-z0-9._:\-]{1,128}")))
-                            (str (UUID/randomUUID)))
-            context     (volatile! {})
-            request     (assoc request ::request-id request-id ::client-ip client-ip ::context context)
-            about       (fn [] (merge {:method     (:request-method request)
-                                       :request-id request-id
-                                       :client-ip  client-ip
-                                       :person     nil
-                                       :flags      #{}
-                                       :route      nil}
-                                      @context))
-            response    (try
-                          (handler request)
-                          (catch Throwable e
-                            (call-hook on-error "on-error" (assoc (about) :error e))
-                            (when-not on-error
-                              (.log logger System$Logger$Level/ERROR "A request failed" e))
-                            (assoc (plain 500 "Something went wrong") ::failed true)))
-            response    (some-> response (assoc-in [:headers "X-Request-Id"] request-id))]
-        (call-hook on-request "on-request"
-                   (assoc (about)
-                          :status (:status response 404)
-                          :ms     (/ (- (System/nanoTime) started) 1e6)))
-        (some-> response (dissoc ::failed))))))
-
-(def ^:private context-middleware
-  "Tells the outer layer which route answered and who asked."
-  {:name ::context
-   :wrap (fn [handler]
-           (fn [request]
-             (when-let [context (::context request)]
-               (vswap! context assoc
-                       :route  (:template (ring/get-match request))
-                       :person (sessions/person request)
-                       :flags  (sessions/flags request)))
-             (handler request)))})
-
-;; =============================================================================
-;; Languages
-;; =============================================================================
-
-(defn- cookie-value [request name]
-  (some (fn [pair]
-          (let [[k v] (str/split (str/trim pair) #"=" 2)]
-            (when (= k name) v)))
-        (some-> (get-in request [:headers "cookie"]) (str/split #";"))))
-
-(defn- accepted-languages
-  "The browser's Accept-Language, most wanted first, as lowercase tags."
-  [header]
-  (->> (str/split (or header "") #",")
-       (keep (fn [entry]
-               (let [[tag & params] (map str/trim (str/split entry #";"))
-                     q (or (some #(some-> (re-matches #"q=([0-9.]+)" %) second parse-double) params) 1.0)]
-                 (when (and (seq tag) (not= "*" tag)) [(str/lower-case tag) q]))))
-       (sort-by (comp - second))
-       (map first)))
-
-(defn- pick-language [{:keys [supported default cookie]} request]
-  (let [supported? (set supported)]
-    (or (some-> cookie (#(cookie-value request %)) supported?)
-        (some (fn [tag] (or (supported? tag) (supported? (first (str/split tag #"-")))))
-              (accepted-languages (get-in request [:headers "accept-language"])))
-        default)))
-
-(defn language
-  "The request's language, or nil when the app has one."
-  [request]
-  (::page/language request))
-
-(defn- wrap-languages
-  "Take a /xx/ prefix off the path and pick the request's language; give the
-   page shell the language and the same page's address in each language."
-  [handler languages origin]
-  (if (nil? languages)
-    handler
-    (let [{:keys [supported default]} languages
-          prefix (re-pattern (str "^/(" (str/join "|" supported) ")(/.*)?$"))]
-      (fn [request]
-        (let [[_ lang rest] (re-matches prefix (:uri request))
-              path          (if lang (or rest "/") (:uri request))
-              chosen        (or lang (pick-language languages request))
-              href          (fn [l] (str origin (when (not= l default) (str "/" l)) (if (= "/" path) (when (= l default) "/") path)))]
-          (handler (assoc request
-                          :uri                 path
-                          ::page/language      chosen
-                          ::page/alternates    (conj (mapv (fn [l] {:lang l :href (href l)}) supported)
-                                                     {:lang "x-default" :href (href default)}))))))))
 
 ;; =============================================================================
 ;; Access
@@ -425,7 +188,7 @@
                                (java.net.URLEncoder/encode (str uri (when query-string (str "?" query-string)))
                                                            "UTF-8"))}
      :body    ""}
-    (plain 401 "Sign in first")))
+    (http/plain 401 "Sign in first")))
 
 (defn- param-value
   "A request's value for a declared parameter: the path's, then the form's
@@ -493,7 +256,7 @@
                                                               :action action
                                                               :record [kind id]}))
                                 (handler request)
-                                (plain 404 "Not found")))))))))))})
+                                (http/plain 404 "Not found")))))))))))})
 
 ;; =============================================================================
 ;; Rate limits
@@ -522,253 +285,14 @@
                                                         :about {:person    (sessions/person request)
                                                                 :client-ip (client-ip request)}}))]
                       (if-let [{:keys [retry-after-seconds limit]} hit]
-                        (-> (plain 429 (str "Too many requests: try again in " retry-after-seconds " seconds"))
+                        (-> (http/plain 429 (str "Too many requests: try again in " retry-after-seconds " seconds"))
                             (assoc-in [:headers "Retry-After"] (str retry-after-seconds))
                             (assoc-in [:headers "X-Rate-Limit"] (name limit)))
                         (handler request)))))))})
 
 ;; =============================================================================
-;; Request bodies
+;; Pages, Groundwork's own routes, the handler
 ;; =============================================================================
-
-(defn- ascii [^bytes b from to]
-  (when (<= to (alength b))
-    (String. b (int from) (int (- to from)) StandardCharsets/ISO_8859_1)))
-
-(defn- starts-with-bytes? [^bytes b & xs]
-  (and (<= (count xs) (alength b))
-       (every? true? (map-indexed (fn [i x] (= (unchecked-byte x) (aget b i))) xs))))
-
-(defn sniff-type
-  "The type a file's first bytes say it is, or nil when they say nothing we
-   know. Trust this, not the name or the type the browser sent."
-  [^bytes head]
-  (let [brand (when (= "ftyp" (ascii head 4 8)) (ascii head 8 12))
-        text  (ascii head 0 (min 512 (alength head)))]
-    (cond
-      (starts-with-bytes? head 0x89 0x50 0x4E 0x47)           "image/png"
-      (starts-with-bytes? head 0xFF 0xD8 0xFF)                "image/jpeg"
-      (= "GIF8" (ascii head 0 4))                             "image/gif"
-      (and (= "RIFF" (ascii head 0 4)) (= "WEBP" (ascii head 8 12))) "image/webp"
-      (= "%PDF" (ascii head 0 4))                             "application/pdf"
-      (starts-with-bytes? head 0x50 0x4B 0x03 0x04)           "application/zip"
-      (= "glTF" (ascii head 0 4))                             "model/gltf-binary"
-      (#{"heic" "heix" "hevc" "hevx" "heim" "heis"} brand)    "image/heic"
-      (#{"mif1" "msf1"} brand)                                "image/heif"
-      (#{"avif" "avis"} brand)                                "image/avif"
-      (= "qt  " brand)                                        "video/quicktime"
-      (some? brand)                                           "video/mp4"
-      (some-> text (str/starts-with? "ISO-10303-21"))         "model/step"
-      (some-> text (str/starts-with? "solid "))               "model/stl"
-      (some-> text str/triml (str/starts-with? "<svg"))       "image/svg+xml"
-      (and text (str/starts-with? (str/triml text) "<?xml") (str/includes? text "<svg")) "image/svg+xml"
-      :else                                                   nil)))
-
-(defn- file-head ^bytes [^File file]
-  (with-open [in (FileInputStream. file)]
-    (let [buf (byte-array 512)
-          n   (.read in buf)]
-      (if (pos? n) (java.util.Arrays/copyOf buf n) (byte-array 0)))))
-
-(defn- with-real-types [params]
-  (walk/postwalk (fn [x]
-                   (if (and (map? x) (instance? File (:tempfile x)))
-                     (assoc x :real-type (sniff-type (file-head (:tempfile x))))
-                     x))
-                 params))
-
-(defn- too-large [_request]
-  {:status 413 :headers {"Content-Type" "text/plain; charset=utf-8"} :body "Too large"})
-
-(defn- body-size
-  "How many bytes the body has: Content-Length, or what the server read."
-  [{:keys [headers body]}]
-  (or (some-> (get headers "content-length") parse-long)
-      (when (instance? InputStream body) (.available ^InputStream body))
-      0))
-
-(defn- body-middleware
-  "Every route: no body over its limit. Browser routes: forms and multipart
-   parsed, files typed by their bytes."
-  [default-limit]
-  {:name    ::body
-   :compile (fn [{:keys [max-body-bytes server-to-server]} {::keys [path]}]
-              (when-not (or (nil? max-body-bytes) (pos-int? max-body-bytes))
-                (throw (ex-info (str "Route " path ": :max-body-bytes must be a positive integer")
-                                {:type ::bad-route :path path :max-body-bytes max-body-bytes})))
-              (let [limit (or max-body-bytes default-limit)]
-                (fn [handler]
-                  (let [parsed (if server-to-server
-                                 handler
-                                 (-> (fn [request]
-                                       (handler (cond-> request
-                                                  (:multipart-params request)
-                                                  (update :multipart-params with-real-types))))
-                                     (wrap-multipart-params {:store         (temp-file-store {:expires-in 3600})
-                                                             :max-file-size limit})
-                                     wrap-params))]
-                    (fn [request]
-                      (if (> (body-size request) limit)
-                        (too-large request)
-                        (parsed request)))))))})
-
-(defn- largest-body
-  "The largest body any route accepts: the server reads no more than this."
-  [routes default-limit]
-  (let [limits (atom [default-limit])]
-    (walk/postwalk (fn [x]
-                     (when (and (map? x) (pos-int? (:max-body-bytes x)))
-                       (swap! limits conj (:max-body-bytes x)))
-                     x)
-                   routes)
-    (apply max @limits)))
-
-;; =============================================================================
-;; Files, the page, the rest
-;; =============================================================================
-
-(defn- wrap-file-caching
-  "A file whose name carries its content's hash (it matches :hashed-files)
-   never changes, so browsers keep it a year; every other file is
-   revalidated on each load."
-  [handler hashed-files]
-  (let [hashed (some-> hashed-files re-pattern)]
-    (fn [request]
-      (when-let [response (handler request)]
-        (assoc-in response [:headers "Cache-Control"]
-                  (if (and hashed (re-find hashed (:uri request)))
-                    "public, max-age=31536000, immutable"
-                    "no-cache"))))))
-
-(defn- bounded
-  "At most n bytes of in, then the end."
-  ^InputStream [^InputStream in n]
-  (let [left (atom n)]
-    (proxy [java.io.FilterInputStream] [in]
-      (read
-        ([] (if (pos? @left)
-              (let [b (.read in)] (when-not (neg? b) (swap! left dec)) b)
-              -1))
-        ([^bytes buf] (.read ^InputStream this buf 0 (alength buf)))
-        ([^bytes buf off len]
-         (if (pos? @left)
-           (let [n (.read in buf (int off) (int (min len @left)))]
-             (when (pos? n) (swap! left - n))
-             n)
-           -1)))
-      (available [] (int (min (.available in) @left))))))
-
-(defn- body-length [{:keys [body headers]}]
-  (cond
-    (instance? File body) (.length ^File body)
-    :else                 (some-> (get headers "Content-Length") str parse-long)))
-
-(defn- open-body ^InputStream [body]
-  (if (instance? File body) (FileInputStream. ^File body) body))
-
-(defn- wrap-ranges
-  "Files answer one byte range of themselves (a video player's seeking, which
-   Safari needs): 206 with that part, 416 when it's outside the file."
-  [handler]
-  (fn [request]
-    (when-let [response (handler request)]
-      (let [length (body-length response)
-            range  (some->> (get-in request [:headers "range"]) (re-matches #"bytes=(\d*)-(\d*)"))]
-        (cond
-          (or (not= 200 (:status response)) (nil? length))
-          response
-
-          (or (nil? range) (= ["" ""] (rest range)))
-          (assoc-in response [:headers "Accept-Ranges"] "bytes")
-
-          :else
-          (let [[_ from to] range
-                [start end] (if (str/blank? from)
-                              [(max 0 (- length (parse-long to))) (dec length)]
-                              [(parse-long from) (min (dec length) (if (str/blank? to) (dec length) (parse-long to)))])]
-            (if (or (>= start length) (> start end))
-              {:status  416
-               :headers {"Content-Range" (str "bytes */" length)}
-               :body    ""}
-              (let [in (open-body (:body response))]
-                (.skipNBytes in start)
-                (-> response
-                    (assoc :status 206 :body (bounded in (inc (- end start))))
-                    (update :headers assoc
-                            "Accept-Ranges"  "bytes"
-                            "Content-Range"  (str "bytes " start "-" end "/" length)
-                            "Content-Length" (str (inc (- end start)))))))))))))
-
-(defn- compressible? [content-type]
-  (let [t (str/lower-case (first (str/split (or content-type "") #";")))]
-    (or (str/starts-with? t "text/")
-        (#{"application/json" "application/javascript" "application/xml" "application/wasm"
-           "application/manifest+json" "image/svg+xml"} t))))
-
-(defn- body-bytes ^bytes [body]
-  (cond
-    (string? body)                 (.getBytes ^String body "UTF-8")
-    (bytes? body)                  body
-    (instance? File body)          (java.nio.file.Files/readAllBytes (.toPath ^File body))
-    (instance? InputStream body)   (with-open [in ^InputStream body] (.readAllBytes in))
-    :else                          nil))
-
-(defn- gzip ^bytes [^bytes b]
-  (let [out (java.io.ByteArrayOutputStream.)]
-    (with-open [z (java.util.zip.GZIPOutputStream. out)]
-      (.write z b))
-    (.toByteArray out)))
-
-(defn- wrap-gzip
-  "Text-like answers of at least min-bytes go gzipped to a browser that
-   accepts it; images, video, archives and fonts are compressed already."
-  [handler min-bytes]
-  (if (nil? min-bytes)
-    handler
-    (fn [request]
-      (let [response (handler request)
-            headers  (:headers response)
-            type     (or (get headers "Content-Type") (get headers "content-type"))]
-        (if (and response
-                 (= 200 (:status response))
-                 (some? (:body response))
-                 (str/includes? (get-in request [:headers "accept-encoding"] "") "gzip")
-                 (not (or (get headers "Content-Encoding") (get headers "Content-Range")))
-                 (compressible? type)
-                 (or (not (instance? File (:body response))) (<= min-bytes (.length ^File (:body response)))))
-          (let [b (body-bytes (:body response))]
-            (cond
-              (nil? b)                  response
-              (< (alength b) min-bytes) (assoc response :body b)
-              :else                     (let [z (gzip b)]
-                                          (-> response
-                                              (assoc :body z)
-                                              (update :headers assoc
-                                                      "Content-Encoding" "gzip"
-                                                      "Vary"             "Accept-Encoding"
-                                                      "Content-Length"   (str (alength z)))))))
-          response)))))
-
-(defn- wrap-no-indexing
-  "Outside production, search engines are kept out: /robots.txt disallows
-   everything, whatever the app serves there in production, and every
-   answer says noindex."
-  [handler environment]
-  (if (= :production environment)
-    handler
-    (fn [request]
-      (some-> (if (= "/robots.txt" (:uri request))
-                {:status 200 :headers {"Content-Type" "text/plain; charset=utf-8"} :body "User-agent: *\nDisallow: /\n"}
-                (handler request))
-              (assoc-in [:headers "X-Robots-Tag"] "noindex, nofollow")))))
-
-(defn- wrap-head
-  "HEAD is answered like GET, without the body: every GET route has one."
-  [handler]
-  (fn [request]
-    (if (= :head (:request-method request))
-      (some-> (handler (assoc request :request-method :get)) (assoc :body nil))
-      (handler request))))
 
 (defn page
   "A Ring handler answering with the page shell, for a route of the app's own:
@@ -819,7 +343,7 @@
    records))
 
 (defn- not-found [_request]
-  (plain 404 "Not found"))
+  (http/plain 404 "Not found"))
 
 (defn- test-sign-in-route
   "Signs a test in as a person, given the secret; unknown to anyone without it."
@@ -840,7 +364,7 @@
                                                 (cond-> {:flags (into #{} (comp (remove str/blank?) (map keyword))
                                                                       (str/split (get params "flags" "") #","))}
                                                   (get params "hours") (assoc :hours (parse-long (get params "hours")))))
-                              (plain 404 "Not found"))))}]))
+                              (http/plain 404 "Not found"))))}]))
 
 (pg/defsql health-check "groundwork/health.sql")
 
@@ -851,8 +375,8 @@
    {:access :public
     :get    (fn [_]
               (if (try (pg/row db health-check) (catch Exception _ nil))
-                (plain 200 "ok")
-                (plain 503 "database unreachable")))}])
+                (http/plain 200 "ok")
+                (http/plain 503 "database unreachable")))}])
 
 (defn groundwork-routes
   "Groundwork's own routes, mounted next to the app's: /health, parquery's
@@ -870,16 +394,13 @@
   [{:keys [routes max-body-bytes content-security-policy login-path languages page sessions permissions
            environment limits]
     :as   settings}]
-  (let [files  (-> (ring/create-resource-handler {:path "/" :root "public"})
-                   (wrap-file-caching (:hashed-files settings))
-                   wrap-not-modified
-                   wrap-ranges)
+  (let [files  (files/handler (:hashed-files settings))
         router (ring/router (into (groundwork-routes settings) routes)
                             {:data    {:middleware [page-middleware
-                                                    embeddable-middleware
-                                                    (body-middleware max-body-bytes)
+                                                    http/embeddable-middleware
+                                                    (body/body-middleware max-body-bytes)
                                                     (sessions-middleware sessions)
-                                                    context-middleware
+                                                    http/context-middleware
                                                     (access-middleware permissions login-path)
                                                     (rate-limit-middleware limits)]}
                              ;; the path, for errors in a route's data
@@ -892,12 +413,12 @@
                                (fn [request] (when (wants-page? request) (unknown request))))
                              not-found))]
     (-> (fn [request] (app (assoc request ::page page)))
-        wrap-head
-        (wrap-no-indexing environment)
-        (wrap-languages languages (get-in sessions [:settings :origin]))
-        (wrap-security-headers environment content-security-policy)
-        (wrap-gzip (:gzip-min-bytes settings))
-        (wrap-context settings))))
+        http/wrap-head
+        (http/wrap-no-indexing environment)
+        (languages/wrap-languages languages (get-in sessions [:settings :origin]))
+        (http/wrap-security-headers environment content-security-policy)
+        (http/wrap-gzip (:gzip-min-bytes settings))
+        (http/wrap-context settings))))
 
 (defn start
   "The router part: {:handler … :max-body-bytes …}, the most any route
@@ -908,7 +429,7 @@
   (let [inputs  (assoc settings :page page :sessions sessions :permissions permissions :environment environment
                        :parquery parquery :limits limits)
         current (atom (handler inputs))
-        largest (largest-body (:routes settings) (:max-body-bytes settings))]
+        largest (body/largest-body (:routes settings) (:max-body-bytes settings))]
     {:handler        (fn [request] (@current request))
      :max-body-bytes largest
      ::current       current
@@ -921,7 +442,7 @@
   [{::keys [current inputs] :keys [max-body-bytes]} routes]
   (let [inputs (assoc inputs :routes routes)]
     (settings/check-part! :web (select-keys inputs settings-keys) (:environment inputs))
-    (when (> (largest-body routes (:max-body-bytes inputs)) max-body-bytes)
+    (when (> (body/largest-body routes (:max-body-bytes inputs)) max-body-bytes)
       (throw (ex-info "A route takes a bigger body than the running server reads; restart the app"
                       {:type ::restart-needed})))
     (reset! current (handler inputs))

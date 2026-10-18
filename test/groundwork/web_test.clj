@@ -4,10 +4,12 @@
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.core :as gw]
-   [groundwork.page :as page]
+   [groundwork.web.page :as page]
    [groundwork.sessions :as sessions]
    [groundwork.test-support :refer [app-settings]]
-   [groundwork.web :as web])
+   [groundwork.web :as web]
+   [groundwork.web.files :as files]
+   [groundwork.web.http :as http])
   (:import
    (java.net URI)
    (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)))
@@ -194,12 +196,12 @@
                                                       :body    "a=1&b=2"})))))))
 
 (deftest file-types-come-from-their-bytes
-  (is (= "image/png" (web/sniff-type png)))
-  (is (= "image/jpeg" (web/sniff-type (byte-array [0xFF 0xD8 0xFF 0xE0 0 0]))))
-  (is (= "application/pdf" (web/sniff-type (.getBytes "%PDF-1.7 …"))))
-  (is (= "image/heic" (web/sniff-type (.getBytes "\u0000\u0000\u0000\u0018ftypheic\u0000\u0000"))))
-  (is (= "model/step" (web/sniff-type (.getBytes "ISO-10303-21;\nHEADER;"))))
-  (is (nil? (web/sniff-type (.getBytes "just text")))))
+  (is (= "image/png" (files/sniff-type png)))
+  (is (= "image/jpeg" (files/sniff-type (byte-array [0xFF 0xD8 0xFF 0xE0 0 0]))))
+  (is (= "application/pdf" (files/sniff-type (.getBytes "%PDF-1.7 …"))))
+  (is (= "image/heic" (files/sniff-type (.getBytes "\u0000\u0000\u0000\u0018ftypheic\u0000\u0000"))))
+  (is (= "model/step" (files/sniff-type (.getBytes "ISO-10303-21;\nHEADER;"))))
+  (is (nil? (files/sniff-type (.getBytes "just text")))))
 
 (deftest a-browser-gets-the-page-for-any-other-path
   (doseq [path ["/" "/shops/7/orders"]]
@@ -264,16 +266,16 @@
 
 (deftest unsafe-inline-styles-get-no-nonce
   (testing "an app that allows inline styles keeps them working: a nonce would make browsers ignore 'unsafe-inline'"
-    (let [policy (#'web/csp-header {:style-src ["'unsafe-inline'"]} :production "N1" nil)]
+    (let [policy (#'http/csp-header {:style-src ["'unsafe-inline'"]} :production "N1" nil)]
       (is (str/includes? policy "style-src 'self' 'unsafe-inline';"))
       (is (str/includes? policy "script-src 'self' 'nonce-N1'") "scripts keep theirs"))))
 
 (deftest development-lets-the-build-in
-  (let [policy (#'web/csp-header {} :development "N1" nil)]
+  (let [policy (#'http/csp-header {} :development "N1" nil)]
     (is (str/includes? policy "script-src 'self' 'nonce-N1' 'unsafe-eval';") "its code arrives as text")
     (is (str/includes? policy "connect-src 'self' ws: wss:;") "its watcher talks over a websocket on another port"))
   (doseq [environment [:test :production]]
-    (let [policy (#'web/csp-header {} environment "N1" nil)]
+    (let [policy (#'http/csp-header {} environment "N1" nil)]
       (is (str/includes? policy "connect-src 'self';"))
       (is (not (str/includes? policy "unsafe-eval"))))))
 
@@ -320,7 +322,7 @@
     (is (= [200 "User-agent: *\nDisallow: /\n"] [status body])))
   (is (= "noindex, nofollow" ((:headers (request "/api/hello")) "x-robots-tag")))
   (testing "production serves what the app serves"
-    (let [handler (#'web/wrap-no-indexing (fn [_] {:status 200 :headers {} :body "app's own"}) :production)]
+    (let [handler (http/wrap-no-indexing (fn [_] {:status 200 :headers {} :body "app's own"}) :production)]
       (is (= {:status 200 :headers {} :body "app's own"} (handler {:uri "/robots.txt"}))))))
 
 (deftest text-goes-gzipped

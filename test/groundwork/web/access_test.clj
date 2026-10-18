@@ -1,4 +1,4 @@
-(ns groundwork.access-test
+(ns groundwork.web.access-test
   "Every route declares who may use it."
   (:require
    [clojure.string :as str]

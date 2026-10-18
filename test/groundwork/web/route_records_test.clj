@@ -1,4 +1,4 @@
-(ns groundwork.route-records-test
+(ns groundwork.web.route-records-test
   "Route records the server and the browser share: the server's pages come
    from the same records the browser routes with."
   (:require

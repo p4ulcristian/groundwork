@@ -1,4 +1,4 @@
-(ns groundwork.languages-test
+(ns groundwork.web.languages-test
   "The language in the address, the cookie, or the browser's wish."
   (:require
    [clojure.string :as str]

@@ -12,10 +12,10 @@
      :environment  :development, :test or :production
      :db           the database, see groundwork.postgres/start
      :migrations   see groundwork.migrations/start
-     :page         see groundwork.page
+     :page         see groundwork.web.page
      :styles       the app's stylesheets, or left out; see groundwork.styles
      :web          the app's routes and how requests are handled; see groundwork.web
-     :server       see groundwork.server
+     :server       see groundwork.web.server
      :sessions     see groundwork.sessions
      :permissions  the app's permission description, see groundwork.permissions.description
      :limits       how often a caller may ask, see groundwork.limits
@@ -30,11 +30,11 @@
    [groundwork.jobs :as jobs]
    [groundwork.limits :as limits]
    [groundwork.migrations :as migrations]
-   [groundwork.page :as page]
+   [groundwork.web.page :as page]
    [groundwork.parquery.route :as parquery]
    [groundwork.permissions :as permissions]
    [groundwork.postgres :as pg]
-   [groundwork.server :as server]
+   [groundwork.web.server :as server]
    [groundwork.sessions :as sessions]
    [groundwork.settings :as settings]
    [groundwork.web :as web]

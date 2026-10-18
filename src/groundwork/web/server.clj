@@ -1,4 +1,4 @@
-(ns groundwork.server
+(ns groundwork.web.server
   "The web server: http-kit, with every request on its own virtual thread.
 
      :ip    \"0.0.0.0\"

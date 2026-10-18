@@ -1,4 +1,4 @@
-(ns groundwork.page
+(ns groundwork.web.page
   "The page shell: the one HTML page that loads an app. The app gives its
    details as settings, every one required:
 

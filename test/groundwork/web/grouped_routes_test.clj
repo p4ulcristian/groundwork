@@ -1,4 +1,4 @@
-(ns groundwork.grouped-routes-test
+(ns groundwork.web.grouped-routes-test
   "Routes in a group, and catch-all routes: what children inherit."
   (:require
    [clojure.string :as str]
