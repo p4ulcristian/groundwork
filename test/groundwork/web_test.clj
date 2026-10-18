@@ -20,18 +20,18 @@
   [["/api/hello" {:access :public :get (fn [_] {:status 200 :body "hi"})}]
    ["/api/thread" {:access :public :get (fn [_] {:status 200 :body (str (.isVirtual (Thread/currentThread)))})}]
    ["/api/echo" {:access :public :post (fn [_] {:status 200 :body "changed"})}]
-   ["/customize" {:access :public :get web/page :embeddable true}]
-   ["/partner-widget" {:access :public :get web/page :embeddable ["https://shop.example" "https://other.example"]}]
+   ["/customize" {:access :public :get web/page :embeddable? true}]
+   ["/partner-widget" {:access :public :get web/page :embeddable? ["https://shop.example" "https://other.example"]}]
    ["/api/big" {:access :public :get (fn [_] {:status 200 :headers {"Content-Type" "application/json"}
                                               :body (str "[" (apply str (interpose "," (repeat 600 "\"item\""))) "]")})}]
    ["/api/png" {:access :public :get (fn [_] {:status 200 :headers {"Content-Type" "image/png"}
                                               :body (apply str (repeat 3000 "x"))})}]
-   ["/label-editor" {:access :public :get web/page :embeddable :same-origin}]
+   ["/label-editor" {:access :public :get web/page :embeddable? :same-origin}]
    ["/payments/webhook" {:post             (fn [request]
                                              {:status 200
                                               :body   (pr-str [(sessions/person request)
                                                                (contains? request ::sessions/sessions)])})
-                         :server-to-server true}]
+                         :server-to-server? true}]
    ["/shops/:slug" {:access :public :get  web/page
                       :page (fn [request]
                               (let [slug (get-in request [:path-params :slug])]
@@ -59,7 +59,7 @@
    ["/hooks/raw" {:post             (fn [request]
                                       {:status 200
                                        :body   (pr-str [(slurp (:body request)) (:form-params request)])})
-                  :server-to-server true}]])
+                  :server-to-server? true}]])
 
 (use-fixtures :once
   (fn [t]
@@ -126,9 +126,9 @@
 
 (deftest a-route-declares-embeddable-properly
   (is (= ::web/bad-route
-         (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :access :public :embeddable ["shop.example"]}]]
+         (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :access :public :embeddable? ["shop.example"]}]]
                                             :max-body-bytes 1000 :content-security-policy {} :login-path "/login"
-                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil :hashed-files nil :gzip-min-bytes nil
+                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages {:supported ["en"] :default "en" :cookie nil} :test-sign-in nil :hashed-files nil :gzip-min-bytes nil
                                             :page (fn [_]) :sessions {} :environment :test})
                               (catch Exception e e)))))))
 
@@ -244,7 +244,7 @@
     (is (= ::page/bad-route
            (:type (ex-data (try (web/handler {:routes [["/x" {:get web/page :access :public :page {:titel "x"}}]]
                                               :max-body-bytes 1000 :content-security-policy {} :login-path "/login"
-                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil :hashed-files nil :gzip-min-bytes nil
+                                            :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages {:supported ["en"] :default "en" :cookie nil} :test-sign-in nil :hashed-files nil :gzip-min-bytes nil
                                               :page (fn [_]) :sessions {} :environment :test})
                                 (catch Exception e e))))))))
 
@@ -367,6 +367,6 @@
 
 (deftest page-settings-are-checked
   (let [problems (fn [page] (mapv :in (:problems (ex-data (try (page/start {:settings page}) (catch Exception e e))))))]
-    (is (= [[:page :lang] [:page :description] [:page :icon] [:page :stylesheets] [:page :head]]
+    (is (= [[:page :description] [:page :icon] [:page :stylesheets] [:page :head]]
            (problems {:title "x"})))
     (is (= [[:page :stylesheets]] (problems (assoc (:page app-settings) :stylesheets "x"))))))

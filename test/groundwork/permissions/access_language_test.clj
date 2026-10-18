@@ -145,53 +145,53 @@
 
 (def endpoint-map
   {:orders/one       {:read       (fn [{:keys [db]} params] (:order/id (pg/row db lg-order params)))
-                      :permission {:action :orders/see :record [:order :order/id]}
+                      :access     {:action :orders/see :record [:order :order/id]}
                       :input      [:map [:order/id :uuid]]
                       :answer     [:maybe :uuid]}
    :orders/all       {:read       (fn [{:keys [db]} _] (mapv :order/id (pg/rows db lg-orders {})))
-                      :permission {:action :orders/see :list :order}
+                      :access     {:action :orders/see :list :order}
                       :input      [:map]
                       :answer     [:vector :uuid]}
    :orders/of-shop   {:read       (fn [{:keys [db]} params] (mapv :order/id (pg/rows db lg-orders-of-shop params)))
-                      :permission {:action :orders/see :scope [:shop :shop/id]}
+                      :access     {:action :orders/see :scope [:shop :shop/id]}
                       :input      [:map [:shop/id :uuid]]
                       :answer     [:vector :uuid]}
    :orders/note      {:write      (fn [{:keys [db]} params] (:order/id (pg/row db lg-note-order params)))
-                      :permission {:action :orders/edit :record [:order :order/id]}
+                      :access     {:action :orders/edit :record [:order :order/id]}
                       :input      [:map [:order/id :uuid] [:order/note :string]]
                       :answer     [:maybe :uuid]}
    ;; closes every open order it may: a write about every scope the person has
    :orders/close-all {:write      (fn [{:keys [db]} _]
                                     {:closed (set (map :order/id (pg/rows db lg-close-all {})))
                                      :seen   (:orders/count (pg/row db lg-count-orders {}))})
-                      :permission {:action :orders/edit :list :order}
+                      :access     {:action :orders/edit :list :order}
                       :input      [:map]
                       :answer     [:map [:closed [:set :uuid]] [:seen :int]]}
    :inquiries/send   {:write      (fn [{:keys [db]} params] (pg/execute! db lg-send-inquiry params) true)
-                      :permission {:action :inquiries/send :scope [:shop :shop/id]}
+                      :access     {:action :inquiries/send :scope [:shop :shop/id]}
                       :input      [:map [:shop/id :uuid] [:inquiry/status :string] [:inquiry/text :string]]
                       :answer     :boolean}
    :replies/send     {:write      (fn [{:keys [db]} params] (pg/execute! db lg-send-reply params) true)
-                      :permission {:action :replies/write :scope [:shop :shop/id]}
+                      :access     {:action :replies/write :scope [:shop :shop/id]}
                       :input      [:map [:shop/id :uuid] [:ticket/id {:groundwork/record :ticket} :uuid] [:reply/text :string]]
                       :answer     :boolean}
    ;; every order the person sees, narrowed in its SQL to those they may edit
    :orders/editable  {:read       (fn [{:keys [db]} _] (mapv :order/id (pg/rows db lg-editable-orders {})))
-                      :permission {:action :orders/see :list :order}
+                      :access     {:action :orders/see :list :order}
                       :input      [:map]
                       :answer     [:vector :uuid]}
    :payouts/pay-to   {:write      (fn [{:keys [db]} params] (pg/execute! db lg-pay-to params) true)
-                      :permission {:action :orders/pay :record [:order :order/id]}
+                      :access     {:action :orders/pay :record [:order :order/id]}
                       :input      [:map [:order/id :uuid] [:payout/cents :int]
                                    [:payout/payee-id {:groundwork/record false} :uuid]]
                       :answer     :boolean}
    ;; every item the person reads: a list about orders, so it verifies the scopes orders give
    :items/visible    {:read       (fn [{:keys [db]} _] (mapv :item/id (pg/rows db lg-items {})))
-                      :permission {:action :orders/see :list :order}
+                      :access     {:action :orders/see :list :order}
                       :input      [:map]
                       :answer     [:vector :uuid]}
    :payouts/add      {:write      (fn [{:keys [db]} params] (:payout/id (pg/row db lg-add-payout params)))
-                      :permission {:action :orders/pay :record [:order :order/id]}
+                      :access     {:action :orders/pay :record [:order :order/id]}
                       :input      [:map [:order/id :uuid] [:payout/cents :int]]
                       :answer     [:maybe :uuid]}})
 
@@ -217,7 +217,7 @@
           i1 a1 acme i2 a2 acme)
     (let [app (gw/start (-> app-settings
                             (assoc :permissions description)
-                            (assoc-in [:parquery :endpoints] [endpoint-map])))]
+                            (assoc-in [:endpoints :list] [endpoint-map])))]
       (try
         ;; after the start, which migrates a fresh database
         (sql! "TRUNCATE groundwork.scopes, groundwork.roles, groundwork.role_actions, groundwork.memberships,

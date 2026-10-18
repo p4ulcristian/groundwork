@@ -57,7 +57,7 @@
                              (sessions/sign-in request {:status 200 :headers {} :body "signed in"}
                                                (parse-uuid (get-in request [:path-params :person]))))
                    :access :public}]])
-      (assoc-in [:parquery :endpoints] [endpoint-map])))
+      (assoc-in [:endpoints :list] [endpoint-map])))
 
 (defn- join! [perms by scope person role]
   (let [email (str person "@test.example")
@@ -246,27 +246,27 @@
                                      :via {:table :al_orders :match {:package/shop-id :order/shop-id}
                                            :to :anyone :when [:= :order/note "open"]}})))))
   (testing "a write can't declare a reading action, nor a list of what is open only in a named scope"
-    (let [start (fn [entry] (error #(endpoints/start {:settings     (assoc (get-in (settings example/description {}) [:parquery])
-                                                                          :endpoints [{:x/y entry}])
+    (let [start (fn [entry] (error #(endpoints/start {:settings     (assoc (get-in (settings example/description {}) [:endpoints])
+                                                                          :list [{:x/y entry}])
                                                       :db           (gw/db *app*)
                                                       :permissions  (gw/permissions *app*)
                                                       :app-settings {}})))]
       (is (= ::endpoints/bad-endpoint
              (:type (start {:write      (fn [_ _] nil)
-                            :permission {:action :catalogue/see :scope [:shop :shop/id]}
+                            :access     {:action :catalogue/see :scope [:shop :shop/id]}
                             :input      [:map [:shop/id :uuid]] :answer :nil}))))
       (is (= ::endpoints/bad-endpoint
              (:type (start {:read       (fn [_ _] nil)
-                            :permission {:action :shop/card :list :package}
+                            :access     {:action :shop/card :list :package}
                             :input      [:map] :answer :nil}))))
       (testing "but a list of the universal rows anyone reads is fine"
         (is (nil? (start {:read       (fn [_ _] nil)
-                          :permission {:action :catalogue/see :list :package}
+                          :access     {:action :catalogue/see :list :package}
                           :input      [:map] :answer :nil}))))
       (testing "nor carry ids of a kind no sentence opens to them"
         (is (= ::endpoints/bad-endpoint
                (:type (start {:read       (fn [_ _] nil)
-                              :permission {:action :catalogue/see :scope [:shop :shop/id]}
+                              :access     {:action :catalogue/see :scope [:shop :shop/id]}
                               :input      [:map [:shop/id :uuid] [:order/id {:groundwork/record :order} :uuid]]
                               :answer     :nil}))))))))
 
@@ -301,7 +301,7 @@
     (testing "a sentence that forgot its condition shows the unpublished rows, and the test says so"
       (let [broken (update example/description :rules (fn [rs] (assoc rs 0 (dissoc (rs 0) :when))))
             perms  (perm/start {:settings broken :db (gw/db *app*)})
-            part   (endpoints/start {:settings     (get-in (settings broken example/endpoints) [:parquery])
+            part   (endpoints/start {:settings     (get-in (settings broken example/endpoints) [:endpoints])
                                      :db           (gw/db *app*)
                                      :permissions  perms
                                      :app-settings {}})]

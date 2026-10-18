@@ -43,31 +43,31 @@
 
 (def endpoint-map
   {:notes/of-shop {:read       (fn [{:keys [db]} params] (mapv :note/id (pg/rows db lk-notes-of-shop params)))
-                   :permission {:action :notes/see :scope [:shop :shop/id]}
+                   :access     {:action :notes/see :scope [:shop :shop/id]}
                    :input      [:map [:shop/id :uuid]]
                    :answer     [:vector :uuid]}
    :notes/one     {:read       (fn [{:keys [db]} params] (:note/id (pg/row db lk-note params)))
-                   :permission {:action :notes/see :record [:note :note/id]}
+                   :access     {:action :notes/see :record [:note :note/id]}
                    :input      [:map [:note/id :uuid]]
                    :answer     [:maybe :uuid]}
    :notes/move    {:write      (fn [{:keys [db]} params] (:note/id (pg/row db lk-move-note params)))
-                   :permission {:action :notes/move :record [:note :note/id]}
+                   :access     {:action :notes/move :record [:note :note/id]}
                    :input      [:map [:note/id :uuid] [:board/id {:groundwork/record :board} :uuid]]
                    :answer     [:maybe :uuid]}
    :notes/mine    {:read       (fn [_ _] [])
-                   :permission {:action :notes/see :list :note}
+                   :access     {:action :notes/see :list :note}
                    :input      [:map]
                    :answer     [:vector :uuid]}
    :zinc/notice   {:read       (fn [_ _] "for zinc")
-                   :permission {:action :notes/see :scope [:shop zinc]}
+                   :access     {:action :notes/see :scope [:shop zinc]}
                    :input      [:map {:closed true}]
                    :answer     :string}
    :site/hello    {:read       (fn [_ _] "hello")
-                   :permission :public
+                   :access     :public
                    :input      [:map]
                    :answer     :string}})
 
-(def settings {:endpoints [endpoint-map] :max-asks 50 :max-running 4 :bearer nil :on-answer nil
+(def settings {:list [endpoint-map] :max-asks 50 :max-running 4 :bearer nil :on-answer nil
                :bells {:global {} :personal {} :silent {:groundwork/every-other-table "the test database is shared by every test"}}})
 
 (def ^:dynamic *db* nil)

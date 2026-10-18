@@ -44,19 +44,19 @@
 
 (def endpoints-map
   {:notes/of-shop {:read       (fn [{:keys [db]} params] (pg/rows db ws-notes-of-shop params))
-                   :permission {:action :notes/see :scope [:shop :shop/id]}
+                   :access     {:action :notes/see :scope [:shop :shop/id]}
                    :input      [:map [:shop/id :uuid]]
                    :answer     [:vector note-shape]}
    :notes/one     {:read       (fn [{:keys [db]} params] (pg/row db ws-one-note params))
-                   :permission {:action :notes/see :record [:note :note/id]}
+                   :access     {:action :notes/see :record [:note :note/id]}
                    :input      [:map [:note/id :uuid]]
                    :answer     [:maybe note-shape]}
    :colours/all   {:read       (fn [{:keys [db]} _] (pg/rows db ws-colours {}))
-                   :permission :signed-in
+                   :access     :signed-in
                    :input      [:map]
                    :answer     [:vector [:map [:colour/id :uuid] [:colour/name :string]]]}
    :notes/add     {:write      (fn [{:keys [db]} params] (pg/row db ws-add-note params))
-                   :permission {:action :notes/add :scope [:shop :shop/id]}
+                   :access     {:action :notes/add :scope [:shop :shop/id]}
                    :input      [:map [:shop/id :uuid] [:note/id {:groundwork/record false} :uuid] [:note/text :string]]
                    :answer     note-shape}})
 
@@ -72,9 +72,9 @@
           note-1 acme note-2 acme zinc-note zinc)
     (let [app (gw/start (-> app-settings
                             (assoc :permissions description)
-                            (assoc-in [:parquery :endpoints] [endpoints-map])
+                            (assoc-in [:endpoints :list] [endpoints-map])
                             ;; a table of no shop: everyone watching it hears
-                            (assoc-in [:parquery :bells :global] {:colours "reference data nobody owns"})))]
+                            (assoc-in [:endpoints :bells :global] {:colours "reference data nobody owns"})))]
       (try
         (perm/create-scope! (gw/permissions app) {:kind :shop :id acme :parent nil :owner paul})
         (perm/create-scope! (gw/permissions app) {:kind :shop :id zinc :parent nil :owner ana})
@@ -270,7 +270,7 @@
     (let [line (open-line (sign-in ana))]
       (try
         (expire! ana)
-        (websocket/recheck! (get-in (gw/part *app* :groundwork/parquery) [:bells]))
+        (websocket/recheck! (get-in (gw/part *app* :groundwork/endpoints-transport) [:bells]))
         (is (closed-within? line 3000))
         (finally (close! line)))))
   (testing "a line that stays: its session is live"
@@ -280,12 +280,12 @@
       (try
         (watch! line ["notes/of-shop" {:shop/id (str acme)}])
         ;; the server takes the watch on its own thread: wait until it holds it
-        (let [lines (get-in (gw/part *app* :groundwork/parquery) [:bells :lines])]
+        (let [lines (get-in (gw/part *app* :groundwork/endpoints-transport) [:bells :lines])]
           (loop [n 0]
             (when (and (< n 100) (not-any? (comp seq :watches) (vals @lines)))
               (Thread/sleep 50)
               (recur (inc n)))))
-        (websocket/recheck! (get-in (gw/part *app* :groundwork/parquery) [:bells]))
+        (websocket/recheck! (get-in (gw/part *app* :groundwork/endpoints-transport) [:bells]))
         (as-system! "INSERT INTO notes VALUES (?, ?, 'six')" (UUID/randomUUID) acme)
         (is (= [["notes/of-shop" {:shop/id (str acme)}]] (next-bell line 3000)))
         (finally (close! line))))))
@@ -306,7 +306,7 @@
       (as-system! "INSERT INTO notes VALUES (?, ?, 'seven')" (UUID/randomUUID) acme)
       (is (= [list] (next-bell line 3000)) "a member hears about the shop's notes")
       (perm/remove-member! perms {:by paul :scope acme :person nina})
-      (websocket/recheck! (get-in (gw/part *app* :groundwork/parquery) [:bells]))
+      (websocket/recheck! (get-in (gw/part *app* :groundwork/endpoints-transport) [:bells]))
       (as-system! "INSERT INTO notes VALUES (?, ?, 'eight')" (UUID/randomUUID) acme)
       (is (nil? (next-bell line 700)) "removed from the shop, she hears nothing more")
       (finally (close! line)))))

@@ -56,19 +56,19 @@
 
 (def jobs-endpoints
   {:jobs/of-shop {:read       (fn [{:keys [db]} params] (pg/rows db ep-jobs-of-shop params))
-                  :permission {:action :orders/see :scope [:shop :shop/id]}
+                  :access     {:action :orders/see :scope [:shop :shop/id]}
                   :input      [:map [:shop/id :uuid]]
                   :answer     [:vector [:map [:job/id :uuid]]]}
    :jobs/note    {:write      (fn [{:keys [db]} params]
                                 (swap! runs inc)
                                 (pg/row db ep-note-job params))
-                  :permission {:action :jobs/move :record [:job :job/id]}
+                  :access     {:action :jobs/move :record [:job :job/id]}
                   :input      [:map [:job/id :uuid] [:job/note :string]
                                [:machine/id {:groundwork/record :machine} :uuid]]
                   :answer     [:map [:job/id :uuid] [:job/note :string]]}
    ;; an app whose shapes take ids as text
    :jobs/as-text {:read       (fn [_ params] {:job/id (:job/id params)})
-                  :permission {:action :jobs/move :record [:job :job/id]}
+                  :access     {:action :jobs/move :record [:job :job/id]}
                   :input      [:map [:job/id :string]
                                [:machine/id {:groundwork/record :machine} :string]]
                   :answer     [:map [:job/id :string]]}
@@ -80,40 +80,40 @@
                                 (when (= "refuse" (:job/note params))
                                   (throw (endpoints/refuse "Not this one")))
                                 nil)
-                  :permission {:action :jobs/move :record [:job :job/id]}
+                  :access     {:action :jobs/move :record [:job :job/id]}
                   :input      [:map [:job/id :uuid] [:job/note :string]]
                   :answer     :nil}
    :jobs/refused {:write      (fn [_ _] (throw (endpoints/refuse "This job is finished")))
-                  :permission {:action :jobs/move :record [:job :job/id]}
+                  :access     {:action :jobs/move :record [:job :job/id]}
                   :input      [:map [:job/id :uuid]]
                   :answer     :nil}})
 
 (def other-endpoints
   {:orders/mine   {:read       (fn [{:keys [db]} _] (mapv :order/id (pg/rows db ep-all-orders)))
-                   :permission {:action :orders/see :list :order}
+                   :access     {:action :orders/see :list :order}
                    :input      [:map]
                    :answer     [:vector :uuid]}
    :acme/notice   {:read       (fn [{:keys [request]} _] (str "for acme " (get-in request [:headers "x-note"])))
-                   :permission {:action :orders/see :scope [:shop acme]}
+                   :access     {:action :orders/see :scope [:shop acme]}
                    :input      [:map]
                    :answer     :string}
    :site/hello    {:read       (fn [{:keys [person]} _] (if person "hello, you" "hello"))
-                   :permission :public
+                   :access     :public
                    :input      [:map]
                    :answer     :string}
    :site/broken   {:read       (fn [_ _] 42)
-                   :permission :signed-in
+                   :access     :signed-in
                    :input      [:map]
                    :answer     :string}
    :site/sneaky   {:read       (fn [{:keys [db]} _]
                                  (pg/execute! db ep-insert-machine {:machine/id (id) :machine/shop-id acme})
                                  "wrote")
-                   :permission {:action :orders/see :scope [:shop :shop/id]}
+                   :access     {:action :orders/see :scope [:shop :shop/id]}
                    :input      [:map [:shop/id :uuid]]
                    :answer     :string}})
 
 (def settings
-  {:endpoints   [jobs-endpoints other-endpoints]
+  {:list        [jobs-endpoints other-endpoints]
    :max-asks    50
    :max-running 4
    :bearer      (fn [token] (when (= "peters-token" token) peter))
@@ -134,7 +134,7 @@
       (try
         (migrations/migrate! db)
         (sql! "TRUNCATE groundwork.scopes, groundwork.roles, groundwork.role_actions, groundwork.memberships,
-                        groundwork.extra_actions, groundwork.invitations, groundwork.run_once CASCADE")
+                        groundwork.extra_actions, groundwork.invitations, groundwork.run_once_keys CASCADE")
         (sql! (str "INSERT INTO orders VALUES (?, ?, NULL), (?, ?, NULL), (?, ?, ?);"
                    "INSERT INTO jobs VALUES (?, ?, ?, NULL), (?, ?, ?, NULL);"
                    "INSERT INTO machines VALUES (?, ?), (?, ?);")
@@ -157,7 +157,7 @@
   (endpoints/call *part* (merge {:endpoint endpoint :params params :person person :flags #{} :request-id "r1"} more)))
 
 (defn- start-error [endpoints-maps]
-  (try (endpoints/start {:settings (assoc settings :endpoints endpoints-maps) :db (:db *part*)
+  (try (endpoints/start {:settings (assoc settings :list endpoints-maps) :db (:db *part*)
                          :permissions (:perms *part*) :app-settings {}})
        nil
        (catch clojure.lang.ExceptionInfo e (ex-message e))))
@@ -165,15 +165,15 @@
 (deftest the-list-is-checked-at-start
   (testing "an id field must say which record it holds"
     (is (re-find #"holds ids"
-                 (start-error [{:jobs/x {:read (fn [_ _]) :permission {:action :jobs/move :record [:job :job/id]}
+                 (start-error [{:jobs/x {:read (fn [_ _]) :access {:action :jobs/move :record [:job :job/id]}
                                          :input [:map [:job/id :uuid] [:machine/id :uuid]] :answer :any}}]))))
   (testing "a name in two areas"
     (is (re-find #"named twice" (start-error [jobs-endpoints jobs-endpoints]))))
   (testing "a permission naming an unknown action"
-    (is (re-find #"no action" (start-error [{:jobs/x {:read (fn [_ _]) :permission {:action :nope/x :list :order}
+    (is (re-find #"no action" (start-error [{:jobs/x {:read (fn [_ _]) :access {:action :nope/x :list :order}
                                                       :input [:map] :answer :any}}]))))
   (testing "every declaration is required"
-    (is (re-find #":jobs/x :answer is missing" (start-error [{:jobs/x {:read (fn [_ _]) :permission :public :input [:map]}}])))))
+    (is (re-find #":jobs/x :answer is missing" (start-error [{:jobs/x {:read (fn [_ _]) :access :public :input [:map]}}])))))
 
 (deftest a-scope-permission
   (is (= {:status :ok :data [{:job/id acme-job}]}

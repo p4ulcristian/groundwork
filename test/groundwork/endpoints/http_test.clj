@@ -30,15 +30,15 @@
 
 (def endpoints
   {:notes/of-shop {:read       (fn [{:keys [db]} params] (pg/rows db pq-notes-of-shop params))
-                   :permission {:action :notes/see :scope [:shop :shop/id]}
+                   :access     {:action :notes/see :scope [:shop :shop/id]}
                    :input      [:map [:shop/id :uuid]]
                    :answer     [:vector [:map [:note/id :uuid] [:note/text :string]]]}
    :notes/add     {:write      (fn [{:keys [db]} params] (pg/row db pq-add-note params))
-                   :permission {:action :notes/add :scope [:shop :shop/id]}
+                   :access     {:action :notes/add :scope [:shop :shop/id]}
                    :input      [:map [:shop/id :uuid] [:note/id {:groundwork/record false} :uuid] [:note/text :string]]
                    :answer     [:map [:note/id :uuid] [:note/text :string]]}
    :site/sleep    {:read       (fn [{:keys [db]} params] (:slept/done (pg/row db pq-sleep params)))
-                   :permission :public
+                   :access     :public
                    :input      [:map [:seconds :double]]
                    :answer     :boolean}})
 
@@ -50,9 +50,9 @@
            CREATE TABLE notes (note__id uuid PRIMARY KEY, note__shop_id uuid NOT NULL, note__text text NOT NULL)")
     (let [app (gw/start (-> app-settings
                             (assoc :permissions description)
-                            (assoc-in [:parquery :endpoints] [endpoints])
-                            (assoc-in [:parquery :max-asks] 3)
-                            (assoc-in [:parquery :on-answer] #(swap! answered conj %))))]
+                            (assoc-in [:endpoints :list] [endpoints])
+                            (assoc-in [:endpoints :max-asks] 3)
+                            (assoc-in [:endpoints :on-answer] #(swap! answered conj %))))]
       (try
         (perm/create-scope! (gw/permissions app) {:kind :shop :id shop :parent nil :owner owner})
         (perm/create-scope! (gw/permissions app) {:kind :shop :id other-shop :parent nil :owner stranger})

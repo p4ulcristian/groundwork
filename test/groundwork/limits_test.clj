@@ -33,16 +33,16 @@
 
 (def endpoint-map
   {:site/hello  {:read       (fn [_ _] "hello")
-                 :permission :public
+                 :access     :public
                  :input      [:map]
                  :answer     :string}
    :site/ai     {:write      (fn [_ _] "suggestion")
-                 :permission :signed-in
+                 :access     :signed-in
                  :input      [:map]
                  :answer     :string
                  :rate-limit {:per-day 2 :by :person}}
    :site/free   {:read       (fn [_ _] "free")
-                 :permission :signed-in
+                 :access     :signed-in
                  :input      [:map]
                  :answer     :string}})
 
@@ -54,7 +54,7 @@
     (let [app (gw/start (-> app-settings
                             (assoc :limits {:public {:reads-per-minute 3 :writes-per-minute 1}
                                             :on-limit #(swap! hits conj %)})
-                            (assoc-in [:parquery :endpoints] [endpoint-map])
+                            (assoc-in [:endpoints :list] [endpoint-map])
                             (assoc-in [:web :routes]
                                       [["/open" {:get (fn [_] {:status 200 :body "open"}) :access :public}]
                                        ["/careful" {:get        (fn [_] {:status 200 :body "careful"})

@@ -219,82 +219,82 @@
 (def endpoints
   {;; open to anyone: a shop's published packages
    :catalogue/of-shop {:read       (fn [{:keys [db]} params] (pg/rows db packages-of-shop params))
-                       :permission {:action :catalogue/see :scope [:shop :shop/id]}
+                       :access     {:action :catalogue/see :scope [:shop :shop/id]}
                        :input      [:map [:shop/id :uuid]]
                        :answer     [:vector package-shape]}
    :catalogue/package {:read       (fn [{:keys [db]} params] (pg/row db package params))
-                       :permission {:action :catalogue/see :record [:package :package/id]}
+                       :access     {:action :catalogue/see :record [:package :package/id]}
                        :input      [:map [:package/id :uuid]]
                        :answer     [:maybe package-shape]}
    ;; the same open action, with SQL that reaches for the shop's orders: the
    ;; wall shows a stranger none
    :catalogue/busy?   {:read       (fn [{:keys [db]} params] (:orders/count (pg/row db count-orders params)))
-                       :permission {:action :catalogue/see :scope [:shop :shop/id]}
+                       :access     {:action :catalogue/see :scope [:shop :shop/id]}
                        :input      [:map [:shop/id :uuid]]
                        :answer     :int}
    ;; open to anyone signed in
    :shop/card         {:read       (fn [{:keys [db]} params] (count (pg/rows db packages-of-shop params)))
-                       :permission {:action :shop/card :scope [:shop :shop/id]}
+                       :access     {:action :shop/card :scope [:shop :shop/id]}
                        :input      [:map [:shop/id :uuid]]
                        :answer     :int}
    ;; members only
    :catalogue/rename  {:write      (fn [{:keys [db]} params] (pg/row db rename-package params))
-                       :permission {:action :catalogue/edit :record [:package :package/id]}
+                       :access     {:action :catalogue/edit :record [:package :package/id]}
                        :input      [:map [:package/id :uuid] [:package/name :string]]
                        :answer     [:maybe package-shape]}
    ;; a record of two scopes and what hangs under it: either side reads and writes
    :prices/of-agreement {:read       (fn [{:keys [db]} params] (mapv :price-sheet/cents (pg/rows db prices-of-agreement params)))
-                         :permission {:action :prices/see :record [:agreement :agreement/id]}
+                         :access     {:action :prices/see :record [:agreement :agreement/id]}
                          :input      [:map [:agreement/id :uuid]]
                          :answer     [:vector :int]}
    ;; the SQL names no scope: Groundwork fills both from the agreement
    :prices/add          {:write      (fn [{:keys [db]} params] (:price-sheet/id (pg/row db add-price params)))
-                         :permission {:action :prices/edit :record [:agreement :agreement/id]}
+                         :access     {:action :prices/edit :record [:agreement :agreement/id]}
                          :input      [:map [:agreement/id :uuid] [:price-sheet/cents :int]]
                          :answer     :uuid}
    ;; a service on an order: the order's shop sees it, and the partner it names
    :services/mine       {:read       (fn [{:keys [db]} _] (mapv :order-service/name (pg/rows db services {})))
-                         :permission {:action :services/see :list :order-service}
+                         :access     {:action :services/see :list :order-service}
                          :input      [:map]
                          :answer     [:vector :string]}
    :services/add        {:write      (fn [{:keys [db]} params] (:order-service/id (pg/row db add-service params)))
-                         :permission {:action :orders/edit :record [:order :order/id]}
+                         :access     {:action :orders/edit :record [:order :order/id]}
                          :input      [:map [:order/id :uuid] [:order-service/name :string]
                                       ;; a scope's id, not a record's
                                       [:order-service/partner-id {:groundwork/record false} [:maybe :uuid]]]
                          :answer     :uuid}
    :orders/note         {:read       (fn [{:keys [db]} params] (:order/note (pg/row db order-note params)))
-                         :permission {:action :orders/see :record [:order :order/id]}
+                         :access     {:action :orders/see :record [:order :order/id]}
                          :input      [:map [:order/id :uuid]]
                          :answer     [:maybe :string]}
    ;; a handoff shows one order to another shop
    :handoffs/give       {:write      (fn [{:keys [db]} params] (:handoff/id (pg/row db give-handoff params)))
-                         :permission {:action :handoffs/give :record [:order :order/id]}
+                         :access     {:action :handoffs/give :record [:order :order/id]}
                          :input      [:map [:order/id :uuid]
                                       [:handoff/to-shop-id {:groundwork/record false} [:maybe :uuid]]
                                       [:handoff/driver-id {:groundwork/record false} [:maybe :uuid]]]
                          :answer     :uuid}
    ;; either side reports on the handoff itself
    :handoffs/set-status {:write      (fn [{:keys [db]} params] (:handoff/status (pg/row db set-handoff-status params)))
-                         :permission {:action :handoffs/work :record [:handoff :handoff/id]}
+                         :access     {:action :handoffs/work :record [:handoff :handoff/id]}
                          :input      [:map [:handoff/id :uuid] [:handoff/status [:enum "open" "done"]]]
                          :answer     :string}
    :orders/incoming     {:read       (fn [{:keys [db]} _] (mapv :order/note (pg/rows db order-notes {})))
-                         :permission {:action :orders/see :list :order}
+                         :access     {:action :orders/see :list :order}
                          :input      [:map]
                          :answer     [:vector :string]}
    ;; about the order: the jobs under it come with the handoff's sentence on jobs
    :jobs/of-order       {:read       (fn [{:keys [db]} params] (mapv :job/name (pg/rows db jobs-of-order params)))
-                         :permission {:action :orders/see :record [:order :order/id]}
+                         :access     {:action :orders/see :record [:order :order/id]}
                          :input      [:map [:order/id :uuid]]
                          :answer     [:vector :string]}
    :jobs/one            {:read       (fn [{:keys [db]} params] (:job/name (pg/row db job params)))
-                         :permission {:action :orders/see :record [:job :job/id]}
+                         :access     {:action :orders/see :record [:job :job/id]}
                          :input      [:map [:job/id :uuid]]
                          :answer     [:maybe :string]}
    ;; writing an order needs an action that writes: a handoff gives only :orders/see
    :orders/stamp        {:write      (fn [{:keys [db]} params] (:order/note (pg/row db stamp-order params)))
-                         :permission {:action :orders/edit :record [:order :order/id]}
+                         :access     {:action :orders/edit :record [:order :order/id]}
                          :input      [:map [:order/id :uuid] [:order/note :string]]
                          :answer     [:maybe :string]}
    ;; a visitor's records. Saving keeps something for someone not signed in, who
@@ -303,32 +303,32 @@
                                        (:design/id (pg/row db save-design
                                                            (assoc params :design/customer-id person
                                                                   :design/visitor-id visitor))))
-                         :permission :public
-                         :keeps-for-visitor true
+                         :access     :public
+                         :keeps-for-visitor? true
                          :input      [:map [:design/name :string]]
                          :answer     :uuid}
    :designs/mine        {:read       (fn [{:keys [db]} _] (mapv :design/name (pg/rows db designs {})))
-                         :permission {:action :designs/mine :list :design}
+                         :access     {:action :designs/mine :list :design}
                          :input      [:map]
                          :answer     [:vector :string]}
    :designs/one         {:read       (fn [{:keys [db]} params] (:design/name (pg/row db design params)))
-                         :permission {:action :designs/mine :record [:design :design/id]}
+                         :access     {:action :designs/mine :record [:design :design/id]}
                          :input      [:map [:design/id :uuid]]
                          :answer     [:maybe :string]}
    :designs/rename      {:write      (fn [{:keys [db]} params] (:design/name (pg/row db rename-design params)))
-                         :permission {:action :designs/mine :record [:design :design/id]}
+                         :access     {:action :designs/mine :record [:design :design/id]}
                          :input      [:map [:design/id :uuid] [:design/name :string]]
                          :answer     [:maybe :string]}
    ;; every side of a conversation reads it and writes into it
    :talk/messages       {:read       (fn [{:keys [db]} params] (mapv :message/text (pg/rows db messages params)))
-                         :permission {:action :talk/read :record [:conversation :conversation/id]}
+                         :access     {:action :talk/read :record [:conversation :conversation/id]}
                          :input      [:map [:conversation/id :uuid]]
                          :answer     [:vector :string]}
    :talk/say            {:write      (fn [{:keys [db]} params] (:message/id (pg/row db say params)))
-                         :permission {:action :talk/write :record [:conversation :conversation/id]}
+                         :access     {:action :talk/write :record [:conversation :conversation/id]}
                          :input      [:map [:conversation/id :uuid] [:message/text :string]]
                          :answer     :uuid}
    :orders/of-shop    {:read       (fn [{:keys [db]} params] (mapv :order/id (pg/rows db orders-of-shop params)))
-                       :permission {:action :orders/see :scope [:shop :shop/id]}
+                       :access     {:action :orders/see :scope [:shop :shop/id]}
                        :input      [:map [:shop/id :uuid]]
                        :answer     [:vector :uuid]}})

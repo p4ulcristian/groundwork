@@ -47,13 +47,13 @@
 
 (def endpoint-map
   {:orders/of-shop {:read       (fn [{:keys [db]} params] (mapv :rpl-order/id (pg/rows db rpl-orders-of-shop params)))
-                    :permission {:action :orders/see :scope [:shop :shop/id]}
+                    :access     {:action :orders/see :scope [:shop :shop/id]}
                     :input      [:map [:shop/id :uuid]]
                     :answer     [:vector :uuid]}})
 
 (def settings (-> app-settings
                   (assoc :permissions description)
-                  (assoc-in [:parquery :endpoints] [endpoint-map])))
+                  (assoc-in [:endpoints :list] [endpoint-map])))
 
 (def ^:dynamic *app* nil)
 

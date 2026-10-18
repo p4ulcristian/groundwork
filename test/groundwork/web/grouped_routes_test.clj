@@ -13,13 +13,13 @@
 (def ^:dynamic *app* nil)
 
 (def routes
-  [["/customize" {:get web/page :access :public :embeddable true
+  [["/customize" {:get web/page :access :public :embeddable? true
                   :page {:title "Design your part"}}
     [""]
     ["/step/:n"]
     ["/review" {:page {:title "Review your part"}}]
     ["/saved" {:access :signed-in}]]
-   ["/embed/*path" {:get web/page :access :public :embeddable true
+   ["/embed/*path" {:get web/page :access :public :embeddable? true
                     :page {:title "Embedded"}}]])
 
 (use-fixtures :once

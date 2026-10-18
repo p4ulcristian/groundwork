@@ -65,8 +65,8 @@
     (is (some #{{:in [:web :login-path] :message "is missing"}} found))))
 
 (deftest routes-are-checked-with-what-they-inherit
-  (let [routes [["/a" {:access :public :embeddable true}
-                 ["/b" {:embeddable "yes"}]]
+  (let [routes [["/a" {:access :public :embeddable? true}
+                 ["/b" {:embeddable? "yes"}]]
                 ["/c" {:get identity}]]]
     (is (= #{["/a/b"] ["/c"]}
            (set (map #(subvec (:in %) 2 3) (settings/route-problems routes [:web :routes])))))))

@@ -27,7 +27,7 @@
                WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')")))
 
 (defn- start-with [bells]
-  (try (gw/stop (gw/start (assoc-in app-settings [:parquery :bells] bells)))
+  (try (gw/stop (gw/start (assoc-in app-settings [:endpoints :bells] bells)))
        :started
        (catch clojure.lang.ExceptionInfo e (ex-data e))))
 

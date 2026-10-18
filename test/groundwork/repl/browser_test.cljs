@@ -6,7 +6,7 @@
    [re-frame.db :as rf-db]))
 
 (deftest the-store-from-the-repl
-  (reset! rf-db/app-db {:groundwork/parquery-store {:entries {[:jobs/list {:shop/id "acme"}]
+  (reset! rf-db/app-db {:groundwork/endpoints-store {:entries {[:jobs/list {:shop/id "acme"}]
                                                       {:status :ready :owners #{:board} :data [1 2 3] :stale? true}}}})
   (is (= {[:jobs/list {:shop/id "acme"}] {:status :ready :owners #{:board} :stale? true :items 3}}
          (repl/entries)))

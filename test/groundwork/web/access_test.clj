@@ -124,7 +124,7 @@
   (let [build (fn [routes]
                 (try (web/handler {:routes routes :max-body-bytes 1000 :content-security-policy {}
                                    :login-path "/login" :page ok :sessions {} :environment :test
-                                   :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages nil :test-sign-in nil :hashed-files nil :gzip-min-bytes nil
+                                   :proxies {:trusted [] :client-ip-header nil :request-id-header nil} :languages {:supported ["en"] :default "en" :cookie nil} :test-sign-in nil :hashed-files nil :gzip-min-bytes nil
                                    :permissions (gw/permissions *app*)})
                      nil
                      (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))]
@@ -132,5 +132,5 @@
     (is (= ::web/undeclared-route (build [["/x" {:get ok :access :everyone}]])))
     (is (= ::web/bad-route (build [["/x" {:get ok :access {:action :notes/edit :record [:note :id]}}]]))
         "no rule for that action")
-    (is (= ::web/bad-route (build [["/x" {:post ok :server-to-server true :access :public}]])))
-    (is (nil? (build [["/x" {:post ok :server-to-server true}]])))))
+    (is (= ::web/bad-route (build [["/x" {:post ok :server-to-server? true :access :public}]])))
+    (is (nil? (build [["/x" {:post ok :server-to-server? true}]])))))

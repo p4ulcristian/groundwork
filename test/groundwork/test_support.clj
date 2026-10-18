@@ -44,8 +44,7 @@
   {:environment :test
    :db          db-settings
    :migrations  {:schema-snapshot nil}
-   :page        {:lang "en" :title "Test" :description nil :icon "/icon.svg" :stylesheets ["/app.css"]
-                 :head []}
+   :page        {:title "Test" :description nil :icon "/icon.svg" :stylesheets ["/app.css"] :head []}
    :browser     {:build :test-app :entry 'example.hello.browser/start :output-dir "test/public/js"
                  :asset-path "/js" :watch? false}
    :web         {:routes         []
@@ -55,7 +54,7 @@
                  :on-request     nil
                  :on-error       nil
                  :proxies        {:trusted [] :client-ip-header nil :request-id-header nil}
-                 :languages      nil
+                 :languages      {:supported ["en"] :default "en" :cookie nil}
                  :test-sign-in   {:secret "a-secret-only-tests-know"}
                  :hashed-files   "\\.[0-9a-f]{8,}\\."
                  :gzip-min-bytes 1024}
@@ -65,7 +64,7 @@
    :permissions {:scopes {} :records {} :rules []}
    :limits      {:public nil :on-limit nil}
    :jobs        nil
-   :parquery    {:endpoints [] :max-asks 50 :max-running 4 :bearer nil
+   :endpoints   {:list [] :max-asks 50 :max-running 4 :bearer nil
                  ;; every test namespace leaves its tables in the one test database
                  :bells {:global {} :personal {}
                          :silent {:groundwork/every-other-table "the test database is shared by every test"}}
