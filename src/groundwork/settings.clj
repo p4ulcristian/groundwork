@@ -248,8 +248,8 @@
 ;; =============================================================================
 
 (def ^:private access
-  (pred ":public, :signed-in or {:action … :record|:scope|:list …}"
-        "must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param-or-id]} or {:action … :list kind}"
+  (pred ":public, :signed-in or {:action … :record|:scope|:scopes|:list …}"
+        "must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param-or-id]}, {:action … :scopes [kind param-or-path]} or {:action … :list kind}"
         (fn [p]
           (or (#{:public :signed-in} p)
               (and (map? p) (qualified-keyword? (:action p))
@@ -259,6 +259,9 @@
                        :record (and (vector? v) (= 2 (count v)) (every? keyword? v))
                        :scope  (and (vector? v) (= 2 (count v)) (keyword? (first v))
                                     (or (keyword? (second v)) (uuid? (second v))))
+                       :scopes (and (vector? v) (= 2 (count v)) (keyword? (first v))
+                                    (or (keyword? (second v))
+                                        (and (vector? (second v)) (seq (second v)) (every? keyword? (second v)))))
                        :list   (keyword? v)
                        false)))))))
 
@@ -276,7 +279,7 @@
    [:map {:closed true}
     (optional :read "Its handler, for a read: (fn [ctx params] answer)" 'app.jobs/list function)
     (optional :write "Its handler, for a write: (fn [ctx params] answer)" 'app.jobs/move function)
-    (entry :access "Who may ask it: :public, :signed-in, or an action on a record, a scope or a list (see groundwork.endpoints)"
+    (entry :access "Who may ask it: :public, :signed-in, or an action on a record, a scope, several scopes or a list (see groundwork.endpoints)"
            {:action :jobs/see :scope [:shop :shop/id]} access)
     (entry :input "What may be sent, a malli :map; id fields say their record kind"
            [:map [:shop/id :uuid]] malli-shape)

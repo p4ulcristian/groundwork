@@ -77,7 +77,13 @@
     (testing "a grant with no scope is for every scope"
       (is (store/can? s :catalogue/see shop))
       (is (store/can? s :catalogue/see "7f3c1e2a-0000-4000-8000-000000000002"))
-      (is (not (store/can? s :jobs/move "7f3c1e2a-0000-4000-8000-000000000002"))))))
+      (is (not (store/can? s :jobs/move "7f3c1e2a-0000-4000-8000-000000000002"))))
+    (testing "several scopes: in every one of them"
+      (is (store/can? s :jobs/move [shop (uuid shop)]))
+      (is (not (store/can? s :jobs/move [shop "7f3c1e2a-0000-4000-8000-000000000002"]))
+          "one scope it isn't given in says no")
+      (is (store/can? s :catalogue/see [shop "7f3c1e2a-0000-4000-8000-000000000002"]))
+      (is (not (store/can? s :catalogue/see [])) "no scope named is no"))))
 
 (deftest one-question-however-its-ids-were-given
   (let [id    "7f3c1e2a-0000-4000-8000-000000000001"

@@ -28,6 +28,7 @@
 (pg/defsql set-member-scopes "groundwork/permissions/check/set_member_scopes.sql")
 (pg/defsql holds "groundwork/permissions/check/holds.sql")
 (pg/defsql scope-of-kind "groundwork/permissions/check/scope_of_kind.sql")
+(pg/defsql scopes-of-kind "groundwork/permissions/check/scopes_of_kind.sql")
 (pg/defsql memberships-above "groundwork/permissions/check/memberships_above.sql")
 
 (defn- not-found [what]
@@ -353,6 +354,24 @@
                                         (str/join " OR " (map first clauses)))
                                 (into [(str scope)] (sql/bind (vec (mapcat second clauses)) person visitor)))))))))
 
+(defn held-in
+  "Of these scopes, the ones where the sentences give the person the action,
+   each in itself (not through one below it): what a request naming several
+   scopes may act in. Empty when a session flag denies the action. A scope's
+   state is the endpoint's to apply (see with-denies)."
+  [perms {:keys [person visitor flags action scopes]}]
+  (let [clauses (scope-clauses perms action "scope")]
+    (if (or (empty? scopes) (empty? clauses) (blocked? perms action flags))
+      #{}
+      (as-system perms
+                 (fn [tx]
+                   (into #{}
+                         (map (comp val first))
+                         (query tx (str "SELECT scope FROM unnest(CAST(? AS uuid[])) AS named(scope) WHERE "
+                                        (str/join " OR " (map first clauses)))
+                                (into [(uuid-array scopes)]
+                                      (sql/bind (vec (mapcat second clauses)) person visitor)))))))))
+
 (defn open-scope
   "For an action a sentence opens to anyone (or the signed-in) asked about a
    scope: that scope alone, when it exists and is of the kind the endpoint
@@ -368,6 +387,27 @@
                    (into #{}
                          (map (comp val first))
                          (pg/rows tx scope-of-kind {:scope/id (str scope) :scope/kind (name kind)})))))))
+
+(defn of-kind
+  "Of these scopes, the ones that exist and are of a kind."
+  [perms scopes kind]
+  (if (empty? scopes)
+    #{}
+    (as-system perms
+               (fn [tx]
+                 (into #{}
+                       (map (comp val first))
+                       (pg/rows tx scopes-of-kind {:scope/ids (vec scopes) :scope/kind (name kind)}))))))
+
+(defn open-scopes
+  "open-scope for a request naming several scopes: those of them that exist
+   and are of the kind the endpoint names."
+  [perms {:keys [person flags action scopes kind]}]
+  (let [level (open-level perms action)]
+    (if (or (nil? level) (empty? scopes) (blocked? perms action flags)
+            (and (= :signed-in level) (nil? person)))
+      #{}
+      (of-kind perms scopes kind))))
 
 (defn scopes-listed
   "The scopes a list of every record of a kind the person may do the action

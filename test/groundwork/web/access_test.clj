@@ -132,5 +132,7 @@
     (is (= ::web/undeclared-route (build [["/x" {:get ok :access :everyone}]])))
     (is (= ::web/bad-route (build [["/x" {:get ok :access {:action :notes/edit :record [:note :id]}}]]))
         "no rule for that action")
+    (is (= ::web/bad-route (build [["/x" {:get ok :access {:action :notes/edit :scopes [:team :team/ids]}}]]))
+        "several scopes are an endpoint's")
     (is (= ::web/bad-route (build [["/x" {:post ok :server-to-server? true :access :public}]])))
     (is (nil? (build [["/x" {:post ok :server-to-server? true}]])))))

@@ -417,6 +417,7 @@ nobody in that kind of scope or above can hold, and an open write nothing narrow
   and record kind: `WHERE order__id IN (SELECT * FROM groundwork."may orders/edit on order"())`.
 - **"Can I?":** the built-in endpoint `:groundwork/grants` answers every
   action the sentences give the person, and where (no scope: every scope).
+  The browser asks it about one scope or a list of them (every one must hold).
 
 ```clojure
 (require '[groundwork.permissions :as perm])
@@ -512,7 +513,9 @@ asked with another scope's ids and must answer not-found.
 ```
 
 - Params are generated from each input shape, every id set to the foreign
-  one of its kind. A list's answer must hold none of the foreign ids; an
+  one of its kind. An endpoint about several scopes gets a list of two: a
+  scope where the person holds its action (from their grants) and the
+  foreign one; it must answer not-found. A list's answer must hold none of the foreign ids; an
   open action's, asked as a stranger, none of the `:sealed` ones. A visitor's
   action is asked again as another visitor and as a signed-in stranger, and
   must answer not-found.
@@ -540,7 +543,11 @@ Everything the browser, or a tool, can ask the server, listed by area:
                     :access {:action :orders/edit :record [:order :order/id]}
                     :input  [:map [:order/id :uuid]
                                   [:agreement/id {:groundwork/record :agreement} :uuid]]
-                    :answer order}})
+                    :answer order}
+   :orders/place   {:write  #'orders/place            ; one cart, an order in each shop it names
+                    :access {:action :orders/place :scopes [:shop [:cart/lines :shop/id]]}
+                    :input  [:map [:cart/lines [:vector [:map [:shop/id :uuid] [:line/note :string]]]]]
+                    :answer [:vector order]}})
 
 :endpoints {:list [app.orders/endpoints app.invoices/endpoints] …}
 ```
@@ -550,8 +557,15 @@ Everything the browser, or a tool, can ask the server, listed by area:
   or under `groundwork/`.
 - `:access`: `:public`, `:signed-in`, or an action on one record
   (`:record [kind param]`), a scope (`:scope [kind param]` or
-  `[kind #uuid "…"]`, with the scopes below it), or every record of a kind
-  the person may (`:list kind`). A write declares an action that writes.
+  `[kind #uuid "…"]`, with the scopes below it), several scopes
+  (`:scopes [kind param-or-path]`), or every record of a kind the person
+  may (`:list kind`). A write declares an action that writes.
+- Several scopes: the param holds a list of ids (`[:shop :shop/ids]`), or a
+  path reaches them (`[:shop [:cart/lines :shop/id]]`; a list on the way
+  gives every element). The action is checked in each named scope itself;
+  one the person may not act in, an empty list or an id that isn't one
+  answers not-found, and nothing runs. The wall opens exactly those scopes,
+  none below them, and a write is one transaction: all of it or nothing.
 - Every input field holding ids (`id`, `…-id`, `…-ids`) says its record
   kind, `{:groundwork/record :agreement}`, or `{:groundwork/record false}`.
   Each id must belong to the verified scopes.
@@ -570,7 +584,7 @@ Everything the browser, or a tool, can ask the server, listed by area:
 
 Door: `groundwork.endpoints`.
 
-Decisions: [What every endpoint declares](decisions/2026-10-12-what-every-endpoint-declares.md) · [Every endpoint declares its answer](decisions/2026-10-12-every-endpoint-declares-its-answer.md) · [Reads and writes share one path](decisions/2026-10-12-reads-and-writes-share-one-path.md).
+Decisions: [What every endpoint declares](decisions/2026-10-12-what-every-endpoint-declares.md) · [One request may name several scopes](decisions/2026-10-18-one-request-may-name-several-scopes.md) · [Every endpoint declares its answer](decisions/2026-10-12-every-endpoint-declares-its-answer.md) · [Reads and writes share one path](decisions/2026-10-12-reads-and-writes-share-one-path.md).
 
 ### The transport
 
@@ -645,6 +659,7 @@ The browser's answers, kept by question (endpoint and params) in re-frame's db.
 (rf/dispatch [::store/hear :orders-table [ask] [:orders-table/reload]])
 (rf/dispatch [::store/write {:endpoint :orders/hand-to :params {…}} [:orders/handed]])
 @(rf/subscribe [::store/can? :orders/edit shop-id])      ; from the grants
+@(rf/subscribe [::store/can? :orders/place [shop-id other-shop-id]])   ; in every one
 ```
 
 - Showing never fetches. Two asks for one question make one request.
@@ -1124,7 +1139,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 
 | Key | Type | What it is | Example |
 |-----|------|------------|---------|
-| `<path> :access` (optional) | :public, :signed-in or {:action … :record\|:scope\|:list …} | Who may use it, the shape an endpoint's :access has; a route checks :public, :signed-in or an action on a record (or :server-to-server? true) | `:public` |
+| `<path> :access` (optional) | :public, :signed-in or {:action … :record\|:scope\|:scopes\|:list …} | Who may use it, the shape an endpoint's :access has; a route checks :public, :signed-in or an action on a record (or :server-to-server? true) | `:public` |
 | `<path> :server-to-server?` (optional) | true or false | Called by another server (a webhook): no session, no Origin check; the handler checks the call | `true` |
 | `<path> :embeddable?` (optional) | true, :same-origin or origins | Other sites may show it in a frame: true (any https site), :same-origin, or a list of origins | `true` |
 | `<path> :page` (optional) | map or function | The page shell's own details for this route: a map, or a function of the request | `{:title "Design your part"}` |
@@ -1137,7 +1152,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 |-----|------|------------|---------|
 | `<endpoint name> :read` (optional) | function | Its handler, for a read: (fn [ctx params] answer) | `app.jobs/list` |
 | `<endpoint name> :write` (optional) | function | Its handler, for a write: (fn [ctx params] answer) | `app.jobs/move` |
-| `<endpoint name> :access` | :public, :signed-in or {:action … :record\|:scope\|:list …} | Who may ask it: :public, :signed-in, or an action on a record, a scope or a list (see groundwork.endpoints) | `{:action :jobs/see, :scope [:shop :shop/id]}` |
+| `<endpoint name> :access` | :public, :signed-in or {:action … :record\|:scope\|:scopes\|:list …} | Who may ask it: :public, :signed-in, or an action on a record, a scope, several scopes or a list (see groundwork.endpoints) | `{:action :jobs/see, :scope [:shop :shop/id]}` |
 | `<endpoint name> :input` | malli shape | What may be sent, a malli :map; id fields say their record kind | `[:map [:shop/id :uuid]]` |
 | `<endpoint name> :answer` | malli shape | What may be sent back, a malli shape | `[:vector [:map [:job/id :uuid]]]` |
 | `<endpoint name> :reads` (optional) | list of tables | Tables a read uses that Postgres can't see in its SQL | `[:jobs]` |

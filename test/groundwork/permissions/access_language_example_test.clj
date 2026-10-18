@@ -286,7 +286,8 @@
                                          :catalogue/rename :orders/of-shop :prices/of-agreement :prices/add
                                          :services/mine :services/add :orders/note
                                          :talk/messages :talk/say :handoffs/give :handoffs/set-status
-                                         :orders/incoming :jobs/of-order :jobs/one :orders/stamp]))
+                                         :orders/incoming :jobs/of-order :jobs/one :orders/stamp
+                                         :orders/of-shops :catalogue/of-shops :orders/place-in-shops]))
     (testing "as the receiver of a handoff of one order, asking for the giving shop's other records"
       (let [handoff (:data (call sam :handoffs/give {:order/id acme-order :handoff/to-shop-id pine
                                                      :handoff/driver-id nil}))]
@@ -306,7 +307,7 @@
                                      :permissions  perms
                                      :app-settings {}})]
         (try
-          (is (= #{:catalogue/package :catalogue/of-shop}
+          (is (= #{:catalogue/package :catalogue/of-shop :catalogue/of-shops}
                  (set (keep :endpoint (:leaked (leaks/check part {:person  stella
                                                                   :foreign {:shop zinc :package zinc-secret
                                                                             :order zinc-order}
@@ -744,3 +745,87 @@
         (as-system! "UPDATE al_orders SET order__note = 'a' WHERE order__id = ?" acme-order)
         (is (nil? (next-bell line 500))))
       (finally (close! line)))))
+
+;; =============================================================================
+;; One request may name several scopes
+;; =============================================================================
+
+(def sven (id)) ; staff in Acme and in Zinc
+
+(deftest one-request-may-name-several-scopes
+  (let [perms (gw/permissions *app*)]
+    (join! perms sam acme sven "Staff")
+    (join! perms olga zinc sven "Staff")
+    (testing "the action is checked in each named scope, and the wall opens exactly those"
+      (is (= {:status :ok :data [acme-order acme-order-2 zinc-order]}
+             (call sven :orders/of-shops {:shop/ids [acme zinc]})))
+      (is (= {:status :ok :data [acme-order acme-order-2]} (call sven :orders/of-shops {:shop/ids [acme]}))
+          "a member of Zinc too, but Zinc wasn't named")
+      (is (= {:status :ok :data [acme-order acme-order-2]} (call sven :orders/of-shops {:shop/ids [acme acme]}))
+          "a scope named twice counts once"))
+    (testing "a scope the person may not act in answers not-found, the others with it"
+      (is (= {:status :not-found} (call stella :orders/of-shops {:shop/ids [acme zinc]})))
+      (is (= {:status :not-found} (call stella :orders/of-shops {:shop/ids [acme (id)]})) "one that doesn't exist")
+      (is (= {:status :not-found} (call vic :orders/of-shops {:shop/ids [acme]})) "a member nowhere")
+      (is (= "not-found" (:status (ask! (sign-in stella) "orders/of-shops" {:shop/ids [(str acme) (str zinc)]}))))
+      (is (= {:status "ok" :data [(str acme-order) (str acme-order-2)]}
+             (ask! (sign-in stella) "orders/of-shops" {:shop/ids [(str acme)]}))))
+    (testing "an action open to anyone, about several scopes: each must exist"
+      (is (= ["Gloss" "Shared Primer" "Zinc Matte"] (names (call nil :catalogue/of-shops {:shop/ids [acme zinc]}))))
+      (is (= {:status :not-found} (call nil :catalogue/of-shops {:shop/ids [acme (id)]}))))
+    (testing "a write in several scopes is one transaction"
+      (let [placed (:data (call sven :orders/place-in-shops {:order/lines [{:order/shop-id acme :order/note "x1"}
+                                                                           {:order/shop-id zinc :order/note "x2"}]}))]
+        (try
+          (is (= 2 (count placed)))
+          (is (= #{acme zinc} (set (map :al_orders/order__shop_id
+                                        (as-system! "SELECT order__shop_id FROM al_orders WHERE order__id IN (?, ?)"
+                                                    (first placed) (second placed))))))
+          (testing "a refusal in the second shop leaves nothing in the first"
+            (is (= :refused (:status (call sven :orders/place-in-shops {:order/lines [{:order/shop-id acme :order/note "x3"}
+                                                                                       {:order/shop-id zinc :order/note ""}]}))))
+            (is (= [] (as-system! "SELECT 1 FROM al_orders WHERE order__note = 'x3'"))))
+          (testing "one shop the person may not write in stops the whole request before it runs"
+            (is (= {:status :not-found}
+                   (call stella :orders/place-in-shops {:order/lines [{:order/shop-id acme :order/note "x4"}
+                                                                      {:order/shop-id zinc :order/note "x5"}]})))
+            (is (= [] (as-system! "SELECT 1 FROM al_orders WHERE order__note IN ('x4', 'x5')"))))
+          (finally (as-system! "DELETE FROM al_orders WHERE order__note LIKE 'x%'")))))
+    (testing "an empty list names no scope: not found"
+      (is (= {:status :not-found} (call sven :orders/of-shops {:shop/ids []}))))
+    (testing "can I? the person's grants hold each scope"
+      (is (every? (set (for [{:grant/keys [scope-id action]} (:data (call sven :groundwork/grants {}))
+                             :when (= :orders/edit action)]
+                         scope-id))
+                  [acme zinc])))
+    (testing "the leak test asks with one of the person's own scopes and a foreign one"
+      (let [report (leaks/check (update (gw/endpoints *app*) :endpoints select-keys [:orders/of-shops :catalogue/of-shops])
+                                {:person stella :foreign {:shop zinc} :sealed #{acme-secret zinc-secret}})]
+        (is (= [] (:leaked report)))
+        (is (= #{:orders/of-shops :catalogue/of-shops} (set (:checked report)))))
+      (testing "for someone who may act in the foreign scope too, it answers, and the test says so"
+        (let [report (leaks/check (update (gw/endpoints *app*) :endpoints select-keys [:orders/of-shops])
+                                  {:person sven :foreign {:shop zinc}})
+              leaked (first (filter :endpoint (:leaked report)))]
+          (is (= :orders/of-shops (:endpoint leaked)))
+          (is (= {:shop/ids [(str acme) (str zinc)]} (:params leaked))
+              "the list holds a scope the person holds the action in, then the foreign one"))))))
+
+(deftest the-start-checks-several-scopes
+  (let [start (fn [access input]
+                (error #(endpoints/start {:settings     (assoc (get-in (settings example/description {}) [:endpoints])
+                                                              :list [{:x/y {:read (fn [_ _] nil) :access access
+                                                                            :input input :answer :nil}}])
+                                          :db           (gw/db *app*)
+                                          :permissions  (gw/permissions *app*)
+                                          :app-settings {}})))]
+    (is (nil? (start {:action :orders/see :scopes [:shop :shop/ids]} [:map [:shop/ids [:vector :uuid]]])))
+    (is (nil? (start {:action :orders/see :scopes [:shop [:lines :shop/id]]}
+                     [:map [:lines [:vector [:map [:shop/id :uuid]]]]])))
+    (testing "an unknown kind, a path the input lacks, the team action"
+      (is (= ::endpoints/bad-endpoint
+             (:type (start {:action :orders/see :scopes [:depot :shop/ids]} [:map [:shop/ids [:vector :uuid]]]))))
+      (is (= ::endpoints/bad-endpoint
+             (:type (start {:action :orders/see :scopes [:shop :shop/ids]} [:map [:other [:vector :uuid]]]))))
+      (is (= ::endpoints/bad-endpoint
+             (:type (start {:action :groundwork/team :scopes [:shop :shop/ids]} [:map [:shop/ids [:vector :uuid]]])))))))

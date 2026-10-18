@@ -200,3 +200,22 @@ Since 2026-10-18 ([TLS](decisions/2026-10-18-the-database-connection-is-encrypte
    its settings: run migrate on every deploy, also when only the
    permission description or `:endpoints :bells` changed. Tests that start
    in production migrate first, as the owner.
+
+## Several scopes in one request
+
+Since 2026-10-18 ([the decision](decisions/2026-10-18-one-request-may-name-several-scopes.md)).
+Nothing an app has changes; a new `:access` shape is there for a request
+about several scopes (one cart paid as an order in each shop):
+
+- `{:action … :scopes [kind param-or-path]}`: a param holding a list of
+  ids, or a path to them through the params (`[:shop [:cart/lines
+  :shop/id]]`). The action is checked in each scope itself; one the person
+  may not act in answers not-found for the whole request. The handler's
+  transaction sees and writes exactly those scopes (ctx `:scopes`).
+- An endpoint that ran as the system for this reason moves behind the wall
+  with it; a write about several scopes is one transaction, so a handler
+  that opened one transaction per scope runs in the endpoint's instead.
+- The leak test asks such an endpoint with a scope the person holds the
+  action in and the foreign one, and expects not-found.
+- The browser's `can?` takes a list of scope ids: true when the action is
+  given in every one.

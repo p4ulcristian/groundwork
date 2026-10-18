@@ -23,6 +23,13 @@
    and signed-in endpoints carry no ids and are skipped too. Writes are
    called like reads: they're refused before they run, or they leak.
 
+   An endpoint about several scopes (:scopes) is asked with a list of two:
+   a scope of that kind where the person holds the action (from their
+   grants), and the foreign one; or the foreign one alone when they hold it
+   nowhere. It must answer not-found: one scope they may not act in stops
+   the whole request. A list on the way to the ids holds one element per
+   scope, shaped like the generated one.
+
    A list carries no ids: it's called as it is, and its answer must hold
    none of the foreign ids, anywhere in it.
 
@@ -58,16 +65,63 @@
    [groundwork.postgres :as pg]
    [next.jdbc :as jdbc]))
 
-(defn- generate [shape]
-  (require 'malli.experimental.time.generator)
-  ((requiring-resolve 'malli.generator/generate) (wire/schema shape) {:seed 42 :size 3}))
+(defn- generate
+  ([shape] (generate shape 42))
+  ([shape seed]
+   (require 'malli.experimental.time.generator)
+   ((requiring-resolve 'malli.generator/generate) (wire/schema shape) {:seed seed :size 3})))
+
+(defn- reaches?
+  "Whether generated params have something at every step of a path but the
+   last: a map, or a list holding one."
+  [x path]
+  (or (<= (count path) 1)
+      (let [v (get x (first path))]
+        (cond
+          (sequential? v) (boolean (some #(and (map? %) (reaches? % (rest path))) v))
+          (map? v)        (reaches? v (rest path))
+          :else           false))))
+
+(defn- generate-for
+  "An endpoint's params, generated from its input shape. For one about
+   several scopes, a seed whose params reach the scopes' path, so a list on
+   the way has an element to shape the others like."
+  [{:keys [access input]}]
+  (if (and (map? access) (:scopes access))
+    (let [path (endpoints/scopes-path access)]
+      (or (some (fn [seed] (let [g (generate input seed)] (when (reaches? g path) g)))
+                (range 42 74))
+          (generate input)))
+    (generate input)))
+
+(defn- put-scopes
+  "The params with the scopes' path set to these ids: a list on the way
+   holds one element per id, shaped like its first map; a list at the end
+   holds the ids."
+  [x path ids]
+  (let [[k & more] path
+        v          (get x k)]
+    (cond
+      (empty? more)   (assoc x k (if (and (some? v) (not (coll? v))) (first ids) (vec ids)))
+      (sequential? v) (assoc x k (mapv #(put-scopes (or (first (filter map? v)) {}) more [%]) ids))
+      :else           (assoc x k (put-scopes (if (map? v) v {}) more ids)))))
+
+(defn- own-scope
+  "A scope of a kind where the person holds an action, from their grants,
+   other than the foreign one; or nil."
+  [perms {:keys [person flags]} action kind foreign]
+  (when person
+    (let [held (keep (fn [{:grant/keys [scope-id] a :grant/action}] (when (= a action) scope-id))
+                     (check/grants perms {:person person :flags (or flags #{})}))]
+      (first (sort-by str (disj (check/of-kind perms (set held) kind) foreign))))))
 
 (defn- foreign-ids
   "The params with every id the endpoint carries set to the foreign one of
-   its kind; nil when a kind has no foreign id."
-  [{:keys [access ids]} params foreign scope-kinds]
-  (let [{:keys [record scope]} access
-        [own-kind own-param]   (or record scope)
+   its kind; nil when a kind has no foreign id. `own`, for an endpoint about
+   several scopes: a scope the person holds its action in, named first."
+  [{:keys [access ids]} params foreign scope-kinds own]
+  (let [{:keys [record scope scopes]} access
+        [own-kind own-param]   (or record scope scopes)
         ;; held in any kind of scope (:groundwork/team): any foreign scope
         own-kind               (if (= :groundwork/any own-kind)
                                  (some #(when (contains? foreign %) %) scope-kinds)
@@ -77,7 +131,11 @@
       ;; ids go in as text, the way a JSON ask brings them; a fixed scope
       ;; (an id in the :access itself) has no param to set
       (let [text   #(str (foreign %))
-            params (cond-> params (keyword? own-param) (assoc own-param (text own-kind)))]
+            params (cond
+                     scopes               (put-scopes params (endpoints/scopes-path access)
+                                                      (map str (cond-> [] own (conj own) :always (conj (foreign own-kind)))))
+                     (keyword? own-param) (assoc params own-param (text own-kind))
+                     :else                params)]
         (walk/postwalk (fn [x]
                          (if (map? x)
                            (reduce-kv (fn [m k kind]
@@ -205,9 +263,9 @@
                 (assoc-in report [:skipped k] "carries no ids")
 
                 open
-                (let [generated (try (generate (:input entry)) (catch Exception e e))
+                (let [generated (try (generate-for entry) (catch Exception e e))
                       params    (when-not (instance? Exception generated)
-                                  (foreign-ids entry generated foreign (keys (get-in part [:perms :description :scopes]))))]
+                                  (foreign-ids entry generated foreign (keys (get-in part [:perms :description :scopes])) nil))]
                   (cond
                     (instance? Exception generated)
                     (assoc-in report [:skipped k] (str "its input can't be generated: " (ex-message generated)))
@@ -236,7 +294,7 @@
                         (update report :leaked conj {:endpoint k :params params :answer answer})))))
 
                 (and (:list access) (empty? (:ids entry)))
-                (let [generated (try (generate (:input entry)) (catch Exception e e))]
+                (let [generated (try (generate-for entry) (catch Exception e e))]
                   (if (instance? Exception generated)
                     (assoc-in report [:skipped k] (str "its input can't be generated: " (ex-message generated)))
                     (let [answer (endpoints/call part {:endpoint k :params generated :person person
@@ -246,10 +304,13 @@
                         (update report :checked conj k)))))
 
                 :else
-                (let [generated (try (generate (:input entry)) (catch Exception e e))]
+                (let [generated (try (generate-for entry) (catch Exception e e))
+                      own       (when-let [[kind] (:scopes access)]
+                                  (own-scope (:perms part) {:person person :flags flags} (:action access) kind
+                                             (some-> (get foreign kind) str parse-uuid)))]
                   (if (instance? Exception generated)
                     (assoc-in report [:skipped k] (str "its input can't be generated: " (ex-message generated)))
-                    (if-let [params (foreign-ids entry generated foreign (keys (get-in part [:perms :description :scopes])))]
+                    (if-let [params (foreign-ids entry generated foreign (keys (get-in part [:perms :description :scopes])) own)]
                       (let [ask     {:endpoint k :params params :flags (or flags #{}) :request-id "leak-test"}
                             answer  (endpoints/call part (assoc ask :person person))
                             ;; a visitor's records: as another visitor, and as a signed-in stranger

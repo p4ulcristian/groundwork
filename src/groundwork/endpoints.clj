@@ -34,6 +34,8 @@
                          {:action … :scope [kind #uuid \"…\"]}  one fixed scope, for an
                                                            app-wide area (an admin
                                                            area every member shares)
+                         {:action … :scopes [kind path]}   several scopes, their ids
+                                                           in params (see below)
                          {:action … :list kind}            every record of a kind the
                                                            person may
                        A write declares an action that writes (inserts,
@@ -42,6 +44,15 @@
                        :signed-in, by anyone signed in. Asked about a scope,
                        such an action verifies that scope for the request
                        and the wall shows what the sentences give there.
+                       Several scopes: path is a param holding a list of ids
+                       ([:shop :shop/ids]), or a path to them through the
+                       params ([:shop [:cart/lines :shop/id]]: a list on the
+                       way gives its every element). The action is checked
+                       in each of them itself (not in one below it); one the
+                       person may not act in, an empty list or an id that
+                       isn't one answers not-found. The wall opens exactly
+                       those, and the endpoint runs in one transaction:
+                       everything happens or nothing does.
      :input            what may be sent, a malli :map. Every field holding ids
                        (a key named id, …-id or …-ids) says which kind of
                        record they are, {:groundwork/record :machine}, or that
@@ -155,8 +166,17 @@
 (defn- id-key? [k]
   (and (keyword? k) (boolean (re-find #"(^|-)ids?$" (name k)))))
 
-(defn- access-param [{:keys [record scope]}]
-  (let [p (second (or record scope))]
+(defn scopes-path
+  "A :scopes access's path into the params, as a vector of keys."
+  [{:keys [scopes]}]
+  (let [p (second scopes)]
+    (if (keyword? p) [p] p)))
+
+(defn- access-param
+  "The param holding the access's own ids: the record's, the scope's, the
+   last key of the scopes' path."
+  [{:keys [record scope scopes] :as access}]
+  (let [p (if scopes (peek (scopes-path access)) (second (or record scope)))]
     (when (keyword? p) p)))
 
 (defn- as-id
@@ -168,6 +188,21 @@
 (defn- scope-of [{:keys [scope]} params]
   (let [[_ p] scope]
     (if (uuid? p) p (as-id (get params p)))))
+
+(defn- scopes-named
+  "The scope ids a :scopes access's path reaches in the params, once each,
+   in order: a list on the way gives its every element, a list at the end
+   its every id."
+  [access params]
+  (letfn [(walk [x path]
+            (cond
+              (nil? x)                             []
+              (sequential? x)                      (mapcat #(walk % path) x)
+              (set? x)                             (mapcat #(walk % path) x)
+              (empty? path)                        [x]
+              (map? x)                             (walk (get x (first path)) (rest path))
+              :else                                []))]
+    (vec (distinct (map as-id (walk params (scopes-path access)))))))
 
 (defn- public?
   "Whether an endpoint may be asked by nobody signed in: :public, or an
@@ -183,6 +218,19 @@
   (let [ss (get-in perms [:by-action action])]
     (and (seq ss) (every? description/open-word ss))))
 
+(defn- open-in-kind!
+  "An action open only to someone who belongs nowhere verifies only a scope
+   of a kind whose rows its sentences open."
+  [perms k action kind]
+  (when (open-only? perms action)
+    (let [ss         (get-in perms [:by-action action])
+          open-kinds (set (for [{s-kind :kind} ss
+                                v (vals (description/scope-columns (get-in perms [:description :records s-kind])))]
+                            v))]
+      (when-not (open-kinds kind)
+        (bad k (str action " is open on rows of a " (str/join " or a " (map name (sort open-kinds)))
+                    ", not in a " (name kind)))))))
+
 (defn- check-access [perms k access input read?]
   (let [kinds   (set (keys (get-in perms [:description :records])))
         scopes  (set (keys (get-in perms [:description :scopes])))
@@ -192,11 +240,12 @@
 
       (not (and (map? access) (keyword? (:action access))
                 (= 2 (count access))
-                (some #{:record :scope :list} (keys access))))
-      (bad k ":access must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param]} or {:action … :list kind}")
+                (some #{:record :scope :scopes :list} (keys access))))
+      (bad k (str ":access must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param]},"
+                  " {:action … :scopes [kind param-or-path]} or {:action … :list kind}"))
 
       :else
-      (let [{:keys [action record scope list]} access
+      (let [{:keys [action record scope list] several :scopes} access
             team? (= description/team-action action)
             ss    (get-in perms [:by-action action])]
         (when (and team? (not (and scope (= :groundwork/any (first scope)))))
@@ -221,13 +270,16 @@
             (when-not team?
               (when (empty? ss)
                 (bad k (str "no sentence gives " action)))
-              (when (open-only? perms action)
-                (let [open-kinds (set (for [{s-kind :kind} ss
-                                            v (vals (description/scope-columns (get-in perms [:description :records s-kind])))]
-                                        v))]
-                  (when-not (open-kinds kind)
-                    (bad k (str action " is open on rows of a " (str/join " or a " (map name (sort open-kinds)))
-                                ", not in a " (name kind)))))))))
+              (open-in-kind! perms k action kind))))
+        (when several
+          (let [[kind _] several]
+            (when-not (scopes kind)
+              (bad k (str "no scope kind " kind)))
+            (when-not (in-map? (first (scopes-path access)))
+              (bad k (str "the scopes' param " (first (scopes-path access)) " isn't in :input")))
+            (when (empty? ss)
+              (bad k (str "no sentence gives " action)))
+            (open-in-kind! perms k action kind)))
         (when list
           (when-not (kinds list)
             (bad k (str "no record kind " list)))
@@ -372,7 +424,7 @@
   (let [also (ids-in ids params)]
     (case access
       (:public :signed-in) {:read #{} :write #{}}
-      (let [{:keys [action record scope list]} access
+      (let [{:keys [action record scope list] several :scopes} access
             open? (some? (check/open-level perms action))]
         ;; an open action's other ids are each held to its sentences, not
         ;; only to its scope: an id it doesn't show answers like one that isn't there
@@ -401,6 +453,22 @@
                                                                                :more (remove own found)})]
                      (also-belongs! perms read also)
                      {:read read :write write :open? (empty? held)}))
+          several (let [kind  (first several)
+                        named (scopes-named access params)
+                        _     (when (or (empty? named) (not-every? uuid? named))
+                                (throw (ex-info "Not found" {:type ::permissions/not-found :scopes named})))
+                        held  (check/held-in perms {:person person :visitor visitor :flags flags
+                                                    :action action :scopes named})
+                        open  (when open?
+                                (check/open-scopes perms {:person person :flags flags :action action
+                                                          :scopes named :kind kind}))
+                        found (into held open)]
+                    (when-not (every? found named)
+                      (throw (ex-info "Not found" {:type ::permissions/not-found
+                                                   :scopes (vec (remove found named))})))
+                    (let [{:keys [read write]} (check/with-denies perms {:action action :own (set named) :more #{}})]
+                      (also-belongs! perms read also)
+                      {:read read :write write :open? (not-every? held named)}))
           list   (let [{:keys [scopes every?]} (check/scopes-listed perms {:person person :visitor visitor
                                                                                  :flags flags :action action :kind list})
                        {:keys [read write]}    (check/with-denies perms {:action action :own #{}
