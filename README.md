@@ -87,7 +87,7 @@ the JVM tests against Postgres 18, clj-kondo, the browser half's tests on node.
 (def app (gw/start {:environment :development
                     :db          {…}                          ; see Postgres, Start
                     :migrations  {:schema-snapshot "schema.sql"}
-                    :page        {:lang "en" :title "Acme Orders" :description nil
+                    :page        {:title "Acme Orders" :description nil
                                   :icon "/icon.svg" :stylesheets ["/app.css"] :head []}
                     :browser     {:build :app :entry 'app.browser/start      ; see In the browser
                                   :output-dir "resources/public/js" :asset-path "/js"
@@ -103,7 +103,7 @@ the JVM tests against Postgres 18, clj-kondo, the browser half's tests on node.
                                                             :client-ip-header "cf-connecting-ip"
                                                             :request-id-header "x-request-id"}
                                   :languages               {:supported ["en" "de"] :default "en"
-                                                            :cookie "lang"}    ; or nil
+                                                            :cookie "lang"}    ; one language: {:supported ["en"] :default "en" :cookie nil}
                                   :test-sign-in            nil                ; or {:secret …}, never in production
                                   :hashed-files            "(?i)\\.[0-9a-f]{8,}\\."   ; or nil
                                   :gzip-min-bytes          1024}               ; or nil
@@ -113,7 +113,7 @@ the JVM tests against Postgres 18, clj-kondo, the browser half's tests on node.
                     :permissions {…}                          ; see Permissions
                     :limits      {:public {:reads-per-minute 600 :writes-per-minute 60}   ; see Limits
                                   :on-limit nil}
-                    :parquery    {:endpoints [app.jobs/endpoints …]   ; see Endpoints
+                    :endpoints   {:list [app.jobs/endpoints …]        ; see Endpoints
                                   :max-asks 50 :max-running 16
                                   :bearer nil
                                   :bells {:global {} :personal {} :silent {}}}}))
@@ -171,7 +171,6 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 
 | Key | Type | What it is | Example |
 |-----|------|------------|---------|
-| `:page :lang` | text | The page's language | `"en"` |
 | `:page :title` | text | The browser tab's title | `"Acme Orders"` |
 | `:page :description` | text or nil | A one-sentence summary for search results and link previews, or nil | `"Orders and invoices for small shops"` |
 | `:page :icon` | text | The tab's icon | `"/icon.svg"` |
@@ -187,11 +186,11 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:browser :output-dir` | text | Where the compiled files go, a folder whose public/ is served | `"resources/public/js"` |
 | `:browser :asset-path` | path | Where the browser fetches them | `"/js"` |
 | `:browser :watch?` | true or false | In development, whether the start also watches the build | `true` |
-| `:browser :modules` (optional) | map of modules | The build's modules, for an app with more than one: module → {:init-fn … or :entries […], :depends-on #{…}}. Without it there is one, :main, starting :entry | `{:base {:init-fn app.browser/start}, :admin {:entries [ap…` |
+| `:browser :modules` (optional) | map of modules | The build's modules, for an app with more than one: module → {:init-fn … or :entries […], :depends-on #{…}, :web-worker? …}. Without it there is one, :main, starting :entry | `{:base {:init-fn app.browser/start}, :admin {:entries [ap…` |
 | `:browser :modules … :init-fn` (optional) | value |  |  |
 | `:browser :modules … :entries` (optional) | list |  |  |
 | `:browser :modules … :depends-on` (optional) | value |  |  |
-| `:browser :modules … :web-worker` (optional) | true or false |  |  |
+| `:browser :modules … :web-worker?` (optional) | true or false |  |  |
 | `:browser :loader?` (optional) | true or false | Whether modules no page names load on demand (shadow-cljs's module loader) | `true` |
 | `:browser :options` (optional) | map | Extra shadow-cljs build options, merged over Groundwork's: JS resolution, build hooks, compiler options | `{:js-options {:js-provider :shadow}}` |
 
@@ -218,7 +217,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:web :proxies :trusted` | list of addresses or ranges | Trusted proxy addresses or ranges | `["10.0.0.0/8" "::1"]` |
 | `:web :proxies :client-ip-header` | text or nil | The header holding the visitor's address, or nil | `"cf-connecting-ip"` |
 | `:web :proxies :request-id-header` | text or nil | The header holding a request id to keep, or nil | `"x-request-id"` |
-| `:web :languages` | map or nil | The languages the app speaks, or nil for one | `{:supported ["en" "de"], :default "en", :cookie "lang"}` |
+| `:web :languages` | map | The languages the app speaks, the one place a language is set: the page takes the request's; an app of one language lists just it | `{:supported ["en" "de"], :default "en", :cookie "lang"}` |
 | `:web :languages :supported` | list of language codes | Language codes | `["en" "de"]` |
 | `:web :languages :default` | language code | The language when nothing else says | `"en"` |
 | `:web :languages :cookie` | name or nil | A cookie holding the person's choice, or nil | `"lang"` |
@@ -297,43 +296,43 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:jobs :poll-ms` | positive whole number | How often to look for due jobs when nothing wakes the workers | `5000` |
 | `:jobs :on?` | true or false | Whether this server runs jobs; false on previews, where they wait | `true` |
 
-#### `:parquery`: The endpoints and how they're asked
+#### `:endpoints`: The endpoints and how they're asked (at the address /parquery)
 
 | Key | Type | What it is | Example |
 |-----|------|------------|---------|
-| `:parquery :endpoints` | list of endpoint maps | The app's endpoint maps, gathered from its areas | `[app.jobs/endpoints app.orders/endpoints]` |
-| `:parquery :max-asks` | positive whole number | The most asks one request may carry | `50` |
-| `:parquery :max-running` | positive whole number | The most asks running at once across the server; keep it below the pool size | `16` |
-| `:parquery :bearer` | function or nil | Whose token a tool calls with: (fn [token] person-id-or-nil), or nil | `app.tools/token->person` |
-| `:parquery :on-answer` | function or nil | After every ask over HTTP: (fn [{:keys [endpoint status ms person request-id]}] …), or nil | `app.metrics/on-answer` |
-| `:parquery :bells` | map | How the tables outside the permission description ring | `{:global {:countries "reference data only the platform's …` |
-| `:parquery :bells :global` | table → reason | Tables every watcher of them hears about: table → the reason. A global table is one whose rows belong to nobody, or whose every row is read by everyone; a table whose rows belong to a scope goes in the permission description | `{:countries "reference data only the platform's staff cha…` |
-| `:parquery :bells :personal` | table → column | Tables only their person hears about: table → person column | `{:notifications :notification/person-id}` |
-| `:parquery :bells :silent` (optional) | table → reason | Tables that ring nothing, on purpose: table → the reason. Every table of the app says how it rings, here or in the permission description, or the start refuses; :groundwork/every-other-table covers the rest of a database the app shares with something else | `{:import_log "written once by the nightly import, shown n…` |
+| `:endpoints :list` | list of endpoint maps | The app's endpoint maps, gathered from its areas | `[app.jobs/endpoints app.orders/endpoints]` |
+| `:endpoints :max-asks` | positive whole number | The most asks one request may carry | `50` |
+| `:endpoints :max-running` | positive whole number | The most asks running at once across the server; keep it below the pool size | `16` |
+| `:endpoints :bearer` | function or nil | Whose token a tool calls with: (fn [token] person-id-or-nil), or nil | `app.tools/token->person` |
+| `:endpoints :on-answer` | function or nil | After every ask over HTTP: (fn [{:keys [endpoint status ms person request-id]}] …), or nil | `app.metrics/on-answer` |
+| `:endpoints :bells` | map | How the tables outside the permission description ring | `{:global {:countries "reference data only the platform's …` |
+| `:endpoints :bells :global` | table → reason | Tables every watcher of them hears about: table → the reason. A global table is one whose rows belong to nobody, or whose every row is read by everyone; a table whose rows belong to a scope goes in the permission description | `{:countries "reference data only the platform's staff cha…` |
+| `:endpoints :bells :personal` | table → column | Tables only their person hears about: table → person column | `{:notifications :notification/person-id}` |
+| `:endpoints :bells :silent` (optional) | table → reason | Tables that ring nothing, on purpose: table → the reason. Every table of the app says how it rings, here or in the permission description, or the start refuses; :groundwork/every-other-table covers the rest of a database the app shares with something else | `{:import_log "written once by the nightly import, shown n…` |
 
 #### A route's data (in `:web :routes`)
 
 | Key | Type | What it is | Example |
 |-----|------|------------|---------|
-| `<path> :access` (optional) | :public, :signed-in or {:action … :record [kind param]} | Who may use it (or :server-to-server true) | `:public` |
-| `<path> :server-to-server` (optional) | true or false | Called by another server (a webhook): no session, no Origin check; the handler checks the call | `true` |
-| `<path> :embeddable` (optional) | true, :same-origin or origins | Other sites may show it in a frame: true (any https site), :same-origin, or a list of origins | `true` |
+| `<path> :access` (optional) | :public, :signed-in or {:action … :record\|:scope\|:list …} | Who may use it, the shape an endpoint's :access has; a route checks :public, :signed-in or an action on a record (or :server-to-server? true) | `:public` |
+| `<path> :server-to-server?` (optional) | true or false | Called by another server (a webhook): no session, no Origin check; the handler checks the call | `true` |
+| `<path> :embeddable?` (optional) | true, :same-origin or origins | Other sites may show it in a frame: true (any https site), :same-origin, or a list of origins | `true` |
 | `<path> :page` (optional) | map or function | The page shell's own details for this route: a map, or a function of the request | `{:title "Design your part"}` |
 | `<path> :max-body-bytes` (optional) | positive whole number | The largest body it accepts, over the app's :max-body-bytes | `104857600` |
 | `<path> :rate-limit` (optional) | {:per-minute n :per-day n :by …} | How often a caller may use it, counted by :person or :client-ip (see groundwork.limits) | `{:per-minute 10, :by :client-ip}` |
 
-#### An endpoint's entry (in `:parquery :endpoints`)
+#### An endpoint's entry (in `:endpoints :list`)
 
 | Key | Type | What it is | Example |
 |-----|------|------------|---------|
 | `<endpoint name> :read` (optional) | function | Its handler, for a read: (fn [ctx params] answer) | `app.jobs/list` |
 | `<endpoint name> :write` (optional) | function | Its handler, for a write: (fn [ctx params] answer) | `app.jobs/move` |
-| `<endpoint name> :permission` | :public, :signed-in or {:action … :record\|:scope\|:list …} | Who may ask it | `{:action :jobs/see, :scope [:shop :shop/id]}` |
+| `<endpoint name> :access` | :public, :signed-in or {:action … :record\|:scope\|:list …} | Who may ask it: :public, :signed-in, or an action on a record, a scope or a list (see groundwork.endpoints) | `{:action :jobs/see, :scope [:shop :shop/id]}` |
 | `<endpoint name> :input` | malli shape | What may be sent, a malli :map; id fields say their record kind | `[:map [:shop/id :uuid]]` |
 | `<endpoint name> :answer` | malli shape | What may be sent back, a malli shape | `[:vector [:map [:job/id :uuid]]]` |
 | `<endpoint name> :reads` (optional) | list of tables | Tables a read uses that Postgres can't see in its SQL | `[:jobs]` |
 | `<endpoint name> :rate-limit` (optional) | {:per-minute n :per-day n :by …} | How often a caller may ask it (see groundwork.limits) | `{:per-day 20, :by :person}` |
-| `<endpoint name> :keeps-for-visitor` (optional) | true or false | A write that keeps something for someone not signed in: a visitor without a session gets one, so the row can be theirs | `true` |
+| `<endpoint name> :keeps-for-visitor?` (optional) | true or false | A write that keeps something for someone not signed in: a visitor without a session gets one, so the row can be theirs | `true` |
 <!-- end of the settings reference -->
 
 ---
@@ -539,13 +538,15 @@ resources/migrations/
 ["/orders/:order-id/photos"
                      {:post upload-photo
                       :access {:action :orders/edit :record [:order :order-id]}}]   ; not allowed: 404
-["/payments/webhook" {:post handle-webhook :server-to-server true}]   ; checks the call itself
+["/payments/webhook" {:post handle-webhook :server-to-server? true}]   ; checks the call itself
 ```
 
-  A permission names the action and the record whose id is the path
+  `:access` has the shape an endpoint's has (see Endpoints). A route checks
+  `:public`, `:signed-in`, or an action on the record whose id is the path
   parameter (or form or query parameter); it's checked like an endpoint's,
   through the record's own scope. A record that isn't the person's answers
-  404, the same as one that isn't there.
+  404, the same as one that isn't there. An action on a `:scope` or a
+  `:list` is an endpoint's: a route naming one stops the start.
 - **Hooks** for logs and metrics: `:on-request` hears every answer
   (`{:method :route :status :ms :person :flags :request-id :client-ip}`,
   route as its template, like `"/orders/:order-id"`); `:on-error` hears an
@@ -556,12 +557,15 @@ resources/migrations/
   :trusted` address or range is believed about the visitor's address
   (`:client-ip-header`, its first entry) and its id; otherwise the
   connection's address and a new id (`web/client-ip`).
-- **Languages** (`:languages`, or nil for one): a `/de/…` prefix is taken
-  off before routing; the request's language (`web/language`) is the
-  address's, then the cookie's (when named), then the browser's
-  Accept-Language, then the default. The page shell's `lang` follows it, and
-  its alternate links name the same page in every language (the default
-  without a prefix, plus x-default), unless the route gives its own.
+- **Languages** (`:languages`, the one place a language is set): with more
+  than one, a `/de/…` prefix is taken off before routing; the request's
+  language (`web/language`) is the address's, then the cookie's (when
+  named), then the browser's Accept-Language, then the default. The page
+  shell's `lang` follows it, and its alternate links name the same page in
+  every language (the default without a prefix, plus x-default), unless the
+  route gives its own. An app of one language lists just it
+  (`{:supported ["en"] :default "en" :cookie nil}`): every request is in it,
+  with no prefix and no alternate links.
 - **Test sign-in** for automated tests: with `:test-sign-in {:secret …}`
   (16+ characters; set in production, the app refuses to start), `POST
   /groundwork/test-sign-in?person=<uuid>&flags=impersonated&hours=1` with
@@ -599,7 +603,7 @@ resources/migrations/
   With `:styles`, the page links the stylesheet bundles of its modules
   (see Styles), before the app's own `:stylesheets`.
 - **A page per route:** a route's `:page`, a map or a function of the
-  request, is merged over the app's: its own `:lang :title :description`,
+  request, is merged over the app's: its own `:title :description`,
   `:canonical`, `:alternates` (hreflang links), extra `:stylesheets
   :scripts :head`, and `:body`, HTML the server writes inside
   `<div id="app">` for search engines and the first paint.
@@ -626,13 +630,13 @@ resources/migrations/
   tells the page about a save over a websocket on its own port).
 
 ```clojure
-["/customize"        {:get web/page :access :public :embeddable true}]                     ; any https site may frame it
-["/partner-widget"   {:get web/page :access :public :embeddable ["https://shop.example"]}] ; only these sites
-["/label-editor"     {:get web/page :access :signed-in :embeddable :same-origin}]       ; only the app's own pages
-["/payments/webhook" {:post handle-webhook :server-to-server true}]
+["/customize"        {:get web/page :access :public :embeddable? true}]                     ; any https site may frame it
+["/partner-widget"   {:get web/page :access :public :embeddable? ["https://shop.example"]}] ; only these sites
+["/label-editor"     {:get web/page :access :signed-in :embeddable? :same-origin}]       ; only the app's own pages
+["/payments/webhook" {:post handle-webhook :server-to-server? true}]
 ```
 
-- **Embeddable pages:** a route with `:embeddable` may be shown in other
+- **Embeddable pages:** a route with `:embeddable?` may be shown in other
   sites' frames, any https site or only the listed ones. Every other answer
   stays unframeable. `web/page` answers a route with the page shell.
 - **Server-to-server routes** (a payment provider's webhook): no session is
@@ -675,7 +679,7 @@ resources/migrations/
   session, an hour). At sign-in its data
   moves into the signed-in session, under a new key.
 - **In another site's frame** the browser doesn't send the Lax cookie. A
-  visitor session made on an `:embeddable` route uses a second cookie,
+  visitor session made on an `:embeddable?` route uses a second cookie,
   `<cookie-name>_embed` (SameSite=None; Secure; Partitioned), which the
   framed page's own requests carry. It only ever holds a visitor: sign-in in
   a frame is refused, so signing in and checkout open on the app's own site,
@@ -837,7 +841,7 @@ table under it, with its own sentences.
 design): a `:visitor` column holds the id of their visitor session, which
 is Groundwork's own. `[:me <visitor column>]` gives them the row, and its
 endpoints may be asked signed out. A write that keeps something for a
-visitor says `:keeps-for-visitor true`: asked without a session, the
+visitor says `:keeps-for-visitor? true`: asked without a session, the
 visitor gets one first. **At sign-in Groundwork moves the visitor's rows to
 the person** (the kind's one person column); once the visitor's session
 ends, its rows are the system's only.
@@ -858,23 +862,24 @@ Everything the browser, or a tool, can ask. The app lists them by area:
 
 ```clojure
 (def endpoints
-  {:jobs/of-shop {:read       #'jobs/of-shop                         ; (fn [ctx params] answer)
-                  :permission {:action :orders/see :scope [:shop :shop/id]}
-                  :input      [:map [:shop/id :uuid]]
-                  :answer     [:vector job]}
-   :jobs/move    {:write      #'jobs/move
-                  :permission {:action :jobs/move :record [:job :job/id]}
-                  :input      [:map [:job/id :uuid]
-                                    [:machine/id {:groundwork/record :machine} :uuid]]
-                  :answer     job}})
+  {:jobs/of-shop {:read   #'jobs/of-shop                         ; (fn [ctx params] answer)
+                  :access {:action :orders/see :scope [:shop :shop/id]}
+                  :input  [:map [:shop/id :uuid]]
+                  :answer [:vector job]}
+   :jobs/move    {:write  #'jobs/move
+                  :access {:action :jobs/move :record [:job :job/id]}
+                  :input  [:map [:job/id :uuid]
+                                [:machine/id {:groundwork/record :machine} :uuid]]
+                  :answer job}})
 ```
 
-- Every endpoint declares its handler (`:read` or `:write`), `:permission`,
+- Every endpoint declares its handler (`:read` or `:write`), `:access`,
   `:input` and `:answer`, or the app doesn't start; a name in two areas
   doesn't start either.
-- `:permission`: `:public`, `:signed-in`, or an action on one record
-  (`:record`), on a scope (`:scope`, with every scope below it) or on every
-  record of a kind the person may (`:list`). A write declares an action
+- `:access`, who may ask it, the same shape as a route's: `:public`,
+  `:signed-in`, or an action on one record (`:record`), on a scope
+  (`:scope`, with every scope below it) or on every record of a kind the
+  person may (`:list`). A write declares an action
   that writes. An action a sentence gives `:anyone` may be asked signed
   out; one it gives a visitor, by a visitor.
 - The handler's ctx has `:scopes`, the verified scopes, and
@@ -916,7 +921,7 @@ routes alike:
   the address when no one is signed in.
 - A public endpoint or route without its own limit gets `:public`, reads
   and writes each their own. Signed-in calls without one have none.
-- Checked after the permission, before the work. An endpoint answers
+- Checked after `:access`, before the work. An endpoint answers
   `:too-many` with `:limit` and `:retry-after-seconds`, which the store
   keeps as the entry's error; a route answers 429 with `Retry-After`. Every
   hit goes to `:on-limit`; writes are never repeated by themselves.
@@ -935,7 +940,7 @@ in Postgres (`groundwork.jobs`):
 {:app.mail/send-confirmation {:run        (fn [ctx params] …)
                               :params     [:map [:order/id :uuid]]
                               :timeout-ms 60000 :attempts 5
-                              :scope      [:order :order/id]}}   ; optional
+                              :runs-in    [:order :order/id]}}   ; optional: where it runs
 
 (jobs/enqueue! ctx :app.mail/send-confirmation {:order/id id})   ; in a write; {:in-ms n} for later
 ```
@@ -944,7 +949,7 @@ in Postgres (`groundwork.jobs`):
   commits, and the workers hear about it then (or within `:poll-ms`).
 - Each due job is claimed by one worker (`FOR UPDATE SKIP LOCKED`), on any
   server, and runs on a virtual thread within its `:timeout-ms`, in one
-  transaction: as the system, or behind the wall of its `:scope` only.
+  transaction: as the system, or behind the wall of its `:runs-in` scope only.
 - A failure waits longer each time (30 s, 1 min, 2 min… up to an hour);
   after `:attempts` the job is dead, kept with its error. Work that no
   retry can fix throws `(jobs/give-up "why")` and is dead at once;
@@ -1060,7 +1065,7 @@ pages once, in a `.cljc` file the server and the browser both read:
 
 (def routes
   [["/orders" {:name   :orders
-               :access {:action :orders/see :scope [:shop :shop/id]}   ; who may open it (the server)
+               :access :signed-in                                      ; who may open it (the server)
                :title  "Orders"                                        ; the tab's title, on both sides
                :page   {:description "Every order of the shop"}        ; the page shell's details (the server)
                #?@(:cljs [:view  views/orders                          ; its screen
@@ -1075,7 +1080,7 @@ pages once, in a `.cljc` file the server and the browser both read:
 ```clojure
 ;; the server's settings: its pages come from the same records
 :routes (into (web/page-routes app.routes/routes)
-              [["/webhooks/payments" {:post payments/webhook :server-to-server true}]])
+              [["/webhooks/payments" {:post payments/webhook :server-to-server? true}]])
 ```
 
 - **What every route gets:** an address leads to its screen, with the
