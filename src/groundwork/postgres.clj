@@ -26,8 +26,9 @@
   (:import
    (com.zaxxer.hikari HikariConfig HikariDataSource)
    (java.net URL)
-   (java.sql Connection PreparedStatement ResultSet)
+   (java.sql Connection DriverManager PreparedStatement ResultSet)
    (java.time Instant LocalDate LocalDateTime LocalTime OffsetDateTime OffsetTime ZoneOffset)
+   (java.util Properties)
    (java.util.concurrent ConcurrentHashMap)
    (org.postgresql.util PGobject PSQLException)))
 
@@ -71,30 +72,81 @@
     :else        (throw (ex-info ":statement-timeout-ms must be a positive integer or :none"
                                  {:type ::bad-setting :setting :statement-timeout-ms :value v}))))
 
+(defn tls-properties
+  "PgJDBC's properties for a :db's :tls. :verified is verify-full: the
+   connection is encrypted, the server's certificate must lead to a trusted
+   one (the Java runtime's trusted certificates, or the :tls-root-cert file)
+   and name :host; a server without TLS is refused, never used plain. :off
+   is plain, whatever PgJDBC's defaults on the classpath say."
+  [{:keys [tls tls-root-cert]}]
+  (case tls
+    :off      {"sslmode" "disable"}
+    :verified (if tls-root-cert
+                {"sslmode"     "verify-full"
+                 "sslfactory"  "org.postgresql.ssl.LibPQFactory"
+                 "sslrootcert" tls-root-cert}
+                {"sslmode"     "verify-full"
+                 "sslfactory"  "org.postgresql.ssl.DefaultJavaSSLFactory"})))
+
+(defn libpq-environment
+  "The same TLS for a libpq program (pg_dump), as its environment. Without a
+   :tls-root-cert, libpq's \"system\" (libpq 16 or newer) checks against the
+   operating system's trusted certificates."
+  [{:keys [tls tls-root-cert]}]
+  (case tls
+    :off      {"PGSSLMODE" "disable"}
+    :verified {"PGSSLMODE" "verify-full" "PGSSLROOTCERT" (or tls-root-cert "system")}))
+
+(defn- check-root-cert!
+  "A :tls-root-cert that can't be read throws here, naming the file, not at
+   the first connection."
+  [{:keys [tls-root-cert]}]
+  (when (and tls-root-cert (not (.canRead (io/file tls-root-cert))))
+    (throw (ex-info (str ":db :tls-root-cert names no file that can be read: " tls-root-cert)
+                    {:type ::bad-setting :setting :tls-root-cert :value tls-root-cert}))))
+
+(defn jdbc-url
+  "The PgJDBC address of a :db."
+  [{:keys [host port database]}]
+  (connection/jdbc-url {:dbtype "postgresql" :host host :port port :dbname database}))
+
+(defn connect
+  "A connection of its own, outside the pool, as a :db says, its TLS too:
+   for a LISTEN that keeps its connection, or a query in a mode of its own.
+   `more` are more PgJDBC properties: {\"ApplicationName\" …}. Close it."
+  ^Connection [{:keys [user password] :as db-settings} more]
+  (check-root-cert! db-settings)
+  (let [props (Properties.)]
+    (.setProperty props "user" (str user))
+    (when password (.setProperty props "password" (str password)))
+    (doseq [[k v] (merge (tls-properties db-settings) more)]
+      (.setProperty props (str k) (str v)))
+    (DriverManager/getConnection (jdbc-url db-settings) props)))
+
 (defn start
   "A db: a HikariCP connection pool plus Groundwork's hooks. Every setting is
    required; a missing one throws.
 
      :host :port :database :user
      :password             nil for none
+     :tls                  :verified or :off, see tls-properties
+     :tls-root-cert        optional, with :verified: the certificates to check against
      :pool-size            a fixed number of connections, as HikariCP advises
      :statement-timeout-ms Postgres cancels a statement that runs longer; :none for no limit
      :time-zone            the session's TimeZone, e.g. \"UTC\": how Postgres reads and
                            shows times without an offset
      :on-transaction (fn [tx] …)   optional, runs first in every with-transaction
      :on-query       (fn [{:keys [file sql ms error]}] …)   optional, after every query"
-  [{:keys [host port database user password pool-size statement-timeout-ms time-zone
+  [{:keys [user password pool-size statement-timeout-ms time-zone
            on-transaction on-query]
     :as   opts}]
   (settings/check-part! :db opts)
+  (check-root-cert! opts)
   (let [config (doto (HikariConfig.)
-                 (.setJdbcUrl (connection/jdbc-url {:dbtype "postgresql"
-                                                    :host   host
-                                                    :port   port
-                                                    :dbname database}))
+                 (.setJdbcUrl (jdbc-url opts))
                  (.setUsername user)
                  (.setMaximumPoolSize pool-size)
-                 (.setPoolName (str "groundwork-" database))
+                 (.setPoolName (str "groundwork-" (:database opts)))
                  ;; set by Postgres when a connection opens; :none is 0, so a
                  ;; limit on the database role doesn't apply behind the config's back
                  (.addDataSourceProperty "options"
@@ -107,6 +159,8 @@
                  ;; first, and Groundwork's own schema must never catch an app's table.
                  (.setConnectionInitSql (str "SET TIME ZONE '" time-zone "'; SET search_path = public")))]
     (when password (.setPassword config password))
+    (doseq [[k v] (tls-properties opts)]
+      (.addDataSourceProperty config k v))
     {::datasource     (HikariDataSource. config)
      ::on-transaction on-transaction
      ::on-query       on-query}))

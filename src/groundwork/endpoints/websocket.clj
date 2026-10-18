@@ -308,8 +308,9 @@
                         :on-close   (fn [ch _] (swap! lines dissoc ch))}))))
 
 (defn start
-  "The bells: triggers installed, a connection listening, the lines' sweep."
-  [{:keys [endpoints db db-settings settings sessions]}]
+  "The bells: triggers installed (in production, checked: migrate installed
+   them), a connection listening, the lines' sweep."
+  [{:keys [endpoints db db-settings settings sessions environment]}]
   (let [description (get-in endpoints [:perms :description])
         tables      (bells/ringing-tables description (:bells settings))
         part        {:endpoints   endpoints
@@ -323,7 +324,9 @@
                      :recent      (atom [])
                      :stopped     (atom false)}]
     (bells/check-every-table-rings! db tables (:bells settings))
-    (bells/install-bells! db tables)
+    (if (= :production environment)
+      (bells/check-installed! db tables)
+      (bells/install-bells! db tables))
     (assoc part
            :listener (Thread/startVirtualThread #(listen! part))
            :sweeper  (Thread/startVirtualThread #(sweep! part)))))

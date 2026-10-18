@@ -18,7 +18,7 @@
    [groundwork.build :as build]
    [groundwork.core :as gw]
    [groundwork.repl.dev :as dev]
-   [groundwork.test-support :refer [app-settings]]
+   [groundwork.test-support :as support :refer [app-settings owner]]
    [groundwork.web :as web]
    [jsonista.core :as json])
   (:import
@@ -164,13 +164,14 @@
   (if-let [path (chrome)]
     (let [;; a release: one file, as production serves it, under the strict policy
           _       (build/release! browser styles)
-          app     (gw/start (-> app-settings
-                                (assoc :environment :production)
-                                (assoc-in [:web :test-sign-in] nil)
-                                (assoc :browser browser :styles styles)
-                                (assoc-in [:page :stylesheets] [])
-                                (assoc-in [:web :hashed-files] "(?i)\\.[0-9a-f]{8,}\\.")
-                                (assoc-in [:web :routes] (web/page-routes routes/routes))))
+          release (-> app-settings
+                      (assoc :browser browser :styles styles)
+                      (assoc-in [:page :stylesheets] [])
+                      (assoc-in [:web :hashed-files] "(?i)\\.[0-9a-f]{8,}\\.")
+                      (assoc-in [:web :routes] (web/page-routes routes/routes))
+                      support/production)
+          _       (gw/migrate! release owner)
+          app     (gw/start release)
           origin  (str "http://127.0.0.1:" (gw/port app))
           profile (str (Files/createTempDirectory "groundwork-chrome" (make-array FileAttribute 0)))
           {:keys [^Process process address]} (launch path profile)]

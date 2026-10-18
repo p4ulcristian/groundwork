@@ -1,7 +1,10 @@
 (ns groundwork.test-support
   "What every test needs: the local database groundwork_test (or
    GROUNDWORK_TEST_HOST / _PORT / _DB / _USER / _PASSWORD) and a way to run
-   plain SQL against it outside Groundwork."
+   plain SQL against it outside Groundwork. A production start needs a
+   second role, which owns nothing: groundwork_app (or
+   GROUNDWORK_TEST_APP_USER / _APP_PASSWORD), LOGIN, no superuser, no
+   BYPASSRLS; the tests' own role owns the tables and migrates."
   (:require
    [next.jdbc :as jdbc]))
 
@@ -15,7 +18,19 @@
    :password             (env "GROUNDWORK_TEST_PASSWORD" nil)
    :pool-size            2
    :statement-timeout-ms 5000
-   :time-zone            "UTC"})
+   :time-zone            "UTC"
+   :tls                  :off})
+
+(def owner
+  "The role that owns the test database's tables, as migrate takes it: the
+   tests' own."
+  {:user (:user db-settings) :password (:password db-settings)})
+
+(def app-role
+  "The role a production start connects as: it owns nothing and holds what
+   migrate grants."
+  {:user     (env "GROUNDWORK_TEST_APP_USER" "groundwork_app")
+   :password (env "GROUNDWORK_TEST_APP_PASSWORD" "groundwork_app")})
 
 (defn sql!
   "Run SQL text on its own connection, outside Groundwork, with the search
@@ -69,3 +84,12 @@
                  :bells {:global {} :personal {}
                          :silent {:groundwork/every-other-table "the test database is shared by every test"}}
                  :on-answer nil}})
+
+(defn production
+  "A test app's settings for production: the app's role connects, no
+   test sign-in. Migrate them as `owner` before starting."
+  [settings]
+  (-> settings
+      (assoc :environment :production)
+      (assoc-in [:web :test-sign-in] nil)
+      (update :db merge app-role)))

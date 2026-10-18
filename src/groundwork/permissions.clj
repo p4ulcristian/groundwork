@@ -13,11 +13,12 @@
    A record is checked through its own columns, never a scope the browser
    names; a record that isn't the person's answers not-found.
 
-   The database wall: at start, every record kind's table gets row-level
-   security, a policy per command made from the sentences. A transaction
-   sees only rows of the scopes verified for it (in-wall), as the sentences
-   allow, or every row when it runs as the system (as-system). Both last one
-   transaction and can't be nested, so neither leaks into the next.
+   The database wall: at start (in production, at migrate), every record
+   kind's table gets row-level security, a policy per command made from
+   the sentences. A transaction sees only rows of the scopes verified for
+   it (in-wall), as the sentences allow, or every row when it runs as the
+   system (as-system). Both last one transaction and can't be nested, so
+   neither leaks into the next.
 
    Grants and roles live in Postgres and change at once; nothing is cached.
 
@@ -150,14 +151,28 @@
 ;; The part
 ;; =============================================================================
 
+(defn install!
+  "migrate's part: check the description, against the database too, put up
+   the wall, the vias' functions and guards, and the fill rules, and record
+   them. The role it connects as (the tables' owner) may pass by row-level
+   security; the app's role is checked by migrate. Returns the permissions."
+  [db settings]
+  (let [description (description/check (settings/check-part! :permissions settings))
+        _           (install/check-tables! db description)
+        perms       (assoc (check/compile-description description) :db db)]
+    (install/install! perms)
+    perms))
+
 (defn start
   "The permissions part: check the description, against the database too,
-   read every sentence, put up the wall, the vias' functions and guards,
-   and the fill rules."
-  [{:keys [settings db]}]
+   read every sentence. In development and tests, put up the wall, the
+   vias' functions and guards, and the fill rules; in production check that
+   migrate put up the ones the description makes."
+  [{:keys [settings db environment]}]
   (let [description (description/check (settings/check-part! :permissions settings))]
     (install/check-database! db description)
     (let [perms (assoc (check/compile-description description) :db db)]
-      (install/install-wall! perms)
-      (install/install-fill! perms)
+      (if (= :production environment)
+        (install/check-installed! perms)
+        (install/install! perms))
       perms)))

@@ -25,14 +25,14 @@
 (defn start
   "The transport part: the endpoints it carries, the workers asks run on and
    how many may run at once, and the bells."
-  [{:keys [endpoints db app-settings sessions]}]
+  [{:keys [endpoints db app-settings sessions environment]}]
   (let [settings (:endpoints app-settings)
         part     {:settings  settings
                   :endpoints endpoints
                   :sessions  sessions
                   :workers   (Executors/newVirtualThreadPerTaskExecutor)
                   :running   (Semaphore. (int (:max-running settings)) true)}
-        part     (assoc part :bells (websocket/start (assoc part :db db :db-settings (:db app-settings))))]
+        part     (assoc part :bells (websocket/start (assoc part :db db :db-settings (:db app-settings) :environment environment)))]
     (assoc part :routes (routes part))))
 
 (defn stop

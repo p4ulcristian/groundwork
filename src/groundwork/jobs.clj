@@ -44,14 +44,12 @@
    [groundwork.endpoints.wire :as wire]
    [groundwork.permissions.check :as check]
    [groundwork.postgres :as pg]
-   [groundwork.settings :as settings]
-   [next.jdbc.connection :as connection])
+   [groundwork.settings :as settings])
   (:import
    (java.lang System$Logger System$Logger$Level)
-   (java.sql Connection DriverManager)
+   (java.sql Connection)
    (java.time Instant LocalDateTime OffsetDateTime ZoneOffset)
    (java.time.temporal ChronoUnit)
-   (java.util Properties)
    (java.util.concurrent ArrayBlockingQueue Semaphore TimeUnit)
    (org.postgresql PGConnection)))
 
@@ -275,14 +273,11 @@
     (try (.poll wake (:poll-ms settings) TimeUnit/MILLISECONDS)
          (catch InterruptedException _ nil))))
 
-(defn- listening-connection ^Connection [{:keys [host port database user password]}]
-  (let [props (doto (Properties.)
-                (.setProperty "user" (str user))
-                (.setProperty "ApplicationName" "groundwork-jobs"))]
-    (when password (.setProperty props "password" password))
-    (doto (DriverManager/getConnection (connection/jdbc-url {:dbtype "postgresql" :host host :port port :dbname database})
-                                       props)
-      (-> (.createStatement) (.execute "LISTEN groundwork_jobs")))))
+(defn- listening-connection
+  "A connection of the jobs' own, outside the pool, with the :db's TLS."
+  ^Connection [db-settings]
+  (doto (pg/connect db-settings {"ApplicationName" "groundwork-jobs"})
+    (-> (.createStatement) (.execute "LISTEN groundwork_jobs"))))
 
 (defn- listen!
   "Until stopped: wake the dispatcher when a job is queued. Without the

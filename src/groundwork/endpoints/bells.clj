@@ -16,18 +16,17 @@
    [clojure.string :as str]
    [clojure.walk :as walk]
    [groundwork.endpoints.wire :as wire]
+   [groundwork.migrations.installs :as installs]
    [groundwork.permissions.description :as description]
    [groundwork.permissions.sql :as sql]
    [groundwork.postgres :as pg]
    [groundwork.postgres.names :as names]
    [jsonista.core :as json]
    [next.jdbc :as jdbc]
-   [next.jdbc.connection :as connection]
    [next.jdbc.result-set :as rs])
   (:import
    (java.lang System$Logger System$Logger$Level)
-   (java.sql Connection DriverManager)
-   (java.util Properties)))
+   (java.sql Connection)))
 
 (pg/defsql app-tables "groundwork/endpoints/bells/app_tables.sql")
 (pg/defsql set-tag "groundwork/endpoints/bells/set_tag.sql")
@@ -89,11 +88,28 @@
        " WHERE n.nspname = 'public' AND NOT t.tgisinternal"
        "   AND t.tgname IN ('groundwork_ring_insert', 'groundwork_ring_update', 'groundwork_ring_delete')"))
 
+(defn statements
+  "The ring triggers of the tables that ring: one per table and kind of
+   change, calling groundwork.ring."
+  [tables]
+  (vec (for [[t {:keys [id scopes people universal?]}] tables
+             [op referencing] [["INSERT" "NEW TABLE AS new_rows"]
+                               ["UPDATE" "NEW TABLE AS new_rows OLD TABLE AS old_rows"]
+                               ["DELETE" "OLD TABLE AS old_rows"]]]
+         (str "CREATE OR REPLACE TRIGGER " "groundwork_ring_" (str/lower-case op)
+              " AFTER " op " ON " (sql/quote-table t)
+              " REFERENCING " referencing " FOR EACH STATEMENT"
+              " EXECUTE FUNCTION groundwork.ring('" (or id "") "', '"
+              (str/join "," scopes) "', '" (str/join "," people) "'"
+              (when universal? ", 'u'") ")"))))
+
 (defn install-bells!
-  "A trigger per table and kind of change, calling groundwork.ring. Safe to
-   run again. A table that rang under an earlier start and is silent now
-   loses its triggers: left on, it would go on ringing in a database that
-   was there before, and stay quiet only in a new one."
+  "A trigger per table and kind of change, calling groundwork.ring, and
+   their fingerprint recorded (groundwork.migrations.installs). Safe to run
+   again. A table that rang under an earlier start and is silent now loses
+   its triggers: left on, it would go on ringing in a database that was
+   there before, and stay quiet only in a new one. The start in development
+   and tests, and migrate."
   [db tables]
   (pg/with-transaction [tx db]
     (doseq [{trigger_table :trigger__table trigger_name :trigger__name}
@@ -101,17 +117,15 @@
             :when (not (contains? tables trigger_table))]
       (jdbc/execute! (::pg/conn tx)
                      [(str "DROP TRIGGER IF EXISTS " trigger_name " ON " (sql/quote-table trigger_table))]))
-    (doseq [[t {:keys [id scopes people universal?]}] tables
-            [op referencing] [["INSERT" "NEW TABLE AS new_rows"]
-                              ["UPDATE" "NEW TABLE AS new_rows OLD TABLE AS old_rows"]
-                              ["DELETE" "OLD TABLE AS old_rows"]]]
-      (jdbc/execute! (::pg/conn tx)
-                     [(str "CREATE OR REPLACE TRIGGER " "groundwork_ring_" (str/lower-case op)
-                           " AFTER " op " ON " (sql/quote-table t)
-                           " REFERENCING " referencing " FOR EACH STATEMENT"
-                           " EXECUTE FUNCTION groundwork.ring('" (or id "") "', '"
-                           (str/join "," scopes) "', '" (str/join "," people) "'"
-                           (when universal? ", 'u'") ")")]))))
+    (doseq [statement (statements tables)]
+      (jdbc/execute! (::pg/conn tx) [statement])))
+  (installs/record! db :bells (statements tables)))
+
+(defn check-installed!
+  "Production's start: the triggers migrate installed are the ones these
+   tables make. Throws otherwise."
+  [db tables]
+  (installs/check! db :bells (statements tables)))
 
 ;; =============================================================================
 ;; A write's bells
@@ -174,15 +188,9 @@
 ;; =============================================================================
 
 (defn connect
-  "A connection of the bells' own, outside the pool."
-  ^Connection [{:keys [host port database user password]} more]
-  (let [props (doto (Properties.)
-                (.setProperty "user" (str user))
-                (.setProperty "ApplicationName" "groundwork-bells"))]
-    (when password (.setProperty props "password" password))
-    (doseq [[k v] more] (.setProperty props k v))
-    (DriverManager/getConnection (connection/jdbc-url {:dbtype "postgresql" :host host :port port :dbname database})
-                                 props)))
+  "A connection of the bells' own, outside the pool, with the :db's TLS."
+  ^Connection [db-settings more]
+  (pg/connect db-settings (merge {"ApplicationName" "groundwork-bells"} more)))
 
 (defn- numbered
   "JDBC's ? as Postgres's $1, $2…; ?? stays a ?."

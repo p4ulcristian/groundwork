@@ -4,9 +4,14 @@
    columns, the links of records under records, the vias' indexes. Then
    the wall (row-level security, a policy per table and command), the vias'
    functions and guards, the functions that narrow a list by an action, and
-   the fill rules. Safe to run again at every start."
+   the fill rules. Safe to run again at every start.
+
+   In production the start installs nothing: migrate did, as the role that
+   owns the tables, and the start compares the statements its settings make
+   with what migrate recorded (groundwork.migrations.installs)."
   (:require
    [clojure.string :as str]
+   [groundwork.migrations.installs :as installs]
    [groundwork.permissions :as-alias permissions]
    [groundwork.permissions.description :as description]
    [groundwork.permissions.sql :as sql]
@@ -157,14 +162,17 @@
     (str "The database role " name " passes by row-level security (it is a superuser or has BYPASSRLS),"
          " so the wall would let every query see every scope's rows. Connect as a role without it.")))
 
-(defn check-database!
-  "The role the app connects as must not pass by row-level security; every
-   table and column the description names must exist; every record table
-   names its scope; every record under another is tied to it; every via
-   can find its rows by an index."
-  [db description]
+(defn check-role!
+  "The role the app connects as must not pass by row-level security."
+  [db]
   (when-let [problem (role-problem (pg/row db connecting-role {}))]
-    (throw (ex-info problem {:type ::permissions/bad-database})))
+    (throw (ex-info problem {:type ::permissions/bad-database}))))
+
+(defn check-tables!
+  "Every table and column the description names must exist; every record
+   table names its scope; every record under another is tied to it; every
+   via can find its rows by an index."
+  [db description]
   (doseq [t (keys (description/columns-needed description))]
     (when (empty? (pg/rows db columns-of {:table t}))
       (throw (ex-info (str "Permissions name a table " t " that doesn't exist")
@@ -179,61 +187,112 @@
   (check-parent-links! db description)
   (check-via-indexes! db description))
 
+(defn check-database!
+  "check-role!, then check-tables!."
+  [db description]
+  (check-role! db)
+  (check-tables! db description))
+
 (defn- exec! [tx sql]
   (jdbc/execute! (::pg/conn tx) [sql]))
+
+(defn- column-types [db t]
+  (into {} (map (juxt :column/name :column/type)) (pg/rows db columns-of {:table (name t)})))
+
+(defn- wall
+  "The statements the wall is made of, from the description and the
+   columns' types: the vias' functions, which the policies call; per record
+   table, row-level security forced (so the tables' owner is held to it
+   too) and a policy per command; the guards on the rows the vias look for;
+   the functions a query file narrows a list with, one per action and kind,
+   and the state denies they leave out."
+  [db description]
+  {:vias      (vec (for [via (description/vias description)]
+                     (sql/via-sql-statement via (column-types db (:table via)))))
+   :tables    (vec (for [[kind {t :table}] (:records description)
+                         :let [table                                 (sql/quote-table t)
+                               {:keys [select insert update delete]} (sql/policies description kind)]]
+                     {:table      t
+                      :statements [(str "ALTER TABLE " table " ENABLE ROW LEVEL SECURITY")
+                                   (str "ALTER TABLE " table " FORCE ROW LEVEL SECURITY")
+                                   (str "CREATE POLICY groundwork_read ON " table " FOR SELECT USING (" select ")")
+                                   (str "CREATE POLICY groundwork_insert ON " table " FOR INSERT WITH CHECK (" insert ")")
+                                   (str "CREATE POLICY groundwork_update ON " table " FOR UPDATE USING (" (first update)
+                                        ") WITH CHECK (" (second update) ")")
+                                   (str "CREATE POLICY groundwork_delete ON " table " FOR DELETE USING (" delete ")")]}))
+   :guarded   (set (map #(name (get-in description [:records % :table])) (description/guarded-kinds description)))
+   :guards    (vec (for [kind      (description/guarded-kinds description)
+                         statement (sql/guard-sql description kind)]
+                     statement))
+   :functions (let [denies (filter :scope (description/denies description))
+                    mays   (distinct (map (juxt :action :kind) (description/sentences description)))]
+                (vec (concat
+                      (for [d denies]
+                        (sql/deny-sql-statement description d))
+                      (for [[action kind] mays
+                            :let [{t :table id :id} (get-in description [:records kind])]]
+                        (sql/may-sql-statement description action kind
+                                               (get (column-types db t) (description/column id)))))))})
+
+(defn- fill [description]
+  (vec (for [link      (description/parent-links description)
+             statement (sql/fill-sql link)]
+         statement)))
+
+(defn statements
+  "Every statement the wall and the fill rules are made of: what migrate
+   records and production's start compares."
+  [db description]
+  (let [{:keys [vias tables guards functions]} (wall db description)]
+    (concat vias (mapcat :statements tables) guards functions (fill description))))
 
 (defn install-wall!
   "Row-level security on every record kind's table, a policy per command
    made from the sentences (sql/policies). Forced, so the tables' owner
    is held to it too. The vias' functions first, which the policies call;
-   then the guards on the rows the vias look for. Run at start; safe to run
-   again."
+   then the guards on the rows the vias look for. Safe to run again."
   [{:keys [db description]}]
   (pg/with-transaction [tx db]
-    (doseq [via (description/vias description)]
-      (let [types (into {} (map (juxt :column/name :column/type)) (pg/rows tx columns-of {:table (:table via)}))]
-        (exec! tx (sql/via-sql-statement via types))))
-    (doseq [[kind {t :table}] (:records description)
-            :let [table                                 (sql/quote-table t)
-                  {:keys [select insert update delete]} (sql/policies description kind)]]
-      (exec! tx (str "ALTER TABLE " table " ENABLE ROW LEVEL SECURITY"))
-      (exec! tx (str "ALTER TABLE " table " FORCE ROW LEVEL SECURITY"))
-      (doseq [{:policy/keys [name]} (pg/rows tx groundwork-policies {:table (clojure.core/name t)})]
-        (exec! tx (str "DROP POLICY \"" name "\" ON " table)))
-      (exec! tx (str "CREATE POLICY groundwork_read ON " table " FOR SELECT USING (" select ")"))
-      (exec! tx (str "CREATE POLICY groundwork_insert ON " table " FOR INSERT WITH CHECK (" insert ")"))
-      (exec! tx (str "CREATE POLICY groundwork_update ON " table " FOR UPDATE USING (" (first update)
-                     ") WITH CHECK (" (second update) ")"))
-      (exec! tx (str "CREATE POLICY groundwork_delete ON " table " FOR DELETE USING (" delete ")")))
-    (let [guarded (set (map #(name (get-in description [:records % :table])) (description/guarded-kinds description)))]
+    (let [{:keys [vias tables guarded guards functions]} (wall tx description)]
+      (doseq [statement vias]
+        (exec! tx statement))
+      (doseq [{t :table [enable force & policies] :statements} tables]
+        (exec! tx enable)
+        (exec! tx force)
+        (doseq [{:policy/keys [name]} (pg/rows tx groundwork-policies {:table (clojure.core/name t)})]
+          (exec! tx (str "DROP POLICY \"" name "\" ON " (sql/quote-table t))))
+        (doseq [statement policies]
+          (exec! tx statement)))
       ;; a guard from an earlier start on a table no via looks into any more goes
       (doseq [{:guard/keys [table name]} (pg/rows tx groundwork-guards {})
               :when (not (guarded table))]
         (exec! tx (str "DROP TRIGGER IF EXISTS \"" name "\" ON \"" table "\"")))
-      (doseq [kind      (description/guarded-kinds description)
-              statement (sql/guard-sql description kind)]
-        (exec! tx statement)))
-    ;; the functions a query file narrows a list with, one per action and
-    ;; kind, and the state denies they leave out
-    (let [denies (filter :scope (description/denies description))
-          mays   (distinct (map (juxt :action :kind) (description/sentences description)))]
-      ;; made afresh each start: an id column's type may have changed
+      (doseq [statement guards]
+        (exec! tx statement))
+      ;; made afresh each time: an id column's type may have changed
       (doseq [{:function/keys [name]} (pg/rows tx groundwork-functions {})]
         (exec! tx (str "DROP FUNCTION IF EXISTS groundwork.\"" name "\"()")))
-      (doseq [d denies]
-        (exec! tx (sql/deny-sql-statement description d)))
-      (doseq [[action kind] mays
-              :let [{t :table id :id} (get-in description [:records kind])
-                    id-type (some #(when (= (description/column id) (:column/name %)) (:column/type %))
-                                  (pg/rows tx columns-of {:table (clojure.core/name t)}))]]
-        (exec! tx (sql/may-sql-statement description action kind id-type))))))
+      (doseq [statement functions]
+        (exec! tx statement)))))
 
 (defn install-fill!
   "On every record table under another record, a rule that fills a row's
-   scope from its parent when it's inserted without one. Run at start; safe
-   to run again."
-  [{:keys [db description]}]
+   scope from its parent when it's inserted without one. Safe to run again."
+  [{:keys [description db]}]
   (pg/with-transaction [tx db]
-    (doseq [link      (description/parent-links description)
-            statement (sql/fill-sql link)]
+    (doseq [statement (fill description)]
       (exec! tx statement))))
+
+(defn install!
+  "The wall and the fill rules, and their fingerprint recorded: the start
+   in development and tests, and migrate."
+  [{:keys [db description] :as perms}]
+  (install-wall! perms)
+  (install-fill! perms)
+  (installs/record! db :wall (statements db description)))
+
+(defn check-installed!
+  "Production's start: the wall and the fill rules migrate installed are
+   the ones this description makes. Throws otherwise."
+  [{:keys [db description]}]
+  (installs/check! db :wall (statements db description)))

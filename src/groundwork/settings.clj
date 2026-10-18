@@ -351,7 +351,7 @@
     (entry :host "The database server's address" "localhost" text)
     (entry :port "Its port" 5432 port-number)
     (entry :database "The database's name" "app" text)
-    (entry :user "The user Groundwork connects as" "app" text)
+    (entry :user "The role the app connects as; in production one that owns nothing and can't pass by row-level security (migrate connects as the owner)" "app" text)
     (entry :password "Its password, or nil for none" nil text-or-nil)
     (entry :pool-size "Connections per server, a fixed number" 10 positive)
     (entry :statement-timeout-ms "Postgres cancels a statement that runs longer; :none for no limit" 30000
@@ -360,6 +360,14 @@
     (entry :time-zone "The session's time zone: how times without an offset are read" "UTC"
            [:re {:error/message "must be a time zone name like \"UTC\" or \"Europe/Budapest\"" :doc/type "time zone name"}
             #"^[A-Za-z0-9_+\-/]+$"])
+    (entry :tls (str "How the connection travels: :verified (encrypted; the server's certificate checked against the trusted "
+                     "certificates, and its name against :host) or :off (plain; in production only for a database on the "
+                     "same machine: localhost, 127.x.x.x or ::1)")
+           :verified
+           [:enum {:error/message "must be :verified or :off" :doc/type ":verified or :off"} :verified :off])
+    (optional :tls-root-cert (str "With :tls :verified, a PEM file of the certificates the server's must lead to, "
+                                  "instead of the Java runtime's trusted ones (a private certificate authority)")
+              "/etc/app/db-root.pem" text)
     (optional :on-transaction "Runs first in every with-transaction: (fn [tx] …)" 'app.db/on-transaction function)
     (optional :on-query "After every query: (fn [{:keys [file sql ms error]}] …)" 'app.db/on-query function)]
 
@@ -559,7 +567,7 @@
   "What each part of the settings is, for the docs."
   {:environment "Where the app runs"
    :db          "The database"
-   :migrations  "The schema's changes, run at start"
+   :migrations  "The schema's changes: run by the start in development and tests, by migrate before it in production"
    :page        "The page shell every screen loads into"
    :browser     "The app's browser code and its build"
    :styles      "The app's stylesheets, named by its namespaces and bundled per browser module; nil or left out when the app brings its own through :page :stylesheets"
@@ -605,11 +613,33 @@
     (catch Exception e
       [{:in prefix :message (str "aren't reitit routes: " (ex-message e))}])))
 
+(defn same-machine?
+  "Whether a database host is this machine: localhost, 127.x.x.x or ::1."
+  [host]
+  (boolean (and (string? host)
+                (or (#{"localhost" "::1" "[::1]"} (str/lower-case host))
+                    (re-matches #"127\.\d{1,3}\.\d{1,3}\.\d{1,3}" host)))))
+
+(defn- db-problems
+  "What the :db's keys say together: a root certificate goes only with
+   :verified, and production's database travels plain only on this machine."
+  [{:keys [environment db]}]
+  (when (map? db)
+    (concat
+     (when (and (contains? db :tls-root-cert) (not= :verified (:tls db)))
+       [{:in [:db :tls-root-cert] :message "goes only with :tls :verified"}])
+     (when (and (= :production environment) (= :off (:tls db)) (string? (:host db))
+                (not (same-machine? (:host db))))
+       [{:in [:db :tls] :message (str "may be :off in production only for a database on the same machine "
+                                      "(localhost, 127.x.x.x or ::1), not " (pr-str (:host db)))}]))))
+
 (defn- environment-problems [settings]
-  (when (= :production (:environment settings))
-    (for [k [:test-sign-in]
-          :when (some? (get-in settings [:web k]))]
-      {:in [:web k] :message "is never on in production"})))
+  (concat
+   (when (= :production (:environment settings))
+     (for [k [:test-sign-in]
+           :when (some? (get-in settings [:web k]))]
+       {:in [:web k] :message "is never on in production"}))
+   (db-problems settings)))
 
 (defn part-problems
   "The problems with one part's settings."
