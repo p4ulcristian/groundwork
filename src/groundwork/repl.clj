@@ -74,7 +74,7 @@
 ;; =============================================================================
 
 (defn- bells-part [app]
-  (:bells (gw/part app :groundwork/parquery)))
+  (:bells (gw/part app :groundwork/endpoints-transport)))
 
 (defn lines
   "The open websocket lines on this server: who, their session, what they watch."

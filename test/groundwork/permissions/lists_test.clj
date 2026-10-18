@@ -52,32 +52,32 @@
 
 (def endpoint-map
   {:orders/all          {:read       (fn [{:keys [db]} _] (vec (ids (pg/rows db ls-all-orders))))
-                         :permission {:action :orders/see :list :order}
+                         :access     {:action :orders/see :list :order}
                          :input      [:map]
                          :answer     [:vector :uuid]}
    :orders/editable     {:read       (fn [{:keys [db]} _] (vec (ids (pg/rows db ls-all-orders))))
-                         :permission {:action :orders/edit :list :order}
+                         :access     {:action :orders/edit :list :order}
                          :input      [:map]
                          :answer     [:vector :uuid]}
    ;; the same list, narrowed in its SQL to the orders the person may edit
    :orders/editable-only {:read       (fn [{:keys [db]} _] (vec (ids (pg/rows db ls-editable-orders))))
-                          :permission {:action :orders/see :list :order}
+                          :access     {:action :orders/see :list :order}
                           :input      [:map]
                           :answer     [:vector :uuid]}
    :orders/and-invoices {:read       (fn [{:keys [db]} _] (vec (ids (pg/rows db ls-all-invoices))))
-                         :permission {:action :orders/see :list :order}
+                         :access     {:action :orders/see :list :order}
                          :input      [:map]
                          :answer     [:vector :uuid]}
    :orders/one          {:read       (fn [{:keys [db]} _] (vec (ids (pg/rows db ls-all-orders))))
-                         :permission {:action :orders/see :record [:order :lst-order/id]}
+                         :access     {:action :orders/see :record [:order :lst-order/id]}
                          :input      [:map [:lst-order/id :uuid]]
                          :answer     [:vector :uuid]}
    :orders/close        {:write      (fn [{:keys [db]} params] (first (ids [(pg/row db ls-close-order params)])))
-                         :permission {:action :orders/edit :record [:order :lst-order/id]}
+                         :access     {:action :orders/edit :record [:order :lst-order/id]}
                          :input      [:map [:lst-order/id :uuid]]
                          :answer     [:maybe :uuid]}})
 
-(def settings {:endpoints [endpoint-map] :max-asks 50 :max-running 4 :bearer nil :on-answer nil
+(def settings {:list [endpoint-map] :max-asks 50 :max-running 4 :bearer nil :on-answer nil
                :bells {:global {} :personal {} :silent {:groundwork/every-other-table "the test database is shared by every test"}}})
 
 (def ^:dynamic *db* nil)

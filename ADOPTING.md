@@ -133,6 +133,32 @@ Its error types follow their namespaces: `:groundwork.parquery.bells/tables-not-
 is now `:groundwork.endpoints.bells/tables-not-declared`, and the store's
 `:groundwork.parquery.store/asked-before-start` is
 `:groundwork.endpoints.store/asked-before-start`; so do the store's re-frame
-events and subscriptions (`::store/…`). The settings key `:parquery`, the
-address `/parquery`, the part `:groundwork/parquery` and the re-frame db key
-`:groundwork/parquery-store` stay.
+events and subscriptions (`::store/…`). The address `/parquery` stays; the
+settings key, the part and the re-frame db key are renamed below.
+
+## Names made consistent
+
+Renamed once, since 2026-10-18
+([the decision](decisions/2026-10-18-names-are-made-consistent-once.md)).
+An app's settings map is closed, so an old key stops the start; a route's
+data isn't, so an old route key is ignored: rename them all in one step.
+
+| Before | After |
+|--------|-------|
+| `:parquery {:endpoints [...] …}` | `:endpoints {:list [...] …}` |
+| an endpoint's `:permission` | `:access`, the same shape as a route's: `:public`, `:signed-in`, or an action on a `:record`, a `:scope` or a `:list` (a route checks `:record` only) |
+| an endpoint's `:keeps-for-visitor` | `:keeps-for-visitor?` |
+| a route's `:server-to-server` | `:server-to-server?` |
+| a route's `:embeddable` | `:embeddable?` (same values: `true`, `:same-origin` or a list of origins) |
+| a browser module's `:web-worker` (in `:browser :modules`) | `:web-worker?` |
+| a job kind's `:scope` | `:runs-in` |
+| `:page :lang`, and a route's `:page :lang` | gone: the page takes the request's language |
+| `:web :languages nil` (one language) | `{:supported ["en"] :default "en" :cookie nil}`: `:web :languages` is required, the one place a language is set; `web/language` is never nil |
+| the part `:groundwork/parquery` (`(gw/part app …)`) | `:groundwork/endpoints-transport` |
+| the re-frame db key `:groundwork/parquery-store` | `:groundwork/endpoints-store` |
+| the table `groundwork.run_once`, columns `run_once__…` | `groundwork.run_once_keys`, columns `run_once_key__…` (migration 019) |
+| the columns `groundwork.job_schedules.schedule__…` | `job_schedule__…` (migration 019) |
+
+`:page :stylesheets` stays, beside `:styles`, for files an app brings
+itself. Migration 019 runs at the next start; an app's development schema
+snapshot changes with it.

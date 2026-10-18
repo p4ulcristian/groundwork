@@ -93,7 +93,7 @@
                        (str "`" (type-text s) "`\n"))
                      "\n")))
        "#### A route's data (in `:web :routes`)\n\n" (table (rows settings/route ["<path>"])) "\n"
-       "#### An endpoint's entry (in `:parquery :endpoints`)\n\n" (table (rows settings/endpoint ["<endpoint name>"]))))
+       "#### An endpoint's entry (in `:endpoints :list`)\n\n" (table (rows settings/endpoint ["<endpoint name>"]))))
 
 (defn- pretty [v indent]
   (let [lines (str/split-lines (str/trimr (with-out-str (pprint/pprint v))))]

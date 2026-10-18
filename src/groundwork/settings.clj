@@ -247,7 +247,7 @@
 ;; Endpoints and routes
 ;; =============================================================================
 
-(def ^:private permission
+(def ^:private access
   (pred ":public, :signed-in or {:action … :record|:scope|:list …}"
         "must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param-or-id]} or {:action … :list kind}"
         (fn [p]
@@ -276,14 +276,15 @@
    [:map {:closed true}
     (optional :read "Its handler, for a read: (fn [ctx params] answer)" 'app.jobs/list function)
     (optional :write "Its handler, for a write: (fn [ctx params] answer)" 'app.jobs/move function)
-    (entry :permission "Who may ask it" {:action :jobs/see :scope [:shop :shop/id]} permission)
+    (entry :access "Who may ask it: :public, :signed-in, or an action on a record, a scope or a list (see groundwork.endpoints)"
+           {:action :jobs/see :scope [:shop :shop/id]} access)
     (entry :input "What may be sent, a malli :map; id fields say their record kind"
            [:map [:shop/id :uuid]] malli-shape)
     (entry :answer "What may be sent back, a malli shape" [:vector [:map [:job/id :uuid]]] malli-shape)
     (optional :reads "Tables a read uses that Postgres can't see in its SQL" [:jobs]
               [:vector {:error/message "must be a list of tables, like [:jobs]" :doc/type "list of tables"} :keyword])
     (optional :rate-limit "How often a caller may ask it (see groundwork.limits)" {:per-day 20 :by :person} rate-limit)
-    (optional :keeps-for-visitor "A write that keeps something for someone not signed in: a visitor without a session gets one, so the row can be theirs"
+    (optional :keeps-for-visitor? "A write that keeps something for someone not signed in: a visitor without a session gets one, so the row can be theirs"
               true [:boolean {:error/message "must be true or false" :doc/type "true or false"}])]
    (pred "one handler" "needs exactly one of :read or :write, its handler"
          #(= 1 (count (filter (fn [k] (contains? % k)) [:read :write]))))])
@@ -295,29 +296,22 @@
    (entry :params "What it is given, a malli shape" [:map [:order/id :uuid]] malli-shape)
    (entry :timeout-ms "How long one run may take" 60000 positive)
    (entry :attempts "How many times it runs before it is dead" 5 positive)
-   (optional :scope "The wall shows only this scope: [kind param], a scope kind or a record kind whose id is in params"
+   (optional :runs-in "Where it runs: the wall shows only this scope, [kind param], a scope kind or a record kind whose id is in params"
              [:order :order/id]
              (pred "[kind param]" "must be [kind param], like [:order :order/id]"
                    #(and (vector? %) (= 2 (count %)) (every? keyword? %))))])
 
-(def ^:private access
-  (pred ":public, :signed-in or {:action … :record [kind param]}"
-        "must be :public, :signed-in, or {:action … :record [kind param]}"
-        (fn [a]
-          (or (#{:public :signed-in} a)
-              (and (map? a) (= #{:action :record} (set (keys a))) (qualified-keyword? (:action a))
-                   (vector? (:record a)) (= 2 (count (:record a))) (every? keyword? (:record a)))))))
-
 (def ^:private route-page-keys
-  #{:lang :title :description :canonical :alternates :stylesheets :scripts :head :body :module})
+  #{:title :description :canonical :alternates :stylesheets :scripts :head :body :module})
 
 (def route
   [:and {:doc/key "<path>"}
    [:map
-    (optional :access "Who may use it (or :server-to-server true)" :public access)
-    (optional :server-to-server "Called by another server (a webhook): no session, no Origin check; the handler checks the call"
+    (optional :access "Who may use it, the shape an endpoint's :access has; a route checks :public, :signed-in or an action on a record (or :server-to-server? true)"
+              :public access)
+    (optional :server-to-server? "Called by another server (a webhook): no session, no Origin check; the handler checks the call"
               true [:boolean {:error/message "must be true or false" :doc/type "true or false"}])
-    (optional :embeddable "Other sites may show it in a frame: true (any https site), :same-origin, or a list of origins"
+    (optional :embeddable? "Other sites may show it in a frame: true (any https site), :same-origin, or a list of origins"
               true (pred "true, :same-origin or origins" "must be true, :same-origin, or a list of origins like \"https://shop.example\""
                          #(or (true? %) (= :same-origin %)
                               (and (vector? %) (seq %) (every? (fn [o] (and (string? o) (re-matches #"https?://[^/\s;,]+" o))) %)))))
@@ -329,8 +323,8 @@
     (optional :max-body-bytes "The largest body it accepts, over the app's :max-body-bytes" 104857600 positive)
     (optional :rate-limit "How often a caller may use it, counted by :person or :client-ip (see groundwork.limits)"
               {:per-minute 10 :by :client-ip} rate-limit)]
-   (pred "declares access" "must declare :access, or be :server-to-server true (not both)"
-         #(if (:server-to-server %) (not (contains? % :access)) (contains? % :access)))])
+   (pred "declares access" "must declare :access, or be :server-to-server? true (not both)"
+         #(if (:server-to-server? %) (not (contains? % :access)) (contains? % :access)))])
 
 ;; =============================================================================
 ;; The settings
@@ -375,7 +369,6 @@
 
    :page
    [:map {:closed true}
-    (entry :lang "The page's language" "en" text)
     (entry :title "The browser tab's title" "Acme Orders" text)
     (entry :description "A one-sentence summary for search results and link previews, or nil"
            "Orders and invoices for small shops" text-or-nil)
@@ -395,7 +388,7 @@
            [:re {:error/message "must be a path like \"/js\"" :doc/type "path"} #"^/.*"])
     (entry :watch? "In development, whether the start also watches the build" true
            [:boolean {:error/message "must be true or false" :doc/type "true or false"}])
-    (optional :modules "The build's modules, for an app with more than one: module → {:init-fn … or :entries […], :depends-on #{…}}. Without it there is one, :main, starting :entry"
+    (optional :modules "The build's modules, for an app with more than one: module → {:init-fn … or :entries […], :depends-on #{…}, :web-worker? …}. Without it there is one, :main, starting :entry"
               {:base {:init-fn 'app.browser/start} :admin {:entries ['app.admin.view] :depends-on #{:base}}}
               [:map-of {:error/message "must be a map of module → {:init-fn or :entries, :depends-on}" :doc/type "map of modules"}
                :keyword
@@ -403,7 +396,7 @@
                 [:init-fn {:optional true} qualified-symbol?]
                 [:entries {:optional true} [:vector symbol?]]
                 [:depends-on {:optional true} [:set :keyword]]
-                [:web-worker {:optional true} :boolean]]])
+                [:web-worker? {:optional true} :boolean]]])
     (optional :loader? "Whether modules no page names load on demand (shadow-cljs's module loader)" true
               [:boolean {:error/message "must be true or false" :doc/type "true or false"}])
     (optional :options "Extra shadow-cljs build options, merged over Groundwork's: JS resolution, build hooks, compiler options"
@@ -428,7 +421,7 @@
     (entry :routes "The app's routes, reitit data; each route's data is checked like below"
            '[["/" {:get groundwork.web/page :access :public}]
              ["/orders/:order-id" {:get groundwork.web/page :access {:action :orders/see :record [:order :order-id]}}]
-             ["/webhooks/payments" {:post app.payments/webhook :server-to-server true}]]
+             ["/webhooks/payments" {:post app.payments/webhook :server-to-server? true}]]
            [:vector {:error/message "must be a vector of reitit routes" :doc/type "reitit routes"} any?])
     (entry :max-body-bytes "The largest request body any route accepts (a route may allow more)" 1048576 positive)
     (entry :content-security-policy "Sources the app adds to the strict policy, per directive"
@@ -448,16 +441,15 @@
                     (pred "address or range" "must be an address or range like \"10.0.0.0/8\" or \"::1\"" address-or-range?)])
             (entry :client-ip-header "The header holding the visitor's address, or nil" "cf-connecting-ip" text-or-nil)
             (entry :request-id-header "The header holding a request id to keep, or nil" "x-request-id" text-or-nil)])
-    (entry :languages "The languages the app speaks, or nil for one"
+    (entry :languages "The languages the app speaks, the one place a language is set: the page takes the request's; an app of one language lists just it"
            {:supported ["en" "de"] :default "en" :cookie "lang"}
-           [:maybe
-            [:and
-             [:map {:closed true}
-              (entry :supported "Language codes" ["en" "de"] [:vector {:min 1 :doc/type "list of language codes"} lang-code])
-              (entry :default "The language when nothing else says" "en" lang-code)
-              (entry :cookie "A cookie holding the person's choice, or nil" "lang" name-or-nil)]
-             (pred "default among supported" ":default must be one of :supported"
-                   #(some #{(:default %)} (:supported %)))]])
+           [:and
+            [:map {:closed true}
+             (entry :supported "Language codes" ["en" "de"] [:vector {:min 1 :doc/type "list of language codes"} lang-code])
+             (entry :default "The language when nothing else says" "en" lang-code)
+             (entry :cookie "A cookie holding the person's choice, or nil" "lang" name-or-nil)]
+            (pred "default among supported" ":default must be one of :supported"
+                  #(some #{(:default %)} (:supported %)))])
     (entry :test-sign-in "Lets automated tests sign in, given the secret; nil to switch off, never in production"
            nil
            [:maybe [:map {:closed true}
@@ -519,9 +511,9 @@
      (entry :on? "Whether this server runs jobs; false on previews, where they wait" true
             [:boolean {:error/message "must be true or false" :doc/type "true or false"}])]]
 
-   :parquery
+   :endpoints
    [:map {:closed true}
-    (entry :endpoints "The app's endpoint maps, gathered from its areas" '[app.jobs/endpoints app.orders/endpoints]
+    (entry :list "The app's endpoint maps, gathered from its areas" '[app.jobs/endpoints app.orders/endpoints]
            endpoint-list)
     (entry :max-asks "The most asks one request may carry" 50 positive)
     (entry :max-running "The most asks running at once across the server; keep it below the pool size" 16 positive)
@@ -577,7 +569,7 @@
    :permissions "Who may do what, where: the permission description"
    :limits      "How often a caller may ask"
    :jobs        "Background jobs and schedules, or nil for none"
-   :parquery    "The endpoints and how they're asked"})
+   :endpoints   "The endpoints and how they're asked (at the address /parquery)"})
 
 ;; =============================================================================
 ;; Problems

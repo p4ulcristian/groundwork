@@ -20,7 +20,7 @@
 
 (deftest settings-are-checked
   (testing "a missing setting throws, naming every one that is missing"
-    (is (= [[:environment] [:db] [:migrations] [:page] [:browser] [:web] [:server] [:sessions] [:permissions] [:limits] [:jobs] [:parquery]]
+    (is (= [[:environment] [:db] [:migrations] [:page] [:browser] [:web] [:server] [:sessions] [:permissions] [:limits] [:jobs] [:endpoints]]
            (problems {}))))
   (testing "an unknown setting throws, so a typo can't go unnoticed"
     (is (= [[:dbb]] (problems (assoc settings :dbb {})))))
@@ -33,7 +33,7 @@
                                                    (assoc-in [:web :routes] [["/x" {:get identity}]]))))]
       (is (= #{{:in [:sessions :visitor-hours] :message "must be a positive whole number, got \"24\""}
                {:in [:db :pool-size] :message "must be a positive whole number, got 0"}
-               {:in [:web :routes "/x"] :message "must declare :access, or be :server-to-server true (not both), got {:get #object…"}}
+               {:in [:web :routes "/x"] :message "must declare :access, or be :server-to-server? true (not both), got {:get #object…"}}
              (set (map #(update % :message (fn [m] (if (re-find #"#object" m) (str (re-find #"^.*?#object" m) "…") m))) problems)))))))
 
 (deftest start-and-stop

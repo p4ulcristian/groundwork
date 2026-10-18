@@ -35,7 +35,7 @@
    :test/notes  {:run        (fn [{:keys [db]} _] (swap! ran conj (:count (pg/row db jb-count-notes))))
                  :params     [:map [:note/id :uuid]]
                  :timeout-ms 5000 :attempts 1
-                 :scope      [:note :note/id]}
+                 :runs-in    [:note :note/id]}
    :test/system {:run (fn [{:keys [db]} _] (swap! ran conj (:count (pg/row db jb-count-notes))))
                  :params [:map] :timeout-ms 5000 :attempts 1}})
 
@@ -43,7 +43,7 @@
 
 (def note-endpoints
   {:notes/remind {:write      (fn [ctx {:keys [n]}] (jobs/enqueue! ctx :test/ok {:n n}) "queued")
-                  :permission :public
+                  :access     :public
                   :input      [:map [:n :int]]
                   :answer     :string}})
 
@@ -60,7 +60,7 @@
                             (assoc :permissions {:scopes  {:shop {:actions {:notes/see #{:read}} :roles {} :parent nil}}
                                                  :records {:note {:table :jb_notes :id :note/id :whose {:note/shop-id :shop}}}
                                                  :rules   [{:allow :notes/see :on :note :to [:member :note/shop-id]}]})
-                            (assoc-in [:parquery :endpoints] [note-endpoints])))]
+                            (assoc-in [:endpoints :list] [note-endpoints])))]
       (try
         (sql! "TRUNCATE groundwork.jobs, groundwork.job_schedules")
         (perm/create-scope! (gw/permissions app) {:kind :shop :id acme :parent nil :owner paul})
@@ -189,10 +189,10 @@
                (endpoints/call (gw/endpoints *app*) {:endpoint :notes/remind :params {:n 5} :person nil :flags #{}})))
         (is (wait #(some #{{:n 5}} @ran))))
       (testing "a due schedule queues its job once, and moves on"
-        (sql! "UPDATE groundwork.job_schedules SET schedule__next_at = now() - interval '1 minute'")
+        (sql! "UPDATE groundwork.job_schedules SET job_schedule__next_at = now() - interval '1 minute'")
         (.offer ^java.util.concurrent.ArrayBlockingQueue (:wake on) :test)
         (is (wait #(some #{{:n 7}} @ran)))
-        (is (pos? (-> (sql! "SELECT count(*) AS n FROM groundwork.job_schedules WHERE schedule__next_at > now()")
+        (is (pos? (-> (sql! "SELECT count(*) AS n FROM groundwork.job_schedules WHERE job_schedule__next_at > now()")
                       first vals first))))
       (finally (jobs/stop on)))))
 

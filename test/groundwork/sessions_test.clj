@@ -30,10 +30,10 @@
                                                            {:keep-days 60}))}]
    ["/widget/cart"  {:access :public :post       (fn [request]
                                    (sessions/put-data request {:status 200 :body "kept"} {:cart/items ["hood"]}))
-                     :embeddable true}]
+                     :embeddable? true}]
    ["/widget/login" {:access :public :post       (fn [request] (sessions/sign-in request {:status 200} peter))
-                     :embeddable true}]
-   ["/robot-login" {:server-to-server true
+                     :embeddable? true}]
+   ["/robot-login" {:server-to-server? true
                     :post             (fn [request]
                                         (if (= "let-me-in" (get-in request [:headers "x-robot-secret"]))
                                           (sessions/sign-in (sessions/on-request request (gw/sessions (gw/current)))

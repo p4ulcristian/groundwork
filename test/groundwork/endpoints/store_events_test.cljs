@@ -61,7 +61,7 @@
     (set! (.-readyState s) 1)
     ((.-onopen s) #js {})))
 
-(defn- entry [k] (get-in @rf-db/app-db [:groundwork/parquery-store :entries k]))
+(defn- entry [k] (get-in @rf-db/app-db [:groundwork/endpoints-store :entries k]))
 (defn- answer [ask] @(rf/subscribe [::store/answer ask]))
 (defn- asked [] (mapv #(mapv :endpoint %) @requests))
 (defn- watched [] (some-> ^js (last @sockets) .-sent last wire/read-json :watch))
@@ -300,7 +300,7 @@
         (is (= ::store/asked-before-start (:type (:data (refused event)))) (pr-str (first event)))))
     (testing "nothing went out, and nothing was kept"
       (is (= [] @requests))
-      (is (nil? (:groundwork/parquery-store @rf-db/app-db))))
+      (is (nil? (:groundwork/endpoints-store @rf-db/app-db))))
     (testing "after the start, the same question is asked"
       (fresh!)
       (rf/dispatch-sync [::store/ensure :board [jobs]])

@@ -11,7 +11,7 @@
 (defn store
   "The store, as it is in re-frame's db."
   []
-  (get @rf-db/app-db :groundwork/parquery-store))
+  (get @rf-db/app-db :groundwork/endpoints-store))
 
 (defn entries
   "Every question the store holds: its status, who needs it, whether it's

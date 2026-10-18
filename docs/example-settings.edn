@@ -42,10 +42,7 @@
 
  ;; The page shell every screen loads into
  :page
- {;; The page's language
-  :lang "en"
-
-  ;; The browser tab's title
+ {;; The browser tab's title
   :title "Acme Orders"
 
   ;; A one-sentence summary for search results and link previews, or nil
@@ -77,7 +74,7 @@
   ;; In development, whether the start also watches the build
   :watch? true
 
-  ;; The build's modules, for an app with more than one: module → {:init-fn … or :entries […], :depends-on #{…}}. Without it there is one, :main, starting :entry (optional)
+  ;; The build's modules, for an app with more than one: module → {:init-fn … or :entries […], :depends-on #{…}, :web-worker? …}. Without it there is one, :main, starting :entry (optional)
   :modules {:base {:init-fn app.browser/start},
             :admin {:entries [app.admin.view], :depends-on #{:base}}}
 
@@ -110,7 +107,7 @@
             {:get groundwork.web/page,
              :access {:action :orders/see, :record [:order :order-id]}}]
            ["/webhooks/payments"
-            {:post app.payments/webhook, :server-to-server true}]]
+            {:post app.payments/webhook, :server-to-server? true}]]
 
   ;; The largest request body any route accepts (a route may allow more)
   :max-body-bytes 1048576
@@ -138,8 +135,16 @@
    ;; The header holding a request id to keep, or nil
    :request-id-header "x-request-id"}
 
-  ;; The languages the app speaks, or nil for one
-  :languages {:supported ["en" "de"], :default "en", :cookie "lang"}
+  ;; The languages the app speaks, the one place a language is set: the page takes the request's; an app of one language lists just it
+  :languages
+  {;; Language codes
+   :supported ["en" "de"]
+
+   ;; The language when nothing else says
+   :default "en"
+
+   ;; A cookie holding the person's choice, or nil
+   :cookie "lang"}
 
   ;; Lets automated tests sign in, given the secret; nil to switch off, never in production
   :test-sign-in nil
@@ -221,10 +226,10 @@
   ;; Whether this server runs jobs; false on previews, where they wait
   :on? true}
 
- ;; The endpoints and how they're asked
- :parquery
+ ;; The endpoints and how they're asked (at the address /parquery)
+ :endpoints
  {;; The app's endpoint maps, gathered from its areas
-  :endpoints [app.jobs/endpoints app.orders/endpoints]
+  :list [app.jobs/endpoints app.orders/endpoints]
 
   ;; The most asks one request may carry
   :max-asks 50

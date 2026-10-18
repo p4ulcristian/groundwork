@@ -41,6 +41,7 @@
   (:require
    [clojure.edn :as edn]
    [clojure.java.io :as io]
+   [clojure.set :as set]
    [clojure.string :as str]))
 
 (defn- deep-merge [a b]
@@ -50,6 +51,12 @@
   "The build's modules: the app's own, or the one module :main."
   [{:keys [entry modules]}]
   (or modules {:main {:init-fn entry}}))
+
+(defn- shadow-modules
+  "The modules as shadow-cljs reads them: a module's :web-worker? is its
+   :web-worker."
+  [browser]
+  (update-vals (modules browser) #(set/rename-keys % {:web-worker? :web-worker})))
 
 (defn- watch-dir
   "Where shadow-cljs watches for changed stylesheets in development: the
@@ -68,7 +75,7 @@
                                      :target     :browser
                                      :output-dir output-dir
                                      :asset-path asset-path
-                                     :modules    (modules browser)
+                                     :modules    (shadow-modules browser)
                                      :release    {:module-hash-names true}}
                               loader? (assoc :module-loader true))
                             (or options {}))]

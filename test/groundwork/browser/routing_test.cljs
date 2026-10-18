@@ -99,7 +99,7 @@
 (defn- route [] @(rf/subscribe [::routing/route]))
 (defn- owned []
   (into #{} (keep (fn [[k entry]] (when (contains? (:owners entry) :groundwork/route) k)))
-        (get-in @rf-db/app-db [:groundwork/parquery-store :entries])))
+        (get-in @rf-db/app-db [:groundwork/endpoints-store :entries])))
 (defn- back! [] (swap! browser update :at dec) ((:on-pop @browser)))
 (defn- click! [address] ((:on-link @browser) address))
 
@@ -142,7 +142,7 @@
                       (is (= [:top] (did)))
                       (is (= #{[:orders/get {:order/id "5"}] [:shop/get {}]} (owned))
                           "what the last route shared is kept, the rest let go")
-                      (is (some? (get-in @rf-db/app-db [:groundwork/parquery-store :entries [:orders/list {}] :released-at]))))
+                      (is (some? (get-in @rf-db/app-db [:groundwork/endpoints-store :entries [:orders/list {}] :released-at]))))
                     (routing/push-query! {:tab "notes" :empty nil}))
                   (fn []
                     (testing "a filter in the address: a step for Back, no scrolling"

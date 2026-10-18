@@ -3,16 +3,16 @@
    app lists them, gathered from its areas; a name in two areas stops the
    start. parquery carries the asks here; this namespace checks and runs them.
 
-     {:jobs/list {:read       #'jobs/list          ; (fn [ctx params] answer)
-                  :permission {:action :jobs/see :scope [:shop :shop/id]}
-                  :input      [:map [:shop/id :uuid]]
-                  :answer     [:vector job]}
-      :jobs/move {:write      #'jobs/move
-                  :permission {:action :jobs/move :record [:job :job/id]}
-                  :input      [:map [:job/id :uuid]
-                                    [:machine/id {:groundwork/record :machine} :uuid]
-                                    [:job/stage :keyword]]
-                  :answer     job}}
+     {:jobs/list {:read   #'jobs/list          ; (fn [ctx params] answer)
+                  :access {:action :jobs/see :scope [:shop :shop/id]}
+                  :input  [:map [:shop/id :uuid]]
+                  :answer [:vector job]}
+      :jobs/move {:write  #'jobs/move
+                  :access {:action :jobs/move :record [:job :job/id]}
+                  :input  [:map [:job/id :uuid]
+                                [:machine/id {:groundwork/record :machine} :uuid]
+                                [:job/stage :keyword]]
+                  :answer job}}
 
    Every endpoint declares, or the app doesn't start:
 
@@ -27,7 +27,8 @@
                        after a rollback: work that may be lost with the
                        server (work that must happen is a job). A failure
                        there goes to :on-error and never changes the answer.
-     :permission       :public, :signed-in, or an action:
+     :access           :public, :signed-in, or an action (a route's
+                       :access has the same shape):
                          {:action … :record [kind param]}  one record, its id in params
                          {:action … :scope [kind param]}   a scope, its id in params
                          {:action … :scope [kind #uuid \"…\"]}  one fixed scope, for an
@@ -46,14 +47,14 @@
                        record they are, {:groundwork/record :machine}, or that
                        they aren't one, {:groundwork/record false}; each id is
                        checked like the main record, so nothing from another
-                       scope gets in. The permission's own param needs no mark.
+                       scope gets in. The access's own param needs no mark.
      :answer           what may be sent back, a malli shape
 
    A visitor's record: an action a sentence gives a visitor ([:me <visitor
    column>]) may be asked by someone not signed in.
    ctx holds :visitor, the id of their visitor session or nil; the rows that
    name it are theirs, behind the wall. A write that keeps something for a
-   visitor says :keeps-for-visitor true: asked without a session, the
+   visitor says :keeps-for-visitor? true: asked without a session, the
    visitor gets one first (its cookie goes out with the answer), and
    (:visitor ctx) is its id. The id never comes from the request.
 
@@ -80,9 +81,9 @@
    :error (a plain message and the :request-id; the
    details go to the :on-error hook, or the log).
 
-   Settings, the app's :parquery:
+   Settings, the app's :endpoints:
 
-     :endpoints    [app.jobs/endpoints app.orders/endpoints …]   maps, gathered
+     :list         [app.jobs/endpoints app.orders/endpoints …]   maps, gathered
      :max-asks     50       the most asks one request may carry
      :max-running  16       the most asks running at once, across the server;
                             keep it below the database pool's size
@@ -118,8 +119,8 @@
 
 (pg/defsql claim-key "groundwork/endpoints/claim_key.sql")
 (pg/defsql claimed-key "groundwork/endpoints/claimed_key.sql")
-(pg/defsql keep-answer "groundwork/endpoints/keep_answer.sql")
-(pg/defsql forget-old-keys "groundwork/endpoints/forget_old_keys.sql")
+(pg/defsql update-answer "groundwork/endpoints/update_answer.sql")
+(pg/defsql delete-old-keys "groundwork/endpoints/delete_old_keys.sql")
 
 (def ^:private ^System$Logger logger (System/getLogger "groundwork.endpoints"))
 
@@ -154,7 +155,7 @@
 (defn- id-key? [k]
   (and (keyword? k) (boolean (re-find #"(^|-)ids?$" (name k)))))
 
-(defn- permission-param [{:keys [record scope]}]
+(defn- access-param [{:keys [record scope]}]
   (let [p (second (or record scope))]
     (when (keyword? p) p)))
 
@@ -171,9 +172,9 @@
 (defn- public?
   "Whether an endpoint may be asked by nobody signed in: :public, or an
    action a sentence gives :anyone."
-  [perms permission]
-  (or (= :public permission)
-      (and (map? permission) (= :anyone (check/open-level perms (:action permission))))))
+  [perms access]
+  (or (= :public access)
+      (and (map? access) (= :anyone (check/open-level perms (:action access))))))
 
 (defn- open-only?
   "Whether every sentence giving an action gives it to someone who belongs
@@ -182,20 +183,20 @@
   (let [ss (get-in perms [:by-action action])]
     (and (seq ss) (every? description/open-word ss))))
 
-(defn- check-permission [perms k permission input read?]
+(defn- check-access [perms k access input read?]
   (let [kinds   (set (keys (get-in perms [:description :records])))
         scopes  (set (keys (get-in perms [:description :scopes])))
         in-map? (fn [param] (some #(= param (first %)) (m/children input)))]
     (cond
-      (#{:public :signed-in} permission) permission
+      (#{:public :signed-in} access) access
 
-      (not (and (map? permission) (keyword? (:action permission))
-                (= 2 (count permission))
-                (some #{:record :scope :list} (keys permission))))
-      (bad k ":permission must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param]} or {:action … :list kind}")
+      (not (and (map? access) (keyword? (:action access))
+                (= 2 (count access))
+                (some #{:record :scope :list} (keys access))))
+      (bad k ":access must be :public, :signed-in, {:action … :record [kind param]}, {:action … :scope [kind param]} or {:action … :list kind}")
 
       :else
-      (let [{:keys [action record scope list]} permission
+      (let [{:keys [action record scope list]} access
             team? (= description/team-action action)
             ss    (get-in perms [:by-action action])]
         (when (and team? (not (and scope (= :groundwork/any (first scope)))))
@@ -236,14 +237,14 @@
                         (get-in perms [:by-action-kind [action list]]))
             (bad k (str action " is open on " list " only in the scope a request names: a :list of every scope's"
                         " has none to show; ask about a :scope or a :record"))))
-        permission))))
+        access))))
 
 (defn- id-fields
   "The fields of the input holding ids of records, {key kind}; throws on an
    id field that isn't marked."
-  [perms k permission input]
+  [perms k access input]
   (let [kinds (set (keys (get-in perms [:description :records])))
-        own   (permission-param permission)]
+        own   (access-param access)]
     (reduce (fn [found [key props _]]
               (let [mark (get props :groundwork/record ::unmarked)]
                 (cond
@@ -256,13 +257,13 @@
                   (not (kinds mark))       (bad k (str "the field " key " names an unknown record kind " mark))
                   (and (found key) (not= mark (found key)))
                   (bad k (str "the field " key " is marked as two kinds"))
-                  (#{:public :signed-in} permission)
-                  (bad k (str "the field " key " holds ids, so the endpoint needs an action permission"))
-                  (and (check/open-level perms (:action permission))
-                       (not (check/declared? perms (:action permission) mark))
-                       (not (check/via-kind? perms (:action permission) mark)))
+                  (#{:public :signed-in} access)
+                  (bad k (str "the field " key " holds ids, so the endpoint's :access needs an action"))
+                  (and (check/open-level perms (:action access))
+                       (not (check/declared? perms (:action access) mark))
+                       (not (check/via-kind? perms (:action access) mark)))
                   (bad k (str "the field " key " holds ids of " mark ", and no sentence gives the open action "
-                              (:action permission) " on it"))
+                              (:action access) " on it"))
                   :else                    (assoc found key mark))))
             {}
             (entries input))))
@@ -271,21 +272,21 @@
   "An entry whose shape the settings schema has checked, against the
    permission description."
   [perms k entry]
-  (settings/check-value! settings/endpoint entry [:parquery :endpoints k])
+  (settings/check-value! settings/endpoint entry [:endpoints :list k])
   (let [input      (shape k ":input" (:input entry))
         answer     (shape k ":answer" (:answer entry))
         _          (when-not (= :map (m/type input))
                      (bad k ":input must be a malli :map"))
-        permission (check-permission perms k (:permission entry) input (contains? entry :read))]
+        access     (check-access perms k (:access entry) input (contains? entry :read))]
     (assoc entry
            :name       k
            :input      input
            :answer     answer
-           :permission permission
-           :ids        (id-fields perms k permission input)
-           :public?    (public? perms permission)
+           :access     access
+           :ids        (id-fields perms k access input)
+           :public?    (public? perms access)
            ;; an action a sentence gives a visitor: asked signed out too
-           :visitors?  (boolean (and (map? permission) (check/visitor-action? perms (:action permission))))
+           :visitors?  (boolean (and (map? access) (check/visitor-action? perms (:action access))))
            :read?      (contains? entry :read)
            :handler    (or (:read entry) (:write entry)))))
 
@@ -304,7 +305,7 @@
     {:groundwork/grants (with-meta
                           {:read       (fn [{:keys [perms person visitor flags]} _]
                                          (check/grants perms {:person person :visitor visitor :flags flags}))
-                           :permission :signed-in
+                           :access     :signed-in
                            :input      [:map]
                            :answer     [:vector [:map [:grant/scope-id [:maybe :uuid]] [:grant/action :keyword]]]
                            ;; it runs past the wall, through functions: these are what it reads
@@ -367,11 +368,11 @@
    scope's member makes about every scope). :open? when it was verified
    only because a sentence opens the action to someone who belongs
    nowhere."
-  [perms {:keys [permission ids]} {:keys [person visitor flags]} params]
+  [perms {:keys [access ids]} {:keys [person visitor flags]} params]
   (let [also (ids-in ids params)]
-    (case permission
+    (case access
       (:public :signed-in) {:read #{} :write #{}}
-      (let [{:keys [action record scope list]} permission
+      (let [{:keys [action record scope list]} access
             open? (some? (check/open-level perms action))]
         ;; an open action's other ids are each held to its sentences, not
         ;; only to its scope: an id it doesn't show answers like one that isn't there
@@ -386,7 +387,7 @@
                                                          :record [(first record) (as-id (get params (second record)))]
                                                          :also   also})]
                    {:read scopes :write scopes})
-          scope  (let [id      (scope-of permission params)
+          scope  (let [id      (scope-of access params)
                        held    (check/scopes-under perms {:person person :visitor visitor :flags flags
                                                                 :action action :scope id})
                        open    (when open?
@@ -412,12 +413,14 @@
   [{:keys [name answer]} tx {:keys [key person]} run]
   (if (nil? key)
     (run)
-    (if (pg/row tx claim-key {:run-once/key key :run-once/person-id person :run-once/endpoint (wire/endpoint-name name)})
+    (if (pg/row tx claim-key {:run-once-key/key key :run-once-key/person-id person
+                              :run-once-key/endpoint (wire/endpoint-name name)})
       (let [data (run)]
-        (pg/execute! tx keep-answer {:run-once/key key
-                                     :run-once/answer (wire/write-json (wire/encode answer data))})
+        (pg/execute! tx update-answer {:run-once-key/key    key
+                                       :run-once-key/answer (wire/write-json (wire/encode answer data))})
         data)
-      (let [{:run-once/keys [person-id endpoint] stored :run-once/answer} (pg/row tx claimed-key {:run-once/key key})]
+      (let [{:run-once-key/keys [person-id endpoint] stored :run-once-key/answer}
+            (pg/row tx claimed-key {:run-once-key/key key})]
         (when-not (and (= person-id person) (= endpoint (wire/endpoint-name name)) stored)
           (throw (refuse "This key was used for something else")))
         (:value (wire/decode answer (wire/read-json stored)))))))
@@ -481,7 +484,7 @@
                 ;; a write that keeps something for a visitor: someone with no
                 ;; session gets one now, once the ask is past its limit
                 (let [visitor (or visitor
-                                  (when (and (nil? person) (:keeps-for-visitor entry) (:make-visitor ask))
+                                  (when (and (nil? person) (:keeps-for-visitor? entry) (:make-visitor ask))
                                     ((:make-visitor ask))))
                       ask     (-> ask (assoc :visitor visitor) (dissoc :make-visitor))]
                 (if (own-transaction? entry)
@@ -545,7 +548,7 @@
                                                                       :flags (or flags #{})}
                                                          decoded)]
               {:scopes read
-               :record (when-let [[kind param] (get-in entry [:permission :record])]
+               :record (when-let [[kind param] (get-in entry [:access :record])]
                          [kind (get decoded param)])
                ;; someone who belongs nowhere hears of the scope only through
                ;; the tables it shows them
@@ -583,15 +586,15 @@
   "The endpoints part: every endpoint checked against the permission
    description; old one-time keys forgotten."
   [{:keys [settings db permissions limits jobs app-settings]}]
-  (settings/check-part! :parquery settings)
-  (let [app       (gather (:endpoints settings))
+  (settings/check-part! :endpoints settings)
+  (let [app       (gather (:list settings))
         _         (when-let [taken (seq (filter #(= "groundwork" (namespace %)) (keys app)))]
                     (throw (ex-info (str "Endpoint names under groundwork/ are Groundwork's: " (str/join " " taken))
                                     {:type ::bad-endpoint :endpoints (vec taken)})))
         endpoints (into {}
                         (map (fn [[k entry]] [k (check-entry permissions k entry)]))
                         (merge app (built-in permissions)))]
-    (pg/execute! db forget-old-keys)
+    (pg/execute! db delete-old-keys)
     {:db          db
      :known-files (atom {})
      :perms       permissions
