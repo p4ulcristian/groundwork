@@ -1,7 +1,7 @@
-(ns groundwork.parquery.store
+(ns groundwork.endpoints.store
   "The browser's answers from parquery, kept by question: an endpoint and its
-   params. It isn't transport, so it sits beside groundwork.parquery, named
-   for whose answers it keeps. It lives in re-frame's db under
+   params. It is the browser's end of the endpoints area,
+   named for whose answers it keeps. It lives in re-frame's db under
    :groundwork/parquery-store; the app's own state is beside it.
 
      (rf/dispatch [::store/start {:shapes {…}}])                  ; once, at boot; nothing asks before it
@@ -64,8 +64,8 @@
   (:require
    [clojure.string :as str]
    [clojure.walk :as walk]
-   [groundwork.parquery.http :as http]
-   [groundwork.parquery.websocket :as websocket]
+   [groundwork.endpoints.http :as http]
+   [groundwork.endpoints.websocket :as websocket]
    [re-frame.core :as rf]))
 
 (def gc-ms (* 5 60 1000))

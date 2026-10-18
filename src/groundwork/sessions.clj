@@ -165,7 +165,7 @@
 (defn session-hash
   "The request's session as a name that isn't its key: the key's SHA-256, in
    hex; nil without a session. An ended session rings with it (see
-   groundwork.parquery.websocket)."
+   groundwork.endpoints.websocket)."
   [request]
   (when-let [key (get-in request [::session :key])]
     (apply str (map #(format "%02x" (bit-and % 0xff)) (key-hash key)))))

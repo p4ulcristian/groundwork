@@ -1,8 +1,8 @@
-(ns groundwork.parquery.bells
+(ns groundwork.endpoints.bells
   "The bells' bookkeeping: what rings and what each read waits for.
 
    Every table of the app says how it rings, or the start refuses (see
-   groundwork.parquery.websocket); each that rings gets a trigger
+   groundwork.endpoints.websocket); each that rings gets a trigger
    (groundwork.ring) that announces, after a statement commits, the table,
    the scopes and people of the changed rows and their ids. A write tags
    its transaction, so its bells carry the tag, and learns which bells it
@@ -15,7 +15,7 @@
   (:require
    [clojure.string :as str]
    [clojure.walk :as walk]
-   [groundwork.parquery.wire :as wire]
+   [groundwork.endpoints.wire :as wire]
    [groundwork.permissions.description :as description]
    [groundwork.permissions.sql :as sql]
    [groundwork.postgres :as pg]
@@ -29,13 +29,13 @@
    (java.sql Connection DriverManager)
    (java.util Properties)))
 
-(pg/defsql app-tables "groundwork/parquery/bells/app_tables.sql")
-(pg/defsql set-tag "groundwork/parquery/bells/set_tag.sql")
-(pg/defsql rang-sql "groundwork/parquery/bells/rang.sql")
-(pg/defsql remember-file "groundwork/parquery/bells/remember_file.sql")
-(pg/defsql files-of-sql "groundwork/parquery/bells/files_of.sql")
+(pg/defsql app-tables "groundwork/endpoints/bells/app_tables.sql")
+(pg/defsql set-tag "groundwork/endpoints/bells/set_tag.sql")
+(pg/defsql rang-sql "groundwork/endpoints/bells/rang.sql")
+(pg/defsql remember-file "groundwork/endpoints/bells/remember_file.sql")
+(pg/defsql files-of-sql "groundwork/endpoints/bells/files_of.sql")
 
-(def ^:private ^System$Logger logger (System/getLogger "groundwork.parquery.bells"))
+(def ^:private ^System$Logger logger (System/getLogger "groundwork.endpoints.bells"))
 
 ;; =============================================================================
 ;; Which tables ring

@@ -8,7 +8,7 @@
    [groundwork.core :as gw]
    [groundwork.endpoints :as endpoints]
    [groundwork.permissions.leaks :as leaks]
-   [groundwork.parquery.wire :as wire]
+   [groundwork.endpoints.wire :as wire]
    [groundwork.permissions :as perm]
    [groundwork.permissions.description :as description]
    [groundwork.postgres :as pg]

@@ -66,7 +66,7 @@
    commits only when everything succeeded, its answer fitting its shape
    included. A write's answer knows what it changed: the bells rung in its
    transaction (tables, scopes, ids) and the tag they carry, as the answer's
-   metadata (groundwork.parquery.bells/bell); parquery's HTTP part turns them into the reads the asking
+   metadata (groundwork.endpoints.bells/bell); parquery's HTTP part turns them into the reads the asking
    browser shows that changed. Work an endpoint commits outside its own
    transaction (after-commit work, a job, an endpoint with its own
    transactions) isn't in it; that reaches screens through the websocket. Both see only the verified scopes (the database wall). A write
@@ -99,14 +99,14 @@
                    ones nothing, on purpose. A table whose rows belong to a
                    scope is in the permission description. Every table
                    of the app is in the description or here, or the start
-                   refuses (see groundwork.parquery.websocket)"
+                   refuses (see groundwork.endpoints.websocket)"
   (:require
    [clojure.set :as set]
    [clojure.string :as str]
    [clojure.walk :as walk]
    [groundwork.limits :as limits]
-   [groundwork.parquery.bells :as bells]
-   [groundwork.parquery.wire :as wire]
+   [groundwork.endpoints.bells :as bells]
+   [groundwork.endpoints.wire :as wire]
    [groundwork.permissions :as-alias permissions]
    [groundwork.permissions.check :as check]
    [groundwork.permissions.description :as description]

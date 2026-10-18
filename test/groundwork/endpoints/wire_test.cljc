@@ -1,9 +1,9 @@
-(ns groundwork.parquery.wire-test
+(ns groundwork.endpoints.wire-test
   "The wire format, the same on both sides: values keep their types; an id
    is a UUID on the server and text in the browser."
   (:require
    [clojure.test :refer [deftest is testing]]
-   [groundwork.parquery.wire :as wire]))
+   [groundwork.endpoints.wire :as wire]))
 
 (def shape
   [:map [:job/id :uuid] [:job/due :time/local-date] [:job/at :time/instant]

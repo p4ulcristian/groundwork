@@ -51,7 +51,7 @@
    [clojure.string :as str]
    [clojure.walk :as walk]
    [groundwork.endpoints :as endpoints]
-   [groundwork.parquery.wire :as wire]
+   [groundwork.endpoints.wire :as wire]
    [groundwork.permissions.check :as check]
    [groundwork.permissions.description :as description]
    [groundwork.permissions.sql :as sql]

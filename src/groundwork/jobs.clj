@@ -41,7 +41,7 @@
    schedule is claimed by one server, which queues its job and moves it on."
   (:require
    [clojure.string :as str]
-   [groundwork.parquery.wire :as wire]
+   [groundwork.endpoints.wire :as wire]
    [groundwork.permissions.check :as check]
    [groundwork.postgres :as pg]
    [groundwork.settings :as settings]

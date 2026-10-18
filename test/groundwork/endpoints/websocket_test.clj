@@ -1,13 +1,13 @@
-(ns groundwork.parquery.websocket-test
+(ns groundwork.endpoints.websocket-test
   "The bells: Postgres rings after a commit, and each open line hears only
    about the reads it shows, in scopes it may see."
   (:require
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.core :as gw]
-   [groundwork.parquery.bells :as bells]
-   [groundwork.parquery.websocket :as websocket]
-   [groundwork.parquery.wire :as wire]
+   [groundwork.endpoints.bells :as bells]
+   [groundwork.endpoints.websocket :as websocket]
+   [groundwork.endpoints.wire :as wire]
    [groundwork.sessions :as sessions]
    [groundwork.permissions :as perm]
    [groundwork.postgres :as pg]

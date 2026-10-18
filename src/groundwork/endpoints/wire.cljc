@@ -1,4 +1,4 @@
-(ns groundwork.parquery.wire
+(ns groundwork.endpoints.wire
   "What travels over parquery, the same rules on both sides.
 
    JSON on the wire; the endpoint's shapes (malli) give the types back.

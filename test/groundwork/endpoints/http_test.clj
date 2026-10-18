@@ -1,11 +1,11 @@
-(ns groundwork.parquery.http-test
+(ns groundwork.endpoints.http-test
   "parquery over HTTP: a list of asks in, their answers out, in order; each
    runs apart, under the session and the Origin check."
   (:require
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.core :as gw]
-   [groundwork.parquery.wire :as wire]
+   [groundwork.endpoints.wire :as wire]
    [groundwork.permissions :as perm]
    [groundwork.postgres :as pg]
    [groundwork.test-support :refer [app-settings sql!]])

@@ -1,10 +1,10 @@
-(ns groundwork.parquery.store-test
+(ns groundwork.endpoints.store-test
   "The store's rules, as plain functions: one request per question, the
    newest answer wins, old data stays while refreshing, bells mark what's on
    screen, unneeded entries go after five minutes."
   (:require
    [cljs.test :refer [deftest is testing]]
-   [groundwork.parquery.store :as store]))
+   [groundwork.endpoints.store :as store]))
 
 (def jobs {:endpoint :jobs/list :params {:shop/id "acme"}})
 (def machines {:endpoint :machines/list :params {:shop/id "acme"}})

@@ -1,14 +1,14 @@
-(ns groundwork.parquery.store-events-test
+(ns groundwork.endpoints.store-events-test
   "The store's re-frame wiring, with only the network faked: ensure asks once
    per question, release and five minutes later the entry goes, bells are
    gathered and only what's on screen is asked again, the newest answer
    counts, writes are sent once with a key and never kept."
   (:require
    [cljs.test :refer [async deftest is testing]]
-   [groundwork.parquery.http :as http]
-   [groundwork.parquery.websocket :as websocket]
-   [groundwork.parquery.wire :as wire]
-   [groundwork.parquery.store :as store]
+   [groundwork.endpoints.http :as http]
+   [groundwork.endpoints.websocket :as websocket]
+   [groundwork.endpoints.wire :as wire]
+   [groundwork.endpoints.store :as store]
    [re-frame.core :as rf]
    [re-frame.db :as rf-db]))
 

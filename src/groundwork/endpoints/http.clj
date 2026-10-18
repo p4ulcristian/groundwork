@@ -1,7 +1,7 @@
-(ns groundwork.parquery.http
+(ns groundwork.endpoints.http
   "parquery over HTTP, the server half. A POST to /parquery carries the asks
    a page makes at one moment, as a JSON list; the answer is the list of
-   their answers, in the same order (see groundwork.parquery.wire).
+   their answers, in the same order (see groundwork.endpoints.wire).
 
    Each ask runs on its own, in parallel, with its own transaction: one
    failing doesn't touch the others. A request carries at most :max-asks
@@ -15,16 +15,16 @@
    once, without waiting for the websocket, and doesn't ask twice."
   (:require
    [groundwork.endpoints :as endpoints]
-   [groundwork.parquery.bells :as bells]
-   [groundwork.parquery.websocket :as websocket]
-   [groundwork.parquery.wire :as wire]
+   [groundwork.endpoints.bells :as bells]
+   [groundwork.endpoints.websocket :as websocket]
+   [groundwork.endpoints.wire :as wire]
    [groundwork.sessions :as sessions]
    [groundwork.web :as web])
   (:import
    (java.lang System$Logger System$Logger$Level)
    (java.util.concurrent Callable ExecutionException ExecutorService Future Semaphore)))
 
-(def ^:private ^System$Logger logger (System/getLogger "groundwork.parquery.http"))
+(def ^:private ^System$Logger logger (System/getLogger "groundwork.endpoints.http"))
 
 (def ^:private max-watching
   "The most reads a write may name as on screen; with more, its answer says
