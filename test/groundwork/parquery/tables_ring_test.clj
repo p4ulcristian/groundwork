@@ -1,10 +1,10 @@
-(ns groundwork.tables-ring-test
+(ns groundwork.parquery.tables-ring-test
   "Every table of the app says how it rings, or the start refuses, naming
    the ones that don't."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.core :as gw]
-   [groundwork.parquery.websocket :as websocket]
+   [groundwork.parquery.bells :as bells]
    [groundwork.test-support :refer [app-settings sql!]]))
 
 (use-fixtures :once
@@ -34,7 +34,7 @@
 (deftest every-table-says-how-it-rings
   (testing "tables nothing names stop the start, all of them in one error"
     (let [problem (start-with {:global {:tr_colours "reference data"} :personal {} :silent (others)})]
-      (is (= ::websocket/tables-not-declared (:type problem)))
+      (is (= ::bells/tables-not-declared (:type problem)))
       (is (= ["tr_import_log" "tr_notices"] (:undeclared problem)))))
   (testing "global, personal, or silent with its reason: the app starts"
     (is (= :started (start-with {:global   {:tr_colours "reference data"}
@@ -52,7 +52,7 @@
                                   :silent   (assoc (others) :tr_import_log "…" :tr_gone "…")})))))
   (testing "a database shared with something else: the rest is silent, said once"
     (is (= :started (start-with {:global {} :personal {}
-                                 :silent {websocket/every-other-table "shared with other tests"}})))))
+                                 :silent {bells/every-other-table "shared with other tests"}})))))
 
 (deftest a-global-table-says-why
   (testing "a set of tables, with no reasons, is refused by the settings check"

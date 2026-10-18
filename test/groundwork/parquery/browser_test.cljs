@@ -1,4 +1,4 @@
-(ns groundwork.browser-parquery-test
+(ns groundwork.parquery.browser-test
   "parquery's browser half, with the network replaced: asks of one moment
    share a request, answers come back typed, the line resends what's on
    screen after a drop."

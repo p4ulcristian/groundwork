@@ -43,7 +43,7 @@
    asks the browser's own question."
   (:require
    [clojure.string :as str]
-   [groundwork.parquery-store :as store]
+   [groundwork.parquery.store :as store]
    [re-frame.core :as rf]
    [reitit.frontend :as rfr]
    [reitit.impl :as impl]))

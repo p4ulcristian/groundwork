@@ -1,4 +1,4 @@
-(ns groundwork.parquery-http-test
+(ns groundwork.parquery.http-test
   "parquery over HTTP: a list of asks in, their answers out, in order; each
    runs apart, under the session and the Origin check."
   (:require

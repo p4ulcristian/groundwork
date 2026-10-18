@@ -1,4 +1,4 @@
-(ns groundwork.parquery-store
+(ns groundwork.parquery.store
   "The browser's answers from parquery, kept by question: an endpoint and its
    params. It isn't transport, so it sits beside groundwork.parquery, named
    for whose answers it keeps. It lives in re-frame's db under

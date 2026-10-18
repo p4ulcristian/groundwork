@@ -15,6 +15,7 @@
    once, without waiting for the websocket, and doesn't ask twice."
   (:require
    [groundwork.endpoints :as endpoints]
+   [groundwork.parquery.bells :as bells]
    [groundwork.parquery.websocket :as websocket]
    [groundwork.parquery.wire :as wire]
    [groundwork.sessions :as sessions]
@@ -54,7 +55,7 @@
   (try
     (let [started (System/nanoTime)
           answer  (endpoints/call endpoints (merge about ask))
-          bell    (endpoints/bell answer)]
+          bell    (bells/bell answer)]
       (answered! (:on-answer settings) ask about answer started)
       (cond-> (endpoints/encode-answer endpoints (:endpoint ask) answer)
         ;; a write whose browser said what it shows hears which of it changed

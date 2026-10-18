@@ -1,11 +1,11 @@
-(ns groundwork.parquery-websocket-test
+(ns groundwork.parquery.websocket-test
   "The bells: Postgres rings after a commit, and each open line hears only
    about the reads it shows, in scopes it may see."
   (:require
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.core :as gw]
-   [groundwork.endpoints :as endpoints]
+   [groundwork.parquery.bells :as bells]
    [groundwork.parquery.websocket :as websocket]
    [groundwork.parquery.wire :as wire]
    [groundwork.sessions :as sessions]
@@ -240,7 +240,7 @@
   (is (thrown? Exception (open-line (sign-in paul) :line-origin "https://evil.example"))))
 
 (deftest a-read-not-run-yet-rings-on-its-scope
-  (is (empty? (endpoints/files-of (gw/endpoints *app*) :notes/unknown)))
+  (is (empty? (bells/files-of (gw/endpoints *app*) :notes/unknown)))
   (let [cookie (sign-in paul)
         line   (open-line cookie)]
     (try

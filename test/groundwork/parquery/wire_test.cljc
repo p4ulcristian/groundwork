@@ -1,4 +1,4 @@
-(ns groundwork.wire-test
+(ns groundwork.parquery.wire-test
   "The wire format, the same on both sides: values keep their types; an id
    is a UUID on the server and text in the browser."
   (:require

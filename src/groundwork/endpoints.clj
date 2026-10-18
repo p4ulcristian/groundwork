@@ -66,7 +66,7 @@
    commits only when everything succeeded, its answer fitting its shape
    included. A write's answer knows what it changed: the bells rung in its
    transaction (tables, scopes, ids) and the tag they carry, as the answer's
-   metadata (bell); parquery's HTTP part turns them into the reads the asking
+   metadata (groundwork.parquery.bells/bell); parquery's HTTP part turns them into the reads the asking
    browser shows that changed. Work an endpoint commits outside its own
    transaction (after-commit work, a job, an endpoint with its own
    transactions) isn't in it; that reaches screens through the websocket. Both see only the verified scopes (the database wall). A write
@@ -105,6 +105,7 @@
    [clojure.string :as str]
    [clojure.walk :as walk]
    [groundwork.limits :as limits]
+   [groundwork.parquery.bells :as bells]
    [groundwork.parquery.wire :as wire]
    [groundwork.permissions :as-alias permissions]
    [groundwork.permissions.check :as check]
@@ -119,10 +120,6 @@
 (pg/defsql claimed-key "groundwork/endpoints/claimed_key.sql")
 (pg/defsql keep-answer "groundwork/endpoints/keep_answer.sql")
 (pg/defsql forget-old-keys "groundwork/endpoints/forget_old_keys.sql")
-(pg/defsql remember-file "groundwork/endpoints/remember_file.sql")
-(pg/defsql files-of-sql "groundwork/endpoints/files_of.sql")
-(pg/defsql set-tag "groundwork/endpoints/set_tag.sql")
-(pg/defsql rang-sql "groundwork/endpoints/rang.sql")
 
 (def ^:private ^System$Logger logger (System/getLogger "groundwork.endpoints"))
 
@@ -425,48 +422,6 @@
           (throw (refuse "This key was used for something else")))
         (:value (wire/decode answer (wire/read-json stored)))))))
 
-(defn- rang
-  "The bells rung in this transaction: :any, or the bells as maps, or nil."
-  [tx]
-  (let [text (:bell/rang (pg/row tx rang-sql))]
-    (cond
-      (str/blank? text) nil
-      (= "any" text)    :any
-      :else             (mapv wire/read-json (str/split-lines text)))))
-
-(defn bell
-  "What a write's answer knows of what it changed, or nil:
-   {:tag … :rang [{:t table :s scopes :p people :i ids} …] or :any}."
-  [answer]
-  (::bell (meta answer)))
-
-(defn- collecting
-  "An on-query hook that notes each SQL file a read runs, and calls the
-   app's own hook too."
-  [files hook]
-  (fn [{:keys [file] :as q}]
-    (when file (swap! files conj file))
-    (when hook (hook q))))
-
-(defn- remember-files!
-  "Note which SQL files a read endpoint ran, here and in the database, so
-   every server knows which tables its watchers wait for."
-  [{:keys [db known-files]} endpoint files]
-  (doseq [file files
-          :when (not (contains? (get @known-files endpoint) file))]
-    (pg/execute! db remember-file {:endpoint-file/endpoint (wire/endpoint-name endpoint) :endpoint-file/file file})
-    (swap! known-files update endpoint (fnil conj #{}) file)))
-
-(defn files-of
-  "The SQL files a read endpoint has run, on any server: what its watchers
-   wait for. Empty when it has never run."
-  [{:keys [db known-files]} endpoint]
-  (or (not-empty (get @known-files endpoint))
-      (let [files (into #{} (map :endpoint-file/file)
-                        (pg/rows db files-of-sql {:endpoint-file/endpoint (wire/endpoint-name endpoint)}))]
-        (when (seq files) (swap! known-files assoc endpoint files))
-        files)))
-
 (defn- failed [{:keys [on-error]} e about]
   (if on-error
     (try (on-error (assoc about :error e))
@@ -545,7 +500,7 @@
                        perms {:person person :visitor visitor :scopes read :write-scopes write :flags flags
                               :read-only? (:read? entry)}
                        (fn [tx]
-                         (let [tx  (cond-> tx (:read? entry) (assoc ::pg/on-query (collecting files (::pg/on-query tx))))
+                         (let [tx  (cond-> tx (:read? entry) (assoc ::pg/on-query (bells/collecting files (::pg/on-query tx))))
                                ctx (assoc ask :db tx :scopes scopes :every-scope? every? :flags flags :params decoded
                                           :jobs (:jobs part))
                                run (fn []
@@ -557,13 +512,13 @@
                                        data))]
                            (if (:read? entry)
                              [(run) nil]
-                             (do (pg/execute! tx set-tag {:tag tag})
+                             (do (bells/tag! tx tag)
                                  (let [data (run-write-once entry tx ask run)]
-                                   [data (rang tx)]))))))]
-                  (when (:read? entry) (remember-files! part endpoint @files))
+                                   [data (bells/rang tx)]))))))]
+                  (when (:read? entry) (bells/remember-files! part endpoint @files))
                   (run-after-commit! part @after about)
                   (cond-> (answer :ok :data data)
-                    rang (with-meta {::bell {:tag tag :rang rang}})))))))
+                    rang (with-meta {::bells/bell {:tag tag :rang rang}})))))))
             (catch clojure.lang.ExceptionInfo e
               (case (:type (ex-data e))
                 ::permissions/not-found (answer :not-found)

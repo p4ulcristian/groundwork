@@ -50,7 +50,7 @@
      (gb/unsaved! false)            ; saved"
   (:require
    [groundwork.loader :as loader]
-   [groundwork.parquery-store :as store]
+   [groundwork.parquery.store :as store]
    [groundwork.routing :as routing]
    [re-frame.core :as rf]
    [reagent.dom.client :as rdc]))
