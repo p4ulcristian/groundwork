@@ -1,10 +1,10 @@
-(ns groundwork.parquery.tables-ring-test
+(ns groundwork.endpoints.tables-ring-test
   "Every table of the app says how it rings, or the start refuses, naming
    the ones that don't."
   (:require
    [clojure.test :refer [deftest is testing use-fixtures]]
    [groundwork.core :as gw]
-   [groundwork.parquery.bells :as bells]
+   [groundwork.endpoints.bells :as bells]
    [groundwork.test-support :refer [app-settings sql!]]))
 
 (use-fixtures :once

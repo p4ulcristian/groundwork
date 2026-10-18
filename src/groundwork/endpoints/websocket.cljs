@@ -1,4 +1,4 @@
-(ns groundwork.parquery.websocket
+(ns groundwork.endpoints.websocket
   "parquery over a websocket, the browser half: the bells. One line to
    /parquery for the whole visit. It tells the server which reads are on
    screen and hears which of them changed.
@@ -11,7 +11,7 @@
    (up to 30 s); then it sends the list again and calls on-reconnected,
    since bells may have been missed."
   (:require
-   [groundwork.parquery.wire :as wire]))
+   [groundwork.endpoints.wire :as wire]))
 
 (defonce ^:private state
   (atom {:socket nil :watches [] :wait 0 :stopped? true :options nil :reconnecting? false}))

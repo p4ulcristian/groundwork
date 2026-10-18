@@ -31,7 +31,7 @@
    [groundwork.limits :as limits]
    [groundwork.migrations :as migrations]
    [groundwork.web.page :as page]
-   [groundwork.parquery.route :as parquery]
+   [groundwork.endpoints.route :as route]
    [groundwork.permissions :as permissions]
    [groundwork.postgres :as pg]
    [groundwork.web.server :as server]
@@ -79,8 +79,8 @@
                            :start    endpoints/start}
    :groundwork/parquery   {:settings :parquery
                            :needs    [:groundwork/db :groundwork/endpoints :groundwork/sessions]
-                           :start    parquery/start
-                           :stop     parquery/stop}
+                           :start    route/start
+                           :stop     route/stop}
    :groundwork/page       {:settings :page
                            :needs    []
                            :start    page/start}

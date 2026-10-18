@@ -5,10 +5,10 @@
    changes holding links, navigate! and Back."
   (:require
    [cljs.test :refer [async deftest is testing]]
-   [groundwork.parquery.http :as http]
-   [groundwork.parquery.websocket :as websocket]
-   [groundwork.parquery.wire :as wire]
-   [groundwork.parquery.store :as store]
+   [groundwork.endpoints.http :as http]
+   [groundwork.endpoints.websocket :as websocket]
+   [groundwork.endpoints.wire :as wire]
+   [groundwork.endpoints.store :as store]
    [groundwork.browser.routing :as routing]
    [re-frame.core :as rf]
    [re-frame.db :as rf-db]

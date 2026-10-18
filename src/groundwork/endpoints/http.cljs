@@ -1,4 +1,4 @@
-(ns groundwork.parquery.http
+(ns groundwork.endpoints.http
   "parquery over HTTP, the browser half. The asks made in the same moment
    travel in one POST to /parquery (at most :max-asks, more go in more
    requests); each answer comes back to its own callback, typed by its
@@ -8,11 +8,11 @@
      (http/ask! {:endpoint :jobs/list :params {:shop/id id}} (fn [answer] …))
 
    An answer is {:status :ok :data …} or another status (see
-   groundwork.parquery.wire); a request that never reached the server gives
+   groundwork.endpoints.wire); a request that never reached the server gives
    {:status :error :message … :reached? false} to each of its asks, so an
    app can tell \"no connection\" from an error the server answered with."
   (:require
-   [groundwork.parquery.wire :as wire]))
+   [groundwork.endpoints.wire :as wire]))
 
 (defonce ^:private shapes (atom {}))
 (defonce ^:private max-asks (atom 50))

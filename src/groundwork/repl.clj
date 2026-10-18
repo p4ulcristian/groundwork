@@ -25,7 +25,7 @@
    [groundwork.endpoints :as endpoints]
    [groundwork.jobs :as jobs]
    [groundwork.migrations :as migrations]
-   [groundwork.parquery.websocket :as websocket]
+   [groundwork.endpoints.websocket :as websocket]
    [groundwork.permissions.check :as check]
    [groundwork.sessions :as sessions]
    [groundwork.settings.docs :as docs]))

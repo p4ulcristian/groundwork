@@ -105,8 +105,14 @@ names stay. An app changes its requires:
 | `groundwork.sql` | `groundwork.postgres.sql` |
 | `groundwork.permissions.rules` | `groundwork.permissions.description` (reading, checking) and `groundwork.permissions.sql` (the SQL) |
 | `groundwork.leaks` | `groundwork.permissions.leaks` |
-| `groundwork.endpoints/bell` | `groundwork.parquery.bells/bell` |
-| `groundwork.parquery-store` (cljs) | `groundwork.parquery.store` |
+| `groundwork.endpoints/bell` | `groundwork.endpoints.bells/bell` |
+| `groundwork.parquery-store` (cljs) | `groundwork.endpoints.store` |
+| `groundwork.parquery.store` (cljs) | `groundwork.endpoints.store` |
+| `groundwork.parquery.route` | `groundwork.endpoints.route` |
+| `groundwork.parquery.http` (clj and cljs) | `groundwork.endpoints.http` |
+| `groundwork.parquery.websocket` (clj and cljs) | `groundwork.endpoints.websocket` |
+| `groundwork.parquery.bells` | `groundwork.endpoints.bells` |
+| `groundwork.parquery.wire` (cljc) | `groundwork.endpoints.wire` |
 | `groundwork.page` | `groundwork.web.page` |
 | `groundwork.server` | `groundwork.web.server` |
 | `groundwork.web/sniff-type` | `groundwork.web.files/sniff-type` |
@@ -120,3 +126,13 @@ names stay. An app changes its requires:
 `list-filter`, `holds?`, `in-wall`, `as-system`, `in-scopes`, the team
 writes); the rest is in `groundwork.permissions.check`. Error types stay
 `:groundwork.permissions/…`.
+
+The parquery folder went into the endpoints area
+([the decision](decisions/2026-10-18-the-endpoints-area-holds-its-transport.md)).
+Its error types follow their namespaces: `:groundwork.parquery.bells/tables-not-declared`
+is now `:groundwork.endpoints.bells/tables-not-declared`, and the store's
+`:groundwork.parquery.store/asked-before-start` is
+`:groundwork.endpoints.store/asked-before-start`; so do the store's re-frame
+events and subscriptions (`::store/…`). The settings key `:parquery`, the
+address `/parquery`, the part `:groundwork/parquery` and the re-frame db key
+`:groundwork/parquery-store` stay.

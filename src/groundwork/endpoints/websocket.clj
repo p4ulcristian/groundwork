@@ -1,7 +1,7 @@
-(ns groundwork.parquery.websocket
+(ns groundwork.endpoints.websocket
   "parquery over a websocket, the server half: the lines that carry the
    bells (what rings and what each read waits for is
-   groundwork.parquery.bells).
+   groundwork.endpoints.bells).
 
    A browser opens one line to /parquery and says which reads it shows,
    {\"watch\": [[endpoint params] …]}, the whole list each time it changes.
@@ -45,8 +45,8 @@
   (:require
    [clojure.set :as set]
    [groundwork.endpoints :as endpoints]
-   [groundwork.parquery.bells :as bells]
-   [groundwork.parquery.wire :as wire]
+   [groundwork.endpoints.bells :as bells]
+   [groundwork.endpoints.wire :as wire]
    [groundwork.permissions.check :as check]
    [groundwork.permissions.description :as description]
    [groundwork.sessions :as sessions]
@@ -57,7 +57,7 @@
    (java.sql Connection)
    (org.postgresql PGConnection PGNotification)))
 
-(def ^:private ^System$Logger logger (System/getLogger "groundwork.parquery.websocket"))
+(def ^:private ^System$Logger logger (System/getLogger "groundwork.endpoints.websocket"))
 
 ;; =============================================================================
 ;; Lines and their watches
@@ -181,7 +181,7 @@
 (defn changed-for
   "Of the reads a browser shows (`watching`, [endpoint params] as they
    travel), the ones a write's own bells concern, each checked like an ask
-   first. `rang` is the write's bells (see groundwork.parquery.bells/bell), or
+   first. `rang` is the write's bells (see groundwork.endpoints.bells/bell), or
    :any: everything it shows that it may ask."
   [part {:keys [person visitor flags]} watching rang]
   (let [asks    (vec (keep read-watch watching))

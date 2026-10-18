@@ -1,12 +1,12 @@
-(ns groundwork.parquery.route
+(ns groundwork.endpoints.route
   "parquery's one address, /parquery: a POST goes to parquery's HTTP part
    (asks and answers), a websocket to its websocket part (the bells). Both
    carry the same endpoints' keywords, under the same session and
    permissions. This is also the parquery part itself: what both halves
    share on the server."
   (:require
-   [groundwork.parquery.http :as http]
-   [groundwork.parquery.websocket :as websocket])
+   [groundwork.endpoints.http :as http]
+   [groundwork.endpoints.websocket :as websocket])
   (:import
    (java.util.concurrent ExecutorService Executors Semaphore)))
 

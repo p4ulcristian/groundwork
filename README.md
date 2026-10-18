@@ -15,8 +15,8 @@ keywords → postgres → parquery → re-frame → reagent
 | Keywords          | `groundwork.postgres.names` | built  |
 | db                | `groundwork.postgres` | built on next.jdbc + PgJDBC + HikariCP |
 | endpoints         | `groundwork.endpoints` | built |
-| parquery          | `groundwork.parquery.*` | built: HTTP and the bells |
-| parquery, browser | `groundwork.parquery.*`, `groundwork.parquery.store` (cljs) | built on re-frame |
+| endpoints' transport | `groundwork.endpoints.route`, `.http`, `.websocket`, `.bells`, `.wire` | built: HTTP and the bells |
+| endpoints, browser | `groundwork.endpoints.http`, `.websocket`, `.wire`, `groundwork.endpoints.store` (cljs) | built on re-frame |
 | server            | `groundwork.web.server` | built on http-kit |
 | router            | `groundwork.web`      | built on reitit |
 | migrations        | `groundwork.migrations` | built |
@@ -52,12 +52,12 @@ src/groundwork/
   sessions.clj             who is signed in
   limits.clj               how often a caller may ask
   endpoints.clj            the endpoints: checked at start, run per ask
-  parquery/route.clj       /parquery, and the part
-  parquery/http.clj(s)     the asks over HTTP
-  parquery/websocket.clj(s)  the lines that carry the bells
-  parquery/bells.clj       what rings and what each read waits for
-  parquery/wire.cljc       the wire: shapes, JSON, ids, decimals
-  parquery/store.cljs      the browser's answers, kept by question
+  endpoints/route.clj      /parquery, and the part
+  endpoints/http.clj(s)    the asks over HTTP
+  endpoints/websocket.clj(s)  the lines that carry the bells
+  endpoints/bells.clj      what rings and what each read waits for
+  endpoints/wire.cljc      the wire: shapes, JSON, ids, decimals
+  endpoints/store.cljs     the browser's answers, kept by question
   web.clj                  the router: routes, access, the web part
   web/http.clj             headers, CSP, request ids, hooks, gzip, HEAD, no indexing
   web/files.clj            static files, caching, ranges, sniff-type
@@ -957,22 +957,22 @@ in Postgres (`groundwork.jobs`):
 
 ---
 
-## 8. parquery
+## 8. The endpoints' transport
 
 The transport between browser and server, at one address, `/parquery`:
 
-- `parquery/http`: a POST carries the asks a page makes at one moment, as
+- `endpoints/http`: a POST carries the asks a page makes at one moment, as
   a JSON list; the answers come back in the same order. Each ask runs on its
   own, in parallel, with its own transaction, so one failing leaves the
   others. At most `:max-asks` per request; at most `:max-running` running
   across the server.
-- `parquery/wire`: the message format, the same on both sides. JSON, typed
+- `endpoints/wire`: the message format, the same on both sides. JSON, typed
   by the endpoint's shapes: dates (`:time/local-date` …) and decimals
   (`:decimal`) travel as text and come back as what they are. An id
   (`:uuid`) is a real UUID on the server, strictly checked when it arrives,
   and text in the browser: there it is a name tag, the same whether it came
   from an answer, the address or a form control.
-- `parquery/websocket`: the bells. A browser opens one line to
+- `endpoints/websocket`: the bells. A browser opens one line to
   `/parquery` and sends the reads it shows, `{"watch": [[endpoint params] …]}`;
   each is checked like an ask. When something it shows changes, it hears
   `{"changed": [[endpoint params] …]}` and asks again over HTTP. A bell
@@ -1157,12 +1157,12 @@ Then the store, under the screens:
 @(rf/subscribe [::store/can? :jobs/move shop-id])
 ```
 
-- `parquery/http` (cljs): the asks of one moment travel in one POST; each
+- `endpoints/http` (cljs): the asks of one moment travel in one POST; each
   answer comes back typed by its shape.
-- `parquery/websocket` (cljs): one line for the visit; it sends what's on
+- `endpoints/websocket` (cljs): one line for the visit; it sends what's on
   screen and hears what changed; a dropped line comes back by itself and
   asks everything on screen again.
-- `groundwork.parquery.store`: answers kept by question in re-frame's db. A screen
+- `groundwork.endpoints.store`: answers kept by question in re-frame's db. A screen
   says what it needs when it opens and lets go when it closes; showing
   never fetches. Old data stays while a fresh answer loads; only the newest
   answer counts; bells are gathered for 200 ms and only what's on screen is

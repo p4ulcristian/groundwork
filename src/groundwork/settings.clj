@@ -19,7 +19,7 @@
    checked by the part itself, after this."
   (:require
    [clojure.string :as str]
-   [groundwork.parquery.wire :as wire]
+   [groundwork.endpoints.wire :as wire]
    [malli.core :as m]
    [malli.error :as me]
    [reitit.core :as r])

@@ -1,12 +1,12 @@
-(ns groundwork.parquery.browser-test
+(ns groundwork.endpoints.browser-test
   "parquery's browser half, with the network replaced: asks of one moment
    share a request, answers come back typed, the line resends what's on
    screen after a drop."
   (:require
    [cljs.test :refer [async deftest is]]
-   [groundwork.parquery.http :as http]
-   [groundwork.parquery.websocket :as websocket]
-   [groundwork.parquery.wire :as wire]))
+   [groundwork.endpoints.http :as http]
+   [groundwork.endpoints.websocket :as websocket]
+   [groundwork.endpoints.wire :as wire]))
 
 (def shop-id #uuid "7f3c1e2a-0000-4000-8000-000000000001")
 
