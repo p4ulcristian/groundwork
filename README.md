@@ -12,20 +12,68 @@ keywords → postgres → parquery → re-frame → reagent
 | Part              | Namespace             | Status |
 |-------------------|-----------------------|--------|
 | Starting an app   | `groundwork.core`     | built  |
-| Keywords          | `groundwork.names`    | built  |
+| Keywords          | `groundwork.postgres.names` | built  |
 | db                | `groundwork.postgres` | built on next.jdbc + PgJDBC + HikariCP |
 | endpoints         | `groundwork.endpoints` | built |
 | parquery          | `groundwork.parquery.*` | built: HTTP and the bells |
-| parquery, browser | `groundwork.parquery.*`, `groundwork.parquery-store` (cljs) | built on re-frame |
-| server            | `groundwork.server`   | built on http-kit |
+| parquery, browser | `groundwork.parquery.*`, `groundwork.parquery.store` (cljs) | built on re-frame |
+| server            | `groundwork.web.server` | built on http-kit |
 | router            | `groundwork.web`      | built on reitit |
 | migrations        | `groundwork.migrations` | built |
 | sessions          | `groundwork.sessions` | built  |
 | permissions       | `groundwork.permissions` | built  |
-| page shell        | `groundwork.page`     | built  |
-| styles            | `groundwork.styles`, `groundwork.loader` (cljs) | built: a bundle per module, the check, lightningcss |
-| REPL              | `groundwork.repl` (clj and cljs) | built |
+| page shell        | `groundwork.web.page` | built  |
+| styles            | `groundwork.build.styles`, `groundwork.browser.loader` (cljs) | built: a bundle per module, the check, lightningcss |
+| REPL              | `groundwork.repl`, `groundwork.repl.dev`, `groundwork.repl.browser` (cljs) | built |
 | background jobs   | `groundwork.jobs`     | built ([#1](https://github.com/p4ulcristian/groundwork/issues/1)) |
+
+The code is laid out by area, one folder each
+([decision](decisions/2026-10-18-one-folder-per-area.md)). An area's plain
+file is its door, the namespace an app requires; the files in its folder
+are its machinery, one job each:
+
+```
+src/groundwork/
+  core.clj                 starting and stopping an app
+  settings.clj             the settings' schemas and their checks
+  settings/docs.clj        the README's reference, the example file, explain-setting
+  postgres.clj             the database: pool, transactions, .sql files, rows
+  postgres/sql.clj         SQL text with :name params made a JDBC statement
+  postgres/names.clj       one name from the column to the browser
+  migrations.clj           the schema's changes, run at start
+  jobs.clj                 background jobs and schedules
+  permissions.clj          who may do what: the door
+  permissions/description.clj   the description, read and checked
+  permissions/sql.clj      the sentences as SQL: the wall, vias, may functions, fills
+  permissions/check.clj    checking a request, grants, listening, why
+  permissions/members.clj  scopes, roles and members, written
+  permissions/install.clj  the database checked and the wall put up at start
+  permissions/leaks.clj    the leak test
+  sessions.clj             who is signed in
+  limits.clj               how often a caller may ask
+  endpoints.clj            the endpoints: checked at start, run per ask
+  parquery/route.clj       /parquery, and the part
+  parquery/http.clj(s)     the asks over HTTP
+  parquery/websocket.clj(s)  the lines that carry the bells
+  parquery/bells.clj       what rings and what each read waits for
+  parquery/wire.cljc       the wire: shapes, JSON, ids, decimals
+  parquery/store.cljs      the browser's answers, kept by question
+  web.clj                  the router: routes, access, the web part
+  web/http.clj             headers, CSP, request ids, hooks, gzip, HEAD, no indexing
+  web/files.clj            static files, caching, ranges, sniff-type
+  web/body.clj             request bodies, forms and uploads
+  web/languages.clj        the request's language
+  web/page.clj             the page shell
+  web/server.clj           http-kit
+  browser.cljs             the browser half's start
+  browser/routing.cljs     the browser's routing
+  browser/loader.cljs      modules loaded on demand, with their stylesheets
+  build.clj                the browser build
+  build/styles.clj         the CSS bundles
+  repl.clj                 the REPL's tools for a running app
+  repl/dev.clj             the development start: nREPL, .mcp.json, log, serve
+  repl/browser.cljs        the browser's REPL: the store's contents
+```
 
 Java 25 or newer. Every decision and its reason: [`decisions/`](decisions/).
 Every push runs the tests on GitHub ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)):
@@ -524,7 +572,7 @@ resources/migrations/
   and the server never reads more than the largest any route accepts. A
   browser route's form is parsed into `:form-params`, multipart into
   `:multipart-params`: each file a temporary file (deleted after an hour)
-  with `:real-type`, what its bytes really are (`web/sniff-type`), whatever
+  with `:real-type`, what its bytes really are (`groundwork.web.files/sniff-type`), whatever
   name or type the browser gave. JSON and every server-to-server route's
   body stay untouched, so a webhook can check its signature. Storing files is
   the app's.
@@ -1067,13 +1115,13 @@ pages once, in a `.cljc` file the server and the browser both read:
   What only the browser reads (`:view`, `:reads`, `:load`, `:placeholder`, a
   title function) is left out; records in a group keep their group.
 - Tests: the engine on node with the browser replaced, and
-  `groundwork.browser-routing-test` in headless Chrome over its debugging
+  `groundwork.browser.routing-in-chrome-test` in headless Chrome over its debugging
   protocol (the browser's own history, links, titles, unsaved changes
   holding Back). `GROUNDWORK_CHROME` names the Chrome; without one it's
   skipped.
 - **The build is Groundwork's** (`groundwork.build`): it makes the
   shadow-cljs build from the `:browser` settings, so an app keeps no build
-  config. In development the one start (`repl/start!`) watches it; a save
+  config. In development the one start (`groundwork.repl.dev/start!`) watches it; a save
   recompiles and renders again; `groundwork.build/compile` builds the same
   once, without watching (a second copy of the app on one checkout, a check
   before a commit). Before packaging, a release:
@@ -1114,7 +1162,7 @@ Then the store, under the screens:
 - `parquery/websocket` (cljs): one line for the visit; it sends what's on
   screen and hears what changed; a dropped line comes back by itself and
   asks everything on screen again.
-- `groundwork.parquery-store`: answers kept by question in re-frame's db. A screen
+- `groundwork.parquery.store`: answers kept by question in re-frame's db. A screen
   says what it needs when it opens and lets go when it closes; showing
   never fetches. Old data stays while a fresh answer loads; only the newest
   answer counts; bells are gathered for 200 ms and only what's on screen is
@@ -1139,6 +1187,8 @@ Then the store, under the screens:
 - Tests: `npm install && npx shadow-cljs compile test` (headless, on node).
 
 ### The leak test
+
+`groundwork.permissions.leaks`, for an app's own tests:
 
 ```clojure
 (deftest nothing-leaks
@@ -1246,10 +1296,10 @@ With it, the browser build (`groundwork.build`) does the rest:
   are, so a `url()` in them is an absolute address (`/img/logo.svg`).
 - How an app likes its CSS (design tokens, no raw colours, no
   `!important`) is the app's own check.
-- Tests: the namespaces, the check and the bundles (`groundwork.styles-test`),
+- Tests: the namespaces, the check and the bundles (`groundwork.build.styles-test`),
   the build and the page (`groundwork.build-test`), the loader on node
-  (`groundwork.loader-test`), and in headless Chrome
-  (`groundwork.browser-routing-test`): a release's page links the
+  (`groundwork.browser.loader-test`), and in headless Chrome
+  (`groundwork.browser.routing-in-chrome-test`): a release's page links the
   fingerprinted bundle, a module loaded on demand has its bundle in before
   its code runs, and in development a save shows in the open page.
 
@@ -1265,7 +1315,7 @@ ships no bridge into a running preview
 and not saved to a file is gone on the next start.
 
 ```clojure
-(def dev (repl/start! settings {}))   ; :environment :development only
+(def dev (dev/start! settings {}))    ; groundwork.repl.dev; :environment :development only
 (repl/ask (:app dev) :jobs/list {:shop/id acme} :as peter)
 (repl/why (:app dev) peter :orders/edit [:order order-id])
 ;=> {:allowed? false
@@ -1277,7 +1327,7 @@ and not saved to a file is gone on the next start.
 (repl/recent-bells (:app dev))   ; the last 50 bells this server heard
 (repl/sessions (:app dev) peter) (repl/sign-out-everywhere! (:app dev) peter)
 (repl/migrations (:app dev))     ; ran, waiting, changed, missing
-(repl/restart! dev)  (repl/stop! dev)
+(dev/restart! dev)  (dev/stop! dev)
 ```
 
 - **One start:** the app, an nREPL (with the browser build's middleware
@@ -1288,13 +1338,13 @@ and not saved to a file is gone on the next start.
   `dev.log.1`). The port goes to `.nrepl-port`. It needs `nrepl/nrepl` and
   `thheller/shadow-cljs` on the classpath, as an app's `:dev` alias has them.
   An app's `.gitignore` lists `.groundwork/`, `.nrepl-port` and `.mcp.json`.
-- **As a service:** `groundwork.repl/serve` runs the same start until the
+- **As a service:** `groundwork.repl.dev/serve` runs the same start until the
   process is stopped, with no terminal:
-  `clojure -X:dev groundwork.repl/serve :settings app.settings/dev :nrepl-port 7888`.
+  `clojure -X:dev groundwork.repl.dev/serve :settings app.settings/dev :nrepl-port 7888`.
   [`docs/groundwork-dev.service`](docs/groundwork-dev.service) is a systemd
   user unit for it; `systemctl --user stop` (SIGTERM) stops the app, the
-  watcher and the nREPL cleanly. The running dev map is `@repl/running`, so
-  from the nREPL: `(swap! repl/running repl/restart!)`. Checked by running
+  watcher and the nREPL cleanly. The running dev map is `@dev/running`, so
+  from the nREPL: `(swap! dev/running dev/restart!)`. Checked by running
   the example app (`test/example/hello`) as a transient user service:
   served, recompiled on save, evaluated and restarted over the nREPL, and
   stopped with every port closed.
@@ -1310,6 +1360,6 @@ and not saved to a file is gone on the next start.
   gives the action holds, and why (the record's scope, the person's
   memberships, roles and extra actions there and above, a person column, a
   related row, a condition), and the deny that said no.
-- **In the browser** (the build's REPL): `(groundwork.repl/entries)` lists
-  every question the store holds, `(groundwork.repl/answer :jobs/list
+- **In the browser** (the build's REPL): `(groundwork.repl.browser/entries)` lists
+  every question the store holds, `(groundwork.repl.browser/answer :jobs/list
   {:shop/id id})` one entry with its data.

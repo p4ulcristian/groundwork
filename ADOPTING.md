@@ -92,3 +92,31 @@ access rule.
   member makes over every scope (`:scopes` is then empty).
 - **Migration 017** runs at the next start: new wall functions and a
   fourth argument to the ring trigger.
+
+## Namespaces that moved
+
+The code is laid out by area since 2026-10-18
+([the decision](decisions/2026-10-18-one-folder-per-area.md)); function
+names stay. An app changes its requires:
+
+| Before | After |
+|--------|-------|
+| `groundwork.names` | `groundwork.postgres.names` |
+| `groundwork.sql` | `groundwork.postgres.sql` |
+| `groundwork.permissions.rules` | `groundwork.permissions.description` (reading, checking) and `groundwork.permissions.sql` (the SQL) |
+| `groundwork.leaks` | `groundwork.permissions.leaks` |
+| `groundwork.endpoints/bell` | `groundwork.parquery.bells/bell` |
+| `groundwork.parquery-store` (cljs) | `groundwork.parquery.store` |
+| `groundwork.page` | `groundwork.web.page` |
+| `groundwork.server` | `groundwork.web.server` |
+| `groundwork.web/sniff-type` | `groundwork.web.files/sniff-type` |
+| `groundwork.routing` (cljs) | `groundwork.browser.routing` |
+| `groundwork.loader` (cljs) | `groundwork.browser.loader` |
+| `groundwork.styles` | `groundwork.build.styles` (its build hook `groundwork.build.styles/hook`) |
+| `groundwork.repl/start!` `stop!` `restart!` `serve` `running` `write-mcp-json!` | `groundwork.repl.dev/…` |
+| `groundwork.repl` (cljs) | `groundwork.repl.browser` |
+
+`groundwork.permissions` keeps what an app calls (`allowed?`, `check!`,
+`list-filter`, `holds?`, `in-wall`, `as-system`, `in-scopes`, the team
+writes); the rest is in `groundwork.permissions.check`. Error types stay
+`:groundwork.permissions/…`.
