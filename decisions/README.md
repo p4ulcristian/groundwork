@@ -37,6 +37,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 ### Database and SQL
 
 - [Postgres through next.jdbc and PgJDBC](2026-10-12-postgres-through-next-jdbc-and-pgjdbc.md)
+- [The database connection is encrypted and verified](2026-10-18-the-database-connection-is-encrypted-and-verified.md)
 - [Connections come from a HikariCP pool](2026-10-12-connections-come-from-a-hikaricp-pool.md), changed in part by [Settings are required data](2026-10-12-settings-are-required-data.md)
 - [The time zone is a setting](2026-10-12-the-time-zone-is-a-setting.md)
 - [Queries have a time limit](2026-10-12-queries-have-a-time-limit.md)
@@ -56,8 +57,9 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 ### Migrations
 
-- [Migrations are numbered SQL files](2026-10-12-migrations-are-numbered-sql-files.md), changed in part by [The schema snapshot is written when the start is done](2026-10-13-the-schema-snapshot-is-written-when-the-start-is-done.md)
+- [Migrations are numbered SQL files](2026-10-12-migrations-are-numbered-sql-files.md), changed in part by [The schema snapshot is written when the start is done](2026-10-13-the-schema-snapshot-is-written-when-the-start-is-done.md) and [Production migrates before it starts](2026-10-18-production-migrates-before-it-starts.md)
 - [The schema snapshot is written when the start is done](2026-10-13-the-schema-snapshot-is-written-when-the-start-is-done.md)
+- [Production migrates before it starts](2026-10-18-production-migrates-before-it-starts.md)
 
 ### Sessions and logins
 

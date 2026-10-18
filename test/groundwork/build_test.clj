@@ -10,7 +10,7 @@
    [example.hello.settings :as example]
    [groundwork.build :as build]
    [groundwork.core :as gw]
-   [groundwork.test-support :refer [app-settings]]
+   [groundwork.test-support :as support :refer [app-settings owner]]
    [groundwork.web :as web])
   (:import
    (java.net URI)
@@ -148,12 +148,14 @@
       (is (re-matches #"main\.[0-9A-F]+\.js" name))
       (is (.exists (io/file (:output-dir browser) name))))
     (let [css (edn/read-string (slurp (io/file (:output-dir styles) "manifest.edn")))
-          app (gw/start (-> app-settings
-                            (assoc :browser example :styles styles :environment :production)
-                            (assoc-in [:web :test-sign-in] nil)
-                            ;; shadow-cljs writes the fingerprint in capitals
-                            (assoc-in [:web :hashed-files] "(?i)\\.[0-9a-f]{8,}\\.")
-                            (assoc-in [:web :routes] [["/" {:get web/page :access :public}]])))]
+          settings (-> app-settings
+                       (assoc :browser example :styles styles)
+                       ;; shadow-cljs writes the fingerprint in capitals
+                       (assoc-in [:web :hashed-files] "(?i)\\.[0-9a-f]{8,}\\.")
+                       (assoc-in [:web :routes] [["/" {:get web/page :access :public}]])
+                       support/production)
+          _   (gw/migrate! settings owner)
+          app (gw/start settings)]
       (try
         (let [{:keys [status body]} (get-text app "/")]
           (is (= 200 status))
@@ -176,10 +178,9 @@
         (finally (gw/stop app))))
     (testing "production doesn't start without the stylesheets' manifest"
       (let [e (try (gw/start (-> app-settings
-                                 (assoc :browser example :environment :production
-                                        :styles (example/styles "example-hello-never-built"))
-                                 (assoc-in [:web :test-sign-in] nil)
-                                 (assoc-in [:web :routes] [["/" {:get web/page :access :public}]])))
+                                 (assoc :browser example :styles (example/styles "example-hello-never-built"))
+                                 (assoc-in [:web :routes] [["/" {:get web/page :access :public}]])
+                                 support/production))
                    nil
                    (catch Exception e e))]
         (is (str/starts-with? (str (ex-message e)) "No styles manifest in test/public/example-hello-never-built"))))))

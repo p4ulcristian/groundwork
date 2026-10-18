@@ -21,7 +21,7 @@ The rules it holds an app to:
 Java 25 or newer. The spec is [`decisions/`](decisions/), one file per
 decision; [its index](decisions/README.md) lists the ones in force.
 [`ADOPTING.md`](ADOPTING.md) holds the notes for moving an app to the
-current names and the access language.
+current names, the access language, the TLS setting and production's migrate.
 
 Decisions: [Groundwork is an opinionated framework](decisions/2026-10-12-groundwork-is-an-opinionated-framework.md) · [Declared, through one door](decisions/2026-10-14-declared-through-one-door.md) · [Groundwork ships these parts](decisions/2026-10-18-groundwork-ships-these-parts.md) · [Groundwork ships no team endpoints and no eval bridge](decisions/2026-10-18-groundwork-ships-no-team-endpoints-and-no-eval-bridge.md) · [Names are made consistent once](decisions/2026-10-18-names-are-made-consistent-once.md) · [One folder per area](decisions/2026-10-18-one-folder-per-area.md) · [The endpoints area holds its transport](decisions/2026-10-18-the-endpoints-area-holds-its-transport.md) · [Java 25 or newer](decisions/2026-10-12-java-25-or-newer.md).
 
@@ -39,7 +39,7 @@ permissions, no endpoints, no jobs. Each area below fills its part.
 (def dev
   {:environment :development
    :db          {:host "localhost" :port 5432 :database "app" :user "app" :password nil
-                 :pool-size 10 :statement-timeout-ms 30000 :time-zone "UTC"}
+                 :pool-size 10 :statement-timeout-ms 30000 :time-zone "UTC" :tls :off}
    :migrations  {:schema-snapshot "schema.sql"}
    :page        {:title "Acme Orders" :description nil :icon "/icon.svg" :stylesheets [] :head []}
    :browser     {:build :app :entry 'app.browser/start
@@ -66,7 +66,8 @@ permissions, no endpoints, no jobs. Each area below fills its part.
 ```
 
 The start also needs the database to exist, and a role that is no
-superuser and has no BYPASSRLS: it refuses such a role.
+superuser and has no BYPASSRLS: it refuses such a role. In development and
+tests that one role owns the tables, and the start migrates.
 
 **Development.** The app's `:dev` alias has `nrepl/nrepl` and
 `thheller/shadow-cljs`. One call starts the app, the browser build's watcher
@@ -79,6 +80,64 @@ terminal, `clojure -X:dev groundwork.repl.dev/serve :settings app.settings/dev :
 Groundwork has no main of its own: the app's main calls
 `(gw/start app.settings/production)`.
 
+**Production.** Two database roles do two jobs at two moments. The deploy
+runs migrate first, as the role that owns the tables; then the app starts
+as its own role (`:db :user`), which owns nothing and holds only what
+migrate granted it.
+
+```sh
+# the deploy, before the start; the owner's name and password are this
+# command's environment only, never the running app's
+GROUNDWORK_OWNER_USER=app_owner GROUNDWORK_OWNER_PASSWORD=… clojure -X:migrate
+```
+
+```clojure
+;; deps.edn
+:migrate {:exec-fn groundwork.core/migrate :exec-args {:settings app.settings/production}}
+```
+
+`:settings` names a var holding the settings, or a function of no
+arguments that returns them: the same settings the start gets. Where there
+is no Clojure CLI (a release run with `java -cp`), call the function itself:
+`(gw/migrate! settings {:user "app_owner" :password …})`, from the app's own
+migrate main or `clojure.main -e`.
+
+Migrate, under the migration lock:
+
+1. refuses an app role that is the owner itself, doesn't exist, can pass by
+   row-level security, or owns anything in `public` or `groundwork` (a
+   schema, table, view, sequence or function; itself or through a role it
+   is a member of);
+2. runs Groundwork's new migrations, then the app's;
+3. installs everything Groundwork puts into the database from the settings,
+   and records its fingerprint in `groundwork.installs`: the wall
+   (row-level security forced, its policies, the vias' functions and
+   guards, the functions that narrow a list), the fill rules, the bells'
+   triggers;
+4. grants the app role, then checks it holds every grant:
+   `USAGE` on the schemas `public` and `groundwork`; `SELECT`, `INSERT`,
+   `UPDATE`, `DELETE` on every table (only `SELECT` on
+   `groundwork.migrations` and `groundwork.installs`), `SELECT` on every
+   view; `USAGE`, `SELECT`, `UPDATE` on every sequence; `EXECUTE` on every
+   function. A grant the owner may not give stops it.
+
+The production start migrates and installs nothing. It refuses, saying to
+run migrate, when:
+
+- no migration ran yet, a migration hasn't run, or one changed or went
+  missing since;
+- the app role owns anything in `public` or `groundwork`, or lacks a grant
+  of the list above (a table made after the last migrate);
+- the wall, fill rules or bells' triggers its settings make aren't the
+  ones migrate installed: the fingerprints differ, because the settings or
+  Groundwork changed since;
+- the app role is a superuser or has BYPASSRLS (in every environment).
+
+Then each start writes nothing to the schema: a start doesn't wait on the
+statements that put up the wall.
+
+Decisions: [Production migrates before it starts](decisions/2026-10-18-production-migrates-before-it-starts.md).
+
 ---
 
 ## Core
@@ -89,6 +148,7 @@ Starts and stops an app.
 (require '[groundwork.core :as gw])
 (def app (gw/start settings))
 (gw/stop app)
+(gw/migrate! settings {:user "app_owner" :password …})   ; production, before the start
 ```
 
 - The parts are db, migrations, permissions, sessions, limits, jobs,
@@ -182,6 +242,16 @@ LIMIT :limit
 - A nested `with-transaction` joins the outer one; its options must match.
 - Every connection's time zone is `:time-zone` and its search path only
   `public`; Groundwork's own tables live in the `groundwork` schema.
+- `:tls` is required. `:verified`: encrypted, the server's certificate must
+  lead to one the Java runtime trusts (or to one in the `:tls-root-cert` PEM
+  file the app names) and must name `:host`; a server without TLS is
+  refused, never used plain (PgJDBC's `sslmode=verify-full`). `:off`: plain;
+  production refuses it unless the database is on the same machine
+  (`localhost`, `127.x.x.x`, `::1`). Every connection Groundwork opens has
+  it: the pool, the bells' and the jobs' listening connections, migrate, and
+  `pg_dump` for the snapshot (`PGSSLMODE=verify-full`, and `PGSSLROOTCERT`
+  the file or libpq's `system`). PgJDBC's own defaults on the classpath
+  (`driverconfig.properties`) don't change it.
 - `:on-transaction (fn [tx] …)` runs first in every `with-transaction`, and
   only there; `:on-query (fn [{:keys [file sql ms error]}] …)` after every query.
 - An error is an `ex-info` whose `:type` is under `:groundwork.postgres/`:
@@ -191,25 +261,29 @@ LIMIT :limit
 
 Door: `groundwork.postgres`.
 
-Decisions: [Postgres through next.jdbc and PgJDBC](decisions/2026-10-12-postgres-through-next-jdbc-and-pgjdbc.md) · [Connections come from a HikariCP pool](decisions/2026-10-12-connections-come-from-a-hikaricp-pool.md) · [The time zone is a setting](decisions/2026-10-12-the-time-zone-is-a-setting.md) · [Queries have a time limit](decisions/2026-10-12-queries-have-a-time-limit.md) · [Slow work gets time through its transaction](decisions/2026-10-12-slow-work-gets-time-through-its-transaction.md) · [The transaction hook runs only in transactions](decisions/2026-10-12-the-transaction-hook-runs-only-in-transactions.md) · [SQL lives only in files](decisions/2026-10-12-sql-lives-only-in-files.md) · [SQL files are plain SQL](decisions/2026-10-12-sql-files-are-plain-sql.md) · [A param is named by what it is](decisions/2026-10-12-a-param-is-named-by-what-it-is.md) · [A list param takes the type Postgres expects](decisions/2026-10-12-a-list-param-takes-the-type-postgres-expects.md) · [Columns are named entity__field](decisions/2026-10-12-columns-are-named-entity__field.md) · [Every column has a name](decisions/2026-10-12-every-column-has-a-name.md) · [JSON keys convert only when shaped entity__field](decisions/2026-10-12-json-keys-convert-only-when-entity__field.md) · [Keys are made once per query](decisions/2026-10-12-keys-are-made-once-per-query.md) · [Values come back as real types](decisions/2026-10-12-values-come-back-as-real-types.md) · [row throws on more than one row](decisions/2026-10-12-row-throws-on-more-than-one-row.md).
+Decisions: [Postgres through next.jdbc and PgJDBC](decisions/2026-10-12-postgres-through-next-jdbc-and-pgjdbc.md) · [The database connection is encrypted and verified](decisions/2026-10-18-the-database-connection-is-encrypted-and-verified.md) · [Connections come from a HikariCP pool](decisions/2026-10-12-connections-come-from-a-hikaricp-pool.md) · [The time zone is a setting](decisions/2026-10-12-the-time-zone-is-a-setting.md) · [Queries have a time limit](decisions/2026-10-12-queries-have-a-time-limit.md) · [Slow work gets time through its transaction](decisions/2026-10-12-slow-work-gets-time-through-its-transaction.md) · [The transaction hook runs only in transactions](decisions/2026-10-12-the-transaction-hook-runs-only-in-transactions.md) · [SQL lives only in files](decisions/2026-10-12-sql-lives-only-in-files.md) · [SQL files are plain SQL](decisions/2026-10-12-sql-files-are-plain-sql.md) · [A param is named by what it is](decisions/2026-10-12-a-param-is-named-by-what-it-is.md) · [A list param takes the type Postgres expects](decisions/2026-10-12-a-list-param-takes-the-type-postgres-expects.md) · [Columns are named entity__field](decisions/2026-10-12-columns-are-named-entity__field.md) · [Every column has a name](decisions/2026-10-12-every-column-has-a-name.md) · [JSON keys convert only when shaped entity__field](decisions/2026-10-12-json-keys-convert-only-when-entity__field.md) · [Keys are made once per query](decisions/2026-10-12-keys-are-made-once-per-query.md) · [Values come back as real types](decisions/2026-10-12-values-come-back-as-real-types.md) · [row throws on more than one row](decisions/2026-10-12-row-throws-on-more-than-one-row.md).
 
 ### Migrations
 
 Numbered plain SQL files: `resources/migrations/001_create_shops.sql`,
 `002_create_orders.sql`.
 
-- At start, under a lock in Postgres, Groundwork runs its own new
-  migrations, then the app's, in number order. Each file runs once, in its
-  own transaction, with no time limit, and is remembered with its fingerprint.
-- A failing file rolls back and the app doesn't start. A file that ran and
-  then changed or went missing stops the start: a fix is a new file.
+- Under a lock in Postgres, Groundwork runs its own new migrations, then
+  the app's, in number order. Each file runs once, in its own transaction,
+  with no time limit, and is remembered with its fingerprint.
+- Who runs them: in development and tests the start, as the app's one
+  role; in production migrate, as the owner, before the start, which only
+  checks that every one ran (see [Production](#starting-an-app)).
+- A failing file rolls back and the app doesn't start (or migrate stops).
+  A file that ran and then changed or went missing stops the start: a fix
+  is a new file.
 - In development, with `pg_dump` on the PATH, the whole schema is written to
   `:schema-snapshot` once the start is done, with the wall's policies, fill
   rules and triggers, so a changed permission rule shows as a difference.
 
-Door: `groundwork.migrations`.
+Door: `groundwork.migrations`; production's migrate is `groundwork.core/migrate!`.
 
-Decisions: [Migrations are numbered SQL files](decisions/2026-10-12-migrations-are-numbered-sql-files.md) · [The schema snapshot is written when the start is done](decisions/2026-10-13-the-schema-snapshot-is-written-when-the-start-is-done.md).
+Decisions: [Migrations are numbered SQL files](decisions/2026-10-12-migrations-are-numbered-sql-files.md) · [The schema snapshot is written when the start is done](decisions/2026-10-13-the-schema-snapshot-is-written-when-the-start-is-done.md) · [Production migrates before it starts](decisions/2026-10-18-production-migrates-before-it-starts.md).
 
 ### Jobs
 
@@ -887,15 +961,17 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:db :host` | text | The database server's address | `"localhost"` |
 | `:db :port` | port number | Its port | `5432` |
 | `:db :database` | text | The database's name | `"app"` |
-| `:db :user` | text | The user Groundwork connects as | `"app"` |
+| `:db :user` | text | The role the app connects as; in production one that owns nothing and can't pass by row-level security (migrate connects as the owner) | `"app"` |
 | `:db :password` | text or nil | Its password, or nil for none |  |
 | `:db :pool-size` | positive whole number | Connections per server, a fixed number | `10` |
 | `:db :statement-timeout-ms` | positive whole number or :none | Postgres cancels a statement that runs longer; :none for no limit | `30000` |
 | `:db :time-zone` | time zone name | The session's time zone: how times without an offset are read | `"UTC"` |
+| `:db :tls` | :verified or :off | How the connection travels: :verified (encrypted; the server's certificate checked against the trusted certificates, and its name against :host) or :off (plain; in production only for a database on the same machine: localhost, 127.x.x.x or ::1) | `:verified` |
+| `:db :tls-root-cert` (optional) | text | With :tls :verified, a PEM file of the certificates the server's must lead to, instead of the Java runtime's trusted ones (a private certificate authority) | `"/etc/app/db-root.pem"` |
 | `:db :on-transaction` (optional) | function | Runs first in every with-transaction: (fn [tx] …) | `app.db/on-transaction` |
 | `:db :on-query` (optional) | function | After every query: (fn [{:keys [file sql ms error]}] …) | `app.db/on-query` |
 
-#### `:migrations`: The schema's changes, run at start
+#### `:migrations`: The schema's changes: run by the start in development and tests, by migrate before it in production
 
 | Key | Type | What it is | Example |
 |-----|------|------------|---------|
@@ -1079,20 +1155,22 @@ holds its machinery, one job per file.
 ```
 src/deps.cljs                     the npm packages the browser half needs
 src/groundwork/
-  core.clj                        starting and stopping an app
+  core.clj                        starting and stopping an app, and production's migrate
   settings.clj                    the settings' schemas and their checks
   settings/docs.clj               the settings reference, the example file, explain-setting
   postgres.clj                    the pool, transactions, .sql files as vars, rows
   postgres/sql.clj                a .sql file's :name params made a JDBC statement
   postgres/names.clj              one name from the column to the browser
-  migrations.clj                  the schema's changes, run at start; the snapshot
+  migrations.clj                  the schema's changes (run at start in development, by migrate in production); the snapshot
+  migrations/roles.clj            production's roles: the app's role checked, migrate's grants
+  migrations/installs.clj         what Groundwork installed, by its fingerprint
   jobs.clj                        background jobs and schedules
   permissions.clj                 who may do what: the door
   permissions/description.clj     the description, read and checked
   permissions/sql.clj             the sentences as SQL: the wall, vias, may functions, fills
   permissions/check.clj           checking a request, grants, the bells' reach, why
   permissions/members.clj         scopes, roles and members, written
-  permissions/install.clj         the database checked and the wall put up at start
+  permissions/install.clj         the database checked and the wall put up (or, in production, compared)
   permissions/leaks.clj           the leak test
   sessions.clj                    who is signed in, and visitors
   limits.clj                      how often a caller may ask

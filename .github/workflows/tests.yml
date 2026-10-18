@@ -31,12 +31,16 @@ jobs:
       GROUNDWORK_TEST_DB: groundwork_test
       GROUNDWORK_TEST_USER: groundwork
       GROUNDWORK_TEST_PASSWORD: groundwork
+      GROUNDWORK_TEST_APP_USER: groundwork_app
+      GROUNDWORK_TEST_APP_PASSWORD: groundwork_app
 
     steps:
       - uses: actions/checkout@v5
 
       # The tests' role is no superuser: a superuser would walk through the
-      # database wall (row-level security) the tests check.
+      # database wall (row-level security) the tests check. It owns the
+      # tables and migrates; a production start connects as groundwork_app,
+      # which owns nothing and gets what migrate grants.
       # pg_dump must be as new as the server, for the schema snapshot's test.
       - name: Postgres 18 client
         run: |
@@ -51,6 +55,7 @@ jobs:
         run: |
           psql -h 127.0.0.1 -U postgres -c "CREATE ROLE groundwork LOGIN PASSWORD 'groundwork' NOSUPERUSER NOBYPASSRLS"
           psql -h 127.0.0.1 -U postgres -c "CREATE DATABASE groundwork_test OWNER groundwork"
+          psql -h 127.0.0.1 -U postgres -c "CREATE ROLE groundwork_app LOGIN PASSWORD 'groundwork_app' NOSUPERUSER NOBYPASSRLS"
 
       - uses: actions/setup-java@v5
         with:

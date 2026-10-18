@@ -76,3 +76,20 @@
           :description "A visitor's session ends after this long unseen" :example 24 :optional? false}
          (repl/explain-setting [:sessions :visitor-hours])))
   (is (some #(str/starts-with? % ":db :pool-size  (positive whole number)") (repl/settings))))
+
+(deftest the-database-connection-says-its-tls
+  (let [found (fn [s] (set (settings/problems s)))]
+    (testing "a root certificate goes only with :verified"
+      (is (contains? (found (assoc-in app-settings [:db :tls-root-cert] "/etc/db-root.pem"))
+                     {:in [:db :tls-root-cert] :message "goes only with :tls :verified"}))
+      (is (empty? (found (update app-settings :db assoc :tls :verified :tls-root-cert "/etc/db-root.pem")))))
+    (testing "production travels plain only to a database on the same machine"
+      (let [production (-> app-settings (assoc :environment :production) (assoc-in [:web :test-sign-in] nil))]
+        (doseq [host ["localhost" "127.0.0.1" "127.0.1.1" "::1"]]
+          (is (empty? (found (assoc-in production [:db :host] host))) host))
+        (is (= #{{:in      [:db :tls]
+                  :message "may be :off in production only for a database on the same machine (localhost, 127.x.x.x or ::1), not \"db.example.com\""}}
+               (found (assoc-in production [:db :host] "db.example.com"))))
+        (is (empty? (found (update production :db assoc :host "db.example.com" :tls :verified))))
+        (testing "development and tests may"
+          (is (empty? (found (assoc-in app-settings [:db :host] "db.example.com")))))))))

@@ -22,7 +22,8 @@
    :password (env "GROUNDWORK_TEST_PASSWORD" nil)
    :pool-size 2
    :statement-timeout-ms 5000
-   :time-zone "UTC"})
+   :time-zone "UTC"
+   :tls :off})
 
 (def schema
   "DROP TABLE IF EXISTS posts, authors;
@@ -267,6 +268,36 @@
       (is (= ::settings/invalid
              (:type (ex-data (try (pg/start (assoc config :statement-timeout-ms bad))
                                   (catch clojure.lang.ExceptionInfo e e)))))))))
+
+(deftest the-connection-is-encrypted-and-verified
+  (testing ":tls is required, :verified or :off"
+    (is (= [{:in [:db :tls] :message "is missing"}]
+           (:problems (ex-data (try (pg/start (dissoc config :tls)) (catch clojure.lang.ExceptionInfo e e))))))
+    (is (= [[:db :tls]]
+           (mapv :in (:problems (ex-data (try (pg/start (assoc config :tls :prefer))
+                                              (catch clojure.lang.ExceptionInfo e e))))))))
+  (testing ":verified is PgJDBC's verify-full: the certificate and the host name checked"
+    (is (= {"sslmode" "verify-full" "sslfactory" "org.postgresql.ssl.DefaultJavaSSLFactory"}
+           (pg/tls-properties {:tls :verified})))
+    (is (= {"sslmode" "verify-full" "sslfactory" "org.postgresql.ssl.LibPQFactory" "sslrootcert" "/etc/db-root.pem"}
+           (pg/tls-properties {:tls :verified :tls-root-cert "/etc/db-root.pem"})))
+    (is (= {"sslmode" "disable"} (pg/tls-properties {:tls :off})))
+    (testing "pg_dump gets the same"
+      (is (= {"PGSSLMODE" "verify-full" "PGSSLROOTCERT" "system"} (pg/libpq-environment {:tls :verified})))
+      (is (= {"PGSSLMODE" "verify-full" "PGSSLROOTCERT" "/etc/db-root.pem"}
+             (pg/libpq-environment {:tls :verified :tls-root-cert "/etc/db-root.pem"})))
+      (is (= {"PGSSLMODE" "disable"} (pg/libpq-environment {:tls :off})))))
+  (testing "a server that can't show a trusted certificate for its name is refused, never used plain"
+    ;; the test server has no certificate the JVM trusts for 127.0.0.1 (or no TLS at all)
+    (is (thrown? Exception (pg/stop (pg/start (assoc config :tls :verified)))))
+    (is (thrown? Exception (.close (pg/connect (assoc config :tls :verified) {})))))
+  (testing "a root certificate file that can't be read throws at start, naming it"
+    (is (= {:type ::pg/bad-setting :setting :tls-root-cert :value "/no/such/root.pem"}
+           (ex-data (try (pg/start (assoc config :tls :verified :tls-root-cert "/no/such/root.pem"))
+                         (catch clojure.lang.ExceptionInfo e e))))))
+  (testing ":off connects plain, outside the pool too"
+    (with-open [conn (pg/connect config {"ApplicationName" "groundwork-test"})]
+      (is (.isValid conn 5)))))
 
 (defn- with-db [settings f]
   (let [db (pg/start (merge config settings))]
