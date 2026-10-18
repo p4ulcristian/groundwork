@@ -101,8 +101,13 @@
 (use-fixtures :once
   (fn [t]
     (sql! example/tables)
-    (sql! "TRUNCATE groundwork.scopes, groundwork.roles, groundwork.role_actions, groundwork.memberships,
-                    groundwork.extra_actions, groundwork.invitations CASCADE")
+    ;; a fresh database has no groundwork schema until the start migrates it
+    (sql! "DO $$ BEGIN
+             IF to_regclass('groundwork.scopes') IS NOT NULL THEN
+               TRUNCATE groundwork.scopes, groundwork.roles, groundwork.role_actions, groundwork.memberships,
+                        groundwork.extra_actions, groundwork.invitations CASCADE;
+             END IF;
+           END $$")
     (let [app (gw/start (settings example/description example/endpoints))]
       (try
         (let [perms (gw/permissions app)]
