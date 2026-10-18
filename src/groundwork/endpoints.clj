@@ -118,7 +118,6 @@
 (pg/defsql claimed-key "groundwork/endpoints/claimed_key.sql")
 (pg/defsql keep-answer "groundwork/endpoints/keep_answer.sql")
 (pg/defsql forget-old-keys "groundwork/endpoints/forget_old_keys.sql")
-(pg/defsql grants-sql "groundwork/endpoints/grants.sql")
 (pg/defsql remember-file "groundwork/endpoints/remember_file.sql")
 (pg/defsql files-of-sql "groundwork/endpoints/files_of.sql")
 (pg/defsql set-tag "groundwork/endpoints/set_tag.sql")

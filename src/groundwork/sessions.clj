@@ -145,7 +145,7 @@
   "The id of this request's visitor session, for someone not signed in who
    has one; else nil. It is Groundwork's own id for the session, never a
    value the browser sent: a record that names it belongs to this visitor
-   (see :visitors in the permission description)."
+   (a column whose :whose is :visitor in the permission description)."
   [request]
   (let [session (::session request)]
     (when (and session (nil? (:person-id session)))

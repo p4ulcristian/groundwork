@@ -2,7 +2,7 @@
   "How often a caller may ask: rate limits, for endpoints and plain routes.
 
      :limits {:public   {:reads-per-minute 600 :writes-per-minute 60}   ; or nil
-              :on-limit (fn [{:keys [limit caller endpoint route]}] …)}  ; or nil
+              :on-limit (fn [{:keys [id limit caller]}] …)}             ; or nil
 
    An endpoint or a route declares its own limit:
 
