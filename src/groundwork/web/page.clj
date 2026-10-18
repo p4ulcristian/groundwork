@@ -11,7 +11,7 @@
 
    The app's compiled browser code is the build's own (see groundwork.build):
    after a release, its fingerprinted file from the build's manifest. An app
-   with :styles (groundwork.styles) gets its stylesheets the same way: the
+   with :styles (groundwork.build.styles) gets its stylesheets the same way: the
    bundles of the page's modules, before :stylesheets. In production such an
    app doesn't start before the release has written them.
 
@@ -57,7 +57,7 @@
    [groundwork.build :as build]
    [groundwork.sessions :as sessions]
    [groundwork.settings :as settings]
-   [groundwork.styles :as styles]
+   [groundwork.build.styles :as styles]
    [jsonista.core :as json]))
 
 (def ^:private route-keys

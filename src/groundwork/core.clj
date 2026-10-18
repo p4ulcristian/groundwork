@@ -13,7 +13,7 @@
      :db           the database, see groundwork.postgres/start
      :migrations   see groundwork.migrations/start
      :page         see groundwork.web.page
-     :styles       the app's stylesheets, or left out; see groundwork.styles
+     :styles       the app's stylesheets, or left out; see groundwork.build.styles
      :web          the app's routes and how requests are handled; see groundwork.web
      :server       see groundwork.web.server
      :sessions     see groundwork.sessions

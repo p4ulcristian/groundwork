@@ -1,4 +1,4 @@
-(ns groundwork.styles
+(ns groundwork.build.styles
   "How an app's stylesheets reach the page. A namespace names the
    stylesheets it needs in its own metadata, with paths next to its file:
 

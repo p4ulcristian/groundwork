@@ -6,7 +6,7 @@
    module loader's default, fetch and evaluate, would be refused without a
    word.
 
-   And it brings its stylesheets first: with :styles (groundwork.styles)
+   And it brings its stylesheets first: with :styles (groundwork.build.styles)
    the page shell tells the browser each module's bundle, and before the
    loader puts a module's code in the page, the bundles of it and of the
    modules loading with it are linked and loaded. The module's code runs

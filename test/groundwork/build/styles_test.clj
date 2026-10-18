@@ -1,4 +1,4 @@
-(ns groundwork.styles-test
+(ns groundwork.build.styles-test
   "A namespace names its stylesheets: what a namespace's file names, the
    check that every stylesheet is named and every named file is there, the
    bundles of each module, built by lightningcss for the browsers in
@@ -13,7 +13,7 @@
    [example.hello.settings :as example]
    [groundwork.build :as build]
    [groundwork.settings :as settings]
-   [groundwork.styles :as styles])
+   [groundwork.build.styles :as styles])
   (:import
    (java.io File)
    (java.nio.file Files)
@@ -268,7 +268,7 @@
 (deftest the-build-adds-its-hook
   (let [styles (example/styles "example-styles-css")
         config (build/config (assoc browser :options {:build-hooks '[(app.build/hook)]}) styles)]
-    (is (= [(list 'groundwork.styles/hook styles) '(app.build/hook)] (:build-hooks config))
+    (is (= [(list 'groundwork.build.styles/hook styles) '(app.build/hook)] (:build-hooks config))
         "Groundwork's first, then the app's own")
     (is (= "test/public" (get-in config [:devtools :watch-dir])) "where development swaps a changed bundle in")
     (is (nil? (:build-hooks (build/config browser))) "no :styles, no hook")))

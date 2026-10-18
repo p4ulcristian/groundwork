@@ -28,7 +28,7 @@
    file can be cached a year.
 
    With the app's :styles, every build also checks and bundles its
-   stylesheets, through groundwork.styles' build hook: a problem stops the
+   stylesheets, through groundwork.build.styles' build hook: a problem stops the
    build like a compile error does.
 
    Groundwork's own browser libraries are in its deps.cljs; shadow-cljs
@@ -73,7 +73,7 @@
                               loader? (assoc :module-loader true))
                             (or options {}))]
      (cond-> merged
-       styles (update :build-hooks #(into [(list 'groundwork.styles/hook styles)] %))
+       styles (update :build-hooks #(into [(list 'groundwork.build.styles/hook styles)] %))
        (and styles (watch-dir styles)) (update-in [:devtools :watch-dir] #(or % (watch-dir styles)))))))
 
 (defn- shadow [sym]
@@ -90,13 +90,13 @@
    ((shadow 'shadow.cljs.devtools.server/start!))
    ((shadow 'shadow.cljs.devtools.api/watch*) (config browser styles) {})
    (when styles
-     ((requiring-resolve 'groundwork.styles/watch!) styles (:build browser)))
+     ((requiring-resolve 'groundwork.build.styles/watch!) styles (:build browser)))
    (:build browser)))
 
 (defn stop-watch!
   "Stop the watcher and shadow-cljs."
   [browser]
-  ((requiring-resolve 'groundwork.styles/stop-watch!) (:build browser))
+  ((requiring-resolve 'groundwork.build.styles/stop-watch!) (:build browser))
   ((shadow 'shadow.cljs.devtools.api/stop-worker) (:build browser))
   ((shadow 'shadow.cljs.devtools.server/stop!)))
 
