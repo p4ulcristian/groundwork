@@ -1,5 +1,7 @@
 # Dates and decimals keep their types in the browser
 
+> **Changed in part** by [Browser values are typed, and small](2026-10-19-browser-values-are-typed-small.md).
+
 **Decision:**
 
 - **Dates** use the same types on the server and in the browser: java.time on the server, js-joda in the browser through a Clojure wrapper, so a day, a time and a moment stay what they are and date code is shared. They travel as ISO text and come back as their type by the shape.
