@@ -35,6 +35,7 @@
    :output-dir "test/public/example-routing"
    :asset-path "/example-routing"
    :watch?     false
+   :decimals?  false
    ;; the reports screen in a module of its own, loaded on arrival
    :modules    example/modules
    :loader?    true})

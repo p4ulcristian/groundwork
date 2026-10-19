@@ -21,7 +21,8 @@
    :entry      'example.hello.browser/start
    :output-dir "test/public/example-hello"
    :asset-path "/example-hello"
-   :watch?     false})
+   :watch?     false
+   :decimals?  false})
 
 (def ^:private example
   "The example app as it is built: its reports screen in a module of its own."
@@ -53,6 +54,9 @@
           :modules    {:main {:init-fn 'example.hello.browser/start}}
           :release    {:module-hash-names true}}
          (build/config browser)))
+  (is (= {:main {:init-fn 'example.hello.browser/start :entries ['groundwork.endpoints.decimal]}}
+         (:modules (build/config (assoc browser :decimals? true))))
+      "exact decimals: the decimal namespace loads before the app's code")
   (is (= "/nothing-built/main.js" (build/script (assoc browser :output-dir "test/public/nothing-built"
                                                        :asset-path "/nothing-built")))
       "before any build"))

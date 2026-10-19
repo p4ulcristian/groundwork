@@ -399,6 +399,11 @@
            [:re {:error/message "must be a path like \"/js\"" :doc/type "path"} #"^/.*"])
     (entry :watch? "In development, whether the start also watches the build" true
            [:boolean {:error/message "must be true or false" :doc/type "true or false"}])
+    (entry :decimals? (str "Whether a :decimal in an answer becomes an exact decimal in the browser (big.js, which the app's "
+                           "package.json then has): true, or false to keep it as its text (\"12.30\") and ship no decimal "
+                           "library, for an app that keeps money in whole cents")
+           false
+           [:boolean {:error/message "must be true or false" :doc/type "true or false"}])
     (optional :modules "The build's modules, for an app with more than one: module → {:init-fn … or :entries […], :depends-on #{…}, :web-worker? …}. Without it there is one, :main, starting :entry"
               {:base {:init-fn 'app.browser/start} :admin {:entries ['app.admin.view] :depends-on #{:base}}}
               [:map-of {:error/message "must be a map of module → {:init-fn or :entries, :depends-on}" :doc/type "map of modules"}

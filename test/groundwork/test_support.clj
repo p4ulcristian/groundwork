@@ -61,7 +61,7 @@
    :migrations  {:schema-snapshot nil}
    :page        {:title "Test" :description nil :icon "/icon.svg" :stylesheets ["/app.css"] :head []}
    :browser     {:build :test-app :entry 'example.hello.browser/start :output-dir "test/public/js"
-                 :asset-path "/js" :watch? false}
+                 :asset-path "/js" :watch? false :decimals? false}
    :web         {:routes         []
                  :max-body-bytes 1048576
                  :content-security-policy {:connect-src ["https://api.example"]}

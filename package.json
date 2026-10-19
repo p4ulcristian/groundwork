@@ -6,7 +6,6 @@
     "test": "shadow-cljs compile test"
   },
   "dependencies": {
-    "@js-joda/core": "6.3.0",
     "big.js": "7.0.1",
     "react": "19.2.0",
     "react-dom": "19.2.0"
