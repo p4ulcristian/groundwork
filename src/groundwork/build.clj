@@ -7,7 +7,8 @@
                :entry      app.browser/start    ; the app's browser entry
                :output-dir \"resources/public/js\"
                :asset-path \"/js\"              ; where the browser fetches them
-               :watch?     true}                ; development: watch while running
+               :watch?     true                 ; development: watch while running
+               :decimals?  false}               ; a :decimal as text; true: big.js
 
    An app with more than one module names them, and a page names the one it
    starts (a route's :page :module); the page shell loads that module after
@@ -33,7 +34,7 @@
 
    Groundwork's own browser libraries are in its deps.cljs; shadow-cljs
    installs them for the app. The app's package.json holds only its own,
-   and lightningcss when it has :styles.
+   lightningcss when it has :styles, and big.js when it has :decimals? true.
 
    Needs thheller/shadow-cljs on the classpath (an app's :dev or :build
    alias), and the npm packages installed."
@@ -54,9 +55,14 @@
 
 (defn- shadow-modules
   "The modules as shadow-cljs reads them: a module's :web-worker? is its
-   :web-worker."
-  [browser]
-  (update-vals (modules browser) #(set/rename-keys % {:web-worker? :web-worker})))
+   :web-worker. With :decimals? true, every module that depends on no other
+   loads groundwork.endpoints.decimal first (exact decimals, big.js)."
+  [{:keys [decimals?] :as browser}]
+  (update-vals (modules browser)
+               (fn [module]
+                 (cond-> (set/rename-keys module {:web-worker? :web-worker})
+                   (and decimals? (empty? (:depends-on module)) (not (:web-worker? module)))
+                   (update :entries #(into ['groundwork.endpoints.decimal] %))))))
 
 (defn- watch-dir
   "Where shadow-cljs watches for changed stylesheets in development: the

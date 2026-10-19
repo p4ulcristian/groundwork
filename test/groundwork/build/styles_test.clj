@@ -262,6 +262,7 @@
    :output-dir "test/public/example-styles"
    :asset-path "/example-styles"
    :watch?     false
+   :decimals?  false
    :modules    example/modules
    :loader?    true})
 

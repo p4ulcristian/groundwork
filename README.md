@@ -601,15 +601,27 @@ POST /parquery
   own transaction: one failing leaves the others. At most `:max-asks` per
   request and `:max-running` across the server.
 - JSON typed by the endpoint's shapes: dates (`:time/local-date` …) and
-  decimals (`:decimal`) travel as text and come back typed (`java.time` and
-  `BigDecimal` on the server, js-joda and big.js in the browser). An id is a
-  real UUID on the server, checked strictly, and text in the browser.
+  decimals (`:decimal`) travel as text and come back typed. On the server:
+  `java.time` and `BigDecimal`. In the browser, decoded by Groundwork's own
+  small decoder (`groundwork.endpoints.wire`, no date library): a moment
+  (`:time/instant`) is an `Instant`, a `goog.date.UtcDateTime`; a calendar
+  day (`:time/local-date`) is a `Day`, a `goog.date.Date`. They print, and go
+  to JSON, as the ISO text they came as (`2026-10-12T10:00:00Z`,
+  `2026-11-15`), compare with `=` and `compare`, and an `Instant` keeps the
+  microseconds JavaScript's own date drops. The browser knows only these two
+  of the `:time/…` schemas; a shape the browser decodes with uses no other.
+  Showing a time in a zone is the browser's own formatting (`Intl`).
+- A `:decimal` in the browser is the app's choice, `:browser :decimals?`:
+  `true` makes it exact (big.js, in the app's `package.json`); `false` keeps
+  it as its text, `"12.30"`, and ships no decimal library: for an app whose
+  money is whole cents. An id is a real UUID on the server, checked
+  strictly, and text in the browser.
 - The route is public; each endpoint checks its own access and limit, under
   the session and the Origin check.
 
 Door: `groundwork.endpoints` (machinery: `groundwork.endpoints.route`, `.http`, `.websocket`, `.wire`).
 
-Decisions: [parquery is the transport](decisions/2026-10-12-parquery-is-the-transport.md) · [parquery is one address](decisions/2026-10-12-parquery-is-one-address.md) · [Asks travel together and run apart](decisions/2026-10-12-asks-travel-together-and-run-apart.md) · [Each ask fails alone](decisions/2026-10-12-each-ask-fails-alone.md) · [JSON and malli on the wire](decisions/2026-10-12-json-and-malli-on-the-wire.md) · [Dates and decimals keep their types in the browser](decisions/2026-10-12-dates-and-decimals-keep-their-types-in-the-browser.md) · [An id is text in the browser](decisions/2026-10-14-an-id-is-text-in-the-browser.md).
+Decisions: [parquery is the transport](decisions/2026-10-12-parquery-is-the-transport.md) · [parquery is one address](decisions/2026-10-12-parquery-is-one-address.md) · [Asks travel together and run apart](decisions/2026-10-12-asks-travel-together-and-run-apart.md) · [Each ask fails alone](decisions/2026-10-12-each-ask-fails-alone.md) · [JSON and malli on the wire](decisions/2026-10-12-json-and-malli-on-the-wire.md) · [Dates and decimals keep their types in the browser](decisions/2026-10-12-dates-and-decimals-keep-their-types-in-the-browser.md) · [Browser values are typed, and small](decisions/2026-10-19-browser-values-are-typed-small.md) · [An id is text in the browser](decisions/2026-10-14-an-id-is-text-in-the-browser.md).
 
 ### Bells
 
@@ -873,8 +885,11 @@ keeps no build config.
   `:depends-on`), and a page names the one it starts:
   `["/admin" {:get web/page :access :signed-in :page {:module :admin}}]`.
   A page that names none loads the modules that depend on no other.
-- `thheller/shadow-cljs` must be on the classpath. Groundwork's npm packages
-  are in its `src/deps.cljs`; the app's `package.json` holds its own.
+- `thheller/shadow-cljs` must be on the classpath. Groundwork's browser half
+  needs no npm package of its own (React comes with reagent); the app's
+  `package.json` holds its own, and big.js with `:decimals? true`, whose
+  build loads `groundwork.endpoints.decimal` first in every module that
+  depends on no other.
 
 Door: `groundwork.build`.
 
@@ -1011,6 +1026,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | `:browser :output-dir` | text | Where the compiled files go, a folder whose public/ is served | `"resources/public/js"` |
 | `:browser :asset-path` | path | Where the browser fetches them | `"/js"` |
 | `:browser :watch?` | true or false | In development, whether the start also watches the build | `true` |
+| `:browser :decimals?` | true or false | Whether a :decimal in an answer becomes an exact decimal in the browser (big.js, which the app's package.json then has): true, or false to keep it as its text ("12.30") and ship no decimal library, for an app that keeps money in whole cents | `false` |
 | `:browser :modules` (optional) | map of modules | The build's modules, for an app with more than one: module → {:init-fn … or :entries […], :depends-on #{…}, :web-worker? …}. Without it there is one, :main, starting :entry | `{:base {:init-fn app.browser/start}, :admin {:entries [ap…` |
 | `:browser :modules … :init-fn` (optional) | value |  |  |
 | `:browser :modules … :entries` (optional) | list |  |  |
@@ -1168,7 +1184,6 @@ An area's plain file is its door, the namespace an app requires; its folder
 holds its machinery, one job per file.
 
 ```
-src/deps.cljs                     the npm packages the browser half needs
 src/groundwork/
   core.clj                        starting and stopping an app, and production's migrate
   settings.clj                    the settings' schemas and their checks
@@ -1197,6 +1212,7 @@ src/groundwork/
   endpoints/websocket.cljs        the line that hears the bells, browser half
   endpoints/bells.clj             what rings and what each read waits for
   endpoints/wire.cljc             the wire: shapes, JSON, ids, dates, decimals
+  endpoints/decimal.cljs          exact decimals in the browser (big.js), with :decimals? true
   endpoints/store.cljs            the browser's answers, kept by question
   web.clj                         the router: routes, access, rate limits, Groundwork's routes
   web/http.clj                    headers, CSP, frames, request ids, hooks, gzip, HEAD, no indexing

@@ -26,6 +26,7 @@
       (assoc :environment :development)
       (assoc :browser {:build :example-hello-dev :entry 'example.hello.browser/start
                        :output-dir "test/public/example-dev" :asset-path "/example-dev" :watch? true
+                       :decimals? false
                        :modules modules :loader? true})
       (assoc :styles (styles "example-dev-css"))
       (assoc-in [:page :stylesheets] [])
