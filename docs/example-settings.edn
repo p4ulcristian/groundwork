@@ -44,7 +44,10 @@
  ;; The schema's changes: run by the start in development and tests, by migrate before it in production
  :migrations
  {;; The file development writes the whole schema to, or nil for none
-  :schema-snapshot "schema.sql"}
+  :schema-snapshot "schema.sql"
+
+  ;; The classpath folder of the app's migration files, ending in /; "migrations/" when left out. A second app built from the same code (its own database) names its own (optional)
+  :folder "catalog-migrations/"}
 
  ;; The page shell every screen loads into
  :page

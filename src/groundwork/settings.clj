@@ -376,7 +376,13 @@
 
    :migrations
    [:map {:closed true}
-    (entry :schema-snapshot "The file development writes the whole schema to, or nil for none" "schema.sql" text-or-nil)]
+    (entry :schema-snapshot "The file development writes the whole schema to, or nil for none" "schema.sql" text-or-nil)
+    (optional :folder (str "The classpath folder of the app's migration files, ending in /; \"migrations/\" when "
+                           "left out. A second app built from the same code (its own database) names its own")
+              "catalog-migrations/"
+              [:re {:error/message "must be a classpath folder like \"migrations/\": lowercase letters, digits, - _ and /, ending in /"
+                    :doc/type      "classpath folder"}
+               #"^[a-z0-9_-]+(/[a-z0-9_-]+)*/$"])]
 
    :page
    [:map {:closed true}

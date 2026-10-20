@@ -271,6 +271,12 @@ Numbered plain SQL files: `resources/migrations/001_create_shops.sql`,
 - Under a lock in Postgres, Groundwork runs its own new migrations, then
   the app's, in number order. Each file runs once, in its own transaction,
   with no time limit, and is remembered with its fingerprint.
+- The app's files are in `migrations/` on the classpath, or the folder
+  `:migrations :folder` names (`"catalog-migrations/"`): a second app built
+  from the same code, with its own database, keeps its own.
+- The app's files are in `migrations/` on the classpath, or in the folder
+  `:migrations :folder` names (`"catalog-migrations/"`): a second app built
+  from the same code, with its own database, keeps its own.
 - Who runs them: in development and tests the start, as the app's one
   role; in production migrate, as the owner, before the start, which only
   checks that every one ran (see [Production](#starting-an-app)).
@@ -1006,6 +1012,7 @@ answers the same in the REPL, and `docs/example-settings.edn` holds every key wi
 | Key | Type | What it is | Example |
 |-----|------|------------|---------|
 | `:migrations :schema-snapshot` | text or nil | The file development writes the whole schema to, or nil for none | `"schema.sql"` |
+| `:migrations :folder` (optional) | classpath folder | The classpath folder of the app's migration files, ending in /; "migrations/" when left out. A second app built from the same code (its own database) names its own | `"catalog-migrations/"` |
 
 #### `:page`: The page shell every screen loads into
 

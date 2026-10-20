@@ -46,11 +46,24 @@
 (pg/defsql ran "groundwork/migrator/ran.sql")
 (pg/defsql record-exists "groundwork/migrator/record_exists.sql")
 
+(def default-folder
+  "The classpath folder of the app's migrations when :migrations :folder
+   doesn't name one."
+  "migrations/")
+
 (def sources
   "Where migrations come from, in the order they run: Groundwork's own, then
-   the app's. Paths are on the classpath."
+   the app's in the default folder. Paths are on the classpath."
   [["groundwork" "groundwork/migrations/"]
-   ["app"        "migrations/"]])
+   ["app"        default-folder]])
+
+(defn sources-of
+  "Where an app's migrations come from: Groundwork's own, then the app's,
+   from its :migrations settings' :folder (the default folder when it names
+   none)."
+  [migrations-settings]
+  [["groundwork" "groundwork/migrations/"]
+   ["app"        (or (:folder migrations-settings) default-folder)]])
 
 ;; =============================================================================
 ;; Files
@@ -285,13 +298,14 @@
   "Production's start, before any other part touches the database: the
    migrations ran (Groundwork's record of them is there); the app's role
    owns nothing and holds what migrate grants (groundwork.migrations.roles);
-   every migration ran, unchanged."
-  [db]
-  (when-not (:migration-record/exists (pg/row db record-exists))
-    (throw (ex-info (str "No migration has run in this database. " run-migrate)
-                    {:type ::not-current :waiting :all})))
-  (roles/check-app-role! db)
-  (check-current! db))
+   every migration of `sources` ran, unchanged."
+  ([db] (check-ready! db sources))
+  ([db sources]
+   (when-not (:migration-record/exists (pg/row db record-exists))
+     (throw (ex-info (str "No migration has run in this database. " run-migrate)
+                     {:type ::not-current :waiting :all})))
+   (roles/check-app-role! db)
+   (check-current! db sources)))
 
 ;; =============================================================================
 ;; The part
@@ -303,13 +317,16 @@
    before the start (groundwork.core/migrate!).
 
      :schema-snapshot  the file the snapshot goes to in development, or nil for none;
-                       written when the whole start is done, see snapshot!"
+                       written when the whole start is done, see snapshot!
+     :folder           the classpath folder of the app's migrations (optional,
+                       migrations/ when left out), see sources-of"
   [{:keys [settings db environment]}]
   (settings/check-part! :migrations settings)
-  (if (= :production environment)
-    (do (check-ready! db)
-        {:ran []})
-    {:ran (migrate! db)}))
+  (let [sources (sources-of settings)]
+    (if (= :production environment)
+      (do (check-ready! db sources)
+          {:ran []})
+      {:ran (migrate! db sources)})))
 
 (defn snapshot!
   "In development, write the schema snapshot the app's settings name. Called
