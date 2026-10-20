@@ -27,6 +27,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 - [Groundwork is no longer frozen](2026-10-17-groundwork-is-no-longer-frozen.md)
 - [Names are made consistent once](2026-10-18-names-are-made-consistent-once.md)
 - [Java 25 or newer](2026-10-12-java-25-or-newer.md)
+- [Renovate keeps the libraries current](2026-10-20-renovate-keeps-the-libraries-current.md)
 
 ### Settings and wiring
 
