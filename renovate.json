@@ -33,7 +33,7 @@
     },
     {
       "description": "Group Clojure (deps.edn) minor + patch into one PR; majors stay individual.",
-      "matchManagers": ["deps"],
+      "matchManagers": ["deps-edn"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "clojure deps (minor + patch)"
     }
