@@ -2,14 +2,18 @@
 
  :deps
  {org.clojure/clojure               {:mvn/version "1.12.6"}
-  com.github.seancorfield/next.jdbc {:mvn/version "1.3.1118"}
-  org.postgresql/postgresql         {:mvn/version "42.7.13"}
+  com.github.seancorfield/next.jdbc {:mvn/version "1.4.70"}
+  org.postgresql/postgresql         {:mvn/version "42.7.14"}
   com.zaxxer/HikariCP               {:mvn/version "7.1.0"}
-  metosin/jsonista                  {:mvn/version "0.3.14"}
+  metosin/jsonista                  {:mvn/version "1.0.2"}
   integrant/integrant               {:mvn/version "1.0.1"}
   http-kit/http-kit                 {:mvn/version "2.8.1"}
   metosin/reitit-ring               {:mvn/version "0.11.0"}
-  ring/ring-core                    {:mvn/version "1.15.5"}
+  ;; loaded by our own code (reitit.core, ring.util.codec), so named here, not
+  ;; left to come in through reitit-ring and ring-core
+  metosin/reitit-core               {:mvn/version "0.11.0"}
+  ring/ring-core                    {:mvn/version "1.15.6"}
+  ring/ring-codec                   {:mvn/version "1.3.0"}
   metosin/malli                     {:mvn/version "0.20.3"}
   ;; the browser half (ClojureScript only)
   re-frame/re-frame                 {:mvn/version "1.4.7"}
@@ -19,7 +23,7 @@
  :aliases
  {;; npm install && npx shadow-cljs compile test   (the browser half's tests, on node)
   :cljs {:extra-paths ["test"]
-         :extra-deps  {thheller/shadow-cljs {:mvn/version "3.5.5"}}}
+         :extra-deps  {thheller/shadow-cljs {:mvn/version "3.5.7"}}}
 
   ;; clojure -X:test   (local database groundwork_test, see test/groundwork/postgres_test.clj)
   :test {:extra-paths ["test"]
@@ -32,5 +36,5 @@
                        ;; groundwork.repl.dev, the development start
                        nrepl/nrepl {:mvn/version "1.8.0"}
                        ;; groundwork.build, compiling the example app in build-test
-                       thheller/shadow-cljs {:mvn/version "3.5.5"}}
+                       thheller/shadow-cljs {:mvn/version "3.5.7"}}
          :exec-fn     cognitect.test-runner.api/test}}}
