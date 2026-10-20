@@ -62,7 +62,7 @@ jobs:
           distribution: temurin
           java-version: "25"
 
-      - uses: DeLaGuardo/setup-clojure@13.4
+      - uses: DeLaGuardo/setup-clojure@13.7.0
         with:
           cli: latest
           clj-kondo: latest
