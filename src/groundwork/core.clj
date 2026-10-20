@@ -256,7 +256,7 @@
       (roles/check-before-migrate! db app-role)
       (migrations/with-lock db
         (fn [conn-db]
-          (let [ran    (migrations/run-new! db conn-db)
+          (let [ran    (migrations/run-new! db conn-db (migrations/sources-of (:migrations settings)))
                 perms  (permissions/install! db (:permissions settings))
                 tables (bells/ringing-tables (:description perms) bells)]
             (bells/check-every-table-rings! db tables bells)

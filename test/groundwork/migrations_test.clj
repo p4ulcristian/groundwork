@@ -87,3 +87,18 @@
           (is (= (slurp file) (slurp again)))
           (.delete again)))
       (finally (.delete file)))))
+
+(deftest the-app-may-name-its-own-folder
+  (testing "without :folder the app's migrations are in migrations/"
+    (is (= [["groundwork" "groundwork/migrations/"] ["app" "migrations/"]]
+           (migrations/sources-of {:schema-snapshot nil}))))
+  (testing "a second app from the same code names its own folder"
+    (is (= [["groundwork" "groundwork/migrations/"] ["app" "fixtures/migrations/first/"]]
+           (migrations/sources-of {:schema-snapshot nil :folder "fixtures/migrations/first/"}))))
+  (testing "the part runs the folder its settings name, and only it"
+    (is (= [["app" "001_create_widgets.sql"] ["app" "002_add_widget_name.sql"]]
+           (remove (comp #{"groundwork"} first)
+                   (:ran (migrations/start {:settings    {:schema-snapshot nil :folder "fixtures/migrations/first/"}
+                                            :environment :development
+                                            :db          *db*})))))
+    (is (= #{"widget__id" "widget__name"} (columns "widgets")))))
