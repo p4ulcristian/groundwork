@@ -305,9 +305,7 @@
      :when    (:when via)
      :record  (records other)}))
 
-(defn sentences
-  "The allow sentences, one per action, each read: {:n its place in :rules,
-   :rule as written, :action :kind :who :via :when :universal?}."
+(defn- read-sentences
   [{:keys [records rules] :as description}]
   (vec (for [[n rule] (map-indexed vector rules)
              :when (contains? rule :allow)
@@ -326,6 +324,24 @@
             :via        (when (contains? rule :via) (via-of description (:via rule) action where))
             :when       (:when rule)
             :universal? (universal? record rule)}))))
+
+(def ^:private last-read
+  "The description read last and its sentences: making the wall asks for
+   them once per table and command and once per list function, hundreds of
+   times for one description, each read costing tens of milliseconds."
+  (atom nil))
+
+(defn sentences
+  "The allow sentences, one per action, each read: {:n its place in :rules,
+   :rule as written, :action :kind :who :via :when :universal?}. Read once
+   for the description asked about last."
+  [description]
+  (let [[d ss] @last-read]
+    (if (identical? d description)
+      ss
+      (let [ss (read-sentences description)]
+        (reset! last-read [description ss])
+        ss))))
 
 (defn denies
   "The deny sentences, each read: {:n :rule :actions (a set, or :writes)

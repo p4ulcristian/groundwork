@@ -109,17 +109,29 @@ Migrate, under the migration lock:
    schema, table, view, sequence or function; itself or through a role it
    is a member of);
 2. runs Groundwork's new migrations, then the app's;
-3. installs everything Groundwork puts into the database from the settings,
-   and records its fingerprint in `groundwork.installs`: the wall
-   (row-level security forced, its policies, the vias' functions and
-   guards, the functions that narrow a list), the fill rules, the bells'
-   triggers;
-4. grants the app role, then checks it holds every grant:
-   `USAGE` on the schemas `public` and `groundwork`; `SELECT`, `INSERT`,
-   `UPDATE`, `DELETE` on every table (only `SELECT` on
-   `groundwork.migrations` and `groundwork.installs`), `SELECT` on every
-   view; `USAGE`, `SELECT`, `UPDATE` on every sequence; `EXECUTE` on every
-   function. A grant the owner may not give stops it.
+3. brings everything Groundwork puts into the database from the settings
+   to what they make, and records its fingerprint in `groundwork.installs`:
+   the wall (row-level security forced, its policies, the vias' functions
+   and guards, the functions that narrow a list), the fill rules, the
+   bells' triggers. Only the objects that differ are touched: one missing
+   is created, one changed (by the settings, Groundwork or by hand) is
+   replaced, one the settings no longer make is dropped. Each object's
+   statements and printed form are recorded in `groundwork.installed_objects`
+   to tell. What differs goes in one batch, in one transaction; nothing
+   differs, nothing is sent;
+4. grants the app role what it lacks, one grant per privilege, and takes
+   back a write it holds on Groundwork's own records; then checks it holds
+   every grant: `USAGE` on the schemas `public` and `groundwork`; `SELECT`,
+   `INSERT`, `UPDATE`, `DELETE` on every table (only `SELECT` on
+   `groundwork.migrations`, `groundwork.installs` and
+   `groundwork.installed_objects`), `SELECT` on every view; `USAGE`,
+   `SELECT`, `UPDATE` on every sequence; `EXECUTE` on every function. A
+   grant the owner may not give stops it.
+
+`migrate!` returns `{:ran [...] :changed {:wall [...] :bells [...] :grants [...]}}`:
+each object created, replaced or dropped and each grant given or taken
+back, like `[:replaced "policy groundwork_read on orders"]`. A migrate with
+nothing new returns three empty lists and takes a few round trips.
 
 The production start migrates and installs nothing. It refuses, saying to
 run migrate, when:
@@ -136,7 +148,7 @@ run migrate, when:
 Then each start writes nothing to the schema: a start doesn't wait on the
 statements that put up the wall.
 
-Decisions: [Production migrates before it starts](decisions/2026-10-18-production-migrates-before-it-starts.md).
+Decisions: [Production migrates before it starts](decisions/2026-10-18-production-migrates-before-it-starts.md) · [Migrate changes only the objects that differ](decisions/2026-10-22-migrate-changes-only-the-objects-that-differ.md).
 
 ---
 

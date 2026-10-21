@@ -154,25 +154,27 @@
 (defn install!
   "migrate's part: check the description, against the database too, put up
    the wall, the vias' functions and guards, and the fill rules, and record
-   them. The role it connects as (the tables' owner) may pass by row-level
-   security; the app's role is checked by migrate. Returns the permissions."
+   them, changing only the objects that differ. The role it connects as
+   (the tables' owner) may pass by row-level security; the app's role is
+   checked by migrate. Returns the permissions, with ::changed what changed
+   (groundwork.permissions.install/install!)."
   [db settings]
   (let [description (description/check (settings/check-part! :permissions settings))
-        _           (install/check-tables! db description)
+        catalog     (install/check-tables! db description)
         perms       (assoc (check/compile-description description) :db db)]
-    (install/install! perms)
-    perms))
+    (assoc perms ::changed (install/install! perms catalog))))
 
 (defn start
   "The permissions part: check the description, against the database too,
    read every sentence. In development and tests, put up the wall, the
-   vias' functions and guards, and the fill rules; in production check that
-   migrate put up the ones the description makes."
+   vias' functions and guards, and the fill rules, changing only the
+   objects that differ; in production check that migrate put up the
+   ones the description makes."
   [{:keys [settings db environment]}]
-  (let [description (description/check (settings/check-part! :permissions settings))]
-    (install/check-database! db description)
-    (let [perms (assoc (check/compile-description description) :db db)]
-      (if (= :production environment)
-        (install/check-installed! perms)
-        (install/install! perms))
-      perms)))
+  (let [description (description/check (settings/check-part! :permissions settings))
+        catalog     (install/check-database! db description)
+        perms       (assoc (check/compile-description description) :db db)]
+    (if (= :production environment)
+      (install/check-installed! perms catalog)
+      (install/install! perms catalog))
+    perms))
