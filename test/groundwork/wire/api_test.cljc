@@ -4,11 +4,11 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [groundwork.wire.api :as wire]
-   #?(:clj  [groundwork.wire.clojure.time :as time]
-      :cljs [groundwork.wire.clojurescript.time :as time])
-   #?(:clj  [groundwork.wire.clojure.types :as types]
-      :cljs [groundwork.wire.clojurescript.types :as types])
-   #?(:cljs [groundwork.wire.clojurescript.big :as big]))
+   #?(:clj  [groundwork.wire.server-code.time :as time]
+      :cljs [groundwork.wire.browser-code.time :as time])
+   #?(:clj  [groundwork.wire.server-code.types :as types]
+      :cljs [groundwork.wire.browser-code.types :as types])
+   #?(:cljs [groundwork.wire.browser-code.big :as big]))
   #?(:cljs (:import (goog.date Date UtcDateTime))))
 
 (def shape

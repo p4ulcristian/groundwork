@@ -9,8 +9,8 @@ they are on the way in.
 Needs only malli and jsonista. API: `groundwork.wire.api`
 (`schema`, `decode`, `encode`, `fits?`, `explain`, `write-json`,
 `read-json`). What differs per language lives beside it:
-`groundwork.wire.clojure.*` on the JVM, `groundwork.wire.clojurescript.*`
-in the browser (load `groundwork.wire.clojurescript.big` for exact
+`groundwork.wire.server-code.*` on the JVM, `groundwork.wire.browser-code.*`
+in the browser (load `groundwork.wire.browser-code.big` for exact
 decimals with big.js). Decisions: [`decisions/wire/`](../../../decisions/wire/README.md).
 
 ```clojure

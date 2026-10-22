@@ -7,8 +7,8 @@
    Keys like :post/title travel as \"post/title\". A date, a decimal and a
    number too big for JavaScript travel as text and come back as what they
    are: on the JVM java.time, BigDecimal and real UUIDs; in the browser an
-   Instant and a Day (groundwork.wire.clojurescript.time), a decimal's text or
-   big.js (groundwork.wire.clojurescript.big), and an id as text. Money
+   Instant and a Day (groundwork.wire.browser-code.time), a decimal's text or
+   big.js (groundwork.wire.browser-code.big), and an id as text. Money
    travels as whole cents, an :int.
 
    The language's own parts are picked once, in the requires below; nothing
@@ -18,12 +18,12 @@
    [malli.error :as me]
    [malli.registry :as mr]
    [malli.transform :as mt]
-   #?(:clj  [groundwork.wire.clojure.json :as json]
-      :cljs [groundwork.wire.clojurescript.json :as json])
-   #?(:clj  [groundwork.wire.clojure.time :as time]
-      :cljs [groundwork.wire.clojurescript.time :as time])
-   #?(:clj  [groundwork.wire.clojure.types :as types]
-      :cljs [groundwork.wire.clojurescript.types :as types])))
+   #?(:clj  [groundwork.wire.server-code.json :as json]
+      :cljs [groundwork.wire.browser-code.json :as json])
+   #?(:clj  [groundwork.wire.server-code.time :as time]
+      :cljs [groundwork.wire.browser-code.time :as time])
+   #?(:clj  [groundwork.wire.server-code.types :as types]
+      :cljs [groundwork.wire.browser-code.types :as types])))
 
 (def ^:private decimal-schema
   (m/-simple-schema {:type            :decimal

@@ -1,4 +1,4 @@
-(ns groundwork.wire.clojurescript.json
+(ns groundwork.wire.browser-code.json
   "JSON text in the browser. Keyword keys keep their namespace: :post/title
    travels as \"post/title\" and comes back as :post/title.")
 

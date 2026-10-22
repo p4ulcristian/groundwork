@@ -1,4 +1,4 @@
-(ns groundwork.wire.clojure.types
+(ns groundwork.wire.server-code.types
   "Decimals, whole numbers and ids on the JVM. A decimal is a BigDecimal and
    travels as its plain text, \"12.30\". A whole number beyond JavaScript's
    safe range travels as text. An id is a real UUID.")

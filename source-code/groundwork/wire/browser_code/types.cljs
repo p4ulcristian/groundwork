@@ -1,19 +1,19 @@
-(ns groundwork.wire.clojurescript.types
+(ns groundwork.wire.browser-code.types
   "Decimals, whole numbers and ids in the browser. A decimal is its text,
    \"12.30\", or an exact value once use-exact-decimals! is given one
-   (groundwork.wire.clojurescript.big gives big.js). An id is its text."
+   (groundwork.wire.browser-code.big gives big.js). An id is its text."
   (:require
    [malli.core :as m]
    [malli.transform :as mt]))
 
 (defonce ^:private exact
   ;; the exact decimal type, once one is given: {:decimal? :read :text}
-  ;; (groundwork.wire.clojurescript.big); nil keeps a decimal as its text
+  ;; (groundwork.wire.browser-code.big); nil keeps a decimal as its text
   (volatile! nil))
 
 (defn use-exact-decimals!
   "How the browser holds a :decimal: {:decimal? pred, :read text → value,
-   :text value → text}, or nil for its text. groundwork.wire.clojurescript.big
+   :text value → text}, or nil for its text. groundwork.wire.browser-code.big
    calls it with big.js when it loads."
   [kind]
   (vreset! exact kind))

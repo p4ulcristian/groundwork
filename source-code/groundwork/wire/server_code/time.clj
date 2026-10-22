@@ -1,4 +1,4 @@
-(ns groundwork.wire.clojure.time
+(ns groundwork.wire.server-code.time
   "Times on the JVM: java.time, through malli's time schemas (every :time/…
    schema of malli's)."
   (:require

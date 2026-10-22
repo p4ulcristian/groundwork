@@ -1,4 +1,4 @@
-(ns groundwork.wire.clojure.json
+(ns groundwork.wire.server-code.json
   "JSON text on the JVM, through jsonista. Keyword keys keep their
    namespace: :post/title travels as \"post/title\" and comes back as
    :post/title."

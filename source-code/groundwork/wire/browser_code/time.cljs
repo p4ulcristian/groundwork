@@ -1,4 +1,4 @@
-(ns groundwork.wire.clojurescript.time
+(ns groundwork.wire.browser-code.time
   "Times in the browser. A moment is an Instant, a goog.date.UtcDateTime; a
    calendar day is a Day, a goog.date.Date (no time, no zone: its year, month
    and day are what the wire said, wherever the browser is). Both print, and

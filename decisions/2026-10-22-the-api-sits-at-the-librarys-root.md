@@ -1,5 +1,7 @@
 # The api sits at the library's root
 
+> **Changed in part** by [Every library has an api, and its parts are server-code, browser-code or shared-code](2026-10-22-server-code-browser-code-shared-code.md) (2026-10-22): part folders are server-code, browser-code, shared-code.
+
 > **Changed in part** by [Libraries are folders in one tree, their edges declared](2026-10-22-libraries-are-folders-in-one-tree.md) (2026-10-22): one source tree, libraries as folders in source-code/groundwork/, edges in libraries.edn.
 
 > Replaces [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md) in where the api lives. Changes in part [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md): the language folders hold only parts, and `clojure_common/` exists only when a library has shared parts besides its api.
