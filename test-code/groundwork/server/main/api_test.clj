@@ -3,7 +3,9 @@
    owner, then start-app! as a role that owns nothing. The page shell, a
    message with its notes, and doorbell: a new order is told to every open
    sse line as only its table, and each person's asking again sees, through the
-   gates, only their own shop's orders. Runs when
+   gates, only their own shop's orders. Then the health checks: live and
+   ready, a database that doesn't answer or lets nobody in, and stopping.
+   Runs when
    GROUNDWORK_SQL_TEST_PORT is set."
   (:require
    [clojure.java.io :as io]
@@ -92,7 +94,9 @@
    :doorbell          {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
    :page              {:title "Shops <test>" :language "en" :viewport "width=device-width, initial-scale=1"
                        :content-security-policy :none :referrer-policy "same-origin" :frame-options "DENY"
-                       :files {:folder files-folder :hashed-name-min-hex-digits 8 :hashed-file-cache-seconds 31536000}}})
+                       :files {:folder files-folder :hashed-name-min-hex-digits 8 :hashed-file-cache-seconds 31536000}}
+   :health            {:live-path "/health/live" :ready-path "/health/ready"
+                       :database-timeout-ms 500 :not-ready-before-stop-ms 1000}})
 
 (defn- make-app [user]
   {:settings (make-settings user) :tables [shops orders] :changes [] :scope-kinds scope-kinds
@@ -101,6 +105,14 @@
    :background-job-kinds [] :schedules []})
 
 (defn- run-sql! [pool text] (database/run-statement! pool (database/make-query-from-sql-text "test" text) {}))
+
+(defn- ask-health
+  "A plain GET, no origin, no cookie: [status body cache-control]."
+  [server-port path]
+  (let [response (.send (HttpClient/newHttpClient)
+                        (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port path))))
+                        (HttpResponse$BodyHandlers/ofString))]
+    [(.statusCode response) (.body response) (.orElse (.firstValue (.headers response) "cache-control") nil)]))
 
 (defn- send-request [server-port method path cookie body]
   (let [response (.send (HttpClient/newHttpClient)
@@ -135,7 +147,11 @@
     (is (contains? problems :version))
     (is (contains? (:server problems) :port))
     (is (= #{:port :addresses :ping-every-ms} (set (keys (:server problems))))
-        "mailroom's settings have no defaults: each missing one is named")))
+        "mailroom's settings have no defaults: each missing one is named"))
+  (let [problems (try (main/check-settings (update (make-settings "x") :health dissoc :ready-path :database-timeout-ms))
+                      (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
+    (is (= #{:ready-path :database-timeout-ms} (set (keys (:health problems))))
+        "the health settings have no defaults either")))
 
 (deftest the-whole-server
   (if-not port
@@ -150,11 +166,12 @@
         (with-out-str (main/migrate-app! (make-app owner) (make-database-settings owner) "gw_app"))
         (run-sql! owner-pool (str "INSERT INTO shops VALUES ('" shop-7 "'), ('" shop-9 "')"))
         (database/run-in-transaction! owner-pool
-          (fn [transaction]
-            (doorman/add-scope! transaction scope-kinds :shop shop-7 paul)
-            (doorman/add-scope! transaction scope-kinds :shop shop-9 bob)
-            (doorman/add-membership! transaction [:shop shop-7] anna "Staff")))
+                                      (fn [transaction]
+                                        (doorman/add-scope! transaction scope-kinds :shop shop-7 paul)
+                                        (doorman/add-scope! transaction scope-kinds :shop shop-9 bob)
+                                        (doorman/add-membership! transaction [:shop shop-7] anna "Staff")))
         (let [running     (main/start-app! (make-app "gw_app"))
+              stopped?    (atom false)
               server-port (get-in running [:server :port])
               cookie      #(first (str/split (:set-cookie (doorman/sign-in! (:pool running) % (get-in running [:settings :sessions]))) #";"))
               anna-cookie (cookie anna)
@@ -242,9 +259,9 @@
                   (is (= "{\"doorbell/changed\":{\"table\":\"shops\"}}" (read-next-data bob-line))))
                 (testing "one transaction's statements on one table tell it once"
                   (database/run-in-transaction! owner-pool
-                    (fn [transaction]
-                      (run-sql! transaction "UPDATE shops SET shop__id = shop__id")
-                      (run-sql! transaction "DELETE FROM shops WHERE shop__id = '10000000-0000-4000-8000-000000000001'")))
+                                                (fn [transaction]
+                                                  (run-sql! transaction "UPDATE shops SET shop__id = shop__id")
+                                                  (run-sql! transaction "DELETE FROM shops WHERE shop__id = '10000000-0000-4000-8000-000000000001'")))
                   (is (= "{\"doorbell/changed\":{\"table\":\"shops\"}}" (read-next-data anna-line)))
                   (is (= :nothing (read-next-data anna-line))))
                 (testing "a statement that changed no row tells nobody"
@@ -253,5 +270,48 @@
                 ;; not closed here: a read that timed out still holds them;
                 ;; stopping the server ends both streams
                 ))
-            (finally (main/stop-app! running))))
+            (testing "health: plain GETs, no origin, no session, no rate limit, never cached"
+              (is (= [200 "{\"status\":\"live\",\"version\":\"test-1\"}" "no-store"]
+                     (ask-health server-port "/health/live")))
+              (is (= (repeat 20 [200 "{\"status\":\"ready\",\"version\":\"test-1\"}" "no-store"])
+                     (repeatedly 20 #(ask-health server-port "/health/ready")))))
+            (testing "no answer from the database (every connection held): ready answers 503 at its timeout"
+              (let [release (promise)
+                    holders (doall (repeatedly 4 #(future (database/run-in-transaction! (:pool running) (fn [_] @release)))))]
+                (try
+                  (Thread/sleep 300)
+                  (let [started-at (System/currentTimeMillis)
+                        answer     (take 2 (ask-health server-port "/health/ready"))
+                        took-ms    (- (System/currentTimeMillis) started-at)]
+                    (is (= [503 "{\"status\":\"not-ready\",\"version\":\"test-1\",\"reason\":\"the database did not answer within 500 ms\"}"]
+                           answer))
+                    (is (<= 500 took-ms 2000)))
+                  (is (= 200 (first (ask-health server-port "/health/live"))) "live asks no database")
+                  (finally (deliver release nil) (run! deref holders))))
+              (is (= 200 (first (ask-health server-port "/health/ready"))) "ready again once a connection is free"))
+            (testing "the database unreachable: ready answers 503 within its timeout, live 200"
+              (run-sql! owner-pool "ALTER ROLE gw_app NOLOGIN")
+              (run-sql! owner-pool "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'gw_app'")
+              (let [started-at        (System/currentTimeMillis)
+                    [status body]     (ask-health server-port "/health/ready")
+                    took-ms           (- (System/currentTimeMillis) started-at)]
+                (is (= 503 status))
+                (is (re-find #"\"status\":\"not-ready\",\"version\":\"test-1\",\"reason\":\"the database (did not answer within 500 ms|answered with an error)\"" body))
+                (is (< took-ms 2000) "the timeout, not the pool's wait for a connection"))
+              (is (= 503 (first (ask-health server-port "/health/ready"))) "a second check waits on the first")
+              (is (= 200 (first (ask-health server-port "/health/live"))))
+              (run-sql! owner-pool "ALTER ROLE gw_app LOGIN")
+              (is (= 200 (loop [tries 60]
+                           (let [status (first (ask-health server-port "/health/ready"))]
+                             (if (or (= 200 status) (zero? tries)) status (do (Thread/sleep 250) (recur (dec tries)))))))
+                  "ready again once the database lets the app in"))
+            (testing "stopping: ready answers 503 before the server stops taking requests; live 200"
+              (let [stopping (future (main/stop-app! running))]
+                (reset! stopped? true)
+                (Thread/sleep 300)
+                (is (= [503 "{\"status\":\"not-ready\",\"version\":\"test-1\",\"reason\":\"the app is stopping\"}"]
+                       (take 2 (ask-health server-port "/health/ready"))))
+                (is (= 200 (first (ask-health server-port "/health/live"))))
+                @stopping))
+            (finally (when-not @stopped? (main/stop-app! running)))))
         (finally (database/stop-pool! owner-pool))))))

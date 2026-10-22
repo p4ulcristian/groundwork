@@ -7,6 +7,7 @@
 
 (deftest the-api-names
   (is (= '#{page-settings-shape
+           health-settings-shape
            settings-shape
            check-settings
            groundwork-tables

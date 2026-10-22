@@ -29,13 +29,19 @@
    the tables (the app's own role owns nothing), and the browser's release
    build (showroom, its own library), whose files the page lists
    (:browser-build :built). Production has neither showroom nor
-   shadow-cljs: showroom is loaded only when it watches."
+   shadow-cljs: showroom is loaded only when it watches.
+
+   Two GETs answer whoever runs the app, outside sessions, access and rate
+   limits (groundwork.server.main.health, the :health settings): live, 200
+   while the process answers; ready, 200 once started while the database
+   answers, else 503, and 503 from the start of stop-app!."
   (:require
    [clojure.string :as str]
    [backroom.api :as backroom]
    [cellar.api :as database]
    [doorman.api :as doorman]
    [doorbell.api :as doorbell]
+   [groundwork.server.main.health :as health]
    [groundwork.server.main.page :as page]
    [mailroom.api :as mailroom]
    [wire.api :as wire]))
@@ -66,6 +72,24 @@
             [:hashed-name-min-hex-digits [:int {:min 1}]]
             [:hashed-file-cache-seconds [:int {:min 0}]]]]])
 
+(def health-settings-shape
+  "The :health part of the settings, every key required: the two GETs for
+   whoever runs the app (groundwork.server.main.health).
+   :live-path: 200 while the process answers, \"/health/live\".
+   :ready-path: 200 when the app has started and the database answers,
+   else 503, \"/health/ready\".
+   :database-timeout-ms: how long ready waits for the database's answer
+   before it answers 503, shorter than the asker's own timeout.
+   :not-ready-before-stop-ms: how long stop-app! answers ready with 503,
+   still serving, before the server stops taking requests, so a proxy
+   that asks ready sends no more; 0 when the proxy stops sending by
+   itself (Kamal's)."
+  [:map {:closed true}
+   [:live-path :string]
+   [:ready-path :string]
+   [:database-timeout-ms pos-int?]
+   [:not-ready-before-stop-ms [:int {:min 0}]]])
+
 (def settings-shape
   "The whole settings, every key required; each library brings its part."
   [:map {:closed true}
@@ -77,7 +101,8 @@
    [:sessions doorman/settings-shape]
    [:background-jobs backroom/settings-shape]
    [:doorbell doorbell/store-settings-shape]
-   [:page page-settings-shape]])
+   [:page page-settings-shape]
+   [:health health-settings-shape]])
 
 (defn check-settings
   "Returns the settings; throws with every problem at once."
@@ -150,19 +175,20 @@
     (or (doorman/find-session-key-of-request request (:sessions settings))
         (mailroom/find-client-address request (get-in settings [:server :client-address-header])))))
 
-(defn- make-routes [{:keys [settings pages]} handlers running-doorbell]
+(defn- make-routes [{:keys [settings pages]} pool running-health handlers running-doorbell]
   (let [browser-settings (page/make-browser-settings settings pages)]
-    (into (mailroom/make-routes-for-messages
-           handlers
-           (:server settings)
-           {:find-rate-limit-key (make-rate-limit-key-finder settings)
-            :on-sse-open  (fn [line]
-                            (mailroom/send-message-on-sse-line! line {:groundwork/version (:version settings)} nil)
-                            (doorbell/add-sse-line! running-doorbell line))
-            :on-sse-close #(doorbell/remove-sse-line! running-doorbell %)
-            :on-ws-open   nil
-            :on-ws-close  nil})
-          (mailroom/make-server-routes-for-pages pages (page/make-page-handler settings browser-settings)))))
+    (-> (health/make-health-routes pool running-health settings)
+        (into (mailroom/make-routes-for-messages
+               handlers
+               (:server settings)
+               {:find-rate-limit-key (make-rate-limit-key-finder settings)
+                :on-sse-open  (fn [line]
+                                (mailroom/send-message-on-sse-line! line {:groundwork/version (:version settings)} nil)
+                                (doorbell/add-sse-line! running-doorbell line))
+                :on-sse-close #(doorbell/remove-sse-line! running-doorbell %)
+                :on-ws-open   nil
+                :on-ws-close  nil}))
+        (into (mailroom/make-server-routes-for-pages pages (page/make-page-handler settings browser-settings))))))
 
 (defn- start-watching-browser-build!
   "Loaded here, not required above: production has neither showroom nor
@@ -184,7 +210,7 @@
 
 (defn start-app!
   "Starts the app (see the namespace). Returns the running app, for stop-app!:
-   {:settings :pool :handlers :doorbell :workers :server}, :server holding the
+   {:settings :pool :handlers :doorbell :workers :watching :health :server}, :server holding the
    :port it listens on."
   [{:keys [settings background-job-kinds schedules] :as app}]
   (check-settings settings)
@@ -206,20 +232,25 @@
                                            backroom/stop-workers!)
             watching          (when (= :watch (:browser-build settings))
                                 (start-part! stoppers #(start-watching-browser-build! app) stop-watching-browser-build!))
+            running-health    (health/make-health)
             server            (mailroom/start-server!
-                               (mailroom/make-ring-handler-from-routes (make-routes app handlers running-doorbell)
+                               (mailroom/make-ring-handler-from-routes (make-routes app pool running-health handlers running-doorbell)
                                                                         {:files (get-in settings [:page :files])})
                                (:server settings))]
+        (health/mark-stage! running-health :started)
         {:settings settings :pool pool :handlers handlers :doorbell running-doorbell :workers workers
-         :watching watching :server server})
+         :watching watching :health running-health :server server})
       (catch Throwable e
         (doseq [stop @stoppers] (stop))
         (throw e)))))
 
 (defn stop-app!
-  "Stops taking requests, stops the watcher, lets running background jobs
-   finish, stops listening, closes the pool."
-  [{:keys [pool server workers watching] running-doorbell :doorbell}]
+  "Answers ready with 503 for the :health settings' :not-ready-before-stop-ms,
+   then stops taking requests, stops the watcher, lets running background
+   jobs finish, stops listening, closes the pool."
+  [{:keys [settings pool server workers watching] running-doorbell :doorbell running-health :health}]
+  (health/mark-stage! running-health :stopping)
+  (Thread/sleep (long (get-in settings [:health :not-ready-before-stop-ms])))
   (mailroom/stop-server! server)
   (when watching (stop-watching-browser-build! watching))
   (backroom/stop-workers! workers)

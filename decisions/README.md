@@ -30,7 +30,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [mailroom](https://github.com/p4ulcristian/mailroom): how the browser and the server talk (both sides): named messages over http, sse and ws, a handler's steps, the routes; a library of its own since [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md); its decisions are there
 - [doorman](https://github.com/p4ulcristian/doorman): who is asking and what they may do, sessions and access, a library of its own since [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md); its decisions are there
 - [doorbell](https://github.com/p4ulcristian/doorbell): how screens stay current (both sides): a change to a table rings every open screen, which asks again through the gates; a library of its own since [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md); its decisions are there
-- [server/main](server/main/README.md): the one start, and the page shell
+- [server/main](server/main/README.md): the one start, the page shell, and the health checks
 
 ### What Groundwork is
 
