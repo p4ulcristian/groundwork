@@ -36,6 +36,7 @@ Each library keeps its own decisions, with its own index:
 - [Libraries pass values](2026-10-22-libraries-pass-values.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
 - [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md)
+- [Code lives by where it runs](2026-10-22-code-lives-by-where-it-runs.md)
 - [Each library keeps its own decisions](2026-10-22-each-library-keeps-its-own-decisions.md)
 - [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md)
 - [Nothing goes in that the owner does not understand](2026-10-22-nothing-goes-in-that-the-owner-does-not-understand.md)
