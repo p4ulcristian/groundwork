@@ -7,7 +7,7 @@
   http-kit/http-kit                       {:mvn/version "2.8.1"}
   metosin/reitit-ring                     {:mvn/version "0.11.0"}
   io.github.p4ulcristian/groundwork-steps {:local/root "../steps"}
-  io.github.p4ulcristian/groundwork-wire  {:local/root "../wire"}}
+  io.github.p4ulcristian/groundwork-wire  {:local/root "../../libraries/wire"}}
 
  :aliases
  {:test {:extra-paths ["test-code"]

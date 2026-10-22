@@ -12,5 +12,5 @@
   (str/replace (slurp (io/file path)) half-name "transport-HALF"))
 
 (deftest transport-halves-share-one-contract
-  (is (= (read-contract "libraries/transport-server/source-code/groundwork/transport_server/contract.cljc" "transport-server")
-         (read-contract "libraries/transport-browser/source-code/groundwork/transport_browser/contract.cljc" "transport-browser"))))
+  (is (= (read-contract "server-code/transport-server/source-code/groundwork/transport_server/contract.cljc" "transport-server")
+         (read-contract "browser-code/transport-browser/source-code/groundwork/transport_browser/contract.cljc" "transport-browser"))))

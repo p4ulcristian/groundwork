@@ -1,6 +1,7 @@
 (ns groundwork.main.layers-test
   "The libraries stand in layers: no library uses another around a circle.
-   Reads every libraries/<name>/deps.edn; run from the repo's root."
+   Reads every library's deps.edn in server-code/, browser-code/ and
+   libraries/; run from the repo's root."
   (:require
    [clojure.edn :as edn]
    [clojure.java.io :as io]
@@ -16,7 +17,8 @@
 
 (defn- find-uses-of-every-library []
   (into {}
-        (for [folder (.listFiles (io/file "libraries"))
+        (for [side   ["server-code" "browser-code" "libraries"]
+              folder (.listFiles (io/file side))
               :when  (.exists (io/file folder "deps.edn"))]
           [(.getName folder) (find-libraries-used folder)])))
 

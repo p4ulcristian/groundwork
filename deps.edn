@@ -1,4 +1,5 @@
-;; Groundwork: its libraries live in libraries/<name>/, each with its own deps.edn.
+;; Groundwork: its libraries live in server-code/, browser-code/ and libraries/ (both sides),
+;; each with its own deps.edn.
 ;; Depending on this repo is depending on groundwork.main, which brings the rest.
 ;; One library alone, from git: {:git/url … :git/sha … :deps/root "libraries/wire"}
 {:deps
@@ -7,24 +8,24 @@
  :aliases
  {;; the workbench: every library at once, one REPL
   :dev  {:extra-deps {io.github.p4ulcristian/groundwork-wire {:local/root "libraries/wire"}
-                      io.github.p4ulcristian/groundwork-steps {:local/root "libraries/steps"}
-                      io.github.p4ulcristian/groundwork-database {:local/root "libraries/database"}
-                      io.github.p4ulcristian/groundwork-transport-server {:local/root "libraries/transport-server"}
-                      io.github.p4ulcristian/groundwork-transport-browser {:local/root "libraries/transport-browser"}
-                      io.github.p4ulcristian/groundwork-sessions {:local/root "libraries/sessions"}
-                      io.github.p4ulcristian/groundwork-access {:local/root "libraries/access"}
-                      io.github.p4ulcristian/groundwork-background-chores {:local/root "libraries/background-chores"}
+                      io.github.p4ulcristian/groundwork-steps {:local/root "server-code/steps"}
+                      io.github.p4ulcristian/groundwork-database {:local/root "server-code/database"}
+                      io.github.p4ulcristian/groundwork-transport-server {:local/root "server-code/transport-server"}
+                      io.github.p4ulcristian/groundwork-transport-browser {:local/root "browser-code/transport-browser"}
+                      io.github.p4ulcristian/groundwork-sessions {:local/root "server-code/sessions"}
+                      io.github.p4ulcristian/groundwork-access {:local/root "server-code/access"}
+                      io.github.p4ulcristian/groundwork-background-chores {:local/root "server-code/background-chores"}
                       io.github.p4ulcristian/groundwork-main {:local/root "libraries/main"}}}
 
   ;; every library's tests together:   clojure -X:test
-  :test {:extra-paths ["libraries/wire/test-code" "libraries/steps/test-code" "libraries/database/test-code" "libraries/transport-server/test-code" "libraries/sessions/test-code" "libraries/access/test-code" "libraries/background-chores/test-code" "libraries/main/test-code"]
+  :test {:extra-paths ["libraries/wire/test-code" "server-code/steps/test-code" "server-code/database/test-code" "server-code/transport-server/test-code" "server-code/sessions/test-code" "server-code/access/test-code" "server-code/background-chores/test-code" "libraries/main/test-code"]
          :extra-deps  {io.github.cognitect-labs/test-runner
                        {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                        ;; HikariCP logs through SLF4J; tests pick no logger
                        org.slf4j/slf4j-nop {:mvn/version "2.0.17"}}
          :exec-fn     cognitect.test-runner.api/test
-         :exec-args   {:dirs ["libraries/wire/test-code" "libraries/steps/test-code" "libraries/database/test-code" "libraries/transport-server/test-code" "libraries/sessions/test-code" "libraries/access/test-code" "libraries/background-chores/test-code" "libraries/main/test-code"]}}
+         :exec-args   {:dirs ["libraries/wire/test-code" "server-code/steps/test-code" "server-code/database/test-code" "server-code/transport-server/test-code" "server-code/sessions/test-code" "server-code/access/test-code" "server-code/background-chores/test-code" "libraries/main/test-code"]}}
 
   ;; the browser half's tests:   npx shadow-cljs compile test
-  :cljs {:extra-paths ["libraries/wire/test-code" "libraries/steps/test-code"]
+  :cljs {:extra-paths ["libraries/wire/test-code" "server-code/steps/test-code"]
          :extra-deps  {thheller/shadow-cljs {:mvn/version "3.5.7"}}}}}
