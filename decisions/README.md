@@ -22,7 +22,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 Each library keeps its own decisions, with its own index:
 
-- [groundwork.wire](../libraries/wire/decisions/README.md): what travels between browser and server
+- [groundwork.wire](wire/README.md): what travels between browser and server
 
 ### What Groundwork is
 
@@ -40,6 +40,7 @@ Each library keeps its own decisions, with its own index:
 - [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md), changed in part by [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md)
 - [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md), replaced by [The api sits at the library's root](2026-10-22-the-api-sits-at-the-librarys-root.md)
 - [The api sits at the library's root](2026-10-22-the-api-sits-at-the-librarys-root.md)
+- [Libraries are folders in one tree, their edges declared](2026-10-22-libraries-are-folders-in-one-tree.md)
 - [Each library keeps its own decisions](2026-10-22-each-library-keeps-its-own-decisions.md), changed in part by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md)
 - [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md)
 - [Nothing goes in that the owner does not understand](2026-10-22-nothing-goes-in-that-the-owner-does-not-understand.md)

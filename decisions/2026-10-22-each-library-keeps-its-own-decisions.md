@@ -1,5 +1,7 @@
 # Each library keeps its own decisions
 
+> **Changed in part** by [Libraries are folders in one tree, their edges declared](2026-10-22-libraries-are-folders-in-one-tree.md) (2026-10-22): one source tree, libraries as folders in source-code/groundwork/, edges in libraries.edn.
+
 > **Changed in part** by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md) (2026-10-22): a library's decisions are in `libraries/<name>/decisions/`.
 
 > Adds to [The ground-* libraries live in one repo](2026-10-22-the-ground-libraries-live-in-one-repo.md).

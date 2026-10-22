@@ -1,5 +1,7 @@
 # The ground-* libraries live in one repo
 
+> **Changed in part** by [Libraries are folders in one tree, their edges declared](2026-10-22-libraries-are-folders-in-one-tree.md) (2026-10-22): one source tree, libraries as folders in source-code/groundwork/, edges in libraries.edn.
+
 > **Changed in part** by [A library is named by its languages](2026-10-22-a-library-is-named-by-its-languages.md) (2026-10-22): the libraries sit in libraries/ground/<name>/.
 
 **Decision:** Groundwork's parts become libraries named `ground-*` (`ground-schema`, `ground-access`, `ground-bells`, `ground-parquery`, `ground-styles`, and the plumbing: `ground-sql`, `ground-sessions`, `ground-jobs`, …). They live in this one repo, under `libs/ground-*`, each with its own `deps.edn` and its own tests, and are released together under one version. `groundwork` is the framework that wires them. Which parts become which library is still being planned.

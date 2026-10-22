@@ -1,11 +1,30 @@
-{;; Groundwork: its libraries live in libraries/; groundwork.main puts them
- ;; together, so depending on this repo is depending on groundwork.main.
+{;; Groundwork: one source tree; each library is a folder in
+ ;; source-code/groundwork/ (libraries.edn says which may use which).
+ :paths ["source-code" "resources"]
+
  :deps
- {io.github.p4ulcristian/groundwork-main {:local/root "libraries/main"}}
+ {org.clojure/clojure               {:mvn/version "1.12.6"}
+  com.github.seancorfield/next.jdbc {:mvn/version "1.4.70"}
+  org.postgresql/postgresql         {:mvn/version "42.7.14"}
+  com.zaxxer/HikariCP               {:mvn/version "7.1.0"}
+  metosin/jsonista                  {:mvn/version "1.0.2"}
+  integrant/integrant               {:mvn/version "1.0.1"}
+  http-kit/http-kit                 {:mvn/version "2.8.1"}
+  metosin/reitit-ring               {:mvn/version "0.11.0"}
+  ;; loaded by our own code (reitit.core, ring.util.codec), so named here, not
+  ;; left to come in through reitit-ring and ring-core
+  metosin/reitit-core               {:mvn/version "0.11.0"}
+  ring/ring-core                    {:mvn/version "1.15.6"}
+  ring/ring-codec                   {:mvn/version "1.3.0"}
+  metosin/malli                     {:mvn/version "0.20.3"}
+  ;; the browser half (ClojureScript only)
+  re-frame/re-frame                 {:mvn/version "1.4.7"}
+  reagent/reagent                   {:mvn/version "2.0.1"}
+  metosin/reitit-frontend           {:mvn/version "0.11.0"}}
 
  :aliases
  {;; npm install && npx shadow-cljs compile test   (the browser half's tests, on node)
-  :cljs {:extra-paths ["test" "libraries/wire/test"]
+  :cljs {:extra-paths ["test"]
          :extra-deps  {thheller/shadow-cljs {:mvn/version "3.5.7"}}}
 
   ;; clojure -X:test   (local database groundwork_test, see test/groundwork/postgres_test.clj)

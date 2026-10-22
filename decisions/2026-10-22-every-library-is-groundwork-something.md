@@ -1,5 +1,7 @@
 # Every library is groundwork.<name>, and the main one is groundwork.main
 
+> **Changed in part** by [Libraries are folders in one tree, their edges declared](2026-10-22-libraries-are-folders-in-one-tree.md) (2026-10-22): one source tree, libraries as folders in source-code/groundwork/, edges in libraries.edn.
+
 > **Changed in part** by [The door is a door file, in its language's folder](2026-10-22-the-door-is-a-door-file.md) (2026-10-22): every language is a folder; the door is its `door` file.
 
 > Changes in part [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md): the prefix is `groundwork`, not `ground`, the folders drop the `ground/` level, and the main library is `groundwork.main`, not `ground.work`.

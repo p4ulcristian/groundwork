@@ -11,7 +11,7 @@ Needs only malli and jsonista. API: `groundwork.wire.api`
 `read-json`). What differs per language lives beside it:
 `groundwork.wire.clojure.*` on the JVM, `groundwork.wire.clojurescript.*`
 in the browser (load `groundwork.wire.clojurescript.big` for exact
-decimals with big.js). Decisions: [`decisions/`](decisions/README.md).
+decimals with big.js). Decisions: [`decisions/wire/`](../../../decisions/wire/README.md).
 
 ```clojure
 (require '[groundwork.wire.api :as wire])
@@ -33,5 +33,5 @@ decimals with big.js). Decisions: [`decisions/`](decisions/README.md).
 ## Tests
 
 ```sh
-clojure -X:test     # JVM: the round trip and the api's names
+clojure -X:test :nses '[groundwork.wire.api-test groundwork.wire.api-names-test]'   # JVM, from the repo root
 ```
