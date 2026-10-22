@@ -1,9 +1,9 @@
-(ns groundwork.wire.clojure-common.door-test
+(ns groundwork.wire.clojure-common.api-test
   "The wire format, the same on both sides: values keep their types; an id
    is a UUID on the server and text in the browser."
   (:require
    [clojure.test :refer [deftest is testing]]
-   [groundwork.wire.clojure-common.door :as wire]
+   [groundwork.wire.clojure-common.api :as wire]
    #?(:clj  [groundwork.wire.clojure.time :as time]
       :cljs [groundwork.wire.clojurescript.time :as time])
    #?(:clj  [groundwork.wire.clojure.types :as types]

@@ -1,6 +1,6 @@
-(ns groundwork.wire.clojure-common.door
+(ns groundwork.wire.clojure-common.api
   "How a value travels as text and comes back as what it was, the same rules
-   on the JVM and in the browser. The door of groundwork.wire.
+   on the JVM and in the browser. The api of groundwork.wire.
 
    JSON knows text, numbers, true/false, lists and maps. A value's shape
    (malli) says what each part is, and gives the types back on the way in.

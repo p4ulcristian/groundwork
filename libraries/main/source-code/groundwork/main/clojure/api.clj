@@ -1,5 +1,5 @@
-(ns groundwork.main.clojure.door
-  "The main library's door on the server: start, stop and migrate an app.
+(ns groundwork.main.clojure.api
+  "The main library's api on the server: start, stop and migrate an app.
    For now it opens onto today's Groundwork (groundwork.core); as the parts
    become libraries of their own, this is where they are put together."
   (:require

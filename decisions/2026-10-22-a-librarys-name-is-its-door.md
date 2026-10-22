@@ -1,5 +1,7 @@
 # A library's name is its door
 
+> **Changed in part** by [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md) (2026-10-22): the door is called the library's api, in its api file.
+
 > **Changed in part** by [A library is named by its languages](2026-10-22-a-library-is-named-by-its-languages.md) (2026-10-22), since replaced by [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md): the door is the library's language namespace (ground.<name>.clojure-common, .clojure or .clojurescript); keywords are :ground.<name>/….
 
 > Adds to [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md) and [One folder per area](2026-10-18-one-folder-per-area.md) (the area's plain file is the door).
