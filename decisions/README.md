@@ -31,6 +31,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [doorman](https://github.com/p4ulcristian/doorman): who is asking and what they may do, sessions and access, a library of its own since [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md); its decisions are there
 - [logbook](https://github.com/p4ulcristian/logbook): the app's log, one function `(log level event data)` handed to every library, JSON or readable lines, the errors kept for pulling; a library of its own from the start, which house takes since [main makes one logbook and passes its log to every library](2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md); its decisions are there
 - [doorbell](https://github.com/p4ulcristian/doorbell): how screens stay current (both sides): a change to a table rings every open screen, which asks again through the gates; a library of its own since [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md); its decisions are there
+- [parlor](https://github.com/p4ulcristian/parlor): what the browser shows, re-frame over doorbell's question store, drawn with Reagent; a library of its own from the start, which house takes since [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md); its decisions are there
 - [server/main](server/main/README.md): the one start, the page shell, the health checks, and the errors a monitor pulls
 
 ### What house is
@@ -53,8 +54,8 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md)
 - [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
 - [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
-- [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md)
-- [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md)
+- [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md), changed in part by [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md)
+- [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md), changed in part by [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md)
 - [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md), changed in part by mailroom's [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md) and [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
 - [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md), changed in part by [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) and [main makes one wire and passes it to every library](2026-10-22-main-makes-one-wire-and-passes-it-to-every-library.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
@@ -162,6 +163,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [A build can have several modules](2026-10-12-a-build-can-have-several-modules.md)
 - [Nothing asks before the start](2026-10-13-nothing-asks-before-the-start.md), changed in part by [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md)
 - [Routing is Groundwork's, and a route is a record](2026-10-14-routing-is-groundworks-and-a-route-is-a-record.md)
+- [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md)
 
 ### Styles
 

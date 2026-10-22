@@ -5,12 +5,19 @@
    delays, the question store's settings, the browser's wire settings and
    the pages.
 
-     (def app (main/start-app! {:shapes-by-name shapes-by-name     ; the app's .cljc, by message name
-                                :sse-handlers   {}                 ; the app's own sse messages, by name
-                                :on-page        show-page!         ; (on-page {:name … :path-params …})
-                                :exact-decimals wire.big/big}))    ; or nil: a decimal stays its text
+     (def app (main/start-app! {:shapes-by-name     shapes-by-name     ; the app's .cljc, by message name
+                                :sse-handlers       {}                 ; the app's own sse messages, by name
+                                :questions-of-pages {:orders/page (fn [{:keys [path-params]}]   ; every page's, parlor's
+                                                                    [[:orders/of-shop {:shop/id (parse-uuid (:shop-id path-params))}]])
+                                                     :about/page  (fn [_] [])}
+                                :on-answer-failed   [:shop/answer-failed]  ; or nil: parlor's event for a failed answer
+                                :on-move            nil                    ; or an event, given {:from page :to page}
+                                :exact-decimals     wire.big/big}))        ; or nil: a decimal stays its text
+     (parlor/mount-root! \"app\" root)   ; the shell's element is #app; again after a save
 
-     (doorbell/watch-question! (:store app) [:orders/of-shop {:shop/id id}] show-orders!)
+     ;; screens read parlor's subscriptions and dispatch its events
+     @(rf/subscribe [:parlor/answer [:orders/of-shop {:shop/id shop-id}]])
+     @(rf/subscribe [:parlor/can-i? :orders/move [:shop shop-id]])   ; from :doorman/my-actions
 
      ;; a ws line, when the app wants one: the address and the delay from the page, the app's wire
      (let [{:keys [addresses ws-reopen-after-ms]} (:settings app)]
@@ -20,15 +27,20 @@
    start-app! makes the app's one wire in the browser, from the page's wire
    settings and the :exact-decimals it is handed (a function, so not in the
    page), and passes it to mailroom (no library makes its own); makes the
-   question store (doorbell's, with the :doorbell
-   settings from the page), opens the sse line (doorbell's messages,
-   the app's own, and the version: a page older than the server reloads;
-   reopened after :sse-reconnect-after-ms when the server answered with an
-   error, and every watched question asked again after any break), and
-   follows the address bar. Nothing can ask before it: the store is made
-   here. The app's shapes-by-name has both shapes for each of its names;
-   house's own (:house/version, :house/browser-error, doorbell's) are
-   added here.
+   question store (doorbell's, with the :doorbell settings from the page);
+   opens the sse line (doorbell's messages, the app's own, and the version:
+   a page older than the server reloads; reopened after
+   :sse-reconnect-after-ms when the server answered with an error, and
+   every watched question asked again after any break); then starts
+   parlor, re-frame over the store (dispatch-sync [:parlor/start …]), with
+   the store, the send function, the page's pages, the app's
+   :questions-of-pages, :on-answer-failed and :on-move, and
+   [:doorman/my-actions {}], the server's handler of doorman's, as its
+   :actions-question. parlor follows the address bar. Nothing can ask
+   before it: the store is made here. The app draws its root itself, with
+   parlor's mount-root!, into the shell's #app. The app's shapes-by-name
+   has both shapes for each of its names; house's own (:house/version,
+   :house/browser-error, :doorman/my-actions, doorbell's) are added here.
 
    It also listens, once for the page, for the uncaught errors and the
    unhandled promise rejections, and sends each to the server as
@@ -41,6 +53,8 @@
    [mailroom.api :as mailroom]
    [malli.core :as malli]
    [malli.error :as malli-error]
+   [parlor.api :as parlor]
+   [re-frame.core :as rf]
    [wire.api :as wire]))
 
 (def ^:private house-shapes-by-name
@@ -49,7 +63,14 @@
                                         [:message :string]
                                         [:stack [:maybe :string]]
                                         [:url :string]]
-                         :answer-shape :boolean}})
+                         :answer-shape :boolean}
+   ;; doorman's my-actions-answer-shape on the server; parlor's, the same, here
+   :doorman/my-actions  {:params-shape [:map {:closed true}]
+                         :answer-shape parlor/actions-answer-shape}})
+
+(def ^:private actions-question
+  "parlor's :actions-question: the server's :doorman/my-actions."
+  [:doorman/my-actions {}])
 
 (defn read-settings-from-page
   "What the server put in the page: {:version :addresses
@@ -75,14 +96,23 @@
   "start-app!'s options, every key required.
    :shapes-by-name: the app's shapes, by message name (mailroom's).
    :sse-handlers: the app's own sse messages' handlers, by name.
-   :on-page: (on-page {:name … :path-params …}) on every move.
+   :questions-of-pages: parlor's, every page's declaration of the
+   questions it needs while open, by page name, one for each of the
+   page's pages and no other: (fn [page]) -> questions.
+   :on-answer-failed: parlor's, an event given the question and the
+   failed answer, or nil for none.
+   :on-move: parlor's, an event given {:from page :to page} after every
+   move, or nil for none.
    :exact-decimals: the browser's wire setting the page can't carry, a
    function: wire.big/big (big.js, in the app's package.json), or nil to
-   keep a decimal as its text."
+   keep a decimal as its text.
+   parlor checks its three again, closer, at its start."
   [:map {:closed true}
    [:shapes-by-name map?]
    [:sse-handlers map?]
-   [:on-page fn?]
+   [:questions-of-pages [:map-of :qualified-keyword fn?]]
+   [:on-answer-failed [:maybe vector?]]
+   [:on-move [:maybe vector?]]
    [:exact-decimals [:maybe map?]]])
 
 (defn- check-start-options [options]
@@ -114,11 +144,12 @@
       (js/window.addEventListener "unhandledrejection" #(send-error! (describe-error (.-reason %) "A promise was rejected"))))))
 
 (defn start-app!
-  "Starts the browser half (see the namespace). The options are checked
-   first, every key required. Returns {:settings :wire :store :sse-line},
-   :wire the app's one wire in the browser."
+  "Starts the browser half (see the namespace), parlor last. The options
+   are checked first, every key required. Returns {:settings :wire :store
+   :sse-line}, :wire the app's one wire in the browser."
   [options]
-  (let [{:keys [shapes-by-name sse-handlers on-page exact-decimals]} (check-start-options options)
+  (let [{:keys [shapes-by-name sse-handlers questions-of-pages on-answer-failed on-move exact-decimals]}
+        (check-start-options options)
         {:keys [addresses pages sse-reconnect-after-ms] store-settings :doorbell :as settings} (read-settings-from-page)
         wire           (wire/make-wire-from-settings (assoc (:wire settings) :exact-decimals exact-decimals))
         shapes-by-name (merge shapes-by-name doorbell/message-shapes-by-name house-shapes-by-name)
@@ -132,5 +163,11 @@
                                                  {:wire               wire
                                                   :on-open            (fn [again?] (when again? (doorbell/hear-missed-changes! store)))
                                                   :reconnect-after-ms sse-reconnect-after-ms})]
-    (mailroom/start-following-address! pages on-page)
+    (rf/dispatch-sync [:parlor/start {:store              store
+                                      :send-message!      send!
+                                      :pages              pages
+                                      :questions-of-pages questions-of-pages
+                                      :actions-question   actions-question
+                                      :on-answer-failed   on-answer-failed
+                                      :on-move            on-move}])
     {:settings settings :wire wire :store store :sse-line sse-line}))

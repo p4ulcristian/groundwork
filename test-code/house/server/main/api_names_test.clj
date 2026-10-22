@@ -13,6 +13,7 @@
            doorbell-settings-shape
            browser-build-settings-shape
            browser-wire-settings-shape
+           my-actions-settings-shape
            settings-shape
            check-settings
            house-tables

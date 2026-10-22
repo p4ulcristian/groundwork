@@ -134,6 +134,7 @@
                        :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
    :sessions          {:cookie-name "house_session" :session-days 1 :renew-after-minutes 60
                        :allowed-origin "http://app.test" :secure-cookie? false}
+   :my-actions        {:rate-limit {:max 60 :per-ms 60000}}
    :background-jobs   {:workers 1 :poll-ms 1000
                        :retry-first-wait-ms 30000 :retry-wait-factor 2 :retry-max-wait-ms 3600000
                        :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000 :stop-wait-ms 5000}
@@ -220,6 +221,10 @@
             :browser-wire ["missing required key"]}
            problems)
         "wire's settings, the JVM's and the browser's, have no defaults: house makes the one wire from them"))
+  (let [problems (try (main/check-settings (update (make-settings "x") :my-actions dissoc :rate-limit))
+                      (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
+    (is (= {:my-actions {:rate-limit ["missing required key"]}} problems)
+        ":doorman/my-actions's rate limit is written out, nil for none"))
   (let [problems (try (main/check-settings (-> (make-settings "x")
                                                (update :logbook dissoc :lowest-level)
                                                (update :errors dissoc :token :browser-rate-limit)))
@@ -242,6 +247,13 @@
       (try
         (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE")
         (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'house_app') THEN CREATE ROLE house_app LOGIN; END IF; END $$")
+        (testing "an app's handler named :doorman/my-actions is refused: it is house's"
+          (is (= :house.server.main/handler-name-taken
+                 (try (main/start-app! (-> (make-app owner)
+                                           (assoc-in [:settings :migrate-at-start?] true)
+                                           (assoc-in [:handlers :doorman/my-actions] (:orders/count handlers))))
+                      (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))))
+        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE")
         (testing "an owner role, or a database not migrated, is refused"
           (is (thrown-with-msg? clojure.lang.ExceptionInfo #"owns tables or passes the gates"
                                 (main/start-app! (make-app owner)))))
@@ -351,6 +363,27 @@
                 (testing "a statement that changed no row tells nobody"
                   (run-sql! owner-pool "UPDATE orders SET order__shop_id = order__shop_id WHERE false")
                   (is (= :nothing (read-next-data anna-line))))
+                (testing "what may I do: doorman's handler, as the asker; a membership changed rings every line"
+                  ;; new lines: a read above that timed out still holds the old ones
+                  (let [anna-line   (open-sse server-port anna-cookie)
+                        bob-line    (open-sse server-port bob-cookie)
+                        ask-actions #(send-request server-port "POST" "/house/http" % "{\"doorman/my-actions\":{}}")
+                        notes       #(str ",\"mailroom/notes\":{\"doorman/my-actions\":{\"tables\":[" % "]}}}")
+                        read-tables "\"doorman/memberships\",\"doorman/role-actions\""]
+                    (is (= "{\"house/version\":\"test-1\"}" (read-next-data anna-line)))
+                    (is (= "{\"house/version\":\"test-1\"}" (read-next-data bob-line)))
+                    (is (= [200 (str "{\"doorman/my-actions\":[{\"scope-kind\":\"shop\",\"scope-id\":\"" shop-7 "\","
+                                     "\"actions\":[\"orders/edit\",\"orders/see\"]}]" (notes read-tables))]
+                           (ask-actions anna-cookie))
+                        "Anna's shop and her role's actions; the notes name doorman's tables")
+                    (is (= [200 (str "{\"doorman/my-actions\":[]" (notes ""))] (ask-actions nil))
+                        "nobody signed in, and this app opens no action to anyone: none, and nothing read")
+                    (Thread/sleep 200)
+                    (run-sql! owner-pool (str "INSERT INTO doorman.memberships VALUES ('" anna "', 'shop', '" shop-9 "', 'Owner')"))
+                    (is (= "{\"doorbell/changed\":{\"table\":\"doorman/memberships\"}}" (read-next-data anna-line))
+                        "the table her my-actions read, so her screen asks again")
+                    (is (= "{\"doorbell/changed\":{\"table\":\"doorman/memberships\"}}" (read-next-data bob-line)))
+                    (is (= 2 (count (re-seq #"scope-kind" (second (ask-actions anna-cookie))))) "now in two shops")))
                 ;; not closed here: a read that timed out still holds them;
                 ;; stopping the server ends both streams
                 ))

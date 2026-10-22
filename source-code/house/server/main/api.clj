@@ -28,8 +28,8 @@
    added once doorman finds them), puts house's own tables with
    the app's, migrates in development (:migrate-at-start?
    true) or else refuses a database that isn't current or a role that could
-   pass the gates, then starts the pool, the handlers (doorman's check, then
-   doorbell's notes), doorbell's listener, the background job workers, in development the browser
+   pass the gates, then starts the pool, the handlers (doorman's check,
+   house's :doorman/my-actions, then doorbell's notes), doorbell's listener, the background job workers, in development the browser
    build's watcher (:browser-build {:watch options}), and the server (mailroom's three
    addresses, from :server :addresses, every page answered by the page
    shell, files from :page :files; no ws hooks).
@@ -50,7 +50,11 @@
    only with the settings' bearer token. And one handler of house's own,
    :house/browser-error: the browser's uncaught errors, sent by
    house.browser.main, written at :error as :browser/uncaught, so they are
-   kept with the server's; its rate limit is the :errors settings'."
+   kept with the server's; its rate limit is the :errors settings'.
+   And one of doorman's, :doorman/my-actions (make-my-actions-handler):
+   the asker's actions by scope, and the open ones under nil kind and id,
+   which the browser's start names as parlor's :actions-question; its rate
+   limit is the :my-actions settings'."
   (:require
    [clojure.string :as str]
    [backroom.api :as backroom]
@@ -183,13 +187,25 @@
                          [:max [:int {:min 1}]]
                          [:per-ms [:int {:min 1}]]]]])
 
+(def my-actions-settings-shape
+  "The :my-actions part of the settings, every key required: house's
+   :doorman/my-actions handler (doorman's make-my-actions-handler), which
+   the browser asks for parlor's \"can I?\".
+   :rate-limit: how many times one asker may ask, {:max 60 :per-ms
+   60000}, or nil for no limit; more are answered \"Too many requests.\"."
+  [:map {:closed true}
+   [:rate-limit [:maybe [:map {:closed true}
+                         [:max [:int {:min 1}]]
+                         [:per-ms [:int {:min 1}]]]]]])
+
 (def settings-shape
   "The whole settings, every key required; each library brings its part.
    :wire is wire's settings on the JVM (wire.api/settings-shape), which
    house makes the app's one wire from; :browser-wire the browser's.
    :logbook is logbook's settings (logbook.api/settings-shape), which
    house makes the app's one logbook from; :errors where its kept errors
-   are pulled, and how often a browser may send one."
+   are pulled, and how often a browser may send one; :my-actions how often
+   a browser may ask what its person may do."
   [:map {:closed true}
    [:version :string]
    [:wire wire/settings-shape]
@@ -202,6 +218,7 @@
    [:database database/settings-shape]
    [:migration migration-settings-shape]
    [:sessions doorman/settings-shape]
+   [:my-actions my-actions-settings-shape]
    [:background-jobs backroom/settings-shape]
    [:doorbell doorbell-settings-shape]
    [:page page-settings-shape]
@@ -220,9 +237,12 @@
 
 (def house-tables
   "doorman's tables and backroom's, each in their own folder, put with the
-   app's. Neither knows of doorbell: their tables are made silent here."
+   app's. Neither knows of doorbell; their doorbells are said here: the
+   sessions and the background jobs silent; doorman's access tables tell,
+   so a screen's :doorman/my-actions is asked again when a membership or a
+   role changes."
   (vec (concat (map #(assoc % :doorbell [:silent "no screen shows sessions"]) [doorman/sessions-table])
-               (map #(assoc % :doorbell [:silent "access is read again on each message; no screen lists it yet"]) doorman/access-tables)
+               (map #(assoc % :doorbell :tell) doorman/access-tables)
                (map #(assoc % :doorbell [:silent "no screen shows background jobs"]) backroom/background-jobs-tables))))
 
 (defn make-ready-tables
@@ -270,10 +290,26 @@
       (throw (ex-info "The database isn't current: run migrate-app! first"
                       {:type :house.server.main/not-migrated})))))
 
-(defn- make-ready-handlers [pool {:keys [handlers tables scope-kinds]} find-session-step]
+(defn- add-my-actions-handler
+  "The handlers with house's :doorman/my-actions, doorman's
+   make-my-actions-handler: the asker's actions for the browser (parlor's
+   \"can I?\"). An app's own handler of that name is refused."
+  [handlers pool {:keys [tables scope-kinds settings]} find-session-step]
+  (when (contains? handlers :doorman/my-actions)
+    (throw (ex-info "The handler name :doorman/my-actions is house's own; the app's handlers use it"
+                    {:type :house.server.main/handler-name-taken :handler :doorman/my-actions})))
+  (assoc handlers :doorman/my-actions
+         (doorman/make-my-actions-handler {:pool              pool
+                                           :tables            tables
+                                           :scope-kinds       scope-kinds
+                                           :find-session-step find-session-step
+                                           :rate-limit        (get-in settings [:my-actions :rate-limit])})))
+
+(defn- make-ready-handlers [pool {:keys [handlers tables scope-kinds] :as app} find-session-step]
   (-> handlers
       (doorman/put-access-into-handlers {:pool pool :tables tables :scope-kinds scope-kinds
                                          :find-session-step find-session-step})
+      (add-my-actions-handler pool app find-session-step)
       (doorbell/put-table-notes-into-handlers)))
 
 (defn- make-rate-limit-key-finder

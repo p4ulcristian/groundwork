@@ -21,13 +21,18 @@
   ;; mailroom: named messages over http, sse and ws, a handler's steps, the routes;
   ;; both sides, its own library, github.com/p4ulcristian/mailroom (it brings
   ;; http-kit, reitit-ring and reitit-frontend)
-  io.github.p4ulcristian/mailroom   {:git/tag "v0.3.0" :git/sha "81ef0ab"}
+  io.github.p4ulcristian/mailroom   {:git/tag "v0.4.0" :git/sha "9333bc7"}
   ;; doorman: who is asking and what may they do, sessions and access, its own
   ;; library, github.com/p4ulcristian/doorman (it brings malli and test.check)
-  io.github.p4ulcristian/doorman    {:git/tag "v0.3.0" :git/sha "49af9f9"}
+  io.github.p4ulcristian/doorman    {:git/tag "v0.4.0" :git/sha "b2ac1b6"}
   ;; doorbell: a change to a table rings every open screen, which asks again;
   ;; both sides, its own library, github.com/p4ulcristian/doorbell
-  io.github.p4ulcristian/doorbell   {:git/tag "v0.3.0" :git/sha "1c28ac4"}}
+  io.github.p4ulcristian/doorbell   {:git/tag "v0.4.0" :git/sha "0236a89"}
+  ;; parlor: the browser's screens over doorbell's question store, in re-frame,
+  ;; drawn with Reagent (it brings re-frame and Reagent; react and react-dom
+  ;; are package.json's); the browser's side only, its own library,
+  ;; github.com/p4ulcristian/parlor
+  io.github.p4ulcristian/parlor     {:git/tag "v0.3.0" :git/sha "711222b"}}
 
  :aliases
  {;; every test:                  clojure -X:test

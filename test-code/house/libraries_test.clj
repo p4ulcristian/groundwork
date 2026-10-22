@@ -67,6 +67,13 @@
            :when    (and (str/starts-with? (str required) "doorbell.") (not= 'doorbell.api required))]
        (str (second ns-form) " requires " required ": only doorbell's api, doorbell.api"))
      (for [required (list-required-namespaces ns-form)
+           :when    (and (str/starts-with? (str required) "parlor.") (not= 'parlor.api required))]
+       (str (second ns-form) " requires " required ": only parlor's api, parlor.api"))
+     (for [required (list-required-namespaces ns-form)
+           :when    (and (or (str/starts-with? (str required) "parlor.") (str/starts-with? (str required) "re-frame."))
+                         (= :server side))]
+       (str (second ns-form) " requires " required ": parlor and re-frame are the browser's"))
+     (for [required (list-required-namespaces ns-form)
            :when    (and (str/starts-with? (str required) "showroom.") (= :server side))]
        (str (second ns-form) " requires " required ": the server loads showroom only when it watches (requiring-resolve)"))
      (for [required (list-required-namespaces ns-form)

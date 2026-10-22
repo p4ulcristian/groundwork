@@ -9,7 +9,8 @@ library makes its own; the running app holds it, `:wire`), makes the app's
 one logbook from the `:logbook` settings and passes its log to every library
 that writes a line (the running app holds both, `:logbook` and `:log`;
 [the decision](../../../../decisions/2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md)), migrates in development or refuses an unsafe or old database in
-production, and starts the pool, the handlers (doorman's check, then doorbell's notes),
+production, and starts the pool, the handlers (doorman's check, house's
+`:doorman/my-actions`, then doorbell's notes),
 doorbell's listener (the `:doorbell :listening` settings), backroom's
 background job workers (`:background-jobs`), in development showroom's
 watcher of the browser build (`:browser-build {:watch options}`, checked by
@@ -54,6 +55,17 @@ limited per asker by `:browser-rate-limit`, and are kept with the server's:
 :errors {:path "/house/errors" :token "…" :browser-rate-limit {:max 10 :per-ms 60000}}
 ```
 
+One handler of doorman's, `:doorman/my-actions` (`make-my-actions-handler`):
+the asker's actions by scope, and the open ones under nil kind and id, which
+the browser's start names as parlor's `:actions-question`; an app's handler
+of that name is refused. doorman's access tables tell, so a membership or a
+role changed asks it again:
+[the decision](../../../../decisions/2026-10-23-the-browser-start-starts-parlor.md).
+
+```clojure
+:my-actions {:rate-limit {:max 60 :per-ms 60000}}   ; or nil for none
+```
+
 ```clojure
 :logbook         {:lowest-level :info :format :json                      ; logbook's; development :debug, :readable
                   :errors-kept 1000 :write-to :stdout}
@@ -77,6 +89,7 @@ limited per asker by `:browser-rate-limit`, and are kept with the server's:
 
 API: `house.server.main.api` (`settings-shape`, `page-settings-shape`,
 `health-settings-shape`, `migration-settings-shape`, `doorbell-settings-shape`,
+`my-actions-settings-shape`,
 `browser-build-settings-shape`, `browser-wire-settings-shape`,
 `check-settings`, `house-tables`, `make-ready-tables`, `migrate-app!`,
 `start-app!`, `stop-app!`). Decisions:

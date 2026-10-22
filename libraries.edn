@@ -19,6 +19,9 @@
 ;; screen, which asks again (github.com/p4ulcristian/doorbell): any library on
 ;; either side may use it, through doorbell.api only. So is logbook, the app's
 ;; log (github.com/p4ulcristian/logbook): any server library may use it, through
-;; logbook.api only.
+;; logbook.api only. So is parlor, the browser's screens over doorbell's
+;; question store, in re-frame (github.com/p4ulcristian/parlor): any browser
+;; library may use it, through parlor.api only; re-frame.core beside it, for
+;; its events and subscriptions.
 {:server  {:main #{}}
  :browser {:main #{}}}

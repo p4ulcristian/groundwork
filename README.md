@@ -3,7 +3,7 @@
 An opinionated Clojure framework for web apps on Postgres: the part of
 **manor** that puts its libraries together into one running app. manor is the
 group: house and its cellar, backroom, showroom, mailroom, doorman, doorbell,
-wire and logbook. The spec is [`decisions/`](decisions/README.md).
+parlor, wire and logbook. The spec is [`decisions/`](decisions/README.md).
 
 One tree: each library is a folder `source-code/house/<side>/<name>/` with
 its README, its tests in `test-code/house/<side>/<name>/`, its decisions in
@@ -48,6 +48,14 @@ every open screen with only the table's name, and the screens that read it ask
 again through the gates; table maps say `:doorbell :tell` or `[:silent "why"]`,
 and the `:doorbell` settings hold the browser's question store's (`:store`) and
 the server's listener's (`:listening`), with no defaults.
+And what the browser shows:
+[parlor](https://github.com/p4ulcristian/parlor), re-frame over doorbell's
+question store, drawn with Reagent: a screen's answers with four statuses,
+the page the address bar leads to (each page declares its questions, the
+browser start's `:questions-of-pages`), writes that ask again what they
+touched, and "can I?" from doorman's `:doorman/my-actions`, a handler house
+adds (its rate limit the `:my-actions` part). house's browser start starts it;
+the app draws its root with parlor's `mount-root!` into the shell's `#app`.
 And what the app says, on the server:
 [logbook](https://github.com/p4ulcristian/logbook), one function
 `(log level event data)`; house makes the app's one logbook from the
