@@ -1,18 +1,18 @@
-(ns groundwork.server.main.page
+(ns house.server.main.page
   "The page shell: the one HTML page every page address answers, which
    loads the app's code and styles and carries what the browser needs to
    start, as JSON in a script tag:
 
-     <script type=\"application/json\" id=\"groundwork-settings\">
+     <script type=\"application/json\" id=\"house-settings\">
        {\"version\":\"2026-10-22.1\",
-        \"addresses\":{\"http\":\"/groundwork/http\",\"sse\":\"/groundwork/sse\",\"ws\":\"/groundwork/ws\"},
+        \"addresses\":{\"http\":\"/house/http\",\"sse\":\"/house/sse\",\"ws\":\"/house/ws\"},
         \"sse-reconnect-after-ms\":3000,
         \"ws-reopen-after-ms\":1000,
         \"doorbell\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000},
         \"pages\":{\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}}}
      </script>
 
-   The browser reads it (groundwork.browser.main); the pages, the
+   The browser reads it (house.browser.main); the pages, the
    addresses, the sse and ws reopen delays and the question store's
    settings (doorbell's) are said once, on the server.
 
@@ -43,7 +43,7 @@
   (let [manifest (io/file files-folder kind "manifest.edn")]
     (when-not (.exists manifest)
       (throw (ex-info (str "No browser build in " files-folder ": run the release build first (clojure -X:browser-release)")
-                      {:type :groundwork.server.main/not-built :files-folder files-folder})))
+                      {:type :house.server.main/not-built :files-folder files-folder})))
     (mapv #(str "/" kind "/" (:output-name %)) (edn/read-string (slurp manifest)))))
 
 (defn list-scripts
@@ -74,7 +74,7 @@
        "<meta name=\"viewport\" content=\"" (escape-html viewport) "\">\n"
        "<title>" (escape-html title) "</title>\n"
        (str/join (map #(str "<link rel=\"stylesheet\" href=\"" (escape-html %) "\">\n") stylesheets))
-       "<script type=\"application/json\" id=\"groundwork-settings\">"
+       "<script type=\"application/json\" id=\"house-settings\">"
        (escape-json-for-script (wire/turn-data-into-json-text browser-settings))
        "</script>\n"
        (str/join (map #(str "<script src=\"" (escape-html %) "\" defer></script>\n") scripts))

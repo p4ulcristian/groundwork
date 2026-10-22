@@ -1,7 +1,7 @@
-(ns groundwork.libraries-test
+(ns house.libraries-test
   "Every library uses only what libraries.edn lets it, and only through the
    other library's api; no two use each other around a circle. Reads every
-   namespace form under source-code/groundwork/; run from the repo's root."
+   namespace form under source-code/house/; run from the repo's root."
   (:require
    [clojure.edn :as edn]
    [clojure.java.io :as io]
@@ -23,15 +23,15 @@
     (if (sequential? spec) (first spec) spec)))
 
 (defn- find-library-of
-  "groundwork.server.main.page -> [:server :main], or nil
-   for a namespace that isn't Groundwork's."
+  "house.server.main.page -> [:server :main], or nil
+   for a namespace that isn't house's."
   [ns-symbol]
   (let [[top side library] (str/split (str ns-symbol) #"\.")]
-    (when (and (= "groundwork" top) (#{"server" "browser"} side) library)
+    (when (and (= "house" top) (#{"server" "browser"} side) library)
       [(keyword side) (keyword library)])))
 
 (defn- list-source-files []
-  (filter #(re-find #"\.clj[sc]?$" (.getName %)) (file-seq (io/file "source-code/groundwork"))))
+  (filter #(re-find #"\.clj[sc]?$" (.getName %)) (file-seq (io/file "source-code/house"))))
 
 (defn- find-problems-of-file [file]
   (let [ns-form           (read-ns-form file)

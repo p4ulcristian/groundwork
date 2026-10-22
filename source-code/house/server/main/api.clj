@@ -1,6 +1,6 @@
-(ns groundwork.server.main.api
+(ns house.server.main.api
   "The server's one start: the server libraries put together into a
-   running app. The browser's start is groundwork.browser.main.
+   running app. The browser's start is house.browser.main.
 
      (def app
        {:settings             settings              ; checked against settings-shape
@@ -16,7 +16,7 @@
      (def running (main/start-app! app))
      (main/stop-app! running)
 
-   start-app! checks the settings (every problem at once), puts Groundwork's
+   start-app! checks the settings (every problem at once), puts house's
    own tables with the app's, migrates in development (:migrate-at-start?
    true) or else refuses a database that isn't current or a role that could
    pass the gates, then starts the pool, the handlers (doorman's check, then
@@ -32,7 +32,7 @@
    shadow-cljs: showroom is loaded only when it watches.
 
    Two GETs answer whoever runs the app, outside sessions, access and rate
-   limits (groundwork.server.main.health, the :health settings): live, 200
+   limits (house.server.main.health, the :health settings): live, 200
    while the process answers; ready, 200 once started while the database
    answers, else 503, and 503 from the start of stop-app!."
   (:require
@@ -41,8 +41,8 @@
    [cellar.api :as database]
    [doorman.api :as doorman]
    [doorbell.api :as doorbell]
-   [groundwork.server.main.health :as health]
-   [groundwork.server.main.page :as page]
+   [house.server.main.health :as health]
+   [house.server.main.page :as page]
    [mailroom.api :as mailroom]
    [wire.api :as wire]))
 
@@ -74,7 +74,7 @@
 
 (def health-settings-shape
   "The :health part of the settings, every key required: the two GETs for
-   whoever runs the app (groundwork.server.main.health).
+   whoever runs the app (house.server.main.health).
    :live-path: 200 while the process answers, \"/health/live\".
    :ready-path: 200 when the app has started and the database answers,
    else 503, \"/health/ready\".
@@ -154,10 +154,10 @@
   [settings]
   (when-let [errors (wire/find-errors-in-data-for-shape settings-shape settings)]
     (throw (ex-info (str "The settings have problems: " (pr-str errors))
-                    {:type :groundwork.server.main/bad-settings :errors errors})))
+                    {:type :house.server.main/bad-settings :errors errors})))
   settings)
 
-(def groundwork-tables
+(def house-tables
   "doorman's tables and backroom's, each in their own folder, put with the
    app's. Neither knows of doorbell: their tables are made silent here."
   (vec (concat (map #(assoc % :doorbell [:silent "no screen shows sessions"]) [doorman/sessions-table])
@@ -165,10 +165,10 @@
                (map #(assoc % :doorbell [:silent "no screen shows background jobs"]) backroom/background-jobs-tables))))
 
 (defn make-ready-tables
-  "The app's tables and Groundwork's, with their gates (doorman) and change
+  "The app's tables and house's, with their gates (doorman) and change
    triggers (doorbell): what migrate brings Postgres to."
   [{:keys [tables scope-kinds]}]
-  (-> (into (vec tables) groundwork-tables)
+  (-> (into (vec tables) house-tables)
       (doorman/put-gates-on-tables scope-kinds)
       (doorbell/put-doorbell-on-tables)))
 
@@ -179,7 +179,7 @@
 
 (defn migrate-app!
   "For the deploy, before the app starts: as the role that owns the tables
-   (owner-db-settings), installs Groundwork's functions, brings Postgres to
+   (owner-db-settings), installs doorman's and doorbell's functions, brings Postgres to
    the tables and changes (waiting for the slow part too), each part under
    the :migration settings' time limits, and lets the app's own role
    (app-role) use them. Prints the plan."
@@ -191,7 +191,7 @@
       (finally (database/stop-pool! pool)))))
 
 (def ^:private find-powers-of-role
-  (database/make-query-from-sql-file "groundwork/server/main/find_powers_of_role.sql"))
+  (database/make-query-from-sql-file "house/server/main/find_powers_of_role.sql"))
 
 (defn- find-folders [tables]
   (set (map #(or (some-> (namespace (:table %)) (str/replace "-" "_")) "public") tables)))
@@ -202,10 +202,10 @@
                                                                   {:folders (str/join "," (find-folders tables))})]
     (when (or passes-gates owns-tables)
       (throw (ex-info "The app's database role owns tables or passes the gates; it must own nothing (run migrate-app! as the owner)"
-                      {:type :groundwork.server.main/role-too-strong})))
+                      {:type :house.server.main/role-too-strong})))
     (when-not (database/does-database-match-tables? pool tables (:changes app))
       (throw (ex-info "The database isn't current: run migrate-app! first"
-                      {:type :groundwork.server.main/not-migrated})))))
+                      {:type :house.server.main/not-migrated})))))
 
 (defn- make-ready-handlers [pool {:keys [handlers tables scope-kinds]} find-session-step]
   (-> handlers
@@ -229,7 +229,7 @@
                (:server settings)
                {:find-rate-limit-key (make-rate-limit-key-finder settings)
                 :on-sse-open  (fn [line]
-                                (mailroom/send-message-on-sse-line! line {:groundwork/version (:version settings)} nil)
+                                (mailroom/send-message-on-sse-line! line {:house/version (:version settings)} nil)
                                 (doorbell/add-sse-line! running-doorbell line))
                 :on-sse-close #(doorbell/remove-sse-line! running-doorbell %)
                 :on-ws-open   nil

@@ -1,22 +1,24 @@
-# Groundwork
+# house
 
-An opinionated Clojure framework for web apps on Postgres, rebuilt from the
-bottom as libraries. The spec is [`decisions/`](decisions/README.md).
+An opinionated Clojure framework for web apps on Postgres: the part of
+**manor** that puts its libraries together into one running app. manor is the
+group: house and its cellar, backroom, showroom, mailroom, doorman, doorbell
+and wire. The spec is [`decisions/`](decisions/README.md).
 
-One tree: each library is a folder `source-code/groundwork/<side>/<name>/` with
-its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
+One tree: each library is a folder `source-code/house/<side>/<name>/` with
+its README, its tests in `test-code/house/<side>/<name>/`, its decisions in
 `decisions/<side>/<name>/`; one `deps.edn` at the root.
 
 | library | namespace | the question it answers |
 |---|---|---|
-| server/main | `groundwork.server.main` | how does the server start? (and the page shell) |
-| browser/main | `groundwork.browser.main` | how does the browser start? |
+| server/main | `house.server.main` | how does the server start? (and the page shell) |
+| browser/main | `house.browser.main` | how does the browser start? |
 
-Every namespace says its side right after `groundwork`; no file is `.cljc`.
+Every namespace says its side right after `house`; no file is `.cljc`.
 Which library may use which is `libraries.edn`, checked by a test.
 
 How data keeps its types (ids, exact decimals, days, moments) is
-[wire](https://github.com/p4ulcristian/wire), a library of its own that Groundwork
+[wire](https://github.com/p4ulcristian/wire), a library of its own that house
 takes from git; its decisions live there. So is talking to Postgres and shaping
 its tables: [cellar](https://github.com/p4ulcristian/cellar), every query a
 `.sql` file, tables as maps; its pool settings are the `:database` part, and a
@@ -43,16 +45,16 @@ every open screen with only the table's name, and the screens that read it ask
 again through the gates; table maps say `:doorbell :tell` or `[:silent "why"]`,
 and the `:doorbell` settings hold the browser's question store's (`:store`) and
 the server's listener's (`:listening`), with no defaults.
-Every Groundwork repository carries the GitHub topic `groundwork`:
-`user:p4ulcristian topic:groundwork` lists them all.
+Every manor repository carries the GitHub topic `manor`:
+`user:p4ulcristian topic:manor` lists them all.
 
 Still to come: the smaller list (visitor sessions, access extras, rate limits, clean-ups).
 
 ```sh
 clojure -X:test                                                    # every test; Postgres ones need
-                                                                   # GROUNDWORK_SQL_TEST_PORT and _USER (Postgres 16+)
-clojure -X:test :dirs '["test-code/groundwork/server/main"]'       # one library
+                                                                   # HOUSE_SQL_TEST_PORT and _USER (Postgres 16+)
+clojure -X:test :dirs '["test-code/house/server/main"]'            # one library
 clj -A:test                                                        # one REPL, every library
 ```
 
-An app takes all of Groundwork from git.
+An app takes all of house from git.

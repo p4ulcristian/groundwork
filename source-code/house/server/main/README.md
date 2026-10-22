@@ -1,4 +1,4 @@
-# groundwork.server.main
+# house.server.main
 
 The server's one start: `start-app!` takes the app as one map (settings,
 tables, changes, scope kinds, handlers, pages, background job kinds,
@@ -50,10 +50,10 @@ with 503 for `:not-ready-before-stop-ms` before the server stops:
                                                                          ; but :entry and :files-folder
 ```
 
-API: `groundwork.server.main.api` (`settings-shape`, `page-settings-shape`,
+API: `house.server.main.api` (`settings-shape`, `page-settings-shape`,
 `health-settings-shape`, `migration-settings-shape`, `doorbell-settings-shape`,
 `browser-build-settings-shape`,
-`check-settings`, `groundwork-tables`, `make-ready-tables`, `migrate-app!`,
+`check-settings`, `house-tables`, `make-ready-tables`, `migrate-app!`,
 `start-app!`, `stop-app!`). Decisions:
 [`decisions/server/main`](../../../../decisions/server/main/README.md).
 

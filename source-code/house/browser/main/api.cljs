@@ -1,6 +1,6 @@
-(ns groundwork.browser.main.api
+(ns house.browser.main.api
   "The browser's one start: the browser libraries put together. The
-   server's start is groundwork.server.main, whose page shell carries what
+   server's start is house.server.main, whose page shell carries what
    this reads: the version, the three addresses, the sse and ws reopen
    delays, the question store's settings and the pages.
 
@@ -22,30 +22,30 @@
    error, and every watched question asked again after any break), and
    follows the address bar. Nothing can ask before it: the store is made
    here. The app's shapes-by-name has both shapes for each of its names;
-   Groundwork's own (:groundwork/version, doorbell's) are added here."
+   house's own (:house/version, doorbell's) are added here."
   (:require
    [doorbell.api :as doorbell]
    [mailroom.api :as mailroom]
    [wire.api :as wire]))
 
 (def ^:private version-shapes-by-name
-  {:groundwork/version {:params-shape nil :answer-shape :string}})
+  {:house/version {:params-shape nil :answer-shape :string}})
 
 (defn read-settings-from-page
   "What the server put in the page: {:version :addresses
    :sse-reconnect-after-ms :ws-reopen-after-ms :doorbell :pages}."
   []
-  (if-let [element (js/document.getElementById "groundwork-settings")]
+  (if-let [element (js/document.getElementById "house-settings")]
     (wire/turn-json-text-into-data (.-textContent element))
-    (throw (ex-info "The page has no groundwork-settings: it didn't come from groundwork.server.main's page shell"
-                    {:type :groundwork.browser.main/no-settings}))))
+    (throw (ex-info "The page has no house-settings: it didn't come from house.server.main's page shell"
+                    {:type :house.browser.main/no-settings}))))
 
 (defn- reload-when-older! [{:keys [version]} server-version]
   ;; once per version: two servers of different versions (a rolling deploy)
   ;; would otherwise reload the page back and forth
   (when (and (not= version server-version)
-             (not= server-version (js/sessionStorage.getItem "groundwork-reloaded-for")))
-    (js/sessionStorage.setItem "groundwork-reloaded-for" server-version)
+             (not= server-version (js/sessionStorage.getItem "house-reloaded-for")))
+    (js/sessionStorage.setItem "house-reloaded-for" server-version)
     (js/location.reload)))
 
 (defn start-app!
@@ -58,7 +58,7 @@
         sse-line       (mailroom/open-sse-line! (:sse addresses) shapes-by-name
                                                  (merge sse-handlers
                                                         (doorbell/make-sse-handlers store)
-                                                        {:groundwork/version #(reload-when-older! settings %)})
+                                                        {:house/version #(reload-when-older! settings %)})
                                                  {:on-open            (fn [again?] (when again? (doorbell/hear-missed-changes! store)))
                                                   :reconnect-after-ms sse-reconnect-after-ms})]
     (mailroom/start-following-address! pages on-page)

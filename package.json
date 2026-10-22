@@ -1,7 +1,7 @@
 {
-  "name": "groundwork",
+  "name": "house",
   "private": true,
-  "description": "Groundwork's npm dependencies (big.js for wire.big's exact decimals) and the ClojureScript test build",
+  "description": "house's npm dependencies (big.js for wire.big's exact decimals) and the ClojureScript test build",
   "scripts": {
     "test": "shadow-cljs compile test"
   },

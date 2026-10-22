@@ -1,6 +1,6 @@
 # Glossary
 
-Each word in a Groundwork name means one thing, everywhere. See
+Each word in a manor name means one thing, everywhere. See
 [A name is a sentence that starts with a verb](decisions/2026-10-22-a-name-is-a-sentence-that-starts-with-a-verb.md).
 
 | Word | Means |

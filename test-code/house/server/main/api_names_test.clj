@@ -1,9 +1,9 @@
-(ns groundwork.server.main.api-names-test
-  "The public names of groundwork.server.main's api. Adding or removing
+(ns house.server.main.api-names-test
+  "The public names of house.server.main's api. Adding or removing
    one fails here, so the api changes on purpose."
   (:require
    [clojure.test :refer [deftest is]]
-   [groundwork.server.main.api]))
+   [house.server.main.api]))
 
 (deftest the-api-names
   (is (= '#{page-settings-shape
@@ -13,9 +13,9 @@
            browser-build-settings-shape
            settings-shape
            check-settings
-           groundwork-tables
+           house-tables
            make-ready-tables
            migrate-app!
            start-app!
            stop-app!}
-         (set (keys (ns-publics 'groundwork.server.main.api))))))
+         (set (keys (ns-publics 'house.server.main.api))))))

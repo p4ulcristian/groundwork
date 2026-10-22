@@ -1,4 +1,4 @@
-(ns groundwork.server.main.health
+(ns house.server.main.health
   "Two GETs for whoever runs the app (a deploy's proxy, a load balancer,
    a monitor), at the :health settings' paths, outside sessions, access and
    rate limits, each answered as JSON with the app's version:
@@ -22,10 +22,10 @@
   (:import
    (java.lang System$Logger System$Logger$Level)))
 
-(def ^:private ^System$Logger logger (System/getLogger "groundwork"))
+(def ^:private ^System$Logger logger (System/getLogger "house"))
 
 (def ^:private find-database-answer
-  (database/make-query-from-sql-file "groundwork/server/main/find_database_answer.sql"))
+  (database/make-query-from-sql-file "house/server/main/find_database_answer.sql"))
 
 (defn make-health
   "What ready reads: the app's stage (:starting, :started, :stopping) and

@@ -1,5 +1,5 @@
-;; Groundwork's libraries, by side, and which others each may use.
-;; test-code/groundwork/libraries_test.clj checks every namespace against it:
+;; house's libraries, by side, and which others each may use.
+;; test-code/house/libraries_test.clj checks every namespace against it:
 ;; a library requires only the libraries it lists, and only their api;
 ;; nobody uses another around a circle. wire is a library of its own
 ;; (github.com/p4ulcristian/wire): any library may use it, through wire.api only.

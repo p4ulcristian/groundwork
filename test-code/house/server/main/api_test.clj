@@ -1,4 +1,4 @@
-(ns groundwork.server.main.api-test
+(ns house.server.main.api-test
   "The whole server, started as production starts it: migrate-app! as the
    owner, then start-app! as a role that owns nothing. The page shell, a
    message with its notes, and doorbell: a new order is told to every open
@@ -6,7 +6,7 @@
    gates, only their own shop's orders. Then the health checks: live and
    ready, a database that doesn't answer or lets nobody in, and stopping.
    Runs when
-   GROUNDWORK_SQL_TEST_PORT is set."
+   HOUSE_SQL_TEST_PORT is set."
   (:require
    [clojure.java.io :as io]
    [clojure.string :as str]
@@ -14,15 +14,15 @@
    [cellar.api :as database]
    [doorbell.api :as doorbell]
    [doorman.api :as doorman]
-   [groundwork.server.main.api :as main]
+   [house.server.main.api :as main]
    [mailroom.api :as mailroom])
   (:import
    (java.io BufferedReader)
    (java.net URI)
    (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)))
 
-(def ^:private port (some-> (System/getenv "GROUNDWORK_SQL_TEST_PORT") parse-long))
-(def ^:private owner (System/getenv "GROUNDWORK_SQL_TEST_USER"))
+(def ^:private port (some-> (System/getenv "HOUSE_SQL_TEST_PORT") parse-long))
+(def ^:private owner (System/getenv "HOUSE_SQL_TEST_USER"))
 
 (def ^:private scope-kinds
   (doorman/check-scope-kinds
@@ -67,7 +67,7 @@
 
 (def ^:private files-folder
   "A release build's folder, as the deploy leaves it: a manifest and one hashed file."
-  (let [folder (.toFile (java.nio.file.Files/createTempDirectory "groundwork-files" (make-array java.nio.file.attribute.FileAttribute 0)))]
+  (let [folder (.toFile (java.nio.file.Files/createTempDirectory "house-files" (make-array java.nio.file.attribute.FileAttribute 0)))]
     (io/make-parents (io/file folder "js" "x"))
     (spit (io/file folder "js" "manifest.edn") (pr-str [{:module-id :main :output-name "main.0A1B2C3D4E5F.js"}]))
     (spit (io/file folder "js" "main.0A1B2C3D4E5F.js") "start();")
@@ -95,14 +95,14 @@
    :browser-build     :built
    :server            {:ip "127.0.0.1" :port 0 :proxy-protocol :disable :client-address-header nil :server-header nil
                        :max-body-bytes 8388608 :max-header-line-bytes 8192 :max-ws-message-bytes 4194304
-                       :addresses {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"}
+                       :addresses {:http "/house/http" :sse "/house/sse" :ws "/house/ws"}
                        :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
                        :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
                        :rate-limit-buckets-before-cleanup 10000}
    :database          (make-database-settings user)
    :migration         {:instant-part {:statement-timeout-ms 10000 :lock-timeout-ms 5000}
                        :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
-   :sessions          {:cookie-name "groundwork_session" :session-days 1 :renew-after-minutes 60
+   :sessions          {:cookie-name "house_session" :session-days 1 :renew-after-minutes 60
                        :allowed-origin "http://app.test" :secure-cookie? false}
    :background-jobs   {:workers 1 :poll-ms 1000
                        :retry-first-wait-ms 30000 :retry-wait-factor 2 :retry-max-wait-ms 3600000
@@ -144,7 +144,7 @@
 
 (defn- open-sse [server-port cookie]
   (io/reader (.body (.send (HttpClient/newHttpClient)
-                           (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/groundwork/sse")))
+                           (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/house/sse")))
                                (.header "cookie" cookie) (.build))
                            (HttpResponse$BodyHandlers/ofInputStream)))))
 
@@ -188,22 +188,22 @@
 
 (deftest the-whole-server
   (if-not port
-    (println "groundwork.server.main.api-test: skipped, GROUNDWORK_SQL_TEST_PORT is not set")
+    (println "house.server.main.api-test: skipped, HOUSE_SQL_TEST_PORT is not set")
     (let [owner-pool (database/start-pool! (make-database-settings owner))]
       (try
-        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE")
-        (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gw_app') THEN CREATE ROLE gw_app LOGIN; END IF; END $$")
+        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE")
+        (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'house_app') THEN CREATE ROLE house_app LOGIN; END IF; END $$")
         (testing "an owner role, or a database not migrated, is refused"
           (is (thrown-with-msg? clojure.lang.ExceptionInfo #"owns tables or passes the gates"
                                 (main/start-app! (make-app owner)))))
-        (with-out-str (main/migrate-app! (make-app owner) (make-database-settings owner) "gw_app"))
+        (with-out-str (main/migrate-app! (make-app owner) (make-database-settings owner) "house_app"))
         (run-sql! owner-pool (str "INSERT INTO shops VALUES ('" shop-7 "'), ('" shop-9 "')"))
         (database/run-in-transaction! owner-pool {:read-only? false}
                                       (fn [transaction]
                                         (doorman/add-scope! transaction scope-kinds :shop shop-7 paul)
                                         (doorman/add-scope! transaction scope-kinds :shop shop-9 bob)
                                         (doorman/add-membership! transaction [:shop shop-7] anna "Staff")))
-        (let [running     (main/start-app! (make-app "gw_app"))
+        (let [running     (main/start-app! (make-app "house_app"))
               stopped?    (atom false)
               server-port (get-in running [:server :port])
               cookie      #(first (str/split (:set-cookie (doorman/sign-in! (:pool running) % (get-in running [:settings :sessions]))) #";"))
@@ -221,7 +221,7 @@
                     "the question store's settings")
                 (is (str/includes? html "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"))
                 (is (str/includes? html "\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}"))
-                (is (str/includes? html "\"sse\":\"/groundwork/sse\""))
+                (is (str/includes? html "\"sse\":\"/house/sse\""))
                 (is (str/includes? html "<script src=\"/js/main.0A1B2C3D4E5F.js\" defer></script>")
                     "the script the build's manifest lists")
                 (is (str/includes? html "<link rel=\"stylesheet\" href=\"/css/main.9F8E7D6C5B4A.css\">")
@@ -257,21 +257,21 @@
               (is (= 404 (first (send-request server-port "GET" "/nowhere" nil nil)))))
             (testing "an answer comes with the tables its steps read"
               (is (= [200 "{\"orders/all\":[],\"mailroom/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}"]
-                     (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/all\":{}}"))))
+                     (send-request server-port "POST" "/house/http" anna-cookie "{\"orders/all\":{}}"))))
             (testing "a rate limit: two a minute per session, a third is refused; another session has its own"
               (let [counted "{\"orders/count\":0,\"mailroom/notes\":{\"orders/count\":{\"tables\":[]}}}"]
                 (is (= [[200 counted] [200 counted]
                         [200 "{\"orders/count\":{\"error\":\"Too many requests.\"}}"]]
-                       (repeatedly 3 #(send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/count\":{}}"))))
-                (is (= [200 counted] (send-request server-port "POST" "/groundwork/http" bob-cookie "{\"orders/count\":{}}")))))
+                       (repeatedly 3 #(send-request server-port "POST" "/house/http" anna-cookie "{\"orders/count\":{}}"))))
+                (is (= [200 counted] (send-request server-port "POST" "/house/http" bob-cookie "{\"orders/count\":{}}")))))
             (testing "doorbell: each line hears the version first, then every changed table, never a row"
               (let [anna-line  (open-sse server-port anna-cookie)
                     bob-line   (open-sse server-port bob-cookie)
-                    ask-orders #(send-request server-port "POST" "/groundwork/http" % "{\"orders/all\":{}}")
+                    ask-orders #(send-request server-port "POST" "/house/http" % "{\"orders/all\":{}}")
                     orders-are #(str "{\"orders/all\":[" (str/join "," (map (fn [id] (str "\"" id "\"")) %))
                                      "],\"mailroom/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}")]
-                (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data anna-line)))
-                (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data bob-line)))
+                (is (= "{\"house/version\":\"test-1\"}" (read-next-data anna-line)))
+                (is (= "{\"house/version\":\"test-1\"}" (read-next-data bob-line)))
                 (Thread/sleep 200)
                 (is (= 2 (doorbell/count-open-lines (:doorbell running))))
                 (run-sql! owner-pool (str "INSERT INTO orders VALUES ('" order-71 "', '" shop-7 "')"))
@@ -323,8 +323,8 @@
                   (finally (deliver release nil) (run! deref holders))))
               (is (= 200 (first (ask-health server-port "/health/ready"))) "ready again once a connection is free"))
             (testing "the database unreachable: ready answers 503 within its timeout, live 200"
-              (run-sql! owner-pool "ALTER ROLE gw_app NOLOGIN")
-              (run-sql! owner-pool "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'gw_app'")
+              (run-sql! owner-pool "ALTER ROLE house_app NOLOGIN")
+              (run-sql! owner-pool "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'house_app'")
               (let [started-at        (System/currentTimeMillis)
                     [status body]     (ask-health server-port "/health/ready")
                     took-ms           (- (System/currentTimeMillis) started-at)]
@@ -333,7 +333,7 @@
                 (is (< took-ms 2000) "the timeout, not the pool's wait for a connection"))
               (is (= 503 (first (ask-health server-port "/health/ready"))) "a second check waits on the first")
               (is (= 200 (first (ask-health server-port "/health/live"))))
-              (run-sql! owner-pool "ALTER ROLE gw_app LOGIN")
+              (run-sql! owner-pool "ALTER ROLE house_app LOGIN")
               (is (= 200 (loop [tries 60]
                            (let [status (first (ask-health server-port "/health/ready"))]
                              (if (or (= 200 status) (zero? tries)) status (do (Thread/sleep 250) (recur (dec tries)))))))

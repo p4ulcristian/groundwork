@@ -1,13 +1,13 @@
-(ns groundwork.browser.build-check
+(ns house.browser.build-check
   "An entry that uses every browser library, and names a stylesheet through
    showroom, so the browser build's test compiles all of them, as an app's
    release build would."
   (:require
-   [groundwork.browser.main.api :as main]
+   [house.browser.main.api :as main]
    [showroom.api :as styles]
    [doorbell.api :as doorbell]))
 
-(def ^:private build-check-styles (styles/use-stylesheet "groundwork/browser/build_check.css"))
+(def ^:private build-check-styles (styles/use-stylesheet "house/browser/build_check.css"))
 
 (def ^:private shapes-by-name
   {:orders/all {:params-shape [:map] :answer-shape [:vector :uuid]}})
