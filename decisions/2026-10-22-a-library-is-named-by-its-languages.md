@@ -1,5 +1,7 @@
 # A library is named by its languages
 
+> **Replaced** by [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md) (2026-10-22): languages spelled out, ground.<name> namespaces, a folder per language.
+
 > Replaces [Code lives by where it runs](2026-10-22-code-lives-by-where-it-runs.md). Changes in part [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md) (the door's name and the keywords' namespace) and [The ground-* libraries live in one repo](2026-10-22-the-ground-libraries-live-in-one-repo.md) (where the libraries sit).
 
 **Decision:** Groundwork is the whole repo, and its libraries live inside it, each in `libraries/ground/<name>/` (`libraries/ground/wire/`) with its own `deps.edn` and one source folder, `source-code/`. A library's code is named by the language it is written in, the same way for every library:
