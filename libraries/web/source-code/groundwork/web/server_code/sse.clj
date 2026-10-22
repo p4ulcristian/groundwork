@@ -13,47 +13,47 @@
    [groundwork.wire.api :as wire]
    [org.httpkit.server :as http-kit]))
 
-(def ^:private stream-headers
-  {"content-type"      "text/event-stream"
-   "cache-control"     "no-cache"
-   ;; nginx and some proxies hold a response back unless told not to
-   "x-accel-buffering" "no"})
+(def ^:private stream-response
+  {:status  200
+   :headers {"content-type"      "text/event-stream"
+             "cache-control"     "no-cache"
+             ;; nginx and some proxies hold a response back unless told not to
+             "x-accel-buffering" "no"}})
+
+(defn- make-line [channel request]
+  {:groundwork.web/channel       channel
+   :groundwork.web/request       request
+   :groundwork.web/last-event-id (get-in request [:headers "last-event-id"])})
 
 (defn- keep-pinging! [channel ping-every-ms]
   (Thread/startVirtualThread
-   (fn []
-     (loop []
-       (Thread/sleep (long ping-every-ms))
-       (when (http-kit/send! channel ": ping\n\n" false)
-         (recur))))))
+   #(while (do (Thread/sleep (long ping-every-ms))
+               (http-kit/send! channel ": ping\n\n" false)))))
+
+(defn- open-line! [request {:keys [on-open ping-every-ms] :or {ping-every-ms 25000}} channel]
+  (http-kit/send! channel stream-response false)
+  (keep-pinging! channel ping-every-ms)
+  (when on-open (on-open (make-line channel request))))
 
 (defn make-ring-handler-for-sse
-  "A Ring handler that opens a line and keeps it open. (on-open line) when it
-   opens, (on-close line) when it closes; a line is
-   {:groundwork.web/channel … :groundwork.web/request … :groundwork.web/last-event-id …}."
-  [{:keys [on-open on-close ping-every-ms] :or {ping-every-ms 25000}}]
+  "A Ring handler that opens a line and keeps it open: (on-open line) when
+   it opens, (on-close line) when it closes."
+  [{:keys [on-close] :as options}]
   (fn [request]
-    (let [line (atom nil)]
-      (http-kit/as-channel
-       request
-       {:on-open  (fn [channel]
-                    (http-kit/send! channel {:status 200 :headers stream-headers} false)
-                    (reset! line {:groundwork.web/channel       channel
-                                  :groundwork.web/request       request
-                                  :groundwork.web/last-event-id (get-in request [:headers "last-event-id"])})
-                    (keep-pinging! channel ping-every-ms)
-                    (when on-open (on-open @line)))
-        :on-close (fn [_channel _status]
-                    (when (and on-close @line) (on-close @line)))}))))
+    (http-kit/as-channel request
+                         {:on-open  #(open-line! request options %)
+                          :on-close (fn [channel _status]
+                                      (when on-close (on-close (make-line channel request))))})))
+
+(defn turn-message-into-sse-text
+  "{:id 17 :data {…}} -> \"id: 17\\ndata: {…}\\n\\n\": data as JSON, one data
+   line per line of it."
+  [{:keys [id data]}]
+  (str (when id (str "id: " id "\n"))
+       (str/join (map #(str "data: " % "\n") (str/split-lines (wire/turn-data-into-json-text data))))
+       "\n"))
 
 (defn send-message-on-sse-line!
-  "Writes one message into an open line: data as JSON, with an id the
-   browser sends back as Last-Event-ID when it reconnects. Whether the line
-   was still open."
-  [line {:keys [id data]}]
-  (http-kit/send! (:groundwork.web/channel line)
-                  (str (when id (str "id: " id "\n"))
-                       (str/join (for [text-line (str/split-lines (wire/turn-data-into-json-text data))]
-                                   (str "data: " text-line "\n")))
-                       "\n")
-                  false))
+  "Writes one message into an open line. Whether it was still open."
+  [line message]
+  (http-kit/send! (:groundwork.web/channel line) (turn-message-into-sse-text message) false))

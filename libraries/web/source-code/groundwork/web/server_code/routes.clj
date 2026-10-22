@@ -11,21 +11,28 @@
    [groundwork.web.server-code.ws :as ws]
    [reitit.ring :as reitit]))
 
-(defn- turn-sse-and-ws-into-get [data]
+(defn- turn-kind-into-get [data kind make-handler]
+  (-> data
+      (dissoc kind)
+      (assoc :get {:handler (make-handler (get data kind))})))
+
+(defn- turn-route-data-into-reitit [data]
   (cond
-    (:sse data) (-> data (dissoc :sse) (assoc :get {:handler (sse/make-ring-handler-for-sse (:sse data))}))
-    (:ws data)  (-> data (dissoc :ws) (assoc :get {:handler (ws/make-ring-handler-for-ws (:ws data))}))
+    (:sse data) (turn-kind-into-get data :sse sse/make-ring-handler-for-sse)
+    (:ws data)  (turn-kind-into-get data :ws ws/make-ring-handler-for-ws)
     :else       data))
 
-(defn- turn-route [[path & more]]
+(defn- turn-route-into-reitit
+  "[path data? & children] with :sse and :ws turned into :get, the children too."
+  [[path & more]]
   (let [[data children] (if (map? (first more)) [(first more) (rest more)] [nil more])]
-    (into (if data [path (turn-sse-and-ws-into-get data)] [path])
-          (map turn-route children))))
+    (into (cond-> [path] data (conj (turn-route-data-into-reitit data)))
+          (map turn-route-into-reitit children))))
 
 (defn make-ring-handler-from-routes
   "A Ring handler from routes. A path that matches no route answers 404, a
    method the route doesn't have 405."
   [routes]
   (reitit/ring-handler
-   (reitit/router (mapv turn-route routes))
+   (reitit/router (mapv turn-route-into-reitit routes))
    (reitit/create-default-handler)))
