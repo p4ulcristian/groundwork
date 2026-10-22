@@ -9,5 +9,5 @@
    #?(:clj [groundwork.background-chores.api])
    #?(:clj [groundwork.schema.api])
    #?(:clj [groundwork.sql.api])
-   #?(:clj [groundwork.web.api])
+   [groundwork.web.api]
    [groundwork.wire.api]))

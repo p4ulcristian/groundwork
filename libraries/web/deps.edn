@@ -1,4 +1,4 @@
-;; groundwork.web: the server and its routes; uses groundwork.steps.
+;; groundwork.web: the server, and http, sse and ws; uses groundwork.steps and groundwork.wire.
 ;; Its tests, here, see nothing else:   clojure -X:test
 {:paths ["source-code"]
 
@@ -6,7 +6,8 @@
  {org.clojure/clojure                     {:mvn/version "1.12.6"}
   http-kit/http-kit                       {:mvn/version "2.8.1"}
   metosin/reitit-ring                     {:mvn/version "0.11.0"}
-  io.github.p4ulcristian/groundwork-steps {:local/root "../steps"}}
+  io.github.p4ulcristian/groundwork-steps {:local/root "../steps"}
+  io.github.p4ulcristian/groundwork-wire  {:local/root "../wire"}}
 
  :aliases
  {:test {:extra-paths ["test-code"]
