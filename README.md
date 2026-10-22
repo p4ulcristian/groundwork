@@ -15,7 +15,7 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 | server/transport | `groundwork.server.transport` | how does the server answer the browser? (http, sse, ws, routes) |
 | server/sessions | `groundwork.server.sessions` | who is asking? |
 | server/access | `groundwork.server.access` | what may they do? |
-| server/background-chores | `groundwork.server.background-chores` | what runs later? |
+| server/background-jobs | `groundwork.server.background-jobs` | what runs later? |
 | server/main | `groundwork.server.main` | how does the server start? |
 | browser/wire | `groundwork.browser.wire` | how does data keep its types? (in the browser) |
 | browser/transport | `groundwork.browser.transport` | how does the browser talk to the server? (and the pages in the bar) |

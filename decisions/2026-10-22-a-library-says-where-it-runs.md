@@ -6,7 +6,7 @@
 
 **Decision:**
 
-- **A library with a server side and a browser side is two libraries**, named by where they run: `transport-server` and `transport-browser` (and later `sync-server` and `sync-browser`). A library that runs in one place keeps its plain name (`database`, `sessions`, `access`, `background-chores`); `wire` is read by both sides.
+- **A library with a server side and a browser side is two libraries**, named by where they run: `transport-server` and `transport-browser` (and later `sync-server` and `sync-browser`). A library that runs in one place keeps its plain name (`database`, `sessions`, `access`, `background-jobs`); `wire` is read by both sides.
 - **What a pair's two halves must agree on is a contract file**, the same in both halves but for its namespace (transport's: the three addresses and the page list). A test in groundwork.main fails if the two copies ever differ.
 - **sessions and access are two libraries again**: sessions is who is asking (authentication), access is what they may do (authorization). Each name says exactly one thing.
 
@@ -14,7 +14,7 @@ The libraries:
 
 | where it runs | libraries |
 |---|---|
-| server | steps, database, transport-server, sessions, access, background-chores, main |
+| server | steps, database, transport-server, sessions, access, background-jobs, main |
 | browser | transport-browser (later browser-build, sync-browser) |
 | both | wire |
 

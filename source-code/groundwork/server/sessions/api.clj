@@ -66,7 +66,7 @@
   (database/run-statement! pool delete-sessions-of-person {:session/person-id person-id}))
 
 (defn delete-ended-sessions!
-  "Forgets sessions that have ended; for a nightly chore. Returns how many."
+  "Forgets sessions that have ended; for a nightly background job. Returns how many."
   [pool]
   (database/run-statement! pool delete-ended-sessions {}))
 

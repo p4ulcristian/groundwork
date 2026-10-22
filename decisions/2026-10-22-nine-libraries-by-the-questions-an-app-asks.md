@@ -13,7 +13,7 @@
 | how do I talk to Postgres, and shape its tables? | **database** (was sql + schema) |
 | how do browser and server talk, at which addresses? | **transport** (was transport + routes, with rate limits) |
 | who is asking, and what may they do? | **auth** (was sessions + access) |
-| what runs later? | background-chores |
+| what runs later? | background-jobs |
 | how do screens stay current? | sync |
 | what does the browser download? | browser-build (with styles) |
 | how does it all start? | main |

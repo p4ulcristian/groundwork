@@ -2,7 +2,7 @@
 
 > Adds to [Named messages over three addresses Groundwork owns](../../2026-10-22-named-messages-over-three-addresses.md).
 
-**Decision:** a handler may say a `:params-shape` and an `:answer-shape`, the same two a chore kind has:
+**Decision:** a handler may say a `:params-shape` and an `:answer-shape`, the same two a background job kind has:
 
 ```clojure
 {:shops/total {:params-shape [:map [:shop/id :uuid]]

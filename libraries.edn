@@ -8,8 +8,8 @@
            :transport         #{:steps :wire}
            :sessions          #{:database :steps}
            :access            #{:database :steps :wire :transport}
-           :background-chores #{:database :wire}
-           :main              #{:wire :steps :database :transport :sessions :access :background-chores}}
+           :background-jobs #{:database :wire}
+           :main              #{:wire :steps :database :transport :sessions :access :background-jobs}}
  :browser {:wire      #{}
            :transport #{:wire}
            :main      #{:wire :transport}}}

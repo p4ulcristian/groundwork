@@ -4,7 +4,7 @@
    starting the server. The browser's start is groundwork.browser.main."
   (:require
    [groundwork.server.access.api]
-   [groundwork.server.background-chores.api]
+   [groundwork.server.background-jobs.api]
    [groundwork.server.database.api]
    [groundwork.server.sessions.api]
    [groundwork.server.steps.api]

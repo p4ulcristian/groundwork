@@ -1,8 +1,8 @@
 # A job kind is a map, and the library makes its own tables
 
-> **Changed in part** by [Groundwork's own tables are table maps, in their own folder](../../2026-10-22-groundworks-tables-are-maps-in-their-own-folder.md) (2026-10-22): `create-tables!` is gone; the tables are maps (`chores-tables`) passed to groundwork.schema.
+> **Changed in part** by [Groundwork's own tables are table maps, in their own folder](../../2026-10-22-groundworks-tables-are-maps-in-their-own-folder.md) (2026-10-22): `create-tables!` is gone; the tables are maps (`background-jobs-tables`) passed to groundwork.schema.
 
-> **Changed in part** by [The background work is called chores](../../2026-10-22-the-background-work-is-called-chores.md) (2026-10-22): job is chore everywhere (`groundwork.chores`, `:chore/…`, `add-chore-to-queue!`); the tables' names differ from the old Groundwork's.
+> **Changed in part** by [The background work is called background jobs](../../2026-10-22-the-background-work-is-called-background-jobs.md) (2026-10-22): job is background job everywhere (`groundwork.background-jobs`, `:background-job/…`, `add-background-job-to-queue!`); the tables' names differ from the old Groundwork's.
 
 > Builds on [A job can give up for good](../../2026-10-12-a-job-can-give-up-for-good.md) and [The jobs library is named groundwork.background-jobs](../../2026-10-22-the-jobs-library-is-named-background-jobs.md).
 

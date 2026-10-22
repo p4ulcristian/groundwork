@@ -9,7 +9,7 @@ Today:
 | layer | libraries |
 |---|---|
 | 0 | wire, steps, sql |
-| 1 | web (uses steps), background-chores (uses sql, wire) |
+| 1 | web (uses steps), background-jobs (uses sql, wire) |
 | top | main |
 
 A library lists what it uses in its own `deps.edn`; a test in `groundwork.main` reads every library's `deps.edn` and fails on a circle.
@@ -18,4 +18,4 @@ A library lists what it uses in its own `deps.edn`; a test in `groundwork.main` 
 
 **The price:** a lower library that changes its api can break the libraries above it; their tests show it.
 
-**Instead of:** a star, where only `groundwork.main` knows two libraries and hands values between them: every library alone with plain data, but a library like background-chores would get its database calls and shape checks as handed-in functions.
+**Instead of:** a star, where only `groundwork.main` knows two libraries and hands values between them: every library alone with plain data, but a library like background-jobs would get its database calls and shape checks as handed-in functions.

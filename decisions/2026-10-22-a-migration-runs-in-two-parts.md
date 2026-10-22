@@ -17,4 +17,4 @@ Until the slow part is done, the app's start check accepts a database that still
 
 **Instead of:**
 - everything before the start: simplest, but a deploy waits for every index build
-- the slow part as the app's background chores: the app's role can't build indexes or validate constraints on tables it doesn't own
+- the slow part as the app's background jobs: the app's role can't build indexes or validate constraints on tables it doesn't own
