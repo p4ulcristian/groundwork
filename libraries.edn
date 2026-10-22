@@ -10,7 +10,10 @@
            :access          #{:database :steps :wire :transport}
            :background-jobs #{:database :wire}
            :sync            #{:database :transport :access :steps :wire}
-           :main            #{:wire :steps :database :transport :sessions :access :background-jobs :sync}}
+           ;; main loads browser-build only when it watches (requiring-resolve):
+           ;; production has no shadow-cljs
+           :browser-build   #{}
+           :main            #{:wire :steps :database :transport :sessions :access :background-jobs :sync :browser-build}}
  :browser {:wire      #{}
            :transport #{:wire}
            :sync      #{}

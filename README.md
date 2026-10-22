@@ -17,6 +17,7 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 | server/access | `groundwork.server.access` | what may they do? |
 | server/background-jobs | `groundwork.server.background-jobs` | what runs later? |
 | server/sync | `groundwork.server.sync` | how do screens stay current? (who is told of a change) |
+| server/browser-build | `groundwork.server.browser-build` | what does the browser download? (shadow-cljs; never in production) |
 | server/main | `groundwork.server.main` | how does the server start? (and the page shell) |
 | browser/wire | `groundwork.browser.wire` | how does data keep its types? (in the browser) |
 | browser/transport | `groundwork.browser.transport` | how does the browser talk to the server? (and the pages in the bar) |
@@ -26,8 +27,7 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 Every namespace says its side right after `groundwork`; no file is `.cljc`.
 Which library may use which is `libraries.edn`, checked by a test.
 
-Still to come: the browser build (what does the browser download?). The
-browser libraries aren't tested until it exists.
+Still to come: styles (how does the page look?).
 
 ```sh
 clojure -X:test                                                    # every test; Postgres ones need

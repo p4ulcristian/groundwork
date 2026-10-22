@@ -94,8 +94,9 @@
 
 (defn make-ring-handler-from-routes
   "The one Ring handler, from reitit routes. Options: :files-folder, a
-   folder on the classpath a GET no route matches is answered from (the
-   browser's code and styles). No route and no file: 404; a method the
+   folder on disk a GET no route matches is answered from (the browser's
+   code and styles): a file whose name is hashed (main.3F9A….js) is cached
+   for a year, any other asked again each time. No route and no file: 404; a method the
    route doesn't have: 405."
   ([routes] (make-ring-handler-from-routes routes {}))
   ([routes options] (routes/make-ring-handler-from-routes routes options)))

@@ -13,6 +13,8 @@
    addresses are said once, on the server. The shell is never cached, so a
    new version's scripts are what the next load gets."
   (:require
+   [clojure.edn :as edn]
+   [clojure.java.io :as io]
    [clojure.string :as str]
    [groundwork.server.wire.api :as wire]))
 
@@ -24,12 +26,25 @@
   [json-text]
   (str/replace json-text "<" "\\u003c"))
 
+(defn list-scripts
+  "The page's scripts: in development (:browser-build :watch) the watcher's
+   /js/main.js; built, the files the release build's manifest lists, their
+   names hashed. Built without a manifest throws: build first."
+  [{:keys [browser-build] {:keys [files-folder]} :page}]
+  (if (= :watch browser-build)
+    ["/js/main.js"]
+    (let [manifest (io/file files-folder "js" "manifest.edn")]
+      (when-not (.exists manifest)
+        (throw (ex-info (str "No browser build in " files-folder ": run the release build first (clojure -X:browser-release)")
+                        {:type :groundwork.server.main/not-built :files-folder files-folder})))
+      (mapv #(str "/js/" (:output-name %)) (edn/read-string (slurp manifest))))))
+
 (defn make-browser-settings
   "What the browser needs to start: the version, the three addresses, the pages."
   [{:keys [version]} addresses pages]
   {:version version :addresses addresses :pages pages})
 
-(defn make-page-html [{{:keys [title language scripts stylesheets]} :page} browser-settings]
+(defn make-page-html [{{:keys [title language stylesheets]} :page} scripts browser-settings]
   (str "<!doctype html>\n"
        "<html lang=\"" (escape-html language) "\">\n<head>\n"
        "<meta charset=\"utf-8\">\n"
@@ -53,5 +68,6 @@
 (defn make-page-handler
   "A Ring handler answering every page address with the shell, made once."
   [settings browser-settings]
-  (let [response {:status 200 :headers (make-headers settings) :body (make-page-html settings browser-settings)}]
+  (let [response {:status 200 :headers (make-headers settings)
+                  :body   (make-page-html settings (list-scripts settings) browser-settings)}]
     (fn [_request] response)))

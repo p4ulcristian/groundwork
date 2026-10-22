@@ -30,6 +30,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [server/access](server/access/README.md): what they may do
 - [server/background-jobs](server/background-jobs/README.md): what runs later
 - [server/sync](server/sync/README.md): how screens stay current (both sides; [browser/sync](browser/sync/README.md))
+- [server/browser-build](server/browser-build/README.md): what the browser downloads, and who builds it
 - [server/main](server/main/README.md): the one start, and the page shell
 
 ### What Groundwork is

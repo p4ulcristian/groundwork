@@ -4,6 +4,7 @@
 
      (def app
        {:settings             settings              ; checked against settings-shape
+        :browser-entry        'app.browser.main/start!  ; the function the page runs
         :tables               [shops orders]        ; table maps, with :access and :sync
         :changes              []                    ; groundwork.server.database's changes
         :scope-kinds          scope-kinds           ; groundwork.server.access
@@ -19,12 +20,16 @@
    own tables with the app's, migrates in development (:migrate-at-start?
    true) or else refuses a database that isn't current or a role that could
    pass the gates, then starts the pool, the handlers (access, then sync),
-   sync's listener, the server (transport's three addresses, every page
-   answered by the page shell, files from :files-folder) and the background
-   job workers.
+   sync's listener, the background job workers, in development the browser
+   build's watcher (:browser-build :watch), and the server (transport's three
+   addresses, every page answered by the page shell, files from
+   :files-folder).
 
    In production the deploy runs migrate-app! first, as the role that owns
-   the tables; the app's own role owns nothing."
+   the tables (the app's own role owns nothing), and the browser's release
+   build (groundwork.server.browser-build), whose files the page lists
+   (:browser-build :built). Production has no shadow-cljs: the watcher's
+   library is loaded only when it watches."
   (:require
    [clojure.string :as str]
    [groundwork.server.access.api :as access]
@@ -42,16 +47,16 @@
   [:map {:closed true}
    [:title :string]
    [:language :string]
-   [:scripts [:vector :string]]
    [:stylesheets [:vector :string]]
    [:content-security-policy [:or :string [:= :none]]]
-   [:files-folder [:maybe :string]]])
+   [:files-folder :string]])
 
 (def settings-shape
   "The whole settings, every key required; each library brings its part."
   [:map {:closed true}
    [:version :string]
    [:migrate-at-start? :boolean]
+   [:browser-build [:enum :watch :built]]
    [:server transport/settings-shape]
    [:database database/settings-shape]
    [:sessions sessions/settings-shape]
@@ -128,6 +133,15 @@
             :on-sse-close #(sync/remove-sse-line! running-sync %)})
           (transport/make-server-routes-for-pages pages (page/make-page-handler settings browser-settings)))))
 
+(defn- start-watching-browser-build!
+  "Loaded here, not required above: production has no shadow-cljs."
+  [{:keys [browser-entry settings]}]
+  ((requiring-resolve 'groundwork.server.browser-build.api/start-watching!)
+   {:entry browser-entry :files-folder (get-in settings [:page :files-folder])}))
+
+(defn- stop-watching-browser-build! [watching]
+  ((requiring-resolve 'groundwork.server.browser-build.api/stop-watching!) watching))
+
 (defn- start-part!
   "Starts one part, remembering how to stop it, so a failed start stops
    what had started, last first."
@@ -160,20 +174,24 @@
                                                                                         :kinds background-job-kinds
                                                                                         :schedules schedules))
                                            background-jobs/stop-workers!)
+            watching          (when (= :watch (:browser-build settings))
+                                (start-part! stoppers #(start-watching-browser-build! app) stop-watching-browser-build!))
             server            (transport/start-server!
                                (transport/make-ring-handler-from-routes (make-routes app handlers running-sync)
                                                                         {:files-folder (get-in settings [:page :files-folder])})
                                (:server settings))]
-        {:settings settings :pool pool :handlers handlers :sync running-sync :workers workers :server server})
+        {:settings settings :pool pool :handlers handlers :sync running-sync :workers workers
+         :watching watching :server server})
       (catch Throwable e
         (doseq [stop @stoppers] (stop))
         (throw e)))))
 
 (defn stop-app!
-  "Stops taking requests, lets running ones and running background jobs
+  "Stops taking requests, stops the watcher, lets running background jobs
    finish, stops listening, closes the pool."
-  [{:keys [pool sync server workers]}]
+  [{:keys [pool sync server workers watching]}]
   (transport/stop-server! server)
+  (when watching (stop-watching-browser-build! watching))
   (background-jobs/stop-workers! workers)
   (sync/stop-sync! sync)
   (database/stop-pool! pool))

@@ -54,6 +54,15 @@
                           :enter #(steps/add-answer-to-context
                                    % (mapv :order/id (database/find-rows (:groundwork.server.access/transaction %) find-all-orders {})))}]}})
 
+(def ^:private files-folder
+  "A release build's folder, as the deploy leaves it: a manifest and one hashed file."
+  (let [folder (.toFile (java.nio.file.Files/createTempDirectory "groundwork-files" (make-array java.nio.file.attribute.FileAttribute 0)))]
+    (io/make-parents (io/file folder "js" "x"))
+    (spit (io/file folder "js" "manifest.edn") (pr-str [{:module-id :main :output-name "main.0A1B2C3D4E5F.js"}]))
+    (spit (io/file folder "js" "main.0A1B2C3D4E5F.js") "start();")
+    (spit (io/file folder "robots.txt") "User-agent: *")
+    (str folder)))
+
 (defn- make-database-settings [user]
   {:host "localhost" :port port :database "postgres" :user user :password nil
    :tls :off :pool-size 4 :statement-timeout-ms 5000 :time-zone "UTC"})
@@ -61,16 +70,18 @@
 (defn- make-settings [user]
   {:version           "test-1"
    :migrate-at-start? false
+   :browser-build     :built
    :server            {:ip "127.0.0.1" :port 0}
    :database          (make-database-settings user)
    :sessions          {:session-days 1 :allowed-origin "http://app.test" :secure-cookie? false}
    :background-jobs   {:workers 1 :poll-ms 1000}
-   :page              {:title "Shops <test>" :language "en" :scripts ["/js/main.js"] :stylesheets []
-                       :content-security-policy :none :files-folder nil}})
+   :page              {:title "Shops <test>" :language "en" :stylesheets []
+                       :content-security-policy :none :files-folder files-folder}})
 
 (defn- make-app [user]
   {:settings (make-settings user) :tables [shops orders] :changes [] :scope-kinds scope-kinds
    :handlers handlers :pages {:orders/page {:address "/orders/:order-id" :title "Order"}}
+   :browser-entry 'app.browser.main/start!
    :background-job-kinds [] :schedules []})
 
 (defn- run-sql! [pool text] (database/run-statement! pool (database/make-query-from-sql-text "test" text) {}))
@@ -136,7 +147,19 @@
                 (is (str/includes? html "<title>Shops &lt;test&gt;</title>"))
                 (is (str/includes? html "\"version\":\"test-1\""))
                 (is (str/includes? html "\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}"))
-                (is (str/includes? html "\"sse\":\"/groundwork/sse\""))))
+                (is (str/includes? html "\"sse\":\"/groundwork/sse\""))
+                (is (str/includes? html "<script src=\"/js/main.0A1B2C3D4E5F.js\" defer></script>")
+                    "the script the build's manifest lists")))
+            (testing "files: a hashed one is kept for a year, any other asked again"
+              (let [response (.send (HttpClient/newHttpClient)
+                                    (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/js/main.0A1B2C3D4E5F.js"))))
+                                    (HttpResponse$BodyHandlers/ofString))]
+                (is (= ["start();" "public, max-age=31536000, immutable"]
+                       [(.body response) (.orElse (.firstValue (.headers response) "cache-control") nil)])))
+              (let [response (.send (HttpClient/newHttpClient)
+                                    (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/robots.txt"))))
+                                    (HttpResponse$BodyHandlers/ofString))]
+                (is (= "no-cache" (.orElse (.firstValue (.headers response) "cache-control") nil)))))
             (testing "no page, no file: 404"
               (is (= 404 (first (send-request server-port "GET" "/nowhere" nil nil)))))
             (testing "an answer comes with the tables its steps read"
@@ -161,7 +184,8 @@
                 (testing "a statement that changed no row tells nobody"
                   (run-sql! owner-pool "UPDATE orders SET order__shop_id = order__shop_id WHERE false")
                   (is (= :nothing (read-next-data anna-line))))
-                (.close anna-line)
-                (.close bob-line)))
+                ;; not closed here: a read that timed out still holds them;
+                ;; stopping the server ends both streams
+                ))
             (finally (main/stop-app! running))))
         (finally (database/stop-pool! owner-pool))))))
