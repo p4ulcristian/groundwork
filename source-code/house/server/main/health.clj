@@ -68,17 +68,17 @@
     :stopping "the app is stopping"
     :started  (find-database-problem pool health timeout-ms)))
 
-(defn- answer-json [status body]
+(defn- answer-json [wire status body]
   {:status  status
    :headers {"content-type" "application/json" "cache-control" "no-store"}
-   :body    (wire/turn-data-into-json-text body)})
+   :body    (wire/turn-data-into-json-text wire body)})
 
 (defn make-health-routes
   "The live and ready routes, at the :health settings' paths, as reitit
-   data."
-  [pool health {:keys [version] {:keys [live-path ready-path database-timeout-ms]} :health}]
-  [[live-path  {:get {:handler (fn [_] (answer-json 200 {:status "live" :version version}))}}]
+   data, answered as JSON by the app's wire."
+  [wire pool health {:keys [version] {:keys [live-path ready-path database-timeout-ms]} :health}]
+  [[live-path  {:get {:handler (fn [_] (answer-json wire 200 {:status "live" :version version}))}}]
    [ready-path {:get {:handler (fn [_]
                                  (if-let [reason (find-reason-not-ready pool health database-timeout-ms)]
-                                   (answer-json 503 {:status "not-ready" :version version :reason reason})
-                                   (answer-json 200 {:status "ready" :version version})))}}]])
+                                   (answer-json wire 503 {:status "not-ready" :version version :reason reason})
+                                   (answer-json wire 200 {:status "ready" :version version})))}}]])

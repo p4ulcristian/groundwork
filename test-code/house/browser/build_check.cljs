@@ -5,7 +5,8 @@
   (:require
    [house.browser.main.api :as main]
    [showroom.api :as styles]
-   [doorbell.api :as doorbell]))
+   [doorbell.api :as doorbell]
+   [wire.big]))
 
 (def ^:private build-check-styles (styles/use-stylesheet "house/browser/build_check.css"))
 
@@ -15,5 +16,6 @@
 (defn start! []
   (let [app (main/start-app! {:shapes-by-name shapes-by-name
                               :sse-handlers   {}
-                              :on-page        #(js/console.log "page" (pr-str (:name %)))})]
+                              :on-page        #(js/console.log "page" (pr-str (:name %)))
+                              :exact-decimals wire.big/big})]
     (doorbell/watch-question! (:store app) [:orders/all {}] #(js/console.log "orders" (pr-str %)))))

@@ -16,8 +16,12 @@
      (def running (main/start-app! app))
      (main/stop-app! running)
 
-   start-app! checks the settings (every problem at once), puts house's
-   own tables with the app's, migrates in development (:migrate-at-start?
+   start-app! checks the settings (every problem at once), makes the app's
+   one wire from the :wire settings (wire.api's make-wire-from-settings)
+   and passes it to every library that sends or reads data across the
+   app's edges (mailroom's routes, backroom's workers, the page, the
+   health checks; no library makes its own), puts house's own tables with
+   the app's, migrates in development (:migrate-at-start?
    true) or else refuses a database that isn't current or a role that could
    pass the gates, then starts the pool, the handlers (doorman's check, then
    doorbell's notes), doorbell's listener, the background job workers, in development the browser
@@ -44,6 +48,8 @@
    [house.server.main.health :as health]
    [house.server.main.page :as page]
    [mailroom.api :as mailroom]
+   [malli.core :as malli]
+   [malli.error :as malli-error]
    [wire.api :as wire]))
 
 (def page-settings-shape
@@ -134,10 +140,26 @@
              [:fn {:error/message ":entry and :files-folder come from :browser-entry and :page :files :folder"}
               leaves-entry-and-folder-out?]]]]])
 
+(def browser-wire-settings-shape
+  "The :browser-wire part of the settings, every key required: the
+   browser's wire settings (wire's settings-shape in the browser) but
+   :exact-decimals, a function, which the app's browser start hands to
+   house.browser.main's start-app!. The page carries them.
+   :most-shapes-kept: how many shapes' tools the browser's wire keeps
+   before all are forgotten and made again as used.
+   :most-keys-kept: the same for the JSON keys' keywords."
+  [:map {:closed true}
+   [:most-shapes-kept [:int {:min 1}]]
+   [:most-keys-kept [:int {:min 1}]]])
+
 (def settings-shape
-  "The whole settings, every key required; each library brings its part."
+  "The whole settings, every key required; each library brings its part.
+   :wire is wire's settings on the JVM (wire.api/settings-shape), which
+   house makes the app's one wire from; :browser-wire the browser's."
   [:map {:closed true}
    [:version :string]
+   [:wire wire/settings-shape]
+   [:browser-wire browser-wire-settings-shape]
    [:migrate-at-start? :boolean]
    [:browser-build browser-build-settings-shape]
    [:server mailroom/settings-shape]
@@ -150,11 +172,14 @@
    [:health health-settings-shape]])
 
 (defn check-settings
-  "Returns the settings; throws with every problem at once."
+  "Returns the settings; throws with every problem at once. Checked by
+   malli itself: the settings are values the app hands in, and the wire is
+   made from them only once they fit."
   [settings]
-  (when-let [errors (wire/find-errors-in-data-for-shape settings-shape settings)]
-    (throw (ex-info (str "The settings have problems: " (pr-str errors))
-                    {:type :house.server.main/bad-settings :errors errors})))
+  (when-let [explanation (malli/explain settings-shape settings)]
+    (let [errors (malli-error/humanize explanation)]
+      (throw (ex-info (str "The settings have problems: " (pr-str errors))
+                      {:type :house.server.main/bad-settings :errors errors}))))
   settings)
 
 (def house-tables
@@ -221,20 +246,21 @@
     (or (doorman/find-session-key-of-request request (:sessions settings))
         (mailroom/find-client-address request (get-in settings [:server :client-address-header])))))
 
-(defn- make-routes [{:keys [settings pages]} pool running-health handlers running-doorbell]
+(defn- make-routes [{:keys [settings pages]} wire pool running-health handlers running-doorbell]
   (let [browser-settings (page/make-browser-settings settings pages)]
-    (-> (health/make-health-routes pool running-health settings)
+    (-> (health/make-health-routes wire pool running-health settings)
         (into (mailroom/make-routes-for-messages
                handlers
                (:server settings)
-               {:find-rate-limit-key (make-rate-limit-key-finder settings)
+               {:wire                wire
+                :find-rate-limit-key (make-rate-limit-key-finder settings)
                 :on-sse-open  (fn [line]
                                 (mailroom/send-message-on-sse-line! line {:house/version (:version settings)} nil)
                                 (doorbell/add-sse-line! running-doorbell line))
                 :on-sse-close #(doorbell/remove-sse-line! running-doorbell %)
                 :on-ws-open   nil
                 :on-ws-close  nil}))
-        (into (mailroom/make-server-routes-for-pages pages (page/make-page-handler settings browser-settings))))))
+        (into (mailroom/make-server-routes-for-pages pages (page/make-page-handler wire settings browser-settings))))))
 
 (defn- is-watching? [settings]
   (map? (:browser-build settings)))
@@ -272,12 +298,13 @@
 
 (defn start-app!
   "Starts the app (see the namespace). Returns the running app, for stop-app!:
-   {:settings :pool :handlers :doorbell :workers :watching :health :server}, :server holding the
-   :port it listens on."
+   {:settings :wire :pool :handlers :doorbell :workers :watching :health :server}, :server holding the
+   :port it listens on, :wire the app's one wire, made from the :wire settings."
   [{:keys [settings background-job-kinds schedules] :as app}]
   (check-settings settings)
   (when (is-watching? settings) (check-watch-options! app))
-  (let [stoppers (atom ())]
+  (let [wire     (wire/make-wire-from-settings (:wire settings))
+        stoppers (atom ())]
     (try
       (let [pool              (start-part! stoppers #(database/start-pool! (:database settings)) database/stop-pool!)
             _                 (if (:migrate-at-start? settings)
@@ -290,6 +317,7 @@
                                            doorbell/stop-listening!)
             workers           (start-part! stoppers
                                            #(backroom/start-workers! pool (assoc (:background-jobs settings)
+                                                                                 :wire wire
                                                                                  :kinds background-job-kinds
                                                                                  :schedules schedules))
                                            backroom/stop-workers!)
@@ -297,11 +325,11 @@
                                 (start-part! stoppers #(start-watching-browser-build! app) stop-watching-browser-build!))
             running-health    (health/make-health)
             server            (mailroom/start-server!
-                               (mailroom/make-ring-handler-from-routes (make-routes app pool running-health handlers running-doorbell)
+                               (mailroom/make-ring-handler-from-routes (make-routes app wire pool running-health handlers running-doorbell)
                                                                         {:files (get-in settings [:page :files])})
                                (:server settings))]
         (health/mark-stage! running-health :started)
-        {:settings settings :pool pool :handlers handlers :doorbell running-doorbell :workers workers
+        {:settings settings :wire wire :pool pool :handlers handlers :doorbell running-doorbell :workers workers
          :watching watching :health running-health :server server})
       (catch Throwable e
         (doseq [stop @stoppers] (stop))

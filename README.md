@@ -19,7 +19,10 @@ Which library may use which is `libraries.edn`, checked by a test.
 
 How data keeps its types (ids, exact decimals, days, moments) is
 [wire](https://github.com/p4ulcristian/wire), a library of its own that house
-takes from git; its decisions live there. So is talking to Postgres and shaping
+takes from git; its decisions live there. house makes the app's one wire on
+each side, from the `:wire` settings on the server and the `:browser-wire`
+settings (in the page) with the browser start's `:exact-decimals`, and
+passes it to every library; none makes its own. So is talking to Postgres and shaping
 its tables: [cellar](https://github.com/p4ulcristian/cellar), every query a
 `.sql` file, tables as maps; its pool settings are the `:database` part, and a
 migration's time limits the `:migration` part, with no defaults. And what runs

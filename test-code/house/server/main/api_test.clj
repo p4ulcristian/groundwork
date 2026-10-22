@@ -91,6 +91,11 @@
 
 (defn- make-settings [user]
   {:version           "test-1"
+   :wire              {:most-shapes-kept 1000
+                       :json-limits      {:max-nesting-depth 1000 :max-number-length 1000 :max-string-length 20000000
+                                          :max-name-length 50000 :max-document-length nil :max-token-count nil
+                                          :max-writing-nesting-depth 1000}}
+   :browser-wire      {:most-shapes-kept 1000 :most-keys-kept 10000}
    :migrate-at-start? false
    :browser-build     :built
    :server            {:ip "127.0.0.1" :port 0 :proxy-protocol :disable :client-address-header nil :server-header nil
@@ -182,6 +187,14 @@
             :background-jobs {:stop-wait-ms ["missing required key"]}}
            problems)
         "the migration's limits, the listener's, the pool's and the workers' have no defaults"))
+  (let [problems (try (main/check-settings (-> (make-settings "x")
+                                               (update-in [:wire :json-limits] dissoc :max-string-length)
+                                               (dissoc :browser-wire)))
+                      (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
+    (is (= {:wire         {:json-limits {:max-string-length ["missing required key"]}}
+            :browser-wire ["missing required key"]}
+           problems)
+        "wire's settings, the JVM's and the browser's, have no defaults: house makes the one wire from them"))
   (is (thrown? clojure.lang.ExceptionInfo
                (main/check-settings (assoc (make-settings "x") :browser-build {:watch {:entry 'app.browser.main/start!}})))
       "the watch options leave out the entry and the folder: they come from the app and :page"))
@@ -219,6 +232,8 @@
                 (is (str/includes? html "\"sse-reconnect-after-ms\":3000") "and the sse one")
                 (is (str/includes? html "\"doorbell\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000}")
                     "the question store's settings")
+                (is (str/includes? html "\"wire\":{\"most-shapes-kept\":1000,\"most-keys-kept\":10000}")
+                    "the browser's wire settings, from :browser-wire")
                 (is (str/includes? html "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"))
                 (is (str/includes? html "\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}"))
                 (is (str/includes? html "\"sse\":\"/house/sse\""))

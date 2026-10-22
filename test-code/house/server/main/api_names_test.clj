@@ -11,6 +11,7 @@
            migration-settings-shape
            doorbell-settings-shape
            browser-build-settings-shape
+           browser-wire-settings-shape
            settings-shape
            check-settings
            house-tables

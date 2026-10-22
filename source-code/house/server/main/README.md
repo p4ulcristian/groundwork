@@ -3,7 +3,9 @@
 The server's one start: `start-app!` takes the app as one map (settings,
 tables, changes, scope kinds, handlers, pages, background job kinds,
 schedules), checks the settings (each library brings its part; every problem
-at once), migrates in development or refuses an unsafe or old database in
+at once), makes the app's one wire from the `:wire` settings and passes it to
+mailroom's routes, backroom's workers, the page and the health checks (no
+library makes its own; the running app holds it, `:wire`), migrates in development or refuses an unsafe or old database in
 production, and starts the pool, the handlers (doorman's check, then doorbell's notes),
 doorbell's listener (the `:doorbell :listening` settings), backroom's
 background job workers (`:background-jobs`), in development showroom's
@@ -15,7 +17,8 @@ session, else address; sse hooks for doorbell, the ws hooks nil; files from
 `:migration` settings are each part's time limits. The page
 shell answers every page address: the app's scripts and styles, and the
 browser's settings (version, addresses, sse and ws reopen delays, the
-question store's settings, `:doorbell :store`, pages) as
+question store's settings, `:doorbell :store`, the browser's wire settings,
+`:browser-wire`, pages) as
 JSON in the page; its viewport, referrer policy, frame options and content
 security policy are `:page` settings. Every value that sets behaviour is a
 setting; what stays fixed, and why:
@@ -37,6 +40,11 @@ with 503 for `:not-ready-before-stop-ms` before the server stops:
 ```
 
 ```clojure
+:wire            {:most-shapes-kept 1000                                 ; wire's settings on the JVM
+                  :json-limits      {:max-nesting-depth 1000 :max-number-length 1000 :max-string-length 20000000
+                                     :max-name-length 50000 :max-document-length nil :max-token-count nil
+                                     :max-writing-nesting-depth 1000}}
+:browser-wire    {:most-shapes-kept 1000 :most-keys-kept 10000}          ; the browser's, but :exact-decimals
 :database        {…}                                                     ; cellar's pool settings, all 20 keys
 :migration       {:instant-part {:statement-timeout-ms 30000 :lock-timeout-ms 5000}
                   :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
@@ -52,7 +60,7 @@ with 503 for `:not-ready-before-stop-ms` before the server stops:
 
 API: `house.server.main.api` (`settings-shape`, `page-settings-shape`,
 `health-settings-shape`, `migration-settings-shape`, `doorbell-settings-shape`,
-`browser-build-settings-shape`,
+`browser-build-settings-shape`, `browser-wire-settings-shape`,
 `check-settings`, `house-tables`, `make-ready-tables`, `migrate-app!`,
 `start-app!`, `stop-app!`). Decisions:
 [`decisions/server/main`](../../../../decisions/server/main/README.md).
