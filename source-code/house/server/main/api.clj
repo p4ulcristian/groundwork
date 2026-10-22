@@ -40,7 +40,9 @@
    :server :addresses, every page answered by the page shell in the
    request's language, files from :page :files; no ws hooks). Every
    request first gets its language (dictionary's, from the :languages
-   settings) and loses its address's language prefix, for routing. A page
+   settings) and loses its address's language prefix, for routing. Each
+   language's catalog is read at the start (a missing one refuses it) and
+   served where the browser fetches it, /<catalogs-path>/<language>.json. A page
    may name a :module of :browser-modules, loaded on demand by the browser.
 
    In production the deploy runs migrate-app! first, as the role that owns
@@ -385,6 +387,7 @@
                 :on-sse-close #(doorbell/remove-sse-line! running-doorbell %)
                 :on-ws-open   nil
                 :on-ws-close  nil}))
+        (into (page/make-catalog-routes (:languages settings)))
         (into (mailroom/make-server-routes-for-pages pages (page/make-page-handler wire settings browser-settings))))))
 
 (defn- is-watching? [settings]
@@ -437,7 +440,11 @@
 
 (defn start-app!
   "Starts the app (see the namespace). Returns the running app, for stop-app!:
-   {:settings :wire :logbook :log :pool :handlers :doorbell :workers :watching :health :server},
+   {:settings :wire :logbook :log :texts :pool :handlers :doorbell :workers :watching :health :server},
+   :texts every catalog that shows, read once (dictionary's load-texts),
+   for the server's own texts: (dictionary/make-text texts \"de\"
+   :mail/subject {:order 7}), the language a value (the request's, or the
+   row's an email or a PDF is made for),
    :server holding the :port it listens on, :wire the app's one wire, made
    from the :wire settings, :logbook the app's one logbook, made from the
    :logbook settings, and :log its log function, for the app's own lines."
@@ -450,7 +457,8 @@
     (let [wire     (wire/make-wire-from-settings (:wire settings))
           stoppers (atom ())]
       (try
-        (let [pool              (start-part! stoppers #(database/start-pool! (:database settings)) database/stop-pool!)
+        (let [texts             (dictionary/load-texts (:languages settings))
+              pool              (start-part! stoppers #(database/start-pool! (:database settings)) database/stop-pool!)
               _                 (if (:migrate-at-start? settings)
                                   @(:slow-part (install-functions-and-migrate! pool app log))
                                   (refuse-unsafe-database! pool app))
@@ -483,7 +491,7 @@
                                  {:log log})]
           (health/mark-stage! running-health :started)
           (log :info :house/started {:house/version (:version settings) :house/port (:port server)})
-          {:settings settings :wire wire :logbook running-logbook :log log :pool pool :handlers handlers
+          {:settings settings :wire wire :logbook running-logbook :log log :texts texts :pool pool :handlers handlers
            :doorbell running-doorbell :workers workers :watching watching :health running-health :server server})
         (catch Throwable e
           (doseq [stop @stoppers] (stop))

@@ -146,6 +146,20 @@
        :body    (make-page-html wire settings stylesheets scripts (assoc browser-settings :language language)
                                 language (dictionary/make-alternate-links (:languages settings) origin path))})))
 
+(defn make-catalog-routes
+  "A GET for each language's catalog (dictionary's list-catalog-files), at
+   the address the browser fetches it from, answered with the classpath
+   file the server reads, as it is, read once: JSON, asked again each time
+   (no-cache), so a deploy's new texts are what the next fetch gets."
+  [languages]
+  (vec (for [{:keys [resource address]} (dictionary/list-catalog-files languages)
+             :let [response {:status  200
+                             :headers {"content-type"           "application/json; charset=utf-8"
+                                       "cache-control"          "no-cache"
+                                       "x-content-type-options" "nosniff"}
+                             :body    (slurp (io/resource resource))}]]
+         [address {:get {:handler (fn [_request] response)}}])))
+
 (defn wrap-languages
   "The Ring handler, each request first given its language and its path
    without the language's prefix (dictionary's find-language-of-request):

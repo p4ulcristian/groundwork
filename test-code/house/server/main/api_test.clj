@@ -16,6 +16,7 @@
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
    [cellar.api :as database]
+   [dictionary.api :as dictionary]
    [doorbell.api :as doorbell]
    [doorman.api :as doorman]
    [house.server.main.api :as main]
@@ -167,7 +168,8 @@
    :doorbell          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                        :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                    :reconnect-after-ms 1000 :stop-wait-ms 2000}}
-   :languages         {:languages ["en" "de"] :default "en" :cookie-name "lang"}
+   :languages         {:languages ["en" "de"] :default "en" :cookie-name "lang"
+                       :preview-languages [] :fallback-language "en" :catalogs-path "house_test/i18n"}
    :page              {:title "Shops <test>" :viewport "width=device-width, initial-scale=1"
                        :content-security-policy :none :referrer-policy "same-origin" :frame-options "DENY"
                        :files {:folder files-folder :hashed-name-min-hex-digits 8 :hashed-file-cache-seconds 31536000}}
@@ -347,6 +349,15 @@
                 (is (= "de" (lang-of (get-page "/orders/42" {"accept-language" "de-AT,de;q=0.9"}))))
                 (is (= "en" (lang-of (get-page "/orders/42" {"accept-language" "de" "cookie" "lang=en"}))) "the cookie first")
                 (is (= 404 (first (get-page "/de/nowhere" {}))))))
+            (testing "each language's catalog, where the browser fetches it, as the server reads it"
+              (let [response (.send (HttpClient/newHttpClient)
+                                    (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/house_test/i18n/de.json"))))
+                                    (HttpResponse$BodyHandlers/ofString))]
+                (is (= [200 "no-cache"] [(.statusCode response) (.orElse (.firstValue (.headers response) "cache-control") nil)]))
+                (is (= "Bestellungen" (get (json/read-value (.body response)) "orders/title"))))
+              (testing "and the server's own texts, the language a value"
+                (is (= "3 Bestellungen" (dictionary/make-text (:texts running) "de" :orders/count {:count 3})))
+                (is (= "1 order" (dictionary/make-text (:texts running) "en" :orders/count {:count 1})))))
             (testing "a page opened fresh: the shell, with the browser's settings in it"
               (let [[status html] (send-request server-port "GET" "/orders/42" nil nil)]
                 (is (= 200 status))
@@ -368,7 +379,7 @@
                 (is (not (str/includes? html "admin.6F5E4D3C2B1A.js")) "main only: a module loads on demand")
                 (is (str/includes? html "\"module-stylesheets\":{\"admin\":\"/css/admin.1A2B3C4D5E6F.css\"}")
                     "each module's stylesheet bundle, for the loader")
-                (is (str/includes? html "\"languages\":{\"languages\":[\"en\",\"de\"],\"default\":\"en\",\"cookie-name\":\"lang\"}")
+                (is (str/includes? html "\"languages\":{\"languages\":[\"en\",\"de\"],\"default\":\"en\",\"cookie-name\":\"lang\",\"preview-languages\":[],\"fallback-language\":\"en\",\"catalogs-path\":\"house_test/i18n\"}")
                     "dictionary's settings")
                 (is (str/includes? html "\"admin/page\":{\"address\":\"/admin\",\"title\":\"Admin\",\"module\":\"admin\"}")
                     "a page names its module")

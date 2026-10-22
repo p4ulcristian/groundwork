@@ -19,7 +19,7 @@
 (defn- draw-page [page]
   (let [{:keys [status data]} @(rf/subscribe [:parlor/answer [:orders/all {}]])
         can-see?              @(rf/subscribe [:parlor/can-i? :orders/see [:shop "7"]])]
-    [:p (pr-str (:name page)) " " (name status) " " (when can-see? (pr-str data))]))
+    [:p @(rf/subscribe [:parlor/text :orders/title {}]) " " (pr-str (:name page)) " " (name status) " " (when can-see? (pr-str data))]))
 
 (defn- root []
   [:div {:class "build-check"}

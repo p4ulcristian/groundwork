@@ -34,8 +34,15 @@ stylesheet bundle (`:module-stylesheets`), and the shell lists `main`'s
 files only: a page's `:module`, one of the app's `:browser-modules`, loads
 on demand ([the decision](../../../../decisions/2026-10-23-routing-extras-each-where-it-belongs.md)).
 
+Each language's catalog (`<catalogs-path>/<language>.json` on the
+classpath) is read at the start, held by the running app as `:texts` for
+the server's own texts (`dictionary/make-text`, the language a value), and
+served where the browser fetches it, `/<catalogs-path>/<language>.json`
+([the decision](../../../../decisions/2026-10-23-house-reads-the-catalogs-at-the-start-and-serves-them.md)).
+
 ```clojure
-:languages {:languages ["en" "de"] :default "en" :cookie-name "lang"}   ; dictionary's; :cookie-name nil for none
+:languages {:languages ["en" "de"] :default "en" :cookie-name "lang"   ; dictionary's; :cookie-name nil for none
+            :preview-languages [] :fallback-language "en" :catalogs-path "i18n"}   ; [] in production; i18n/<language>.json
 ``` Every value that sets behaviour is a
 setting; what stays fixed, and why:
 [the decision](../../../../decisions/2026-10-22-every-value-that-sets-behaviour-is-a-setting.md).

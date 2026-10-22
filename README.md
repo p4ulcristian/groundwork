@@ -73,7 +73,10 @@ And which language a request, a page and an address are in, on both sides:
 the `:languages` part. Every request gets its language (the address's
 prefix, the cookie, Accept-Language, the default) and loses the prefix
 before routing; the shell's `<html lang>` and alternate links follow it,
-and parlor keeps it on every move. The routing has queries (read by a
+and parlor keeps it on every move. Texts are ICU messages in a JSON
+catalog per language, read by the server at the start (`:texts`, for
+emails and PDFs) and served to the browser, where parlor's
+`[:parlor/text key args]` draws them. The routing has queries (read by a
 page's shape), scrolling, a question before leaving unsaved changes, and
 modules loaded on demand (the app's `:browser-modules`, showroom's, each
 with its stylesheets): [the decision](decisions/2026-10-23-routing-extras-each-where-it-belongs.md).

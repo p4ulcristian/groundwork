@@ -32,11 +32,11 @@
   ;; drawn with Reagent (it brings re-frame and Reagent; react and react-dom
   ;; are package.json's); the browser's side only, its own library,
   ;; github.com/p4ulcristian/parlor
-  io.github.p4ulcristian/parlor     {:git/tag "v0.6.0" :git/sha "3ab7f3b"}
+  io.github.p4ulcristian/parlor     {:git/tag "v0.7.0" :git/sha "9c49f71"}
   ;; dictionary: which language a request, a page and an address are in; both
   ;; sides, its own library, github.com/p4ulcristian/dictionary (parlor brings
   ;; it to the browser too)
-  io.github.p4ulcristian/dictionary {:git/tag "v0.1.0" :git/sha "3934a19"}}
+  io.github.p4ulcristian/dictionary {:git/tag "v0.2.0" :git/sha "df1d373"}}
 
  :aliases
  {;; every test:                  clojure -X:test
