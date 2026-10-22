@@ -18,6 +18,7 @@ layers test checks it.
 | web | `groundwork.web.api` | the server and its routes; a route's work is steps |
 | sql | `groundwork.sql.api` | Postgres through a pool; every query a `.sql` file |
 | background-chores | `groundwork.background-chores.api` | a queue, workers and schedules in Postgres |
+| schema | `groundwork.schema.api` | tables as maps; Postgres brought to them |
 | main | `groundwork.main.api` | puts the libraries together; lists every one it uses |
 
 ```sh

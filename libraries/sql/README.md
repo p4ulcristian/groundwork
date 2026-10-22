@@ -6,7 +6,8 @@ as `:entity/field`; values come back as real types (UUID, BigDecimal,
 java.time).
 
 Needs next.jdbc, PgJDBC, HikariCP and jsonista. API: `groundwork.sql.api`
-(`start-pool!`, `stop-pool!`, `make-query-from-sql-file`, `find-rows`,
+(`start-pool!`, `stop-pool!`, `make-query-from-sql-file`,
+`make-query-from-sql-text`, `find-rows`,
 `find-one-row`, `run-statement!`, `run-in-transaction!`). The parts:
 `server-code.params` (`:name` → `?`), `server-code.names` (column → key),
 `server-code.rows` (values in, rows out). Decisions:

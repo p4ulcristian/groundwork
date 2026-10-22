@@ -1,5 +1,7 @@
 # A query is made by a function from its .sql file
 
+> **Added to** on 2026-10-22: `make-query-from-sql-text` makes a query from SQL text made by code, for groundwork.schema's statements (a table's statements are made from data, per [A table is one map](../../../decisions/2026-10-22-a-table-is-one-map.md)).
+
 > Changes in part [SQL lives only in files](../../../decisions/2026-10-12-sql-lives-only-in-files.md): a query is `(def q (make-query-from-sql-file "path.sql"))`, not `(pg/defsql q)`.
 
 **Decision:** groundwork.sql has seven functions. `start-pool!` opens a HikariCP pool as the db settings say (TLS, time limit, time zone); `stop-pool!` closes it. `make-query-from-sql-file` reads a `.sql` file from the classpath and turns its `:name` params into `?`s, once, when the namespace that defs it loads. `find-rows`, `find-one-row` and `run-statement!` run a query on a pool or a transaction; `run-in-transaction!` runs a function in one transaction and hands it the transaction.

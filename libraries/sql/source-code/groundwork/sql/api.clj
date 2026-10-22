@@ -103,6 +103,14 @@
     (assoc (params/turn-sql-text-into-statement (slurp url))
            :groundwork.sql/path path)))
 
+(defn make-query-from-sql-text
+  "A query from SQL text made by code, not read from a file: for statements
+   a library makes from data (groundwork.schema's CREATE TABLE). The name
+   stands where a file's path would, in errors."
+  [query-name sql-text]
+  (assoc (params/turn-sql-text-into-statement sql-text)
+         :groundwork.sql/path query-name))
+
 (defn- run-on-connection
   "Rows as a vector when the statement returns rows, else {:count n}. With
    max-rows, Postgres sends at most that many rows."

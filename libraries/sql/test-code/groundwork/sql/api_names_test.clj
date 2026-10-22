@@ -9,6 +9,7 @@
   (is (= '#{start-pool!
            stop-pool!
            make-query-from-sql-file
+           make-query-from-sql-text
            find-rows
            find-one-row
            run-statement!

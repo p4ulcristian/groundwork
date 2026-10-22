@@ -7,4 +7,5 @@
   io.github.p4ulcristian/groundwork-steps {:local/root "../steps"}
   io.github.p4ulcristian/groundwork-web   {:local/root "../web"}
   io.github.p4ulcristian/groundwork-sql   {:local/root "../sql"}
-  io.github.p4ulcristian/groundwork-background-chores {:local/root "../background-chores"}}}
+  io.github.p4ulcristian/groundwork-background-chores {:local/root "../background-chores"}
+  io.github.p4ulcristian/groundwork-schema {:local/root "../schema"}}}
