@@ -122,18 +122,16 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 
 ### Sessions and logins
 
-- [Groundwork ships no logins](2026-10-12-groundwork-ships-no-logins.md)
+- [Groundwork ships no logins](2026-10-12-groundwork-ships-no-logins.md), changed in part by doorman's [doorman ships no logins](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-12-doorman-ships-no-logins.md)
 - [Sessions live in Postgres](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-12-sessions-live-in-postgres.md): moved to doorman with the library, with "The session is the only truth"
-- [Pages for other sites, visitors, and servers](2026-10-12-pages-for-other-sites-visitors-and-servers.md)
+- [Pages for other sites, visitors, and servers](2026-10-12-pages-for-other-sites-visitors-and-servers.md), changed in part by doorman's [Sessions for visitors, and none for servers](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-12-sessions-for-visitors-and-none-for-servers.md) and [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
 
 ### Permissions and the access language
 
-- [Groundwork ships permissions](2026-10-12-groundwork-ships-permissions.md), changed in part by [Who may see what is the app's; Groundwork enforces it](2026-10-15-who-may-see-what-is-the-apps.md) and [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
-- [Who may see what is the app's; Groundwork enforces it](2026-10-15-who-may-see-what-is-the-apps.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
-- [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)
+- [Groundwork ships permissions](2026-10-12-groundwork-ships-permissions.md), changed in part by doorman's [doorman ships permissions](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-12-doorman-ships-permissions.md)
+- [Who may see what is the app's; doorman enforces it](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-15-who-may-see-what-is-the-apps.md): moved to doorman, with "A record of two scopes may have a parent and children" and "A record between fixed sides carries them"
+- [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md) and doorman's [Access rules are sentences in doorman's language](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-17-access-rules-are-sentences-in-doormans-language.md)
 - [Every scoped table names its scope](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-12-every-scoped-table-names-its-scope.md): moved to doorman with the library, with "A record may wait for its scope", "A record can belong to a visitor", "Shared rows may belong to nobody" and "One request may name several scopes"
-- [A record of two scopes may have a parent and children](2026-10-13-a-record-of-two-scopes-may-have-a-parent-and-children.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
-- [A record between fixed sides carries them](2026-10-13-a-record-between-fixed-sides-carries-them.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
 - [Money and personal data live in their own tables](2026-10-17-money-and-personal-data-live-in-their-own-tables.md)
 
 ### Endpoints, parquery and live updates
