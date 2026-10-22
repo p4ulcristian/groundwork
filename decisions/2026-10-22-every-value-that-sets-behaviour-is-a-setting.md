@@ -1,5 +1,7 @@
 # Every value that sets behaviour is a setting, in main too
 
+> **Changed in part** by [main takes every library's new settings](2026-10-22-main-takes-every-librarys-new-settings.md) (2026-10-22): Groundwork takes mailroom v0.1.4 and doorman v0.1.3 with the other libraries' new releases, and `:database`, `:migration`, `:background-jobs`, `:doorbell` and `:browser-build` carry their new settings.
+
 > **Changed in part** by [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md) (2026-10-22): sync's message shapes are doorbell's `message-shapes-by-name`, and its messages `:doorbell/changed` and `:doorbell/missed`.
 
 > Changes in part [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md), [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md) and [One start, and a migrate for the deploy](server/main/2026-10-22-one-start-and-a-migrate-for-the-deploy.md): Groundwork takes mailroom v0.1.3 and doorman v0.1.1, and main's own fixed values become `:page` settings.

@@ -21,7 +21,7 @@
    true) or else refuses a database that isn't current or a role that could
    pass the gates, then starts the pool, the handlers (doorman's check, then
    doorbell's notes), doorbell's listener, the background job workers, in development the browser
-   build's watcher (:browser-build :watch), and the server (mailroom's three
+   build's watcher (:browser-build {:watch options}), and the server (mailroom's three
    addresses, from :server :addresses, every page answered by the page
    shell, files from :page :files; no ws hooks).
 
@@ -90,17 +90,62 @@
    [:database-timeout-ms pos-int?]
    [:not-ready-before-stop-ms [:int {:min 0}]]])
 
+(def ^:private part-limits-shape
+  [:map {:closed true}
+   [:statement-timeout-ms [:or [:= :none] [:int {:min 1}]]]
+   [:lock-timeout-ms [:or [:= :none] [:int {:min 1}]]]])
+
+(def migration-settings-shape
+  "The :migration part of the settings, every key required: the time limits
+   each part of a migration runs under (cellar's migrate! options), in
+   place of the pool's. :none is no limit.
+   :instant-part: the catalog changes, in one transaction before the app
+   starts; a :lock-timeout-ms keeps an ALTER queued behind a long
+   transaction from holding every query to its table.
+   :slow-part: the index builds and validations over every row, after."
+  [:map {:closed true}
+   [:instant-part part-limits-shape]
+   [:slow-part part-limits-shape]])
+
+(def doorbell-settings-shape
+  "The :doorbell part of the settings, every key required, both doorbell's:
+   :store, the browser's question store's, which the page carries
+   (doorbell's store-settings-shape); :listening, the server's listener's
+   (doorbell's listening-settings-shape)."
+  [:map {:closed true}
+   [:store doorbell/store-settings-shape]
+   [:listening doorbell/listening-settings-shape]])
+
+(defn- leaves-entry-and-folder-out? [watch-options]
+  (not (or (contains? watch-options :entry) (contains? watch-options :files-folder))))
+
+(def browser-build-settings-shape
+  "The :browser-build setting: :built, the release build's files, listed
+   by their manifests; or {:watch options}, development, showroom's
+   watcher started with these options: every one of showroom's
+   start-watching! options but :entry and :files-folder, which come from
+   the app's :browser-entry and the :page :files :folder. showroom checks
+   them, every key required, before the app starts anything."
+  [:or
+   [:= :built]
+   [:map {:closed true}
+    [:watch [:and
+             [:map-of :keyword :any]
+             [:fn {:error/message ":entry and :files-folder come from :browser-entry and :page :files :folder"}
+              leaves-entry-and-folder-out?]]]]])
+
 (def settings-shape
   "The whole settings, every key required; each library brings its part."
   [:map {:closed true}
    [:version :string]
    [:migrate-at-start? :boolean]
-   [:browser-build [:enum :watch :built]]
+   [:browser-build browser-build-settings-shape]
    [:server mailroom/settings-shape]
    [:database database/settings-shape]
+   [:migration migration-settings-shape]
    [:sessions doorman/settings-shape]
    [:background-jobs backroom/settings-shape]
-   [:doorbell doorbell/store-settings-shape]
+   [:doorbell doorbell-settings-shape]
    [:page page-settings-shape]
    [:health health-settings-shape]])
 
@@ -130,13 +175,14 @@
 (defn- install-functions-and-migrate! [pool app]
   (doorman/install-access-functions! pool)
   (doorbell/install-tell-function! pool)
-  (database/migrate! pool (make-ready-tables app) (:changes app)))
+  (database/migrate! pool (make-ready-tables app) (:changes app) (get-in app [:settings :migration])))
 
 (defn migrate-app!
   "For the deploy, before the app starts: as the role that owns the tables
    (owner-db-settings), installs Groundwork's functions, brings Postgres to
-   the tables and changes (waiting for the slow part too), and lets the
-   app's own role (app-role) use them. Prints the plan."
+   the tables and changes (waiting for the slow part too), each part under
+   the :migration settings' time limits, and lets the app's own role
+   (app-role) use them. Prints the plan."
   [app owner-db-settings app-role]
   (let [pool (database/start-pool! owner-db-settings)]
     (try
@@ -190,12 +236,28 @@
                 :on-ws-close  nil}))
         (into (mailroom/make-server-routes-for-pages pages (page/make-page-handler settings browser-settings))))))
 
+(defn- is-watching? [settings]
+  (map? (:browser-build settings)))
+
+(defn- make-watch-options
+  "showroom's start-watching! options: the :browser-build :watch settings,
+   with the app's entry and the files folder."
+  [{:keys [browser-entry settings]}]
+  (assoc (get-in settings [:browser-build :watch])
+         :entry browser-entry
+         :files-folder (get-in settings [:page :files :folder])))
+
+(defn- check-watch-options!
+  "showroom checks the watch options, every key required, before anything
+   starts: showroom's make-build checks them and builds nothing."
+  [app]
+  ((requiring-resolve 'showroom.api/make-build) :watch (make-watch-options app)))
+
 (defn- start-watching-browser-build!
   "Loaded here, not required above: production has neither showroom nor
    shadow-cljs."
-  [{:keys [browser-entry settings]}]
-  ((requiring-resolve 'showroom.api/start-watching!)
-   {:entry browser-entry :files-folder (get-in settings [:page :files :folder])}))
+  [app]
+  ((requiring-resolve 'showroom.api/start-watching!) (make-watch-options app)))
 
 (defn- stop-watching-browser-build! [watching]
   ((requiring-resolve 'showroom.api/stop-watching!) watching))
@@ -214,6 +276,7 @@
    :port it listens on."
   [{:keys [settings background-job-kinds schedules] :as app}]
   (check-settings settings)
+  (when (is-watching? settings) (check-watch-options! app))
   (let [stoppers (atom ())]
     (try
       (let [pool              (start-part! stoppers #(database/start-pool! (:database settings)) database/stop-pool!)
@@ -223,14 +286,14 @@
             find-session-step (doorman/make-find-session-step pool (:sessions settings))
             handlers          (make-ready-handlers pool app find-session-step)
             running-doorbell  (start-part! stoppers
-                                           #(doorbell/start-listening! pool)
+                                           #(doorbell/start-listening! pool (get-in settings [:doorbell :listening]))
                                            doorbell/stop-listening!)
             workers           (start-part! stoppers
                                            #(backroom/start-workers! pool (assoc (:background-jobs settings)
                                                                                  :kinds background-job-kinds
                                                                                  :schedules schedules))
                                            backroom/stop-workers!)
-            watching          (when (= :watch (:browser-build settings))
+            watching          (when (is-watching? settings)
                                 (start-part! stoppers #(start-watching-browser-build! app) stop-watching-browser-build!))
             running-health    (health/make-health)
             server            (mailroom/start-server!

@@ -8,6 +8,9 @@
 (deftest the-api-names
   (is (= '#{page-settings-shape
            health-settings-shape
+           migration-settings-shape
+           doorbell-settings-shape
+           browser-build-settings-shape
            settings-shape
            check-settings
            groundwork-tables

@@ -31,13 +31,18 @@
            :roles   {"Staff" #{:orders/see :orders/edit}}}}))
 
 (def ^:private shops
-  {:table :shops :columns [[:shop/id :uuid {:primary-key? true}]] :access :public :doorbell :tell})
+  {:table    :shops
+   :columns  [[:shop/id :uuid {:primary-key? true}]]
+   :indexes  []
+   :access   :public
+   :doorbell :tell})
 
 (def ^:private orders
-  {:table   :orders
-   :columns [[:order/id :uuid {:primary-key? true :default :random-uuid}]
-             [:order/shop-id :uuid {:references :shop/id}]]
-   :access  [{:allow #{:orders/see :orders/edit} :to [:member :order/shop-id]}]
+  {:table    :orders
+   :columns  [[:order/id :uuid {:primary-key? true :default :random-uuid}]
+              [:order/shop-id :uuid {:references :shop/id}]]
+   :indexes  []
+   :access   [{:allow #{:orders/see :orders/edit} :to [:member :order/shop-id]}]
    :doorbell :tell})
 
 (def ^:private paul #uuid "00000000-0000-4000-8000-00000000000a")
@@ -75,7 +80,14 @@
 
 (defn- make-database-settings [user]
   {:host "localhost" :port port :database "postgres" :user user :password nil
-   :tls :off :pool-size 4 :statement-timeout-ms 5000 :time-zone "UTC"})
+   :tls :off :tls-root-cert nil
+   :pool-size 4
+   :connection-wait-ms 30000 :connection-check-wait-ms 5000
+   :connection-max-lifetime-ms 1800000 :connection-keepalive-every-ms 120000
+   :leak-warning-after-ms :none
+   :connect-timeout-seconds 10 :read-timeout-seconds :none :tcp-keepalive? false
+   :statement-timeout-ms 5000 :lock-timeout-ms :none :idle-in-transaction-timeout-ms :none
+   :time-zone "UTC"})
 
 (defn- make-settings [user]
   {:version           "test-1"
@@ -88,10 +100,16 @@
                        :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
                        :rate-limit-buckets-before-cleanup 10000}
    :database          (make-database-settings user)
+   :migration         {:instant-part {:statement-timeout-ms 10000 :lock-timeout-ms 5000}
+                       :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
    :sessions          {:cookie-name "groundwork_session" :session-days 1 :renew-after-minutes 60
                        :allowed-origin "http://app.test" :secure-cookie? false}
-   :background-jobs   {:workers 1 :poll-ms 1000}
-   :doorbell          {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
+   :background-jobs   {:workers 1 :poll-ms 1000
+                       :retry-first-wait-ms 30000 :retry-wait-factor 2 :retry-max-wait-ms 3600000
+                       :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000 :stop-wait-ms 5000}
+   :doorbell          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
+                       :listening {:batch-window-ms 50 :check-stopped-every-ms 500
+                                   :reconnect-after-ms 1000 :stop-wait-ms 2000}}
    :page              {:title "Shops <test>" :language "en" :viewport "width=device-width, initial-scale=1"
                        :content-security-policy :none :referrer-policy "same-origin" :frame-options "DENY"
                        :files {:folder files-folder :hashed-name-min-hex-digits 8 :hashed-file-cache-seconds 31536000}}
@@ -151,7 +169,22 @@
   (let [problems (try (main/check-settings (update (make-settings "x") :health dissoc :ready-path :database-timeout-ms))
                       (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
     (is (= #{:ready-path :database-timeout-ms} (set (keys (:health problems))))
-        "the health settings have no defaults either")))
+        "the health settings have no defaults either"))
+  (let [problems (try (main/check-settings (-> (make-settings "x")
+                                               (update-in [:migration :slow-part] dissoc :lock-timeout-ms)
+                                               (update-in [:doorbell :listening] dissoc :reconnect-after-ms)
+                                               (update :database dissoc :connection-wait-ms)
+                                               (update :background-jobs dissoc :stop-wait-ms)))
+                      (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
+    (is (= {:migration       {:slow-part {:lock-timeout-ms ["missing required key"]}}
+            :doorbell        {:listening {:reconnect-after-ms ["missing required key"]}}
+            :database        {:connection-wait-ms ["missing required key"]}
+            :background-jobs {:stop-wait-ms ["missing required key"]}}
+           problems)
+        "the migration's limits, the listener's, the pool's and the workers' have no defaults"))
+  (is (thrown? clojure.lang.ExceptionInfo
+               (main/check-settings (assoc (make-settings "x") :browser-build {:watch {:entry 'app.browser.main/start!}})))
+      "the watch options leave out the entry and the folder: they come from the app and :page"))
 
 (deftest the-whole-server
   (if-not port
@@ -165,7 +198,7 @@
                                 (main/start-app! (make-app owner)))))
         (with-out-str (main/migrate-app! (make-app owner) (make-database-settings owner) "gw_app"))
         (run-sql! owner-pool (str "INSERT INTO shops VALUES ('" shop-7 "'), ('" shop-9 "')"))
-        (database/run-in-transaction! owner-pool
+        (database/run-in-transaction! owner-pool {:read-only? false}
                                       (fn [transaction]
                                         (doorman/add-scope! transaction scope-kinds :shop shop-7 paul)
                                         (doorman/add-scope! transaction scope-kinds :shop shop-9 bob)
@@ -258,7 +291,7 @@
                   (is (= "{\"doorbell/changed\":{\"table\":\"shops\"}}" (read-next-data anna-line)))
                   (is (= "{\"doorbell/changed\":{\"table\":\"shops\"}}" (read-next-data bob-line))))
                 (testing "one transaction's statements on one table tell it once"
-                  (database/run-in-transaction! owner-pool
+                  (database/run-in-transaction! owner-pool {:read-only? false}
                                                 (fn [transaction]
                                                   (run-sql! transaction "UPDATE shops SET shop__id = shop__id")
                                                   (run-sql! transaction "DELETE FROM shops WHERE shop__id = '10000000-0000-4000-8000-000000000001'")))
@@ -277,7 +310,7 @@
                      (repeatedly 20 #(ask-health server-port "/health/ready")))))
             (testing "no answer from the database (every connection held): ready answers 503 at its timeout"
               (let [release (promise)
-                    holders (doall (repeatedly 4 #(future (database/run-in-transaction! (:pool running) (fn [_] @release)))))]
+                    holders (doall (repeatedly 4 #(future (database/run-in-transaction! (:pool running) {:read-only? false} (fn [_] @release)))))]
                 (try
                   (Thread/sleep 300)
                   (let [started-at (System/currentTimeMillis)

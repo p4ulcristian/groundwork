@@ -47,25 +47,25 @@
     (mapv #(str "/" kind "/" (:output-name %)) (edn/read-string (slurp manifest)))))
 
 (defn list-scripts
-  "The page's scripts: while watching (:browser-build :watch) /js/main.js,
+  "The page's scripts: while watching (:browser-build {:watch …}) /js/main.js,
    showroom's watched build; built, the files the release build's manifest
    lists, their names hashed."
   [{:keys [browser-build] {{:keys [folder]} :files} :page}]
-  (if (= :watch browser-build) ["/js/main.js"] (list-built-files folder "js")))
+  (if (map? browser-build) ["/js/main.js"] (list-built-files folder "js")))
 
 (defn list-stylesheets
   "The page's stylesheet bundle: while watching /css/main.css; built, the
    hashed one its manifest lists."
   [{:keys [browser-build] {{:keys [folder]} :files} :page}]
-  (if (= :watch browser-build) ["/css/main.css"] (list-built-files folder "css")))
+  (if (map? browser-build) ["/css/main.css"] (list-built-files folder "css")))
 
 (defn make-browser-settings
   "What the browser needs to start: the version, the three addresses and
    the sse and ws reopen delays (from the :server settings), the question
-   store's settings (:doorbell), the pages."
+   store's settings (the :doorbell settings' :store), the pages."
   [{:keys [version doorbell] {:keys [addresses sse-reconnect-after-ms ws-reopen-after-ms]} :server} pages]
   {:version version :addresses addresses :sse-reconnect-after-ms sse-reconnect-after-ms
-   :ws-reopen-after-ms ws-reopen-after-ms :doorbell doorbell :pages pages})
+   :ws-reopen-after-ms ws-reopen-after-ms :doorbell (:store doorbell) :pages pages})
 
 (defn make-page-html [{{:keys [title language viewport]} :page} stylesheets scripts browser-settings]
   (str "<!doctype html>\n"

@@ -13,7 +13,13 @@
 
 (deftest every-browser-library-compiles-in-a-release-build
   (let [folder (str (Files/createTempDirectory "groundwork-build" (make-array FileAttribute 0)))]
-    (with-out-str (showroom/build-for-release! {:entry 'groundwork.browser.build-check/start! :files-folder folder}))
+    (with-out-str (showroom/build-for-release! {:entry              'groundwork.browser.build-check/start!
+                                                :files-folder       folder
+                                                :cache-folder       ".shadow-cljs"
+                                                :compile-threads    4
+                                                :output-feature-set :es2020
+                                                :source-maps?       false
+                                                :gzip-level         9}))
     (let [[{:keys [module-id output-name]}] (edn/read-string (slurp (io/file folder "js" "manifest.edn")))]
       (is (= :main module-id))
       (is (re-matches #"main\.[0-9A-F]{8,}\.js" output-name) "the name carries a hash of the content")

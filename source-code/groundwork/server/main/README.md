@@ -5,14 +5,17 @@ tables, changes, scope kinds, handlers, pages, background job kinds,
 schedules), checks the settings (each library brings its part; every problem
 at once), migrates in development or refuses an unsafe or old database in
 production, and starts the pool, the handlers (doorman's check, then doorbell's notes),
-doorbell's listener, backroom's background job workers, in development
-showroom's watcher of the browser build, and mailroom's server (its
+doorbell's listener (the `:doorbell :listening` settings), backroom's
+background job workers (`:background-jobs`), in development showroom's
+watcher of the browser build (`:browser-build {:watch options}`, checked by
+showroom before anything starts), and mailroom's server (its
 `:server` settings, mailroom's, every key required; askers told apart by
 session, else address; sse hooks for doorbell, the ws hooks nil; files from
-`:page :files`). `migrate-app!` is for the deploy, as the owner. The page
+`:page :files`). `migrate-app!` is for the deploy, as the owner; the
+`:migration` settings are each part's time limits. The page
 shell answers every page address: the app's scripts and styles, and the
 browser's settings (version, addresses, sse and ws reopen delays, the
-question store's `:doorbell` settings, pages) as
+question store's settings, `:doorbell :store`, pages) as
 JSON in the page; its viewport, referrer policy, frame options and content
 security policy are `:page` settings. Every value that sets behaviour is a
 setting; what stays fixed, and why:
@@ -33,8 +36,23 @@ with 503 for `:not-ready-before-stop-ms` before the server stops:
          :database-timeout-ms 1000 :not-ready-before-stop-ms 0}
 ```
 
+```clojure
+:database        {…}                                                     ; cellar's pool settings, all 20 keys
+:migration       {:instant-part {:statement-timeout-ms 30000 :lock-timeout-ms 5000}
+                  :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
+:background-jobs {:workers 4 :poll-ms 1000
+                  :retry-first-wait-ms 30000 :retry-wait-factor 2 :retry-max-wait-ms 3600000
+                  :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000 :stop-wait-ms 30000}
+:doorbell        {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
+                  :listening {:batch-window-ms 50 :check-stopped-every-ms 500
+                              :reconnect-after-ms 1000 :stop-wait-ms 2000}}
+:browser-build   :built                                                  ; or {:watch {…}}: showroom's watch options
+                                                                         ; but :entry and :files-folder
+```
+
 API: `groundwork.server.main.api` (`settings-shape`, `page-settings-shape`,
-`health-settings-shape`,
+`health-settings-shape`, `migration-settings-shape`, `doorbell-settings-shape`,
+`browser-build-settings-shape`,
 `check-settings`, `groundwork-tables`, `make-ready-tables`, `migrate-app!`,
 `start-app!`, `stop-app!`). Decisions:
 [`decisions/server/main`](../../../../decisions/server/main/README.md).
