@@ -1,25 +1,31 @@
 (ns groundwork.routes.browser-code.routes
   "The browser's routes, with reitit-frontend: the address in the bar leads
-   to a page. Back and Forward work (HTML5 history), and the page's :title
-   becomes the tab's title on every move."
+   to a page, found by name. Back and Forward work (HTML5 history), and the
+   page's :title becomes the tab's title on every move."
   (:require
    [groundwork.routes.shared-code.pages :as pages]
    [reitit.frontend :as reitit]
    [reitit.frontend.easy :as easy]))
 
-(defn- show-page! [on-page match]
+(defn- set-tab-title! [match]
   (when-let [title (get-in match [:data :title])]
-    (set! (.-title js/document) title))
-  (on-page (when match {:page        (:data match)
-                        :path-params (:path-params match)
-                        :query       (:query-params match)})))
+    (set! (.-title js/document) title)))
+
+(defn- turn-match-into-page [match]
+  (when match
+    {:name        (get-in match [:data :name])
+     :page        (:data match)
+     :path-params (:path-params match)
+     :query       (:query-params match)}))
 
 (defn start-following-address!
-  "Follows the address bar: (on-page {:page … :path-params … :query …}) now
-   and on every move, nil for an address no page has."
+  "Follows the address bar: (on-page {:name … :page … :path-params … :query …})
+   now and on every move, nil for an address no page has."
   [pages on-page]
-  (easy/start! (reitit/router (pages/check-pages pages))
-               #(show-page! on-page %)
+  (easy/start! (reitit/router (pages/turn-pages-into-reitit-routes pages))
+               (fn [match _history]
+                 (set-tab-title! match)
+                 (on-page (turn-match-into-page match)))
                {:use-fragment false}))
 
 (defn go-to-page!
@@ -28,6 +34,6 @@
   ([page-name path-params] (easy/push-state page-name path-params)))
 
 (defn make-address-of-page
-  "The address of a page, for a link: (make-address-of-page :order {:order-id 42}) -> \"/orders/42\"."
+  "A page's address, for a link: (make-address-of-page :orders/page {:order-id 42}) -> \"/orders/42\"."
   ([page-name] (make-address-of-page page-name {}))
   ([page-name path-params] (easy/href page-name path-params)))

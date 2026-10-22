@@ -1,14 +1,22 @@
 (ns groundwork.transport.api
-  "How the browser and the server talk: the server, and three ways over it.
+  "How the browser and the server talk: named messages over three pipes.
    The api of groundwork.transport; its browser half is api.cljs.
 
-     http  a request and its one answer: all data travels this way
-     sse   a server stream: one answer per tab that stays open, for
-           \"something changed\" messages (bells)
-     ws    a websocket: both sides talk fast, for features that need it
+     http  /groundwork/http  a POST of a message, answered at once
+     sse   /groundwork/sse   the server stream: messages to the browser
+     ws    /groundwork/ws    a websocket: messages both ways
 
-   transport knows no addresses: the server serves one Ring handler, and
-   groundwork.routes makes it from the routes. A line (sse or ws) is
+   A message is a map of names to data, {:orders/of-shop {:shop/id 7}}. The
+   server answers it from one handler table, by name, whichever pipe it came
+   on; the answer has the same names:
+
+     (def handlers {:orders/of-shop {:steps [find-orders-of-shop add-orders-answer]}})
+
+     (transport/start-server!
+      (routes/make-ring-handler-from-routes (transport/make-routes-for-messages handlers {}))
+      {:ip \"0.0.0.0\" :port 8080})
+
+   A line (an open sse or ws connection) is
    {:groundwork.transport/channel … :groundwork.transport/request …}."
   (:require
    [groundwork.transport.server-code.http :as http]
@@ -16,6 +24,19 @@
    [groundwork.transport.server-code.sse :as sse]
    [groundwork.transport.server-code.ws :as ws]
    [org.httpkit.server :as http-kit]))
+
+(def default-addresses
+  "Where the three pipes are, unless the settings say otherwise."
+  {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"})
+
+(defn make-routes-for-messages
+  "The three routes, as reitit data, for groundwork.routes to serve.
+   Options: :addresses (default-addresses), :on-sse-open, :on-sse-close,
+   :on-ws-open, :on-ws-close (each (fn [line])), :ping-every-ms (25000)."
+  [handlers {:keys [addresses] :or {addresses default-addresses} :as options}]
+  [[(:http addresses) {:post {:handler (http/make-ring-handler-for-http handlers)}}]
+   [(:sse addresses)  {:get  {:handler (sse/make-ring-handler-for-sse options)}}]
+   [(:ws addresses)   {:get  {:handler (ws/make-ring-handler-for-ws handlers options)}}]])
 
 (defn start-server!
   "Starts http-kit serving one Ring handler, every request on its own
@@ -29,37 +50,16 @@
   [server]
   (server/stop-server! server))
 
-(defn make-ring-handler-from-steps
-  "http: a Ring handler that runs the steps over
-   {:groundwork.transport/request request} and responds with the answer a
-   step added (a Ring response map), or 500 when no step answered."
-  [steps]
-  (http/make-ring-handler-from-steps steps))
-
-(defn make-ring-handler-for-sse
-  "sse: a Ring handler that opens a line and keeps it open:
-   {:on-open (fn [line]) :on-close (fn [line]) :ping-every-ms 25000}."
-  [options]
-  (sse/make-ring-handler-for-sse options))
-
-(defn make-ring-handler-for-ws
-  "ws: a Ring handler that upgrades to a websocket:
-   {:on-open (fn [line]) :on-message (fn [line data]) :on-close (fn [line])}.
-   A request that isn't a websocket gets 400."
-  [options]
-  (ws/make-ring-handler-for-ws options))
-
 (defn send-message-on-sse-line!
-  "sse: writes {:id … :data …} into an open line; data travels as JSON, and
-   the id comes back as Last-Event-ID when the browser reconnects. Whether
-   the line was still open."
-  [line message]
-  (sse/send-message-on-sse-line! line message))
+  "Writes a named message into an open sse line; an id comes back as
+   Last-Event-ID when the browser reconnects. Whether the line was open."
+  ([line message] (sse/send-message-on-sse-line! line message))
+  ([line message id] (sse/send-message-on-sse-line! line message id)))
 
 (defn send-message-on-ws-line!
-  "ws: sends data as JSON on an open line. Whether it was still open."
-  [line data]
-  (ws/send-message-on-ws-line! line data))
+  "Sends a named message on an open ws line. Whether it was open."
+  [line message]
+  (ws/send-message-on-ws-line! line message))
 
 (defn is-line-open?
   "Whether an sse or ws line is still open."

@@ -1,8 +1,9 @@
 (ns groundwork.transport.server-code.ws
-  "ws: a websocket. Both sides send messages, many times a second if they
-   need to. For features that need the browser to talk fast; everything
-   else is http."
+  "ws: a websocket at /groundwork/ws. Each message the browser sends is
+   answered by the same handlers as http, and the answer sent back on the
+   line; the server can also send on a line by itself."
   (:require
+   [groundwork.transport.server-code.messages :as messages]
    [groundwork.wire.api :as wire]
    [org.httpkit.server :as http-kit]))
 
@@ -12,30 +13,27 @@
 (defn- make-line [channel request]
   {:groundwork.transport/channel channel :groundwork.transport/request request})
 
-(defn- call-with-line [callback request]
-  (fn [channel & more]
-    (when callback (apply callback (make-line channel request) more))))
+(defn send-message-on-ws-line!
+  "Sends a named message as JSON on an open line. Whether it was still open."
+  [line message]
+  (http-kit/send! (:groundwork.transport/channel line) (wire/turn-data-into-json-text message)))
 
-(defn- open-websocket [request {:keys [on-open on-message on-close]}]
+(defn- answer-on-line! [handlers line text]
+  (let [message (wire/turn-json-text-into-data text)]
+    (send-message-on-ws-line! line (messages/answer-named-messages handlers (:groundwork.transport/request line) message))))
+
+(defn- open-websocket [request handlers {:keys [on-ws-open on-ws-close]}]
   (http-kit/as-channel request
-                       {:on-open    (call-with-line on-open request)
-                        :on-receive (fn [channel text]
-                                      (when on-message
-                                        (on-message (make-line channel request) (wire/turn-json-text-into-data text))))
+                       {:on-open    #(when on-ws-open (on-ws-open (make-line % request)))
+                        :on-receive #(answer-on-line! handlers (make-line %1 request) %2)
                         :on-close   (fn [channel _status]
-                                      (when on-close (on-close (make-line channel request))))}))
+                                      (when on-ws-close (on-ws-close (make-line channel request))))}))
 
 (defn make-ring-handler-for-ws
-  "A Ring handler that upgrades the request to a websocket: (on-open line),
-   (on-message line data) for each message (its JSON read into data),
-   (on-close line). A request that isn't a websocket gets 400."
-  [options]
+  "A Ring handler that upgrades to a websocket answering named messages.
+   A request that isn't a websocket gets 400."
+  [handlers options]
   (fn [request]
     (if (:websocket? request)
-      (open-websocket request options)
+      (open-websocket request handlers options)
       not-a-websocket)))
-
-(defn send-message-on-ws-line!
-  "Sends data as JSON on an open line. Whether it was still open."
-  [line data]
-  (http-kit/send! (:groundwork.transport/channel line) (wire/turn-data-into-json-text data)))

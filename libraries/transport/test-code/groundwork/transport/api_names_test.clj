@@ -6,11 +6,10 @@
    [groundwork.transport.api]))
 
 (deftest the-api-names
-  (is (= '#{start-server!
+  (is (= '#{default-addresses
+           make-routes-for-messages
+           start-server!
            stop-server!
-           make-ring-handler-from-steps
-           make-ring-handler-for-sse
-           make-ring-handler-for-ws
            send-message-on-sse-line!
            send-message-on-ws-line!
            is-line-open?}

@@ -1,56 +1,45 @@
 (ns groundwork.routes.api-test
   (:require
-   [clojure.java.io :as io]
    [clojure.test :refer [deftest is testing]]
    [groundwork.routes.api :as routes]
    [groundwork.steps.api :as steps]
    [groundwork.transport.api :as transport])
   (:import
    (java.net URI)
-   (java.net.http HttpClient HttpRequest HttpResponse$BodyHandlers)))
+   (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)))
 
-(def ^:private say-hello-to-shop
-  {:name  :say-hello-to-shop
-   :enter (fn [context]
-            (let [shop-id (get-in context [:groundwork.transport/request :path-params :shop-id])]
-              (steps/add-answer-to-context context {:status 200 :body (str "hello shop " shop-id)})))})
+(def ^:private handlers
+  {:greetings/hello {:steps [{:name :say-hello :enter #(steps/add-answer-to-context % "hello")}]}})
 
 (def ^:private pages
-  [["/orders/:order-id" {:name :order :title "Order"}]])
+  {:orders/page {:address "/orders/:order-id" :title "Order"}})
 
 (defn- page-handler [_request] {:status 200 :body "<html>the app</html>"})
 
-(def ^:private bells-opened (atom (promise)))
-
-(def ^:private all-routes
-  (into [["/shops/:shop-id/hello" {:get {:handler (transport/make-ring-handler-from-steps [say-hello-to-shop])}}]
-         ["/bells" {:sse {:on-open #(deliver @bells-opened %)}}]]
-        (routes/make-server-routes-for-pages pages page-handler)))
-
-(defn- get-text [port path]
+(defn- send-request [port method path body]
   (let [response (.send (HttpClient/newHttpClient)
-                        (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" port path))))
+                        (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" port path)))
+                            (.method method (if body (HttpRequest$BodyPublishers/ofString body) (HttpRequest$BodyPublishers/noBody)))
+                            (.build))
                         (HttpResponse$BodyHandlers/ofString))]
     [(.statusCode response) (.body response)]))
 
-(deftest an-address-leads-to-its-work-or-its-page
-  (reset! bells-opened (promise))
-  (let [server (transport/start-server! (routes/make-ring-handler-from-routes all-routes) {:ip "127.0.0.1" :port 0})
+(deftest an-address-leads-to-its-pipe-or-its-page
+  (let [server (transport/start-server!
+                (routes/make-ring-handler-from-routes
+                 (into (transport/make-routes-for-messages handlers {})
+                       (routes/make-server-routes-for-pages pages page-handler)))
+                {:ip "127.0.0.1" :port 0})
         port   (:port server)]
     (try
-      (testing "http: a route's steps, with its path params"
-        (is (= [200 "hello shop 7"] (get-text port "/shops/7/hello"))))
+      (testing "a named message on transport's http address"
+        (is (= [200 "{\"greetings/hello\":\"hello\"}"] (send-request port "POST" "/groundwork/http" "{\"greetings/hello\":{}}"))))
       (testing "a page opened fresh: the page handler"
-        (is (= [200 "<html>the app</html>"] (get-text port "/orders/42"))))
+        (is (= [200 "<html>the app</html>"] (send-request port "GET" "/orders/42" nil))))
       (testing "no route, no page: 404"
-        (is (= 404 (first (get-text port "/nowhere")))))
-      (testing "sse: the route opens a line"
-        (let [response (.send (HttpClient/newHttpClient)
-                              (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" port "/bells"))))
-                              (HttpResponse$BodyHandlers/ofInputStream))]
-          (is (some? (deref @bells-opened 5000 nil)))
-          (.close (io/reader (.body response)))))
+        (is (= 404 (first (send-request port "GET" "/nowhere" nil)))))
       (finally (transport/stop-server! server)))))
 
-(deftest a-page-needs-a-name
-  (is (thrown? clojure.lang.ExceptionInfo (routes/make-server-routes-for-pages [["/x" {}]] page-handler))))
+(deftest a-page-needs-a-namespaced-name-and-an-address
+  (is (thrown? clojure.lang.ExceptionInfo (routes/make-server-routes-for-pages {:page {:address "/x"}} page-handler)))
+  (is (thrown? clojure.lang.ExceptionInfo (routes/make-server-routes-for-pages {:orders/page {}} page-handler))))

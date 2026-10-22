@@ -1,21 +1,27 @@
 (ns groundwork.transport.server-code.http
-  "http: a request and its one answer. A route's work is a vector of steps
-   over {:groundwork.transport/request request}; the answer a step adds is the
-   Ring response."
+  "http: a POST of a named message to /groundwork/http, answered at once
+   with the same names."
   (:require
-   [groundwork.steps.api :as steps]))
+   [groundwork.transport.server-code.messages :as messages]
+   [groundwork.wire.api :as wire]))
 
-(def ^:private no-answer
-  {:status  500
-   :headers {"content-type" "text/plain"}
-   :body    "No step answered."})
+(def ^:private not-json
+  {:status 400 :headers {"content-type" "text/plain"} :body "The body must be a JSON object of named messages."})
 
-(defn make-ring-handler-from-steps
-  "A Ring handler that runs the steps and responds with the answer a step
-   added, or 500 when none did."
-  [steps]
+(defn- make-json-response [data]
+  {:status  200
+   :headers {"content-type" "application/json" "cache-control" "no-store"}
+   :body    (wire/turn-data-into-json-text data)})
+
+(defn- read-message [request]
+  (try (let [message (wire/turn-json-text-into-data (slurp (:body request)))]
+         (when (map? message) message))
+       (catch Exception _ nil)))
+
+(defn make-ring-handler-for-http
+  "A Ring handler that answers each named message in the body by its handler."
+  [handlers]
   (fn [request]
-    (let [context (steps/run-steps-until-answered steps {:groundwork.transport/request request})]
-      (if (steps/does-context-have-answer? context)
-        (:groundwork.steps/answer context)
-        no-answer))))
+    (if-let [message (read-message request)]
+      (make-json-response (messages/answer-named-messages handlers request message))
+      not-json)))

@@ -1,5 +1,7 @@
 # web becomes transport and routes
 
+> **Changed in part** by [Named messages over three addresses](2026-10-22-named-messages-over-three-addresses.md) (2026-10-22): data travels as named messages to three addresses Groundwork owns; routes keeps only pages.
+
 > Changes in part [web has http, sse and ws](../libraries/transport/decisions/2026-10-22-web-has-http-sse-and-ws.md) and [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md): groundwork.web is split in two, and the planned browser routing becomes the browser half of groundwork.routes.
 
 **Decision:**

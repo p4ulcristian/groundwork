@@ -1,30 +1,31 @@
 (ns groundwork.transport.browser-code.ws
   "ws in the browser: a WebSocket that reopens a second after a break,
-   until it is closed on purpose."
+   until it is closed on purpose. Each named message from the server goes
+   to its handler, answers included."
   (:require
+   [groundwork.transport.browser-code.messages :as messages]
    [groundwork.wire.api :as wire]))
 
-(defn- make-address [path]
-  (str (if (= "https:" (.. js/location -protocol)) "wss://" "ws://") (.. js/location -host) path))
+(defn- make-full-address [address]
+  (str (if (= "https:" (.. js/location -protocol)) "wss://" "ws://") (.. js/location -host) address))
 
-(defn- connect! [{:keys [socket closed?] :as line} path on-message]
-  (let [websocket (js/WebSocket. (make-address path))]
-    (set! (.-onmessage websocket) #(on-message (wire/turn-json-text-into-data (.-data %))))
-    (set! (.-onclose websocket) #(when-not @closed? (js/setTimeout (fn [] (connect! line path on-message)) 1000)))
+(defn- connect! [{:keys [socket closed?] :as line} address handlers]
+  (let [websocket (js/WebSocket. (make-full-address address))]
+    (set! (.-onmessage websocket) #(messages/hand-named-messages! handlers (wire/turn-json-text-into-data (.-data %))))
+    (set! (.-onclose websocket) #(when-not @closed? (js/setTimeout (fn [] (connect! line address handlers)) 1000)))
     (reset! socket websocket)))
 
 (defn open-ws-line!
-  "Opens a websocket at path; (on-message data) for each message, its JSON
-   read into data. Returns the line."
-  [path on-message]
+  "Opens the websocket; each named message goes to its handler. Returns the line."
+  [address handlers]
   (doto {:socket (atom nil) :closed? (atom false)}
-    (connect! path on-message)))
+    (connect! address handlers)))
 
 (defn send-message-on-ws-line!
-  "Sends data as JSON on the line. Whether it was open."
-  [{:keys [socket]} data]
+  "Sends a named message on the line. Whether it was open."
+  [{:keys [socket]} message]
   (let [open? (= 1 (.-readyState @socket))]
-    (when open? (.send @socket (wire/turn-data-into-json-text data)))
+    (when open? (.send @socket (wire/turn-data-into-json-text message)))
     open?))
 
 (defn close-ws-line!
