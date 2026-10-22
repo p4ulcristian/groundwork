@@ -15,7 +15,8 @@ Keeping what screens show in step with the database, the server's side.
   browser asks again only what a change touches.
 
 The browser's side is [groundwork.browser.sync](../../browser/sync/README.md).
-Needs groundwork.server.database, access, transport, steps, wire. API:
+Needs groundwork.server.database, access, transport, steps; it reads
+Postgres's change messages itself, with jsonista. API:
 `groundwork.server.sync.api` (`install-sync-function!`, `check-sync-of-tables`,
 `put-sync-on-tables`, `put-sync-into-handlers`, `start-sync!`, `stop-sync!`,
 `add-sse-line!`, `remove-sse-line!`, `count-open-lines`). Decisions:

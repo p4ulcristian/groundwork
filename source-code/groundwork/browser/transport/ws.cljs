@@ -5,13 +5,15 @@
   (:require
    [groundwork.browser.transport.messages :as messages]
    [groundwork.browser.transport.shapes :as shapes]
-   [groundwork.browser.wire.api :as wire]))
+   [wire.api :as wire]))
 
 (defn- make-full-address [address]
   (str (if (= "https:" (.. js/location -protocol)) "wss://" "ws://") (.. js/location -host) address))
 
-(defn- hand-text! [{:keys [shapes-by-name handlers]} text]
-  (->> (wire/turn-json-text-into-data text)
+(defn- hand-text!
+  "The server's ping (every 25 s, so proxies keep the line) is dropped."
+  [{:keys [shapes-by-name handlers]} text]
+  (->> (dissoc (wire/turn-json-text-into-data text) :groundwork/ping)
        (shapes/turn-answer-into-shaped-data shapes-by-name)
        (messages/hand-named-messages! handlers)))
 

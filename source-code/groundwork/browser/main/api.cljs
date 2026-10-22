@@ -15,7 +15,7 @@
   (:require
    [groundwork.browser.sync.api :as sync]
    [groundwork.browser.transport.api :as transport]
-   [groundwork.browser.wire.api :as wire]))
+   [wire.api :as wire]))
 
 (defn read-settings-from-page
   "What the server put in the page: {:version :addresses :pages}."

@@ -4,7 +4,7 @@
   (:require
    [groundwork.browser.transport.messages :as messages]
    [groundwork.browser.transport.shapes :as shapes]
-   [groundwork.browser.wire.api :as wire]))
+   [wire.api :as wire]))
 
 (defn open-sse-line!
   "Opens the server stream; each named message, shaped by its :answer-shape,

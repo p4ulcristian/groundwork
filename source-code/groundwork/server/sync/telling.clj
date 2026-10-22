@@ -15,17 +15,17 @@
   (:require
    [groundwork.server.access.api :as access]
    [groundwork.server.database.api :as database]
-   [groundwork.server.wire.api :as wire]))
+   [jsonista.core :as json]))
 
 (defn- turn-key-into-text [k] (subs (str k) 1))
 
 (defn turn-payload-into-change
   "A notification's text as {:table key :ids #{…} or nil :columns {name #{…}} :all? bool}."
   [payload]
-  (let [{:keys [folder table ids columns all]} (wire/turn-json-text-into-data payload)]
+  (let [{:strs [folder table ids columns all]} (json/read-value payload)]
     {:table   (database/turn-table-name-into-table-key folder table)
      :ids     (some-> ids set)
-     :columns (into {} (map (fn [[column values]] [(name column) (set values)])) columns)
+     :columns (update-vals columns set)
      :all?    (boolean all)}))
 
 (defn merge-changes

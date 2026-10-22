@@ -26,7 +26,8 @@
      {:orders/of-shop […] :groundwork/notes {:orders/of-shop {:tables [\"orders\"]}}}"
   (:require
    [groundwork.server.steps.api :as steps]
-   [groundwork.server.wire.api :as wire])
+   [groundwork.server.transport.limits :as limits]
+   [wire.api :as wire])
   (:import
    (java.lang System$Logger System$Logger$Level)))
 
@@ -48,11 +49,10 @@
    every map closed: an answer with a key the shape doesn't name is never
    sent (an extra column, a password hash)."
   [{:keys [answer-shape]} answer]
-  (cond
-    (not answer-shape) answer
-    (wire/does-data-fit-shape? (wire/turn-shape-into-closed-shape answer-shape) answer)
-    (wire/turn-shaped-data-into-json-data answer-shape answer)
-    :else answer-doesnt-fit))
+  (if answer-shape
+    (let [{:keys [json-data errors]} (wire/turn-shaped-data-into-json-data-or-errors answer-shape answer)]
+      (if errors answer-doesnt-fit json-data))
+    answer))
 
 (defn- run-steps-until-answered [handler-steps context]
   (let [context (steps/run-steps-until-answered handler-steps context)]
@@ -89,13 +89,21 @@
 
 (def ^:private went-wrong {:error "Something went wrong."})
 
+(def ^:private too-many {:error "Too many requests."})
+
+(defn- is-over-limit? [limiter request message-name {:keys [rate-limit]}]
+  (and limiter rate-limit (not (limits/is-message-allowed? limiter request message-name rate-limit))))
+
 (defn- run-named-message
-  "[name {:answer … :notes …}]. A failure is logged with its details and
-   answered with a plain error: a database's message never reaches the browser."
-  [handlers request [message-name json-data]]
+  "[name {:answer … :notes …}]. Over its :rate-limit, \"Too many requests.\"
+   and nothing runs. A failure is logged with its details and answered with
+   a plain error: a database's message never reaches the browser."
+  [handlers limiter request [message-name json-data]]
   [message-name
    (if-let [handler (get handlers message-name)]
-     (try (run-handler handler request message-name json-data)
+     (try (if (is-over-limit? limiter request message-name handler)
+            {:answer too-many}
+            (run-handler handler request message-name json-data))
           (catch Exception e
             (.log logger System$Logger$Level/ERROR (str "Handler " message-name " failed") ^Throwable e)
             {:answer went-wrong}))
@@ -103,9 +111,11 @@
 
 (defn answer-named-messages
   "The answer to a message: the same names, each with its handler's answer,
-   and :groundwork/notes beside them when a handler has notes."
-  [handlers request message]
-  (let [results (into {} (map #(run-named-message handlers request %)) message)
-        notes   (into {} (keep (fn [[message-name {:keys [notes]}]] (when notes [message-name notes]))) results)]
-    (cond-> (update-vals results :answer)
-      (seq notes) (assoc :groundwork/notes notes))))
+   and :groundwork/notes beside them when a handler has notes. With a
+   limiter (limits.clj), a handler's :rate-limit holds."
+  ([handlers request message] (answer-named-messages handlers nil request message))
+  ([handlers limiter request message]
+   (let [results (into {} (map #(run-named-message handlers limiter request %)) message)
+         notes   (into {} (keep (fn [[message-name {:keys [notes]}]] (when notes [message-name notes]))) results)]
+     (cond-> (update-vals results :answer)
+       (seq notes) (assoc :groundwork/notes notes)))))

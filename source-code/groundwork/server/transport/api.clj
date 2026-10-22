@@ -21,6 +21,7 @@
    {:groundwork.server.transport/channel … :groundwork.server.transport/request …}."
   (:require
    [groundwork.server.transport.http :as http]
+   [groundwork.server.transport.limits :as limits]
    [groundwork.server.transport.messages :as messages]
    [groundwork.server.transport.routes :as routes]
    [groundwork.server.transport.server :as server]
@@ -33,19 +34,35 @@
   {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"})
 
 (def settings-shape
-  "The :server part of the settings, every key required."
+  "The :server part of the settings, every key required.
+   :client-address-header: behind a proxy, the header it puts the asker's
+   address in (\"cf-connecting-ip\", \"x-forwarded-for\"); nil when the
+   server faces browsers itself."
   [:map {:closed true}
    [:ip :string]
-   [:port :int]])
+   [:port :int]
+   [:client-address-header [:maybe :string]]])
+
+(defn find-client-address
+  "The asker's address: the request's own, or the one the proxy put in
+   client-address-header (for x-forwarded-for, its last entry)."
+  [request client-address-header]
+  (limits/find-client-address request client-address-header))
 
 (defn make-routes-for-messages
   "The three routes, as reitit data, for make-ring-handler-from-routes.
    Options: :addresses (default-addresses), :on-sse-open, :on-sse-close,
-   :on-ws-open, :on-ws-close (each (fn [line])), :ping-every-ms (25000)."
-  [handlers {:keys [addresses] :or {addresses default-addresses} :as options}]
-  [[(:http addresses) {:post {:handler (http/make-ring-handler-for-http handlers)}}]
-   [(:sse addresses)  {:get  {:handler (sse/make-ring-handler-for-sse options)}}]
-   [(:ws addresses)   {:get  {:handler (ws/make-ring-handler-for-ws handlers options)}}]])
+   :on-ws-open, :on-ws-close (each (fn [line])), :ping-every-ms (25000):
+   how often an idle sse line gets a comment and a ws line
+   {:groundwork/ping {}}, so proxies don't cut them; :find-rate-limit-key,
+   (fn [request]) telling askers apart for the handlers' :rate-limit
+   ({:max 10 :per-ms 60000}; over it, \"Too many requests.\"), by default
+   the request's address."
+  [handlers {:keys [addresses find-rate-limit-key] :or {addresses default-addresses find-rate-limit-key :remote-addr} :as options}]
+  (let [limiter (limits/make-limiter find-rate-limit-key)]
+    [[(:http addresses) {:post {:handler (http/make-ring-handler-for-http handlers limiter)}}]
+     [(:sse addresses)  {:get  {:handler (sse/make-ring-handler-for-sse options)}}]
+     [(:ws addresses)   {:get  {:handler (ws/make-ring-handler-for-ws handlers limiter options)}}]]))
 
 (defn start-server!
   "Starts http-kit serving one Ring handler, every request on its own

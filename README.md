@@ -9,7 +9,6 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 
 | library | namespace | the question it answers |
 |---|---|---|
-| server/wire | `groundwork.server.wire` | how does data keep its types? (on the server) |
 | server/steps | `groundwork.server.steps` | how is work written? |
 | server/database | `groundwork.server.database` | how do I talk to Postgres, and shape its tables? |
 | server/transport | `groundwork.server.transport` | how does the server answer the browser? (http, sse, ws, routes) |
@@ -19,7 +18,6 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 | server/sync | `groundwork.server.sync` | how do screens stay current? (who is told of a change) |
 | server/browser-build | `groundwork.server.browser-build` | what does the browser download? (shadow-cljs; never in production) |
 | server/main | `groundwork.server.main` | how does the server start? (and the page shell) |
-| browser/wire | `groundwork.browser.wire` | how does data keep its types? (in the browser) |
 | browser/transport | `groundwork.browser.transport` | how does the browser talk to the server? (and the pages in the bar) |
 | browser/styles | `groundwork.browser.styles` | how does the page look? (a def names its stylesheet) |
 | browser/sync | `groundwork.browser.sync` | how do screens stay current? (answers kept by question, asked again) |
@@ -27,6 +25,10 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 
 Every namespace says its side right after `groundwork`; no file is `.cljc`.
 Which library may use which is `libraries.edn`, checked by a test.
+
+How data keeps its types (ids, exact decimals, days, moments) is
+[wire](https://github.com/p4ulcristian/wire), a library of its own that Groundwork
+takes from git; its decisions live there.
 
 Still to come: the smaller list (visitor sessions, access extras, rate limits, clean-ups).
 

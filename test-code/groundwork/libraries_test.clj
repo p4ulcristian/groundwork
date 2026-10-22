@@ -40,6 +40,9 @@
     (concat
      (when (nil? allowed) [(str (second ns-form) ": its library isn't in libraries.edn")])
      (for [required (list-required-namespaces ns-form)
+           :when    (and (str/starts-with? (str required) "wire.") (not= 'wire.api required))]
+       (str (second ns-form) " requires " required ": only wire's api, wire.api"))
+     (for [required (list-required-namespaces ns-form)
            :let     [[required-side required-library] (find-library-of required)]
            :when    (and required-library (not= [side library] [required-side required-library]))
            problem  [(when (not= side required-side)

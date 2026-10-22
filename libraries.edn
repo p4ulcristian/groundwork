@@ -1,21 +1,20 @@
 ;; Groundwork's libraries, by side, and which others each may use.
 ;; test-code/groundwork/libraries_test.clj checks every namespace against it:
 ;; a library requires only the libraries it lists, and only their api;
-;; nobody uses another around a circle.
-{:server  {:wire            #{}
-           :steps           #{}
+;; nobody uses another around a circle. wire is a library of its own
+;; (github.com/p4ulcristian/wire): any library may use it, through wire.api only.
+{:server  {:steps           #{}
            :database        #{}
-           :transport       #{:steps :wire}
+           :transport       #{:steps}
            :sessions        #{:database :steps}
-           :access          #{:database :steps :wire :transport}
-           :background-jobs #{:database :wire}
-           :sync            #{:database :transport :access :steps :wire}
+           :access          #{:database :steps :transport}
+           :background-jobs #{:database}
+           :sync            #{:database :transport :access :steps}
            ;; main loads browser-build only when it watches (requiring-resolve):
            ;; production has no shadow-cljs
            :browser-build   #{}
-           :main            #{:wire :steps :database :transport :sessions :access :background-jobs :sync :browser-build}}
- :browser {:wire      #{}
-           :transport #{:wire}
+           :main            #{:steps :database :transport :sessions :access :background-jobs :sync :browser-build}}
+ :browser {:transport #{}
            :sync      #{}
            :styles    #{}
-           :main      #{:wire :transport :sync}}}
+           :main      #{:transport :sync}}}

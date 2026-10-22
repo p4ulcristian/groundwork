@@ -49,6 +49,11 @@
                   :steps  [{:name  :answer-all-orders
                             :enter #(steps/add-answer-to-context
                                      % (mapv :order/id (database/find-rows (:groundwork.server.access/transaction %) find-all-orders {})))}]}
+   :orders/sneak {:action :orders/see :params-shape [:map [:order/shop-id :uuid]] :answer-shape [:map]
+                  :steps  [{:name  :insert-order-while-only-seeing
+                            :enter #(do (database/run-statement! (:groundwork.server.access/transaction %) insert-order
+                                                                 (:groundwork.server.transport/message-data %))
+                                        (steps/add-answer-to-context % {}))}]}
    :orders/place {:action :orders/edit :params-shape [:map [:order/shop-id :uuid]] :answer-shape [:map]
                   :steps  [{:name  :insert-order
                             :enter #(do (database/run-statement! (:groundwork.server.access/transaction %) insert-order
@@ -111,6 +116,10 @@
             (is (= "{\"orders/place\":{}}"
                    (ask (:port server) (cookie anna) (str "{\"orders/place\":{\"order/shop-id\":\"" shop-7 "\"}}")))
                 "in her own shop: fine"))
+          (testing "an action that only reads runs read-only: a write in its steps is refused"
+            (is (= "{\"orders/sneak\":{\"error\":\"Something went wrong.\"}}"
+                   (ask (:port server) (cookie anna) (str "{\"orders/sneak\":{\"order/shop-id\":\"" shop-7 "\"}}")))
+                "Anna may edit shop 7's orders, but orders/see only reads"))
           (testing "the leak test: Anna, asked for shop 9's order, gets nothing of it"
             (let [anna-request {:request-method :post
                                 :headers {"origin" "http://app.test" "cookie" (cookie anna)}}]

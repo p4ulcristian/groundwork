@@ -40,7 +40,7 @@
    [groundwork.server.steps.api]
    [groundwork.server.sync.api :as sync]
    [groundwork.server.transport.api :as transport]
-   [groundwork.server.wire.api :as wire]))
+   [wire.api :as wire]))
 
 (def page-settings-shape
   "The :page part of the settings: the page shell's details."
@@ -122,11 +122,20 @@
                                         :find-session-step find-session-step})
       (sync/put-sync-into-handlers)))
 
+(defn- make-rate-limit-key-finder
+  "Askers told apart by their session (a hash of its cookie), else by
+   their address, the proxy's header when the settings name one."
+  [settings]
+  (fn [request]
+    (or (sessions/find-session-key-of-request request)
+        (transport/find-client-address request (get-in settings [:server :client-address-header])))))
+
 (defn- make-routes [{:keys [settings pages]} handlers running-sync]
   (let [browser-settings (page/make-browser-settings settings transport/default-addresses pages)]
     (into (transport/make-routes-for-messages
            handlers
-           {:on-sse-open  (fn [line]
+           {:find-rate-limit-key (make-rate-limit-key-finder settings)
+            :on-sse-open  (fn [line]
                             (transport/send-message-on-sse-line! line {:groundwork/version (:version settings)})
                             (sync/add-sse-line! running-sync line))
             :on-sse-close #(sync/remove-sse-line! running-sync %)})

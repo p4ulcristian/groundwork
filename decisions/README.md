@@ -22,7 +22,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 Each library keeps its own decisions, in decisions/<side>/<library>/, with its own index:
 
-- [server/wire](server/wire/README.md): how data keeps its types (both sides)
+- [wire](https://github.com/p4ulcristian/wire): how data keeps its types (both sides), a library of its own since [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md); its decisions are there
 - [server/steps](server/steps/README.md): how work is written
 - [server/database](server/database/README.md): queries, and tables as maps
 - [server/transport](server/transport/README.md): http, sse, ws, the routes (both sides; [browser/transport](browser/transport/README.md))
@@ -48,8 +48,9 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [No Polylith tool](2026-10-22-no-polylith-tool.md)
 - [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md), changed in part by [A library says where it runs](2026-10-22-a-library-says-where-it-runs.md)
 - [A library says where it runs; sessions and access stay apart](2026-10-22-a-library-says-where-it-runs.md), changed in part by [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md)
-- [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), changed in part by [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md)
-- [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), changed in part by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md)
+- [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), changed in part by [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md) and [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md)
+- [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), changed in part by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md) and [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md)
+- [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md)
 - [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
 - [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md), changed in part by [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md) and [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)

@@ -16,7 +16,7 @@
    [clojure.edn :as edn]
    [clojure.java.io :as io]
    [clojure.string :as str]
-   [groundwork.server.wire.api :as wire]))
+   [wire.api :as wire]))
 
 (defn- escape-html [text]
   (-> (str text) (str/replace "&" "&amp;") (str/replace "<" "&lt;") (str/replace ">" "&gt;") (str/replace "\"" "&quot;")))

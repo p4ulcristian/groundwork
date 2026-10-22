@@ -3,7 +3,7 @@
    same names, each turned into shaped data by its shape."
   (:require
    [groundwork.browser.transport.shapes :as shapes]
-   [groundwork.browser.wire.api :as wire]))
+   [wire.api :as wire]))
 
 (defn- make-fetch-options [message]
   #js {:method      "POST"

@@ -22,7 +22,7 @@ it back with the same shapes. A handler's notes (the tables its answer was
 read from, put there by groundwork.server.sync) go beside the answers, under
 `:groundwork/notes`.
 
-Needs http-kit, groundwork.server.steps and groundwork.server.wire. API:
+Needs http-kit, groundwork.server.steps and wire. API:
 `groundwork.server.transport.api` (`default-addresses`, `settings-shape`,
 `make-routes-for-messages`, `start-server!`, `stop-server!`,
 `send-message-on-sse-line!`, `send-message-on-ws-line!`, `is-line-open?`,

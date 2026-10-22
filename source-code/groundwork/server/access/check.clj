@@ -8,9 +8,12 @@
                    :answer-shape …
                    :steps        [find-order add-order-answer]}}
 
-   Each message then runs: find the session; in one transaction, tell
+   Each message then runs: find the session; in one transaction (read-only
+   when the action only reads), tell
    Postgres who is asking (groundwork.asking); the check: may this person do
-   the action on the record? Not: \"Not found.\", and no step runs; yes: the
+   the action on the record? Not, and they can't see it either: \"Not
+   found.\" (nothing tells them it exists); not, but they can see it: \"Not
+   allowed.\"; either way no step runs. Yes: the
    handler's steps, with :groundwork.server.access/transaction in the context. A
    handler without a :record (a list, a new row, an email) runs only if the
    person can have its action at all: held in some scope, or open to them
@@ -19,9 +22,11 @@
    [clojure.string :as str]
    [groundwork.server.database.api :as database]
    [groundwork.server.steps.api :as steps]
-   [groundwork.server.wire.api :as wire]))
+   [jsonista.core :as json]))
 
 (def ^:private not-found {:error "Not found."})
+
+(def ^:private not-allowed {:error "Not allowed."})
 
 (def ^:private set-asking (database/make-query-from-sql-file "groundwork/server/access/set_asking.sql"))
 
@@ -47,12 +52,16 @@
             (some (fn [[k _ options]] (when (:primary-key? options) (database/turn-key-into-column-name k))) columns)))
         tables))
 
-(defn- make-record-query [{:keys [tables conditions]} {:keys [action] [table-key] :record}]
-  (database/make-query-from-sql-text
-   (str "may " action " on " table-key)
-   (str "SELECT EXISTS (SELECT 1 FROM " (database/turn-table-key-into-table-name table-key)
-        " WHERE " (find-primary-key-column tables table-key) " = :record/id"
-        " AND (" (get-in conditions [table-key :actions action]) ")) AS allowed")))
+(defn- make-record-query
+  "Whether the person may do the action on the record, and whether they
+   may see it at all: one may see an order and not change it."
+  [{:keys [tables conditions]} {:keys [action] [table-key] :record}]
+  (let [row (str "SELECT 1 FROM " (database/turn-table-key-into-table-name table-key)
+                 " WHERE " (find-primary-key-column tables table-key) " = :record/id")]
+    (database/make-query-from-sql-text
+     (str "may " action " on " table-key)
+     (str "SELECT EXISTS (" row " AND (" (get-in conditions [table-key :actions action]) ")) AS allowed, "
+          "EXISTS (" row " AND (" (get-in conditions [table-key :operations :read]) ")) AS visible"))))
 
 (defn- find-reach-of-action
   "How an action can be had without a membership, from the sentences that
@@ -75,35 +84,49 @@
       (and (= :signed-in reach) (some? (:groundwork.server.sessions/person-id context)))
       (some #(contains? % action) (vals (:groundwork.server.access/actions context)))))
 
-(defn- may-person-reach-record? [query record context]
-  (:allowed (database/find-one-row (:groundwork.server.access/transaction context) query
-                              {:record/id (get-in context [:groundwork.server.transport/message-data (second record)])})))
+(defn- find-reach-of-record
+  "{:allowed bool :visible bool} for the record the message names."
+  [query record context]
+  (database/find-one-row (:groundwork.server.access/transaction context) query
+                         {:record/id (get-in context [:groundwork.server.transport/message-data (second record)])}))
 
 (defn- make-check-step [{:keys [tables] :as setup} {:keys [record action] :as handler}]
   (let [query (when record (make-record-query setup handler))
         reach (find-reach-of-action tables action)]
     {:name  :groundwork.server.access/check
      :enter (fn [context]
-              (if (if query
-                    (may-person-reach-record? query record context)
-                    (may-person-have-action? reach action context))
-                context
-                (steps/add-answer-to-context context not-found)))}))
+              (if query
+                (let [{:keys [allowed visible]} (find-reach-of-record query record context)]
+                  (cond allowed context
+                        visible (steps/add-answer-to-context context not-allowed)
+                        :else   (steps/add-answer-to-context context not-found)))
+                (if (may-person-have-action? reach action context)
+                  context
+                  (steps/add-answer-to-context context not-found))))}))
 
-(defn- turn-actions-into-asking [person-id actions-by-scope]
-  (wire/turn-data-into-json-text
+(defn- turn-actions-into-asking
+  "Who is asking, as the JSON text access's SQL functions read from
+   groundwork.asking."
+  [person-id actions-by-scope]
+  (json/write-value-as-string
    {:person  (some-> person-id str)
     :holding (reduce (fn [holding [[kind scope-id] actions]]
                        (reduce #(update %1 (str (name kind) " " (subs (str %2) 1)) (fnil conj []) (str scope-id))
                                holding actions))
                      {} actions-by-scope)}))
 
-(defn- make-run-steps-in [{:keys [pool find-session-step list-actions]}]
+(defn- does-action-only-read?
+  "An action that does nothing but :read runs in a read-only transaction:
+   Postgres refuses any write its steps try."
+  [{:keys [scope-kinds]} action]
+  (= #{:read} (some #(get-in % [:actions action]) (vals scope-kinds))))
+
+(defn- make-run-steps-in [{:keys [pool find-session-step list-actions] :as setup} {:keys [action]}]
   (fn [run context]
     (let [context (steps/run-steps-until-answered [find-session-step] context)]
       (if (steps/does-context-have-answer? context)
         context
-        (database/run-in-transaction! pool
+        (database/run-in-transaction! pool {:read-only? (does-action-only-read? setup action)}
           (fn [transaction]
             (let [person-id (:groundwork.server.sessions/person-id context)
                   actions   (if person-id (list-actions transaction person-id) {})]
@@ -117,9 +140,8 @@
    running of them in a transaction that knows who is asking."
   [handlers setup]
   (check-handlers handlers (:conditions setup))
-  (let [run-steps-in (make-run-steps-in setup)]
-    (update-vals handlers
-                 (fn [handler]
-                   (-> handler
-                       (update :steps #(into [(make-check-step setup handler)] %))
-                       (assoc :run-steps-in run-steps-in))))))
+  (update-vals handlers
+               (fn [handler]
+                 (-> handler
+                     (update :steps #(into [(make-check-step setup handler)] %))
+                     (assoc :run-steps-in (make-run-steps-in setup handler))))))

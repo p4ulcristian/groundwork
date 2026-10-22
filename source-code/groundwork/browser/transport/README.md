@@ -8,7 +8,7 @@ addresses and the pages come from the page the server sent
 (groundwork.browser.main reads them), so the two sides can't disagree.
 
 ClojureScript only: built by shadow-cljs with the app. Needs reitit-frontend
-and groundwork.browser.wire. API: `groundwork.browser.transport.api`
+and wire. API: `groundwork.browser.transport.api`
 (`send-message!`, `open-sse-line!`, `close-sse-line!`,
 `open-ws-line!`, `send-message-on-ws-line!`, `close-ws-line!`,
 `start-following-address!`, `go-to-page!`, `make-address-of-page`).

@@ -170,10 +170,12 @@
 (defn run-in-transaction!
   "Runs (f transaction) in one transaction: everything f runs on the
    transaction is kept when f returns, and undone when f throws (the throw
-   goes on). Returns what f returns. Inside a transaction, it joins that one."
-  [pool-or-transaction f]
-  (if (:groundwork.server.database/connection pool-or-transaction)
-    (f pool-or-transaction)
-    (with-open [connection (jdbc/get-connection (:groundwork.server.database/datasource pool-or-transaction))]
-      (jdbc/with-transaction [connection connection]
-        (f {:groundwork.server.database/connection connection})))))
+   goes on). Returns what f returns. Inside a transaction, it joins that one.
+   Options: :read-only? true, Postgres refuses every write in it."
+  ([pool-or-transaction f] (run-in-transaction! pool-or-transaction {} f))
+  ([pool-or-transaction {:keys [read-only?]} f]
+   (if (:groundwork.server.database/connection pool-or-transaction)
+     (f pool-or-transaction)
+     (with-open [connection (jdbc/get-connection (:groundwork.server.database/datasource pool-or-transaction))]
+       (jdbc/with-transaction [connection connection {:read-only (boolean read-only?)}]
+         (f {:groundwork.server.database/connection connection}))))))

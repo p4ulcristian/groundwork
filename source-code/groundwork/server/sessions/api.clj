@@ -92,6 +92,13 @@
                                                            :session/ends-at     (find-ends-at settings)}))
         person-id))))
 
+(defn find-session-key-of-request
+  "A key that tells one browser's session apart from another's, without a
+   database read (a hash of its cookie), or nil without a cookie: for rate
+   limits. Never the cookie itself."
+  [request]
+  (some-> (cookie/find-cookie-value request) cookie/turn-cookie-value-into-fingerprint))
+
 (def ^:private not-from-the-app
   {:error "This request didn't come from the app's own pages."})
 

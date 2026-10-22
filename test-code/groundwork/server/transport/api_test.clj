@@ -94,3 +94,17 @@
         (.join (.sendText socket "{\"greetings/hello\":{\"name\":\"Bob\"}}" true))
         (is (= "{\"greetings/hello\":{\"hello\":\"Bob\"}}" (deref received 5000 nil)))
         (.join (.sendClose socket 1000 "done"))))))
+
+(deftest ws-pings-so-proxies-keep-the-line
+  (with-server (find-handler (transport-server/make-routes-for-messages handlers {:ping-every-ms 100}) 2 :get)
+    (fn [port]
+      (let [received (promise)
+            socket   (.join (.buildAsync (.newWebSocketBuilder (HttpClient/newHttpClient))
+                                         (URI. (str "ws://localhost:" port "/groundwork/ws"))
+                                         (reify WebSocket$Listener
+                                           (onText [_ socket text _last]
+                                             (deliver received (str text))
+                                             (.request socket 1)
+                                             nil))))]
+        (is (= "{\"groundwork/ping\":{}}" (deref received 5000 nil)))
+        (.join (.sendClose socket 1000 "done"))))))

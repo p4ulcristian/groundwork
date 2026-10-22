@@ -3,7 +3,7 @@
    with the same names."
   (:require
    [groundwork.server.transport.messages :as messages]
-   [groundwork.server.wire.api :as wire]))
+   [wire.api :as wire]))
 
 (def ^:private not-json
   {:status 400 :headers {"content-type" "text/plain"} :body "The body must be a JSON object of named messages."})
@@ -20,8 +20,8 @@
 
 (defn make-ring-handler-for-http
   "A Ring handler that answers each named message in the body by its handler."
-  [handlers]
+  [handlers limiter]
   (fn [request]
     (if-let [message (read-message request)]
-      (make-json-response (messages/answer-named-messages handlers request message))
+      (make-json-response (messages/answer-named-messages handlers limiter request message))
       not-json)))

@@ -136,9 +136,10 @@
 
 (defn run-in-transaction!
   "Runs (f transaction) in one transaction: kept when f returns, undone when
-   it throws. Returns what f returns. Inside a transaction, it joins that one."
-  [pool-or-transaction f]
-  (sql/run-in-transaction! pool-or-transaction f))
+   it throws. Returns what f returns. Inside a transaction, it joins that one.
+   Options: :read-only? true, Postgres refuses every write in it."
+  ([pool-or-transaction f] (sql/run-in-transaction! pool-or-transaction {} f))
+  ([pool-or-transaction options f] (sql/run-in-transaction! pool-or-transaction options f)))
 
 ;; -----------------------------------------------------------------------------
 ;; What a question read, and hearing changes
@@ -262,7 +263,7 @@
     (and (empty? instant) (empty? stops) (empty? changes-to-mark))))
 
 (defn turn-table-into-row-shape
-  "The malli shape of a table's rows, for groundwork.wire: an optional column
+  "The malli shape of a table's rows, for wire: an optional column
    may be missing or nil."
   [table]
   (desired/turn-table-into-row-shape table))

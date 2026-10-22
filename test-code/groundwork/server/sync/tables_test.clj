@@ -39,6 +39,15 @@
         ":by-access: the id and the columns the readers name"))
   (is (nil? (:on-change (first (sync/put-sync-on-tables [{:table :logs :sync [:silent "nobody reads logs live"]}] scope-kinds))))))
 
+(deftest a-payload-is-read-as-postgres-wrote-it
+  (is (= {:table :orders :ids #{"a"} :columns {"order__shop_id" #{"7"} "order__customer_id" #{}} :all? false}
+         (telling/turn-payload-into-change
+          "{\"folder\":\"public\",\"table\":\"orders\",\"ids\":[\"a\"],\"columns\":{\"order__shop_id\":[\"7\"],\"order__customer_id\":[]}}"))
+      "column names stay as Postgres names them, the names the readers hold")
+  (is (= {:table :groundwork/background-jobs :ids nil :columns {} :all? true}
+         (telling/turn-payload-into-change "{\"folder\":\"groundwork\",\"table\":\"background_jobs\",\"all\":true}"))
+      "too many rows: no ids, no columns"))
+
 (deftest changes-of-one-batch-are-joined-by-table
   (let [changes (telling/merge-changes
                  [(telling/turn-payload-into-change "{\"folder\":\"public\",\"table\":\"orders\",\"ids\":[\"a\"],\"columns\":{\"order__shop_id\":[\"7\"]}}")

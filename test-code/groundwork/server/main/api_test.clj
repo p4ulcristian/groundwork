@@ -49,7 +49,9 @@
   (database/make-query-from-sql-text "all orders, no WHERE" "SELECT order__id FROM orders ORDER BY order__id"))
 
 (def ^:private handlers
-  {:orders/all {:action :orders/see :params-shape [:map] :answer-shape [:vector :uuid]
+  {:orders/count {:action :orders/see :params-shape [:map] :answer-shape :int :rate-limit {:max 2 :per-ms 60000}
+                  :steps  [{:name :answer-count :enter #(steps/add-answer-to-context % 0)}]}
+   :orders/all {:action :orders/see :params-shape [:map] :answer-shape [:vector :uuid]
                 :steps  [{:name  :answer-all-orders
                           :enter #(steps/add-answer-to-context
                                    % (mapv :order/id (database/find-rows (:groundwork.server.access/transaction %) find-all-orders {})))}]}})
@@ -75,7 +77,7 @@
   {:version           "test-1"
    :migrate-at-start? false
    :browser-build     :built
-   :server            {:ip "127.0.0.1" :port 0}
+   :server            {:ip "127.0.0.1" :port 0 :client-address-header nil}
    :database          (make-database-settings user)
    :sessions          {:session-days 1 :allowed-origin "http://app.test" :secure-cookie? false}
    :background-jobs   {:workers 1 :poll-ms 1000}
@@ -180,6 +182,11 @@
             (testing "an answer comes with the tables its steps read"
               (is (= [200 "{\"orders/all\":[],\"groundwork/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}"]
                      (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/all\":{}}"))))
+            (testing "a rate limit: two a minute per session, a third is refused; another session has its own"
+              (is (= [[200 "{\"orders/count\":0}"] [200 "{\"orders/count\":0}"]
+                      [200 "{\"orders/count\":{\"error\":\"Too many requests.\"}}"]]
+                     (repeatedly 3 #(send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/count\":{}}"))))
+              (is (= [200 "{\"orders/count\":0}"] (send-request server-port "POST" "/groundwork/http" bob-cookie "{\"orders/count\":{}}"))))
             (testing "sync: each line hears the version first, then the changes its person may read"
               (let [anna-line (open-sse server-port anna-cookie)
                     bob-line  (open-sse server-port bob-cookie)]

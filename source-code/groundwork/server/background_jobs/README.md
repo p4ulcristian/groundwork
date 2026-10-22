@@ -5,7 +5,7 @@ workers (they claim due background jobs, run them, retry a failure, and let a ba
 up for good), and schedules (cron lines in UTC that queue a background job at their
 times).
 
-Needs groundwork.server.database and groundwork.server.wire. API: `groundwork.server.background-jobs.api`
+Needs groundwork.server.database and wire. API: `groundwork.server.background-jobs.api`
 (`background-jobs-tables`, `add-background-job-to-queue!`, `make-give-up-exception`,
 `start-workers!`, `stop-workers!`, `list-queued-background-jobs`, `list-dead-background-jobs`,
 `run-background-job-again-now!`). Its queries are in `sql_files/`; cron lines in

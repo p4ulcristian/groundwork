@@ -10,7 +10,7 @@
    line has it as :groundwork.server.transport/last-event-id, to catch up from."
   (:require
    [clojure.string :as str]
-   [groundwork.server.wire.api :as wire]
+   [wire.api :as wire]
    [org.httpkit.server :as http-kit]))
 
 (def ^:private stream-response

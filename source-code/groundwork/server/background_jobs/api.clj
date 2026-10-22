@@ -37,7 +37,7 @@
    [clojure.string :as str]
    [groundwork.server.background-jobs.cron :as cron]
    [groundwork.server.database.api :as database]
-   [groundwork.server.wire.api :as wire])
+   [wire.api :as wire])
   (:import
    (java.lang System$Logger System$Logger$Level)
    (java.time Instant OffsetDateTime ZoneOffset)
@@ -108,6 +108,18 @@
 ;; -----------------------------------------------------------------------------
 ;; Queueing
 
+(defn- turn-params-into-json-text
+  "A background job's params as JSON text by its kind's :params-shape;
+   params that don't fit it, or carry a key it doesn't name, throw."
+  [kind-name params-shape params]
+  (let [{:keys [json-data errors]} (wire/turn-shaped-data-into-json-data-or-errors params-shape params)]
+    (when errors
+      (throw (ex-info (str "Background job " kind-name "'s params don't fit its shape")
+                      {:type   :groundwork.server.background-jobs/bad-params
+                       :kind   kind-name
+                       :errors errors})))
+    (wire/turn-data-into-json-text json-data)))
+
 (defn add-background-job-to-queue!
   "Saves a background job of a kind, on a pool or in a transaction (then it exists only
    if that commits). Its params must fit the kind's :params-shape. Options:
@@ -116,15 +128,9 @@
    Returns the background job's id."
   ([pool-or-transaction kind params] (add-background-job-to-queue! pool-or-transaction kind params {}))
   ([pool-or-transaction {:keys [name params-shape timeout-ms attempts]} params {:keys [run-in-ms key]}]
-   (when-not (wire/does-data-fit-shape? params-shape params)
-     (throw (ex-info (str "Background job " name "'s params don't fit its shape")
-                     {:type   :groundwork.server.background-jobs/bad-params
-                      :kind   name
-                      :errors (wire/find-errors-in-data-for-shape params-shape params)})))
    (:background-job/id (database/find-one-row pool-or-transaction insert-background-job
                               {:background-job/kind         (turn-kind-name-into-text name)
-                               :background-job/params       (wire/turn-data-into-json-text
-                                                  (wire/turn-shaped-data-into-json-data params-shape params))
+                               :background-job/params       (turn-params-into-json-text name params-shape params)
                                :background-job/run-at       (turn-instant-into-utc (.plusMillis (Instant/now) (or run-in-ms 0)))
                                :background-job/max-attempts attempts
                                :background-job/timeout-ms   timeout-ms
@@ -192,7 +198,7 @@
 
 (defn- make-schedule-key [{:keys [kind params cron]}]
   (str (turn-kind-name-into-text (:name kind)) " " cron " "
-       (wire/turn-data-into-json-text (wire/turn-shaped-data-into-json-data (:params-shape kind) params))))
+       (turn-params-into-json-text (:name kind) (:params-shape kind) params)))
 
 (defn- add-due-scheduled-background-jobs!
   "Queues the background job of every due schedule this server claims, and moves the
