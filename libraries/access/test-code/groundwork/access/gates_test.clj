@@ -111,6 +111,19 @@
             (is (= "{\"orders/place\":{}}"
                    (ask (:port server) (cookie anna) (str "{\"orders/place\":{\"order/shop-id\":\"" shop-7 "\"}}")))
                 "in her own shop: fine"))
+          (testing "the leak test: Anna, asked for shop 9's order, gets nothing of it"
+            (let [anna-request {:request-method :post
+                                :headers {"origin" "http://app.test" "cookie" (cookie anna)}}]
+              (is (= [] (access/find-leaks (select-keys ready [:orders/all]) anna-request {:orders [order-99]})))
+              (testing "and a handler that reads past the gates is caught"
+                (let [leaky {:orders/leaky {:action :orders/see :params-shape [:map] :answer-shape [:vector :uuid]
+                                            :steps [{:name  :read-with-the-owner
+                                                     :enter #(steps/add-answer-to-context
+                                                              % (mapv :order/id (sql/find-rows owner-pool find-all-orders {})))}]}}
+                      ready-leaky (access/put-access-into-handlers leaky {:pool app-pool :tables [shops orders] :scope-kinds scope-kinds
+                                                                          :find-session-step (sessions/make-find-session-step app-pool settings)})]
+                  (is (= [{:handler :orders/leaky :gave-back [(str order-99)]}]
+                         (access/find-leaks ready-leaky anna-request {:orders [order-99]})))))))
           (finally
             (transport/stop-server! server)
             (sql/stop-pool! app-pool)

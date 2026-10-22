@@ -12,5 +12,6 @@
            stop-server!
            send-message-on-sse-line!
            send-message-on-ws-line!
-           is-line-open?}
+           is-line-open?
+           answer-message}
          (set (keys (ns-publics 'groundwork.transport.api))))))

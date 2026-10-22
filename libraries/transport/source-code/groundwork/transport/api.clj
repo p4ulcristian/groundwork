@@ -20,6 +20,7 @@
    {:groundwork.transport/channel … :groundwork.transport/request …}."
   (:require
    [groundwork.transport.server-code.http :as http]
+   [groundwork.transport.server-code.messages :as messages]
    [groundwork.transport.server-code.server :as server]
    [groundwork.transport.server-code.sse :as sse]
    [groundwork.transport.server-code.ws :as ws]
@@ -65,3 +66,10 @@
   "Whether an sse or ws line is still open."
   [line]
   (http-kit/open? (:groundwork.transport/channel line)))
+
+(defn answer-message
+  "The answer a message gets from the handlers, as over http, without a
+   server: for tests and the REPL. request is the Ring request it came with
+   (its cookie, its origin)."
+  [handlers request message]
+  (messages/answer-named-messages handlers request message))

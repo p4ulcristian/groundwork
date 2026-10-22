@@ -9,5 +9,6 @@
            make-sql-conditions
            install-access-functions!
            put-access-into-handlers
-           put-gates-on-tables}
+           put-gates-on-tables
+           find-leaks}
          (set (keys (ns-publics 'groundwork.access.api))))))

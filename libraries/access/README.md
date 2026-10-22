@@ -9,13 +9,14 @@ operation, for the check and the gates. Piece 3, the check: every handler
 declares its action and shapes, and Groundwork puts the check in front of its
 steps, inside one transaction that tells Postgres who is asking. Piece 4,
 the gates: Postgres's row rules made from the same conditions, so a query
-with no WHERE still returns only the asker's rows.
+with no WHERE still returns only the asker's rows. Piece 5, the leak test:
+every handler asked with another scope's ids must give none of them back.
 
 Needs groundwork.sql and groundwork.schema. API: `groundwork.access.api`
 (`access-tables`, `check-scope-kinds`, `add-scope!`, `add-role!`,
 `add-membership!`, `remove-membership!`, `list-actions-of-person`,
 `make-sql-conditions`, `install-access-functions!`, `put-access-into-handlers`,
-`put-gates-on-tables`). Decisions:
+`put-gates-on-tables`, `find-leaks`). Decisions:
 [`decisions/`](decisions/README.md).
 
 ```clojure

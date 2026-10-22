@@ -4,7 +4,7 @@
    SQL conditions (make-sql-conditions). Piece 3: the check, put in front
    of every handler's steps (put-access-into-handlers). Piece 4: the gates,
    Postgres's row rules made from the same conditions (put-gates-on-tables,
-   for groundwork.schema).
+   for groundwork.schema). Piece 5: the leak test (find-leaks).
 
    The app says, in its code, its kinds of scope (a shop), their actions and
    the roles a new scope starts with (check-scope-kinds). Groundwork keeps,
@@ -22,6 +22,7 @@
    [clojure.string]
    [groundwork.access.server-code.check :as check]
    [groundwork.access.server-code.conditions :as conditions]
+   [groundwork.access.server-code.leaks :as leaks]
    [groundwork.access.server-code.scope-kinds :as scope-kinds]
    [groundwork.sql.api :as sql]))
 
@@ -179,3 +180,15 @@
               (assoc table-map :gates operations)
               table-map))
           tables)))
+
+(defn find-leaks
+  "The leak test, for an app's own test suite: every handler (made ready by
+   put-access-into-handlers) asked by the person of request (signed in to
+   one scope) with foreign-ids, the ids of another scope's rows by table,
+   {:orders [id …]}. A handler with a :record must answer \"Not found.\" for
+   each; any other must give none of them back. Returns every leak; empty
+   means none.
+
+     (is (= [] (access/find-leaks ready-handlers anna-request {:orders [order-in-shop-9]})))"
+  [handlers request foreign-ids]
+  (leaks/find-leaks handlers request foreign-ids))
