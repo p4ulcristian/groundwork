@@ -22,7 +22,6 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 Each library keeps its own decisions, with its own index:
 
-- [ground-steps](../libs/ground-steps/decisions/README.md): work as a vector of steps (not moved into libraries/ yet)
 - [groundwork.wire](../libraries/wire/decisions/README.md): what travels between browser and server
 
 ### What Groundwork is
@@ -33,12 +32,13 @@ Each library keeps its own decisions, with its own index:
 - [The ground-* libraries live in one repo](2026-10-22-the-ground-libraries-live-in-one-repo.md), changed in part by [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)
 - [Groundwork is the default composition](2026-10-22-groundwork-is-the-default-composition.md)
 - [Ring at the edge, steps inside](2026-10-22-ring-at-the-edge-steps-inside.md)
+- [Work is a vector of steps over one map](2026-10-22-work-is-a-vector-of-steps-over-one-map.md) (until groundwork.steps exists; its code was removed with libs/, to be rebuilt as the simple runner)
 - [Libraries pass values](2026-10-22-libraries-pass-values.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
 - [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md), changed in part by [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)
 - [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md), changed in part by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md)
 - [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md)
-- [Each library keeps its own decisions](2026-10-22-each-library-keeps-its-own-decisions.md)
+- [Each library keeps its own decisions](2026-10-22-each-library-keeps-its-own-decisions.md), changed in part by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md)
 - [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md)
 - [Nothing goes in that the owner does not understand](2026-10-22-nothing-goes-in-that-the-owner-does-not-understand.md)
 - [Each library brings its own settings](2026-10-22-each-library-brings-its-own-settings.md)
