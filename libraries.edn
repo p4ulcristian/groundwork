@@ -15,7 +15,8 @@
 ;; any library on either side may use it, through mailroom.api only. So is
 ;; doorman, who is asking and what they may do, sessions and access
 ;; (github.com/p4ulcristian/doorman): any server library may use it, through
-;; doorman.api only. So is doorbell, a change to a table rings every open
+;; doorman.api only; a browser library too, for the shape of "what may I
+;; do?"'s answer, which doorman.api's browser half holds. So is doorbell, a change to a table rings every open
 ;; screen, which asks again (github.com/p4ulcristian/doorbell): any library on
 ;; either side may use it, through doorbell.api only. So is logbook, the app's
 ;; log (github.com/p4ulcristian/logbook): any server library may use it, through

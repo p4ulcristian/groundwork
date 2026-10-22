@@ -165,8 +165,9 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [A build can have several modules](2026-10-12-a-build-can-have-several-modules.md), carried over by [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md)
 - [Nothing asks before the start](2026-10-13-nothing-asks-before-the-start.md), changed in part by [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md)
 - [Routing is Groundwork's, and a route is a record](2026-10-14-routing-is-groundworks-and-a-route-is-a-record.md), its extras carried over by [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md)
-- [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md), changed in part by [Every write runs once, by its one-time key](2026-10-23-every-write-runs-once-by-its-one-time-key.md) and [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md)
+- [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md), changed in part by [Every write runs once, by its one-time key](2026-10-23-every-write-runs-once-by-its-one-time-key.md), [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md) and [The browser build's npm packages are real dependencies; doorman owns the shape](2026-10-23-the-builds-npm-packages-are-real-dependencies-and-doorman-owns-the-my-actions-shape.md)
 - [The routing extras, each where it belongs: queries, scrolling, the unsaved guard, modules on demand, languages](2026-10-23-routing-extras-each-where-it-belongs.md)
+- [The browser build's npm packages are real dependencies; doorman owns the shape of "what may I do?"](2026-10-23-the-builds-npm-packages-are-real-dependencies-and-doorman-owns-the-my-actions-shape.md)
 
 ### Styles
 

@@ -58,6 +58,7 @@
    sent either."
   (:require
    [doorbell.api :as doorbell]
+   [doorman.api :as doorman]
    [mailroom.api :as mailroom]
    [malli.core :as malli]
    [malli.error :as malli-error]
@@ -73,9 +74,9 @@
                                         [:stack [:maybe :string]]
                                         [:url :string]]
                          :answer-shape :boolean}
-   ;; doorman's my-actions-answer-shape on the server; parlor's, the same, here
+   ;; doorman's, on both sides (doorman.api's browser half)
    :doorman/my-actions  {:params-shape [:map {:closed true}]
-                         :answer-shape parlor/actions-answer-shape}})
+                         :answer-shape doorman/my-actions-answer-shape}})
 
 (def ^:private write-key-header
   "The header a write's one-time key travels in; the server's
@@ -198,6 +199,8 @@
                                       :pages              pages
                                       :questions-of-pages questions-of-pages
                                       :actions-question   actions-question
+                                      :actions-answer-shape doorman/my-actions-answer-shape
+                                      :wire               wire
                                       :on-answer-failed   on-answer-failed
                                       :on-move            on-move
                                       :query-shapes-of-pages query-shapes-of-pages

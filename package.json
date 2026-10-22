@@ -1,12 +1,13 @@
 {
   "name": "house",
   "private": true,
-  "description": "house's npm dependencies (big.js for wire.big's exact decimals, react and react-dom for parlor's Reagent) and the ClojureScript test build",
+  "description": "house's npm dependencies (big.js for wire.big's exact decimals, react and react-dom for parlor's Reagent, process for react's code in the browser build) and the ClojureScript test build",
   "scripts": {
     "test": "shadow-cljs compile test"
   },
   "dependencies": {
     "big.js": "7.0.1",
+    "process": "0.11.10",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },

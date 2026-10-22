@@ -17,7 +17,11 @@ with parlor's `mount-root!` into the shell's `#app`. Once for the
 page, it sends every uncaught error and unhandled rejection to the server,
 `{:house/browser-error {:message … :stack … :url …}}`, where it is logged at
 `:error` with the server's errors. The app's
-shapes have both shapes for each of its names; house's own are added. ClojureScript only. API:
+shapes have both shapes for each of its names; house's own are added
+(`:doorman/my-actions`'s answer shape is doorman's, which parlor's "can I?"
+checks the answer by, with the app's wire). The app's `package.json` lists
+big.js, react, react-dom and process as `dependencies`: showroom's release
+stops on one installed only for development. ClojureScript only. API:
 `house.browser.main.api` (`read-settings-from-page`, `start-app!`).
 
 ```clojure
