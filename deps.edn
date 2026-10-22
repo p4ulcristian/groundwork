@@ -7,7 +7,7 @@
  :deps
  {org.clojure/clojure               {:mvn/version "1.12.6"}
   ;; wire: its own library, github.com/p4ulcristian/wire
-  io.github.p4ulcristian/wire       {:git/tag "v0.1.0" :git/sha "f728d9f"}
+  io.github.p4ulcristian/wire       {:git/tag "v0.1.1" :git/sha "a2ff939"}
   ;; database's rows, access's sentences and leak test, sync's change messages
   metosin/malli                     {:mvn/version "0.20.3"}
   metosin/jsonista                  {:mvn/version "1.0.2"}
