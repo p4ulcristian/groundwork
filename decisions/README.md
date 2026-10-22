@@ -138,6 +138,7 @@ Each library keeps its own decisions, with its own index:
 - [Asks travel together and run apart](2026-10-12-asks-travel-together-and-run-apart.md)
 - [Each ask fails alone](2026-10-12-each-ask-fails-alone.md)
 - [Three ways between browser and server, each with one job](2026-10-22-three-ways-between-browser-and-server.md)
+- [sync keeps screens in step with the database; rate limits are transport's](2026-10-22-sync-keeps-screens-in-step.md)
 - [The three ways are named http, sse and ws](2026-10-22-the-three-ways-are-named-http-sse-ws.md)
 - [web becomes transport and routes](2026-10-22-transport-and-routes.md), changed in part by [Named messages over three addresses](2026-10-22-named-messages-over-three-addresses.md)
 - [Named messages over three addresses Groundwork owns](2026-10-22-named-messages-over-three-addresses.md)

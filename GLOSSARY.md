@@ -19,3 +19,4 @@ Each word in a Groundwork name means one thing, everywhere. See
 | http | a request from the browser and the server's one answer: all data travels this way |
 | sse | the server stream (Server-Sent Events): one answer per tab that stays open; carries bells, never data |
 | ws | a websocket: both sides talk fast, for features that need it |
+| sync | keeping what screens show in step with the database: a changed row is told to the screens that may show it, and they ask again (not "bells") |
