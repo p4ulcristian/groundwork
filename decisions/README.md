@@ -24,6 +24,7 @@ Each library keeps its own decisions, with its own index:
 
 - [groundwork.wire](../libraries/wire/decisions/README.md): what travels between browser and server
 - [groundwork.steps](../libraries/steps/decisions/README.md): work as a list of steps over one context
+- [groundwork.web](../libraries/web/decisions/README.md): the server, its routes, a route's work as steps
 
 ### What Groundwork is
 

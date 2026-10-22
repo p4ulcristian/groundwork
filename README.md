@@ -14,6 +14,7 @@ else.
 |---|---|---|
 | wire | `groundwork.wire.api` | how shaped data travels as text and comes back as what it was |
 | steps | `groundwork.steps.api` | work as a list of steps over one map, until one adds an answer |
+| web | `groundwork.web.api` | the server and its routes; a route's work is steps |
 | main | `groundwork.main.api` | puts the libraries together; lists every one it uses |
 
 ```sh
