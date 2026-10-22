@@ -97,6 +97,8 @@ Each library keeps its own decisions, with its own index:
 - [Migrate changes only the objects that differ](2026-10-22-migrate-changes-only-the-objects-that-differ.md)
 - [A table is one map](2026-10-22-a-table-is-one-map.md)
 - [A table map says its column types in wire's words](2026-10-22-a-table-map-says-column-types-in-wires-words.md)
+- [A migration runs in two parts: the instant part before the start, the slow part after](2026-10-22-a-migration-runs-in-two-parts.md)
+- [A fresh database takes the maps as they are](2026-10-22-a-fresh-database-takes-the-maps-as-they-are.md)
 
 ### Sessions and logins
 
