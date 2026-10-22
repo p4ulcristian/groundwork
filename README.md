@@ -3,7 +3,7 @@
 An opinionated Clojure framework for web apps on Postgres: the part of
 **manor** that puts its libraries together into one running app. manor is the
 group: house and its cellar, backroom, showroom, mailroom, doorman, doorbell,
-parlor, wire and logbook. The spec is [`decisions/`](decisions/README.md).
+parlor, dictionary, wire and logbook. The spec is [`decisions/`](decisions/README.md).
 
 One tree: each library is a folder `source-code/house/<side>/<name>/` with
 its README, its tests in `test-code/house/<side>/<name>/`, its decisions in
@@ -68,6 +68,15 @@ And what the app says, on the server:
 get one with its request id (and the person, once doorman finds them), and a
 monitor pulls the kept errors, the browser's among them, from the `:errors`
 route.
+And which language a request, a page and an address are in, on both sides:
+[dictionary](https://github.com/p4ulcristian/dictionary); its settings are
+the `:languages` part. Every request gets its language (the address's
+prefix, the cookie, Accept-Language, the default) and loses the prefix
+before routing; the shell's `<html lang>` and alternate links follow it,
+and parlor keeps it on every move. The routing has queries (read by a
+page's shape), scrolling, a question before leaving unsaved changes, and
+modules loaded on demand (the app's `:browser-modules`, showroom's, each
+with its stylesheets): [the decision](decisions/2026-10-23-routing-extras-each-where-it-belongs.md).
 Every manor repository carries the GitHub topic `manor`:
 `user:p4ulcristian topic:manor` lists them all.
 

@@ -24,7 +24,19 @@ browser's settings (version, addresses, sse and ws reopen delays, the
 question store's settings, `:doorbell :store`, the browser's wire settings,
 `:browser-wire`, the write retries, `:run-once :retry-writes`, pages) as
 JSON in the page; its viewport, referrer policy, frame options and content
-security policy are `:page` settings. Every value that sets behaviour is a
+security policy are `:page` settings. The shell is in the request's
+language: every request first gets it from dictionary (the `:languages`
+settings: the address's prefix, taken off before routing, the cookie,
+Accept-Language, the default), and the shell's `<html lang>`, its
+alternate links (at the `:sessions` `:allowed-origin`) and its JSON's
+`:language` follow it; the JSON also carries the languages and each module's
+stylesheet bundle (`:module-stylesheets`), and the shell lists `main`'s
+files only: a page's `:module`, one of the app's `:browser-modules`, loads
+on demand ([the decision](../../../../decisions/2026-10-23-routing-extras-each-where-it-belongs.md)).
+
+```clojure
+:languages {:languages ["en" "de"] :default "en" :cookie-name "lang"}   ; dictionary's; :cookie-name nil for none
+``` Every value that sets behaviour is a
 setting; what stays fixed, and why:
 [the decision](../../../../decisions/2026-10-22-every-value-that-sets-behaviour-is-a-setting.md).
 
@@ -115,7 +127,8 @@ API: `house.server.main.api` (`settings-shape`, `page-settings-shape`,
 
 ```clojure
 (def running (main/start-app! {:settings settings :tables [shops orders] :changes [] :scope-kinds scope-kinds
-                               :handlers handlers :pages pages :background-job-kinds [] :schedules []}))
+                               :handlers handlers :pages pages :browser-modules {}
+                               :background-job-kinds [] :schedules []}))
 (main/stop-app! running)
 ```
 

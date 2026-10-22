@@ -21,18 +21,22 @@
   ;; mailroom: named messages over http, sse and ws, a handler's steps, the routes;
   ;; both sides, its own library, github.com/p4ulcristian/mailroom (it brings
   ;; http-kit, reitit-ring and reitit-frontend)
-  io.github.p4ulcristian/mailroom   {:git/tag "v0.5.0" :git/sha "99c06e8"}
+  io.github.p4ulcristian/mailroom   {:git/tag "v0.6.0" :git/sha "c0e5059"}
   ;; doorman: who is asking and what may they do, sessions and access, its own
   ;; library, github.com/p4ulcristian/doorman (it brings malli and test.check)
   io.github.p4ulcristian/doorman    {:git/tag "v0.5.0" :git/sha "e1bdcbd"}
   ;; doorbell: a change to a table rings every open screen, which asks again;
   ;; both sides, its own library, github.com/p4ulcristian/doorbell
-  io.github.p4ulcristian/doorbell   {:git/tag "v0.4.0" :git/sha "0236a89"}
+  io.github.p4ulcristian/doorbell   {:git/tag "v0.4.1" :git/sha "fb46c72"}
   ;; parlor: the browser's screens over doorbell's question store, in re-frame,
   ;; drawn with Reagent (it brings re-frame and Reagent; react and react-dom
   ;; are package.json's); the browser's side only, its own library,
   ;; github.com/p4ulcristian/parlor
-  io.github.p4ulcristian/parlor     {:git/tag "v0.4.0" :git/sha "a3d77d8"}}
+  io.github.p4ulcristian/parlor     {:git/tag "v0.5.0" :git/sha "e06a9b0"}
+  ;; dictionary: which language a request, a page and an address are in; both
+  ;; sides, its own library, github.com/p4ulcristian/dictionary (parlor brings
+  ;; it to the browser too)
+  io.github.p4ulcristian/dictionary {:git/tag "v0.1.0" :git/sha "3934a19"}}
 
  :aliases
  {;; every test:                  clojure -X:test
@@ -42,7 +46,7 @@
                        ;; HikariCP (in cellar) logs through SLF4J; tests pick no logger
                        org.slf4j/slf4j-nop {:mvn/version "2.0.17"}
                        ;; the browser build's test compiles every browser library
-                       io.github.p4ulcristian/showroom {:git/tag "v0.2.0" :git/sha "47696cf"}}
+                       io.github.p4ulcristian/showroom {:git/tag "v0.3.0" :git/sha "e0ff215"}}
          :exec-fn     cognitect.test-runner.api/test
          :exec-args   {:dirs ["test-code"]}}
 
@@ -51,10 +55,11 @@
   ;; aliases, not in :deps. Development: add :browser-build to the REPL or the dev start
   ;; (its watch options are the :browser-build {:watch …} settings).
   ;; The deploy:  clojure -X:browser-release (an app writes its own :entry and :files-folder)
-  :browser-build   {:extra-deps {io.github.p4ulcristian/showroom {:git/tag "v0.2.0" :git/sha "47696cf"}}}
-  :browser-release {:extra-deps {io.github.p4ulcristian/showroom {:git/tag "v0.2.0" :git/sha "47696cf"}}
+  :browser-build   {:extra-deps {io.github.p4ulcristian/showroom {:git/tag "v0.3.0" :git/sha "e0ff215"}}}
+  :browser-release {:extra-deps {io.github.p4ulcristian/showroom {:git/tag "v0.3.0" :git/sha "e0ff215"}}
                     :exec-fn    showroom.api/build-for-release!
                     :exec-args  {:entry              app.browser.main/start!
+                                 :modules            {}               ; the app's :browser-modules, loaded on demand
                                  :files-folder       "target/public"
                                  :cache-folder       ".shadow-cljs"   ; shadow-cljs's cache
                                  :compile-threads    4

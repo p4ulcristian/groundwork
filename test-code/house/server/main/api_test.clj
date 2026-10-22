@@ -112,12 +112,14 @@
   "A release build's folder, as the deploy leaves it: a manifest and one hashed file."
   (let [folder (.toFile (java.nio.file.Files/createTempDirectory "house-files" (make-array java.nio.file.attribute.FileAttribute 0)))]
     (io/make-parents (io/file folder "js" "x"))
-    (spit (io/file folder "js" "manifest.edn") (pr-str [{:module-id :main :output-name "main.0A1B2C3D4E5F.js"}]))
+    (spit (io/file folder "js" "manifest.edn") (pr-str [{:module-id :main :output-name "main.0A1B2C3D4E5F.js"}
+                                                        {:module-id :admin :output-name "admin.6F5E4D3C2B1A.js"}]))
     (spit (io/file folder "js" "main.0A1B2C3D4E5F.js") "start();")
     (with-open [out (java.util.zip.GZIPOutputStream. (io/output-stream (io/file folder "js" "main.0A1B2C3D4E5F.js.gz")))]
       (.write out (.getBytes "start();")))
     (io/make-parents (io/file folder "css" "x"))
-    (spit (io/file folder "css" "manifest.edn") (pr-str [{:output-name "main.9F8E7D6C5B4A.css"}]))
+    (spit (io/file folder "css" "manifest.edn") (pr-str [{:module-id :admin :output-name "admin.1A2B3C4D5E6F.css"}
+                                                         {:module-id :main :output-name "main.9F8E7D6C5B4A.css"}]))
     (spit (io/file folder "robots.txt") "User-agent: *")
     (str folder)))
 
@@ -165,7 +167,8 @@
    :doorbell          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                        :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                    :reconnect-after-ms 1000 :stop-wait-ms 2000}}
-   :page              {:title "Shops <test>" :language "en" :viewport "width=device-width, initial-scale=1"
+   :languages         {:languages ["en" "de"] :default "en" :cookie-name "lang"}
+   :page              {:title "Shops <test>" :viewport "width=device-width, initial-scale=1"
                        :content-security-policy :none :referrer-policy "same-origin" :frame-options "DENY"
                        :files {:folder files-folder :hashed-name-min-hex-digits 8 :hashed-file-cache-seconds 31536000}}
    :health            {:live-path "/health/live" :ready-path "/health/ready"
@@ -173,8 +176,10 @@
 
 (defn- make-app [user]
   {:settings (make-settings user) :tables [shops orders] :changes [] :scope-kinds scope-kinds
-   :handlers handlers :pages {:orders/page {:address "/orders/:order-id" :title "Order"}}
+   :handlers handlers :pages {:orders/page {:address "/orders/:order-id" :title "Order"}
+                              :admin/page  {:address "/admin" :title "Admin" :module "admin"}}
    :browser-entry 'app.browser.main/start!
+   :browser-modules {:admin {:entries '[app.browser.admin] :depends-on #{:main}}}
    :background-job-kinds [] :schedules []})
 
 (defn- run-sql! [pool text] (database/run-statement! pool (database/make-query-from-sql-text "test" text) {}))
@@ -300,6 +305,10 @@
                                            (assoc-in [:handlers :doorman/my-actions] (:orders/count handlers))))
                       (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))))
         (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE; DROP SCHEMA IF EXISTS house CASCADE")
+        (testing "a page naming a module the app doesn't have is refused"
+          (is (= :house.server.main/bad-pages
+                 (try (main/start-app! (assoc (make-app owner) :browser-modules {}))
+                      (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))))
         (testing "an owner role, or a database not migrated, is refused"
           (is (thrown-with-msg? clojure.lang.ExceptionInfo #"owns tables or passes the gates"
                                 (main/start-app! (make-app owner)))))
@@ -317,6 +326,27 @@
               anna-cookie (cookie anna)
               bob-cookie  (cookie bob)]
           (try
+            (testing "a page in the request's language: the address's prefix, else the cookie, Accept-Language, the default"
+              (let [lang-of #(second (re-find #"<html lang=\"([^\"]+)\">" (second %)))
+                    get-page (fn [path headers]
+                               (let [response (.send (HttpClient/newHttpClient)
+                                                     (.build (reduce (fn [b [k v]] (.header b k v))
+                                                                     (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port path)))
+                                                                     headers))
+                                                     (HttpResponse$BodyHandlers/ofString))]
+                                 [(.statusCode response) (.body response)]))]
+                (is (= "en" (lang-of (get-page "/orders/42" {}))))
+                (let [[status html] (get-page "/de/orders/42" {})]
+                  (is (= 200 status) "the prefix is taken off before routing")
+                  (is (= "de" (lang-of [status html])))
+                  (is (str/includes? html "\"language\":\"de\"") "the browser is told the page's language")
+                  (is (str/includes? html (str "<link rel=\"alternate\" hreflang=\"en\" href=\"http://app.test/orders/42\">\n"
+                                               "<link rel=\"alternate\" hreflang=\"de\" href=\"http://app.test/de/orders/42\">\n"
+                                               "<link rel=\"alternate\" hreflang=\"x-default\" href=\"http://app.test/orders/42\">"))
+                      "the same page in every language, at the app's origin"))
+                (is (= "de" (lang-of (get-page "/orders/42" {"accept-language" "de-AT,de;q=0.9"}))))
+                (is (= "en" (lang-of (get-page "/orders/42" {"accept-language" "de" "cookie" "lang=en"}))) "the cookie first")
+                (is (= 404 (first (get-page "/de/nowhere" {}))))))
             (testing "a page opened fresh: the shell, with the browser's settings in it"
               (let [[status html] (send-request server-port "GET" "/orders/42" nil nil)]
                 (is (= 200 status))
@@ -335,6 +365,13 @@
                 (is (str/includes? html "\"sse\":\"/house/sse\""))
                 (is (str/includes? html "<script src=\"/js/main.0A1B2C3D4E5F.js\" defer></script>")
                     "the script the build's manifest lists")
+                (is (not (str/includes? html "admin.6F5E4D3C2B1A.js")) "main only: a module loads on demand")
+                (is (str/includes? html "\"module-stylesheets\":{\"admin\":\"/css/admin.1A2B3C4D5E6F.css\"}")
+                    "each module's stylesheet bundle, for the loader")
+                (is (str/includes? html "\"languages\":{\"languages\":[\"en\",\"de\"],\"default\":\"en\",\"cookie-name\":\"lang\"}")
+                    "dictionary's settings")
+                (is (str/includes? html "\"admin/page\":{\"address\":\"/admin\",\"title\":\"Admin\",\"module\":\"admin\"}")
+                    "a page names its module")
                 (is (str/includes? html "<link rel=\"stylesheet\" href=\"/css/main.9F8E7D6C5B4A.css\">")
                     "the stylesheet bundle its manifest lists")))
             (testing "the shell's headers: fixed ones and the :page settings'"

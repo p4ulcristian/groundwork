@@ -22,6 +22,8 @@
 ;; logbook.api only. So is parlor, the browser's screens over doorbell's
 ;; question store, in re-frame (github.com/p4ulcristian/parlor): any browser
 ;; library may use it, through parlor.api only; re-frame.core beside it, for
-;; its events and subscriptions.
+;; its events and subscriptions. So is dictionary, which language a request, a
+;; page and an address are in (github.com/p4ulcristian/dictionary): any library
+;; on either side may use it, through dictionary.api only.
 {:server  {:main #{}}
  :browser {:main #{}}}

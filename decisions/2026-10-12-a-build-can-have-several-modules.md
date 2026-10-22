@@ -1,3 +1,5 @@
+> **Changed in part** by [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md) (2026-10-23): carried over: showroom's `:modules`, each with its stylesheet bundle, loaded on demand by parlor; the shell loads `main`.
+
 # A build can have several modules
 
 **Decision:** an app's browser build may be split into modules, named in the `:browser` settings (module → what it starts or holds, and the modules it depends on). A page names the module it starts (`:page {:module :admin}` on its route), and the page shell loads it after the modules it depends on, by their fingerprinted names after a release. A page that names none loads the module(s) that depend on no other. Modules no page names can load on demand (`:loader? true`). An app may add its own shadow-cljs build options (`:options`), merged over Groundwork's.

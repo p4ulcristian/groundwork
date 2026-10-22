@@ -5,11 +5,13 @@
      (def app
        {:settings             settings              ; checked against settings-shape
         :browser-entry        'app.browser.main/start!  ; the function the page runs
+        :browser-modules      {}                    ; showroom's :modules, loaded on demand: {:admin {:entries [app.admin.page] :depends-on #{:main}}}
         :tables               [shops orders]        ; table maps, with :access and :doorbell
         :changes              []                    ; cellar's changes
         :scope-kinds          scope-kinds           ; doorman's
         :handlers             handlers              ; mailroom's table, each with :action and shapes
-        :pages                {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}}
+        :pages                {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}
+                               :admin/page  {:address \"/admin\" :title \"Admin\" :module \"admin\"}}   ; loaded on the way in
         :background-job-kinds [send-invoice-email]
         :schedules            []})
 
@@ -33,9 +35,13 @@
    to run once, house.server.main.run-once), doorbell's listener, the
    background job workers (house's own that forgets old one-time keys
    among them), in development the browser
-   build's watcher (:browser-build {:watch options}), and the server (mailroom's three
-   addresses, from :server :addresses, every page answered by the page
-   shell, files from :page :files; no ws hooks).
+   build's watcher (:browser-build {:watch options}, with the app's
+   :browser-modules), and the server (mailroom's three addresses, from
+   :server :addresses, every page answered by the page shell in the
+   request's language, files from :page :files; no ws hooks). Every
+   request first gets its language (dictionary's, from the :languages
+   settings) and loses its address's language prefix, for routing. A page
+   may name a :module of :browser-modules, loaded on demand by the browser.
 
    In production the deploy runs migrate-app! first, as the role that owns
    the tables (the app's own role owns nothing), and the browser's release
@@ -62,6 +68,7 @@
    [clojure.string :as str]
    [backroom.api :as backroom]
    [cellar.api :as database]
+   [dictionary.api :as dictionary]
    [doorman.api :as doorman]
    [doorbell.api :as doorbell]
    [house.server.main.errors :as errors]
@@ -76,8 +83,9 @@
 
 (def page-settings-shape
   "The :page part of the settings, every key required: the page shell's
-   details and the files served beside it.
-   :title, :language: the shell's <title> and lang.
+   details and the files served beside it. Its lang is the request's
+   language (the :languages settings).
+   :title: the shell's <title>.
    :viewport: its viewport meta, \"width=device-width, initial-scale=1\".
    :content-security-policy: the header, or :none for none.
    :referrer-policy: the header, \"same-origin\".
@@ -90,7 +98,6 @@
    :hashed-file-cache-seconds, how long a browser keeps a hashed file."
   [:map {:closed true}
    [:title :string]
-   [:language :string]
    [:viewport :string]
    [:content-security-policy [:or :string [:= :none]]]
    [:referrer-policy :string]
@@ -145,22 +152,22 @@
    [:listening doorbell/listening-settings-shape]])
 
 (defn- leaves-entry-folder-and-log-out? [watch-options]
-  (not-any? #(contains? watch-options %) [:entry :files-folder :log]))
+  (not-any? #(contains? watch-options %) [:entry :modules :files-folder :log]))
 
 (def browser-build-settings-shape
   "The :browser-build setting: :built, the release build's files, listed
    by their manifests; or {:watch options}, development, showroom's
    watcher started with these options: every one of showroom's
-   start-watching! options but :entry, :files-folder and :log, which come
-   from the app's :browser-entry, the :page :files :folder and the app's
-   log. showroom checks them, every key required, before the app starts
+   start-watching! options but :entry, :modules, :files-folder and :log,
+   which come from the app's :browser-entry and :browser-modules, the
+   :page :files :folder and the app's log. showroom checks them, every key required, before the app starts
    anything."
   [:or
    [:= :built]
    [:map {:closed true}
     [:watch [:and
              [:map-of :keyword :any]
-             [:fn {:error/message ":entry, :files-folder and :log come from :browser-entry, :page :files :folder and the app's log"}
+             [:fn {:error/message ":entry, :modules, :files-folder and :log come from :browser-entry, :browser-modules, :page :files :folder and the app's log"}
               leaves-entry-folder-and-log-out?]]]]])
 
 (def browser-wire-settings-shape
@@ -240,7 +247,9 @@
    house makes the app's one logbook from; :errors where its kept errors
    are pulled, and how often a browser may send one; :my-actions how often
    a browser may ask what its person may do; :run-once how long a write's
-   one-time key is kept, and how often a browser retries a write."
+   one-time key is kept, and how often a browser retries a write;
+   :languages the app's languages (dictionary's settings), which a
+   request's, and its page's, is picked from."
   [:map {:closed true}
    [:version :string]
    [:wire wire/settings-shape]
@@ -255,6 +264,7 @@
    [:sessions doorman/settings-shape]
    [:my-actions my-actions-settings-shape]
    [:run-once run-once-settings-shape]
+   [:languages dictionary/settings-shape]
    [:background-jobs backroom/settings-shape]
    [:doorbell doorbell-settings-shape]
    [:page page-settings-shape]
@@ -359,8 +369,8 @@
     (or (doorman/find-session-key-of-request request (:sessions settings))
         (mailroom/find-client-address request (get-in settings [:server :client-address-header])))))
 
-(defn- make-routes [{:keys [settings pages]} wire running-logbook log pool running-health handlers running-doorbell]
-  (let [browser-settings (page/make-browser-settings settings pages)]
+(defn- make-routes [{:keys [settings pages browser-modules]} wire running-logbook log pool running-health handlers running-doorbell]
+  (let [browser-settings (page/make-browser-settings settings pages browser-modules)]
     (-> (health/make-health-routes wire log pool running-health settings)
         (into (errors/make-errors-routes wire running-logbook settings))
         (into (mailroom/make-routes-for-messages
@@ -383,9 +393,10 @@
 (defn- make-watch-options
   "showroom's start-watching! options: the :browser-build :watch settings,
    with the app's entry, the files folder and the app's log."
-  [{:keys [browser-entry settings]} log]
+  [{:keys [browser-entry browser-modules settings]} log]
   (assoc (get-in settings [:browser-build :watch])
          :entry browser-entry
+         :modules browser-modules
          :files-folder (get-in settings [:page :files :folder])
          :log log))
 
@@ -412,6 +423,18 @@
     (swap! stoppers conj #(stop part))
     part))
 
+(defn- check-modules-of-pages
+  "Every page's :module, when it names one, is one of the app's
+   :browser-modules; throws with every page that names another."
+  [{:keys [pages browser-modules]}]
+  (let [known    (set (map name (keys browser-modules)))
+        problems (for [[page-name {:keys [module]}] pages
+                       :when (and (some? module) (not (contains? known module)))]
+                   (str page-name " names the module " (pr-str module) ", which :browser-modules doesn't have"))]
+    (when (seq problems)
+      (throw (ex-info (str "The pages have problems: " (pr-str (vec problems)))
+                      {:type :house.server.main/bad-pages :problems (vec problems)})))))
+
 (defn start-app!
   "Starts the app (see the namespace). Returns the running app, for stop-app!:
    {:settings :wire :logbook :log :pool :handlers :doorbell :workers :watching :health :server},
@@ -420,6 +443,7 @@
    :logbook settings, and :log its log function, for the app's own lines."
   [{:keys [settings background-job-kinds schedules] :as app}]
   (check-settings settings)
+  (check-modules-of-pages app)
   (let [running-logbook (logbook/make-logbook (:logbook settings))
         log             (logbook/log-function running-logbook)]
     (when (is-watching? settings) (check-watch-options! app log))
@@ -450,9 +474,11 @@
                                   (start-part! stoppers #(start-watching-browser-build! app log) stop-watching-browser-build!))
               running-health    (health/make-health)
               server            (mailroom/start-server!
-                                 (mailroom/make-ring-handler-from-routes
-                                  (make-routes app wire running-logbook log pool running-health handlers running-doorbell)
-                                  {:files (get-in settings [:page :files])})
+                                 (page/wrap-languages
+                                  (mailroom/make-ring-handler-from-routes
+                                   (make-routes app wire running-logbook log pool running-health handlers running-doorbell)
+                                   {:files (get-in settings [:page :files])})
+                                  (:languages settings))
                                  (:server settings)
                                  {:log log})]
           (health/mark-stage! running-health :started)

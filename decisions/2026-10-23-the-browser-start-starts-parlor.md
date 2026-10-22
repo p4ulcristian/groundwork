@@ -1,3 +1,5 @@
+> **Changed in part** by [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md) (2026-10-23): the browser start takes `:query-shapes-of-pages` and `:placeholder`, and gives parlor the languages and showroom's `load-module!`.
+
 > **Changed in part** by [Every write runs once, by its one-time key](2026-10-23-every-write-runs-once-by-its-one-time-key.md) (2026-10-23): parlor's start takes `:send-write!` (the key in the `idempotency-key` header) and `:retry-writes` (from the page) in place of `:send-message!`.
 
 # The browser start starts parlor; the server answers "what may I do?"

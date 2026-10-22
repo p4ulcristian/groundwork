@@ -1,3 +1,5 @@
+> **Changed in part** by [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md) (2026-10-23): the routing extras (query, scrolling, the unsaved guard, modules on demand, languages) are in mailroom, parlor, showroom, dictionary and house.
+
 # Routing is Groundwork's, and a route is a record
 
 **Decision:** Groundwork owns routing in the browser. A route is a plain record: its address, who may open it, its title, its screen, the data it needs on arrival, and, only when the route says so, that its code loads on demand (with a placeholder) or that it holds unsaved changes. Languages in the address are a setting. An app goes through Groundwork to move, to make a link, and to read the address's values and filters; it never builds or reads addresses by hand. Records are shaped so the server and the browser can read the same one, so a page can later be declared once for both.

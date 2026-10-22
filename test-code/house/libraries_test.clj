@@ -67,6 +67,9 @@
            :when    (and (str/starts-with? (str required) "doorbell.") (not= 'doorbell.api required))]
        (str (second ns-form) " requires " required ": only doorbell's api, doorbell.api"))
      (for [required (list-required-namespaces ns-form)
+           :when    (and (str/starts-with? (str required) "dictionary.") (not= 'dictionary.api required))]
+       (str (second ns-form) " requires " required ": only dictionary's api, dictionary.api"))
+     (for [required (list-required-namespaces ns-form)
            :when    (and (str/starts-with? (str required) "parlor.") (not= 'parlor.api required))]
        (str (second ns-form) " requires " required ": only parlor's api, parlor.api"))
      (for [required (list-required-namespaces ns-form)

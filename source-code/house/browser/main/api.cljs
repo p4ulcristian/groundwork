@@ -12,8 +12,12 @@
                                                      :about/page  (fn [_] [])}
                                 :on-answer-failed   [:shop/answer-failed]  ; or nil: parlor's event for a failed answer
                                 :on-move            nil                    ; or an event, given {:from page :to page}
+                                :query-shapes-of-pages {:orders/page nil   ; every page's, parlor's: a malli map, or nil for text
+                                                        :about/page  nil}
+                                :placeholder        nil                    ; or (fn [page status]) while a page's :module loads
                                 :exact-decimals     wire.big/big}))        ; or nil: a decimal stays its text
      (parlor/mount-root! \"app\" root)   ; the shell's element is #app; again after a save
+     ;; root draws [parlor/show-page draw-page] where the page goes
 
      ;; screens read parlor's subscriptions and dispatch its events
      @(rf/subscribe [:parlor/answer [:orders/of-shop {:shop/id shop-id}]])
@@ -33,7 +37,9 @@
    :sse-reconnect-after-ms when the server answered with an error, and
    every watched question asked again after any break); then starts
    parlor, re-frame over the store (dispatch-sync [:parlor/start …]), with
-   the store, the write's send function (the one-time key parlor makes for
+   the store, the app's :query-shapes-of-pages and :placeholder, the
+   page's languages and language, showroom's load-module! with each
+   module's stylesheet bundle from the page, the write's send function (the one-time key parlor makes for
    each write in the idempotency-key header, house.server.main.run-once on
    the server), the page's :retry-writes, the page's pages, the app's
    :questions-of-pages, :on-answer-failed and :on-move, and
@@ -57,6 +63,7 @@
    [malli.error :as malli-error]
    [parlor.api :as parlor]
    [re-frame.core :as rf]
+   [showroom.api :as showroom]
    [wire.api :as wire]))
 
 (def ^:private house-shapes-by-name
@@ -82,7 +89,7 @@
 (defn read-settings-from-page
   "What the server put in the page: {:version :addresses
    :sse-reconnect-after-ms :ws-reopen-after-ms :doorbell :wire
-   :retry-writes :pages}.
+   :retry-writes :languages :language :module-stylesheets :pages}.
    Read by the browser's JSON.parse, keys as keywords with their namespace
    (\"orders/page\" is :orders/page): the wire is made from what this
    reads, so there is none yet."
@@ -102,6 +109,12 @@
 
 (def start-options-shape
   "start-app!'s options, every key required.
+   :query-shapes-of-pages: parlor's, every page's query shape, by page
+   name, one for each of the page's pages and no other: a malli map the
+   query's text values are read by, or nil to keep them text.
+   :placeholder: parlor's, a component (fn [page status]) drawn by
+   parlor's show-page while a page's :module loads; nil when no page
+   names one.
    :shapes-by-name: the app's shapes, by message name (mailroom's).
    :sse-handlers: the app's own sse messages' handlers, by name.
    :questions-of-pages: parlor's, every page's declaration of the
@@ -121,6 +134,8 @@
    [:questions-of-pages [:map-of :qualified-keyword fn?]]
    [:on-answer-failed [:maybe vector?]]
    [:on-move [:maybe vector?]]
+   [:query-shapes-of-pages [:map-of :qualified-keyword :any]]
+   [:placeholder [:maybe fn?]]
    [:exact-decimals [:maybe map?]]])
 
 (defn- check-start-options [options]
@@ -156,9 +171,12 @@
    are checked first, every key required. Returns {:settings :wire :store
    :sse-line}, :wire the app's one wire in the browser."
   [options]
-  (let [{:keys [shapes-by-name sse-handlers questions-of-pages on-answer-failed on-move exact-decimals]}
+  (let [{:keys [shapes-by-name sse-handlers questions-of-pages on-answer-failed on-move exact-decimals
+                query-shapes-of-pages placeholder]}
         (check-start-options options)
-        {:keys [addresses pages sse-reconnect-after-ms] store-settings :doorbell :as settings} (read-settings-from-page)
+        {:keys [addresses pages sse-reconnect-after-ms languages language module-stylesheets] store-settings :doorbell :as settings}
+        (read-settings-from-page)
+        module-stylesheets (update-keys module-stylesheets name)
         wire           (wire/make-wire-from-settings (assoc (:wire settings) :exact-decimals exact-decimals))
         shapes-by-name (merge shapes-by-name doorbell/message-shapes-by-name house-shapes-by-name)
         send!          #(mailroom/send-message! (:http addresses) shapes-by-name % {:wire wire :headers {}})
@@ -181,5 +199,9 @@
                                       :questions-of-pages questions-of-pages
                                       :actions-question   actions-question
                                       :on-answer-failed   on-answer-failed
-                                      :on-move            on-move}])
+                                      :on-move            on-move
+                                      :query-shapes-of-pages query-shapes-of-pages
+                                      :languages          {:dictionary languages :language-of-page language}
+                                      :load-module!       #(showroom/load-module! module-stylesheets %)
+                                      :placeholder        placeholder}])
     {:settings settings :wire wire :store store :sse-line sse-line}))

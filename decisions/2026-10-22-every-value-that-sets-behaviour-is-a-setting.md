@@ -1,3 +1,5 @@
+> **Changed in part** by [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md) (2026-10-23): `:page :language` is gone (the shell's lang is the request's); `:languages`, dictionary's settings, is new.
+
 # Every value that sets behaviour is a setting, in main too
 
 > **Changed in part** by [main takes every library's new settings](2026-10-22-main-takes-every-librarys-new-settings.md) (2026-10-22): Groundwork takes mailroom v0.1.4 and doorman v0.1.3 with the other libraries' new releases, and `:database`, `:migration`, `:background-jobs`, `:doorbell` and `:browser-build` carry their new settings.

@@ -10,7 +10,8 @@ the server reloads, once per version; reopened after the sse delay when the
 server answered with an error), then starts parlor (`[:parlor/start …]`, with
 the store, the write's send function (parlor's one-time key in the
 `idempotency-key` header), the page's `:retry-writes`, the pages, the app's `:questions-of-pages`,
-`:on-answer-failed` and `:on-move`, and `[:doorman/my-actions {}]` as its
+`:on-answer-failed`, `:on-move`, `:query-shapes-of-pages` and `:placeholder`, the page's
+languages and language, showroom's `load-module!` with each module's stylesheets, and `[:doorman/my-actions {}]` as its
 `:actions-question`), which follows the address bar. The app draws its root
 with parlor's `mount-root!` into the shell's `#app`. Once for the
 page, it sends every uncaught error and unhandled rejection to the server,
@@ -26,8 +27,10 @@ shapes have both shapes for each of its names; house's own are added. ClojureScr
                                                                [[:orders/of-shop {:shop/id (parse-uuid (:shop-id path-params))}]])}
                            :on-answer-failed   nil              ; or an event
                            :on-move            nil              ; or an event
+                           :query-shapes-of-pages {:orders/page nil}   ; every page's: a malli map reads its query, nil text
+                           :placeholder        nil              ; or (fn [page status]) while a page's :module loads
                            :exact-decimals     wire.big/big}))  ; or nil: a decimal stays its text
-(parlor/mount-root! "app" root)                                 ; again after a save
+(parlor/mount-root! "app" root)                                 ; again after a save; root draws [parlor/show-page draw-page]
 ```
 
 Tested by the release build check (`test-code/house/browser/build_check_test.clj`):

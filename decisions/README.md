@@ -32,6 +32,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [logbook](https://github.com/p4ulcristian/logbook): the app's log, one function `(log level event data)` handed to every library, JSON or readable lines, the errors kept for pulling; a library of its own from the start, which house takes since [main makes one logbook and passes its log to every library](2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md); its decisions are there
 - [doorbell](https://github.com/p4ulcristian/doorbell): how screens stay current (both sides): a change to a table rings every open screen, which asks again through the gates; a library of its own since [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md); its decisions are there
 - [parlor](https://github.com/p4ulcristian/parlor): what the browser shows, re-frame over doorbell's question store, drawn with Reagent; a library of its own from the start, which house takes since [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md); its decisions are there
+- [dictionary](https://github.com/p4ulcristian/dictionary): which language a request, a page and an address are in (both sides); a library of its own from the start, which house takes since [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md); its decisions are there
 - [server/main](server/main/README.md): the one start, the page shell, the health checks, and the errors a monitor pulls
 
 ### What house is
@@ -74,7 +75,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [The background work is called background jobs](2026-10-22-the-background-work-is-called-background-jobs.md), changed in part by [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
 - [Nothing goes in that the owner does not understand](2026-10-22-nothing-goes-in-that-the-owner-does-not-understand.md)
 - [Each library brings its own settings](2026-10-22-each-library-brings-its-own-settings.md)
-- [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md), changed in part by [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md) and [main takes every library's new settings](2026-10-22-main-takes-every-librarys-new-settings.md)
+- [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md), changed in part by [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md), [main takes every library's new settings](2026-10-22-main-takes-every-librarys-new-settings.md) and [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md)
 - [main takes every library's new settings: the pool's, a migration's limits, the workers', the listener's, the watcher's](2026-10-22-main-takes-every-librarys-new-settings.md), changed in part by [main makes one wire and passes it to every library](2026-10-22-main-makes-one-wire-and-passes-it-to-every-library.md)
 - [main makes one wire and passes it to every library](2026-10-22-main-makes-one-wire-and-passes-it-to-every-library.md), changed in part by [main makes one logbook and passes its log to every library](2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md)
 - [main makes one logbook and passes its log to every library](2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md)
@@ -161,10 +162,11 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [Groundwork ships the page shell](2026-10-12-groundwork-ships-the-page-shell.md)
 - [re-frame and Reagent in the browser](2026-10-12-re-frame-and-reagent-in-the-browser.md), changed in part by [A namespace names its stylesheets](https://github.com/p4ulcristian/showroom/blob/main/decisions/2026-10-17-a-namespace-names-its-stylesheets.md)
 - [Groundwork starts the browser and owns the build](2026-10-12-groundwork-starts-the-browser-and-owns-the-build.md), changed in part by [The browser build is Groundwork's](https://github.com/p4ulcristian/showroom/blob/main/decisions/2026-10-22-the-browser-build-is-groundworks.md) and [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
-- [A build can have several modules](2026-10-12-a-build-can-have-several-modules.md)
+- [A build can have several modules](2026-10-12-a-build-can-have-several-modules.md), carried over by [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md)
 - [Nothing asks before the start](2026-10-13-nothing-asks-before-the-start.md), changed in part by [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md)
-- [Routing is Groundwork's, and a route is a record](2026-10-14-routing-is-groundworks-and-a-route-is-a-record.md)
-- [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md), changed in part by [Every write runs once, by its one-time key](2026-10-23-every-write-runs-once-by-its-one-time-key.md)
+- [Routing is Groundwork's, and a route is a record](2026-10-14-routing-is-groundworks-and-a-route-is-a-record.md), its extras carried over by [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md)
+- [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md), changed in part by [Every write runs once, by its one-time key](2026-10-23-every-write-runs-once-by-its-one-time-key.md) and [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md)
+- [The routing extras, each where it belongs: queries, scrolling, the unsaved guard, modules on demand, languages](2026-10-23-routing-extras-each-where-it-belongs.md)
 
 ### Styles
 
