@@ -133,6 +133,7 @@ Each library keeps its own decisions, with its own index:
 - [Asks travel together and run apart](2026-10-12-asks-travel-together-and-run-apart.md)
 - [Each ask fails alone](2026-10-12-each-ask-fails-alone.md)
 - [Three ways between browser and server, each with one job](2026-10-22-three-ways-between-browser-and-server.md)
+- [The three ways are named http, sse and ws](2026-10-22-the-three-ways-are-named-http-sse-ws.md)
 - [Postgres rings the bell](2026-10-12-postgres-rings-the-bell.md), changed in part by [Three ways between browser and server](2026-10-22-three-ways-between-browser-and-server.md)
 - [Who is rung comes from who may see](2026-10-13-who-is-rung-comes-from-who-may-see.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
 - [Asking again, and bells that miss nothing](2026-10-14-asking-again-and-bells-that-miss-nothing.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)

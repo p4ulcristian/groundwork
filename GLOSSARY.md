@@ -16,3 +16,6 @@ Each word in a Groundwork name means one thing, everywhere. See
 | step | `{:name a-keyword :enter (fn [context] context)}` |
 | chore | one piece of work saved in Postgres to run outside a request, by a worker (not "job": Iron Rainbow's coating job) |
 | answer | what the work returns; once the context has one, no more steps run |
+| http | a request from the browser and the server's one answer: all data travels this way |
+| sse | the server stream (Server-Sent Events): one answer per tab that stays open; carries bells, never data |
+| ws | a websocket: both sides talk fast, for features that need it |
