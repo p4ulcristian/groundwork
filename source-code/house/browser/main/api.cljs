@@ -62,7 +62,7 @@
    [mailroom.api :as mailroom]
    [malli.core :as malli]
    [malli.error :as malli-error]
-   [parlor.api :as parlor]
+   [parlor.api] ; registers parlor's events and subscriptions, which the start dispatches
    [re-frame.core :as rf]
    [showroom.api :as showroom]
    [wire.api :as wire]))
