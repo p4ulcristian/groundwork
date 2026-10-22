@@ -25,6 +25,7 @@ Each library keeps its own decisions, with its own index:
 - [groundwork.wire](../libraries/wire/decisions/README.md): what travels between browser and server
 - [groundwork.steps](../libraries/steps/decisions/README.md): work as a list of steps over one context
 - [groundwork.web](../libraries/web/decisions/README.md): the server, its routes, a route's work as steps
+- [groundwork.sql](../libraries/sql/decisions/README.md): Postgres through a pool; every query a `.sql` file
 
 ### What Groundwork is
 
@@ -72,7 +73,7 @@ Each library keeps its own decisions, with its own index:
 - [Queries have a time limit](2026-10-12-queries-have-a-time-limit.md)
 - [Slow work gets time through its transaction](2026-10-12-slow-work-gets-time-through-its-transaction.md)
 - [The transaction hook runs only in transactions](2026-10-12-the-transaction-hook-runs-only-in-transactions.md)
-- [SQL lives only in files](2026-10-12-sql-lives-only-in-files.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)
+- [SQL lives only in files](2026-10-12-sql-lives-only-in-files.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md) and [A query is made by a function from its .sql file](../libraries/sql/decisions/2026-10-22-a-query-is-made-by-a-function-from-its-sql-file.md)
 - [SQL files are plain SQL](2026-10-12-sql-files-are-plain-sql.md)
 - [A param is named by what it is](2026-10-12-a-param-is-named-by-what-it-is.md)
 - [A list param takes the type Postgres expects](2026-10-12-a-list-param-takes-the-type-postgres-expects.md)

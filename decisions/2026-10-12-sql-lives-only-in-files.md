@@ -1,5 +1,7 @@
 # SQL lives only in files
 
+> **Changed in part** by [A query is made by a function from its .sql file](../libraries/sql/decisions/2026-10-22-a-query-is-made-by-a-function-from-its-sql-file.md) (2026-10-22): `(def q (make-query-from-sql-file "path.sql"))` instead of `defsql`.
+
 > **Changed in part** by [A table is one map](2026-10-22-a-table-is-one-map.md) (2026-10-22): a table's own statements are made from its map; queries stay in `.sql` files.
 
 **Decision:** every statement is a `.sql` file next to the namespace that uses it, named by a var: `(pg/defsql list-recent)`. No SQL built from maps, no inline SQL strings.
