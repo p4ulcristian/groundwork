@@ -12,7 +12,8 @@ else.
 
 | library | api | what it is |
 |---|---|---|
-| wire | `groundwork.wire.api` | how a value travels as text and comes back as what it was |
+| wire | `groundwork.wire.api` | how shaped data travels as text and comes back as what it was |
+| steps | `groundwork.steps.api` | work as a list of steps over one map, until one adds an answer |
 | main | `groundwork.main.api` | puts the libraries together; lists every one it uses |
 
 ```sh

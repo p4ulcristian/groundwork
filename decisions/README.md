@@ -23,6 +23,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 Each library keeps its own decisions, with its own index:
 
 - [groundwork.wire](../libraries/wire/decisions/README.md): what travels between browser and server
+- [groundwork.steps](../libraries/steps/decisions/README.md): work as a list of steps over one context
 
 ### What Groundwork is
 
@@ -32,7 +33,7 @@ Each library keeps its own decisions, with its own index:
 - [The ground-* libraries live in one repo](2026-10-22-the-ground-libraries-live-in-one-repo.md), changed in part by [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)
 - [Groundwork is the default composition](2026-10-22-groundwork-is-the-default-composition.md)
 - [Ring at the edge, steps inside](2026-10-22-ring-at-the-edge-steps-inside.md)
-- [Work is a vector of steps over one map](2026-10-22-work-is-a-vector-of-steps-over-one-map.md) (until groundwork.steps exists; its code was removed with libs/, to be rebuilt as the simple runner)
+- [Work is a vector of steps over one map](2026-10-22-work-is-a-vector-of-steps-over-one-map.md), replaced by [Steps are a list over one context](../libraries/steps/decisions/2026-10-22-steps-are-a-list-over-one-context.md)
 - [Libraries pass values](2026-10-22-libraries-pass-values.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
 - [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md), changed in part by [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md) and [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)
