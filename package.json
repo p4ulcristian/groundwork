@@ -1,18 +1,14 @@
 {
   "name": "groundwork",
   "private": true,
-  "description": "Groundwork's browser half: its npm dependencies and the ClojureScript test build",
+  "description": "Groundwork's npm dependencies (big.js for groundwork.wire's exact decimals) and the ClojureScript test build",
   "scripts": {
     "test": "shadow-cljs compile test"
   },
   "dependencies": {
-    "big.js": "7.0.1",
-    "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "big.js": "7.0.1"
   },
   "devDependencies": {
-    "browserslist": "4.29.4",
-    "lightningcss": "1.33.0",
     "shadow-cljs": "3.5.7"
   }
 }

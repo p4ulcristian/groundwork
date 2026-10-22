@@ -1,5 +1,0 @@
-/* Only the reports module's code names this, so only its bundle carries it. */
-.reports { color: rgb(1, 2, 3); --panel-padding: 20px; }
-
-/* What the reports code reads the moment it runs: its bundle was in first. */
-:root { --reports-bundle: in; }
