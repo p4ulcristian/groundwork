@@ -13,7 +13,6 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 | server/transport | `groundwork.server.transport` | how does the server answer the browser? (http, sse, ws, routes) |
 | server/sessions | `groundwork.server.sessions` | who is asking? |
 | server/access | `groundwork.server.access` | what may they do? |
-| server/background-jobs | `groundwork.server.background-jobs` | what runs later? |
 | server/sync | `groundwork.server.sync` | how do screens stay current? (who is told of a change) |
 | server/browser-build | `groundwork.server.browser-build` | what does the browser download? (shadow-cljs; never in production) |
 | server/main | `groundwork.server.main` | how does the server start? (and the page shell) |
@@ -29,7 +28,9 @@ How data keeps its types (ids, exact decimals, days, moments) is
 [wire](https://github.com/p4ulcristian/wire), a library of its own that Groundwork
 takes from git; its decisions live there. So is talking to Postgres and shaping
 its tables: [cellar](https://github.com/p4ulcristian/cellar), every query a
-`.sql` file, tables as maps.
+`.sql` file, tables as maps. And what runs later, background jobs on Postgres:
+[backroom](https://github.com/p4ulcristian/backroom), a queue, workers and
+schedules.
 Every Groundwork repository carries the GitHub topic `groundwork`:
 `user:p4ulcristian topic:groundwork` lists them all.
 

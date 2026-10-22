@@ -4,17 +4,18 @@
 ;; nobody uses another around a circle. wire is a library of its own
 ;; (github.com/p4ulcristian/wire): any library may use it, through wire.api only.
 ;; So is cellar, Postgres (github.com/p4ulcristian/cellar): any server library
-;; may use it, through cellar.api only.
+;; may use it, through cellar.api only. So is backroom, background jobs
+;; (github.com/p4ulcristian/backroom): any server library may use it, through
+;; backroom.api only.
 {:server  {:steps           #{}
            :transport       #{:steps}
            :sessions        #{:steps}
            :access          #{:steps :transport}
-           :background-jobs #{}
            :sync            #{:transport :access :steps}
            ;; main loads browser-build only when it watches (requiring-resolve):
            ;; production has no shadow-cljs
            :browser-build   #{}
-           :main            #{:steps :transport :sessions :access :background-jobs :sync :browser-build}}
+           :main            #{:steps :transport :sessions :access :sync :browser-build}}
  :browser {:transport #{}
            :sync      #{}
            :styles    #{}

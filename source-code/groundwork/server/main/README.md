@@ -5,7 +5,7 @@ tables, changes, scope kinds, handlers, pages, background job kinds,
 schedules), checks the settings (each library brings its part; every problem
 at once), migrates in development or refuses an unsafe or old database in
 production, and starts the pool, the handlers (access, then sync's notes),
-sync's listener, the background job workers and the server. `migrate-app!`
+sync's listener, backroom's background job workers and the server. `migrate-app!`
 is for the deploy, as the owner. The page shell answers every page address:
 the app's scripts and styles, and the browser's settings (version,
 addresses, pages) as JSON in the page.

@@ -1,5 +1,7 @@
 # One tree; libraries.edn says, and a test checks, who uses whom
 
+> **Changed in part** by [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md) (2026-10-22): the background-jobs library is backroom, a library of its own taken from git, one public namespace `backroom.api` with no side.
+
 > **Changed in part** by [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md) (2026-10-22): the database library is cellar, a library of its own taken from git, one public namespace `cellar.api` with no side.
 
 > **Changed in part** by [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md) (2026-10-22): wire is a library of its own, taken from git, one namespace `wire` with no side.

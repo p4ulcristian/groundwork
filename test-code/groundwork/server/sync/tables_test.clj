@@ -44,8 +44,8 @@
          (telling/turn-payload-into-change
           "{\"folder\":\"public\",\"table\":\"orders\",\"ids\":[\"a\"],\"columns\":{\"order__shop_id\":[\"7\"],\"order__customer_id\":[]}}"))
       "column names stay as Postgres names them, the names the readers hold")
-  (is (= {:table :groundwork/background-jobs :ids nil :columns {} :all? true}
-         (telling/turn-payload-into-change "{\"folder\":\"groundwork\",\"table\":\"background_jobs\",\"all\":true}"))
+  (is (= {:table :groundwork/sessions :ids nil :columns {} :all? true}
+         (telling/turn-payload-into-change "{\"folder\":\"groundwork\",\"table\":\"sessions\",\"all\":true}"))
       "too many rows: no ids, no columns"))
 
 (deftest changes-of-one-batch-are-joined-by-table

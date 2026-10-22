@@ -25,11 +25,11 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [wire](https://github.com/p4ulcristian/wire): how data keeps its types (both sides), a library of its own since [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md); its decisions are there
 - [server/steps](server/steps/README.md): how work is written
 - [cellar](https://github.com/p4ulcristian/cellar): Postgres, queries and tables as maps, a library of its own since [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md); its decisions are there
+- [backroom](https://github.com/p4ulcristian/backroom): background jobs on Postgres, what runs later, a library of its own since [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md); its decisions are there
 - [Groundwork's libraries share the GitHub topic groundwork](2026-10-22-groundworks-libraries-share-the-topic-groundwork.md)
 - [server/transport](server/transport/README.md): http, sse, ws, the routes (both sides; [browser/transport](browser/transport/README.md))
 - [server/sessions](server/sessions/README.md): who is asking
 - [server/access](server/access/README.md): what they may do
-- [server/background-jobs](server/background-jobs/README.md): what runs later
 - [server/sync](server/sync/README.md): how screens stay current (both sides; [browser/sync](browser/sync/README.md))
 - [server/browser-build](server/browser-build/README.md): what the browser downloads, and who builds it
 - [browser/styles](browser/styles/README.md): how the page looks
@@ -47,12 +47,13 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [Libraries pass values](2026-10-22-libraries-pass-values.md), replaced by [Libraries stand in layers](2026-10-22-libraries-stand-in-layers.md)
 - [Libraries stand in layers](2026-10-22-libraries-stand-in-layers.md)
 - [No Polylith tool](2026-10-22-no-polylith-tool.md)
-- [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md), changed in part by [A library says where it runs](2026-10-22-a-library-says-where-it-runs.md) and [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md)
+- [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md), changed in part by [A library says where it runs](2026-10-22-a-library-says-where-it-runs.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md) and [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
 - [A library says where it runs; sessions and access stay apart](2026-10-22-a-library-says-where-it-runs.md), changed in part by [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md)
-- [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), changed in part by [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md) and [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md)
-- [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), changed in part by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md) and [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md)
+- [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), changed in part by [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md) and [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
+- [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), changed in part by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md) and [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
 - [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md)
 - [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md)
+- [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
 - [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
 - [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md), changed in part by [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md) and [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)
@@ -67,7 +68,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md), changed in part by [The background work is called background jobs](2026-10-22-the-background-work-is-called-background-jobs.md) and [Three ways between browser and server](2026-10-22-three-ways-between-browser-and-server.md)
 - [The jobs library is named groundwork.background-jobs](2026-10-22-the-jobs-library-is-named-background-jobs.md), replaced by [The background work is called chores](2026-10-22-the-background-work-is-called-chores.md)
 - [The background work is called chores](2026-10-22-the-background-work-is-called-chores.md), replaced by [The background work is called background jobs](2026-10-22-the-background-work-is-called-background-jobs.md)
-- [The background work is called background jobs](2026-10-22-the-background-work-is-called-background-jobs.md)
+- [The background work is called background jobs](2026-10-22-the-background-work-is-called-background-jobs.md), changed in part by [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
 - [Nothing goes in that the owner does not understand](2026-10-22-nothing-goes-in-that-the-owner-does-not-understand.md)
 - [Each library brings its own settings](2026-10-22-each-library-brings-its-own-settings.md)
 - [Groundwork ships these parts](2026-10-18-groundwork-ships-these-parts.md)
@@ -174,5 +175,5 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 
 ### Jobs and the REPL
 
-- [A job can give up for good](2026-10-12-a-job-can-give-up-for-good.md)
+- [A job can give up for good](https://github.com/p4ulcristian/backroom/blob/main/decisions/2026-10-12-a-job-can-give-up-for-good.md): moved to backroom with the library
 - [REPLs by environment](2026-10-12-repls-by-environment.md), changed in part by [Groundwork ships no team endpoints and no eval bridge](2026-10-18-groundwork-ships-no-team-endpoints-and-no-eval-bridge.md)

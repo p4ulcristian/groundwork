@@ -10,6 +10,8 @@
   io.github.p4ulcristian/wire       {:git/tag "v0.1.2" :git/sha "1e8e9aa"}
   ;; cellar: Postgres, its own library, github.com/p4ulcristian/cellar
   io.github.p4ulcristian/cellar     {:git/tag "v0.1.1" :git/sha "1354d94"}
+  ;; backroom: background jobs on Postgres, its own library, github.com/p4ulcristian/backroom
+  io.github.p4ulcristian/backroom   {:git/tag "v0.1.0" :git/sha "3edc326"}
   ;; access's sentences and leak test, sync's change messages
   metosin/malli                     {:mvn/version "0.20.3"}
   metosin/jsonista                  {:mvn/version "1.0.2"}

@@ -32,8 +32,8 @@
    library is loaded only when it watches."
   (:require
    [clojure.string :as str]
+   [backroom.api :as backroom]
    [groundwork.server.access.api :as access]
-   [groundwork.server.background-jobs.api :as background-jobs]
    [cellar.api :as database]
    [groundwork.server.main.page :as page]
    [groundwork.server.sessions.api :as sessions]
@@ -59,7 +59,7 @@
    [:server transport/settings-shape]
    [:database database/settings-shape]
    [:sessions sessions/settings-shape]
-   [:background-jobs background-jobs/settings-shape]
+   [:background-jobs backroom/settings-shape]
    [:page page-settings-shape]])
 
 (defn check-settings
@@ -71,8 +71,12 @@
   settings)
 
 (def groundwork-tables
-  "Groundwork's own tables, in its own folder, put with the app's."
-  (vec (concat [sessions/sessions-table] access/access-tables background-jobs/background-jobs-tables)))
+  "Groundwork's own tables, in its own folder, and backroom's, in theirs,
+   put with the app's. backroom knows nothing of sync: its tables are made
+   silent here."
+  (vec (concat [sessions/sessions-table]
+               access/access-tables
+               (map #(assoc % :sync [:silent "no screen shows background jobs"]) backroom/background-jobs-tables))))
 
 (defn make-ready-tables
   "The app's tables and Groundwork's, with their gates (access) and change
@@ -178,10 +182,10 @@
                                                                     :find-session-step find-session-step})
                                            sync/stop-sync!)
             workers           (start-part! stoppers
-                                           #(background-jobs/start-workers! pool (assoc (:background-jobs settings)
-                                                                                        :kinds background-job-kinds
-                                                                                        :schedules schedules))
-                                           background-jobs/stop-workers!)
+                                           #(backroom/start-workers! pool (assoc (:background-jobs settings)
+                                                                                 :kinds background-job-kinds
+                                                                                 :schedules schedules))
+                                           backroom/stop-workers!)
             watching          (when (= :watch (:browser-build settings))
                                 (start-part! stoppers #(start-watching-browser-build! app) stop-watching-browser-build!))
             server            (transport/start-server!
@@ -200,6 +204,6 @@
   [{:keys [pool sync server workers watching]}]
   (transport/stop-server! server)
   (when watching (stop-watching-browser-build! watching))
-  (background-jobs/stop-workers! workers)
+  (backroom/stop-workers! workers)
   (sync/stop-sync! sync)
   (database/stop-pool! pool))

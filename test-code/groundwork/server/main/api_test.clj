@@ -129,7 +129,7 @@
     (println "groundwork.server.main.api-test: skipped, GROUNDWORK_SQL_TEST_PORT is not set")
     (let [owner-pool (database/start-pool! (make-database-settings owner))]
       (try
-        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS cellar CASCADE")
+        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE")
         (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gw_app') THEN CREATE ROLE gw_app LOGIN; END IF; END $$")
         (testing "an owner role, or a database not migrated, is refused"
           (is (thrown-with-msg? clojure.lang.ExceptionInfo #"owns tables or passes the gates"
