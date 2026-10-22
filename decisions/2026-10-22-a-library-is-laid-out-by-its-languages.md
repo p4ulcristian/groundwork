@@ -1,5 +1,7 @@
 # A library is laid out by its languages
 
+> **Changed in part** by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md) (2026-10-22): the prefix is groundwork, folders are libraries/<name>, the main library is groundwork.main.
+
 > Replaces [A library is named by its languages](2026-10-22-a-library-is-named-by-its-languages.md): the languages are spelled out, the libraries share the `ground` namespace, and parts sit in a folder per language.
 
 **Decision:** Groundwork is the whole repo; its libraries live in `libraries/ground/<name>/`, each with its own `deps.edn` and one source folder, `source-code/`. A library's namespaces start with `ground.<name>`, so the folder and the name match: `libraries/ground/wire` is `ground.wire`. Below that, code is laid out by the language it is written in, spelled out:
