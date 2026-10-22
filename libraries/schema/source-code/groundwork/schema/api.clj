@@ -124,3 +124,13 @@
    may be missing or nil."
   [table]
   (desired/turn-table-into-row-shape table))
+
+(defn turn-key-into-column-name
+  "A column key's Postgres name: :order/shop-id -> \"order__shop_id\"."
+  [k]
+  (names/turn-key-into-column-name k))
+
+(defn turn-table-key-into-table-name
+  "A table key's Postgres name: :orders -> \"orders\", :groundwork/sessions -> \"groundwork.sessions\"."
+  [k]
+  (names/turn-table-key-into-table-name k))

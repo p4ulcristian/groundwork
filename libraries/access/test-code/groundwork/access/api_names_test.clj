@@ -5,5 +5,6 @@
    [groundwork.access.api]))
 
 (deftest the-api-names
-  (is (= '#{access-tables check-scope-kinds add-scope! add-role! add-membership! remove-membership! list-actions-of-person}
+  (is (= '#{access-tables check-scope-kinds add-scope! add-role! add-membership! remove-membership! list-actions-of-person
+           make-sql-conditions}
          (set (keys (ns-publics 'groundwork.access.api))))))

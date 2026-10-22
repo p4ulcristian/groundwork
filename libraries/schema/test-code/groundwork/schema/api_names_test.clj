@@ -11,5 +11,7 @@
            run-slow-part!
            migrate!
            does-database-match-tables?
-           turn-table-into-row-shape}
+           turn-table-into-row-shape
+           turn-key-into-column-name
+           turn-table-key-into-table-name}
          (set (keys (ns-publics 'groundwork.schema.api))))))

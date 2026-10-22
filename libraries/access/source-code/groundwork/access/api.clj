@@ -1,6 +1,7 @@
 (ns groundwork.access.api
-  "Who may see and do what. The api of groundwork.access; piece 1: who
-   belongs where.
+  "Who may see and do what. The api of groundwork.access. Piece 1: who
+   belongs where. Piece 2: the :access sentences on table maps, turned into
+   SQL conditions (make-sql-conditions).
 
    The app says, in its code, its kinds of scope (a shop), their actions and
    the roles a new scope starts with (check-scope-kinds). Groundwork keeps,
@@ -16,6 +17,7 @@
    Its tables are maps (access-tables) the app passes to groundwork.schema."
   (:require
    [clojure.string]
+   [groundwork.access.server-code.conditions :as conditions]
    [groundwork.access.server-code.scope-kinds :as scope-kinds]
    [groundwork.sql.api :as sql]))
 
@@ -116,3 +118,15 @@
   (-> (reduce #(add-row-to-actions scope-kinds %1 %2) {}
               (sql/find-rows transaction find-actions-of-person {:membership/person-id person-id}))
       (update-vals #(disj % nil))))
+
+(defn make-sql-conditions
+  "The :access sentences of every table map, checked (unknown actions or
+   columns, an open write without a :when: every problem at once) and
+   turned into SQL conditions:
+
+     {:orders {:actions    {:orders/see \"…\" :orders/edit \"…\"}
+               :operations {:read \"…\" :insert \"…\" :update \"…\" :delete \"…\"}}}
+
+   The check uses an action's condition; the gates use an operation's."
+  [tables scope-kinds]
+  (conditions/make-sql-conditions tables scope-kinds))

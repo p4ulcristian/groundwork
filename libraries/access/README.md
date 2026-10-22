@@ -1,13 +1,16 @@
 # groundwork.access
 
-Who may see and do what. Built in pieces; piece 1 is who belongs where:
-the app's kinds of scope (a shop) with their actions and starting roles, in
-its code; the scopes, their roles and the memberships, as rows Groundwork
-keeps. A scope's Owner holds every action of its kind.
+Who may see and do what. Built in pieces. Piece 1, who belongs where: the
+app's kinds of scope (a shop) with their actions and starting roles, in its
+code; the scopes, their roles and the memberships, as rows Groundwork keeps.
+A scope's Owner holds every action of its kind. Piece 2, the `:access`
+sentences on table maps turned into one SQL condition per action and per
+operation, for the check and the gates.
 
-Needs groundwork.sql. API: `groundwork.access.api` (`access-tables`,
-`check-scope-kinds`, `add-scope!`, `add-role!`, `add-membership!`,
-`remove-membership!`, `list-actions-of-person`). Decisions:
+Needs groundwork.sql and groundwork.schema. API: `groundwork.access.api`
+(`access-tables`, `check-scope-kinds`, `add-scope!`, `add-role!`,
+`add-membership!`, `remove-membership!`, `list-actions-of-person`,
+`make-sql-conditions`). Decisions:
 [`decisions/`](decisions/README.md).
 
 ```clojure
@@ -21,6 +24,17 @@ Needs groundwork.sql. API: `groundwork.access.api` (`access-tables`,
 (access/add-membership! transaction [:shop shop-id] anna-id "Staff")
 (access/list-actions-of-person transaction scope-kinds anna-id)
 ;=> {[:shop shop-id] #{:orders/see :orders/edit}}
+```
+
+```clojure
+(def orders
+  {:table   :orders
+   :columns [[:order/id :uuid {:primary-key? true}] [:order/shop-id :uuid {:references :shop/id}] …]
+   :access  [{:allow #{:orders/see :orders/edit} :to [:member :order/shop-id]}]})
+
+(access/make-sql-conditions [shops orders] scope-kinds)
+;=> {:orders {:actions    {:orders/see "(order__shop_id = ANY ((SELECT groundwork.find_scopes_holding('shop', 'orders/see'))))" …}
+;             :operations {:read "…" :insert "…" :update "…" :delete "false"}}}
 ```
 
 ## Tests
