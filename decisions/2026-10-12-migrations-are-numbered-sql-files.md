@@ -1,5 +1,7 @@
 # Migrations are numbered SQL files
 
+> **Changed in part** by [A table is one map](2026-10-22-a-table-is-one-map.md) (2026-10-22): an app's tables are declared as maps that the database is brought to; numbered steps remain only as change files for renames, drops and backfills.
+
 > **Changed in part** by [The schema snapshot is written when the start is done](2026-10-13-the-schema-snapshot-is-written-when-the-start-is-done.md) (2026-10-13): the development snapshot is written at the end of the start, not right after migrating.
 
 > **Changed in part** by [Production migrates before it starts](2026-10-18-production-migrates-before-it-starts.md) (2026-10-18): in production migrate runs the migrations before the start, and the start only checks they ran.

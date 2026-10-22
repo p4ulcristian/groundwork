@@ -1,5 +1,7 @@
 # Asking again, and bells that miss nothing
 
+> **Changed in part** by [A table is one map](2026-10-22-a-table-is-one-map.md) (2026-10-22): how a table rings is said on its map.
+
 > Adds to [Postgres rings the bell](2026-10-12-postgres-rings-the-bell.md) and [The browser keeps answers by question](2026-10-12-the-browser-keeps-answers-by-question.md).
 
 **Decision:**

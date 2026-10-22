@@ -1,5 +1,7 @@
 # Access rules are sentences in Groundwork's language
 
+> **Changed in part** by [A table is one map](2026-10-22-a-table-is-one-map.md) (2026-10-22): a table's sentences sit on its map, and its record kind (table, id, whose, parent) is read from the map.
+
 > Answers how the app says it, left open by [Who may see what is the app's](2026-10-15-who-may-see-what-is-the-apps.md). Changes [Groundwork ships permissions](2026-10-12-groundwork-ships-permissions.md): the six shapes and the shapes added on 2026-10-13 become words of this language. Built under [The freeze lifts for the access language](2026-10-17-the-freeze-lifts-for-the-access-language.md).
 
 **Decision:** an app writes who may do what as one list of sentences. Each sentence says: allow this action, on this kind of record, to whom, and when. Groundwork gives the words and reads every sentence at start; it refuses to start on an unknown word, table or column.

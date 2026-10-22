@@ -22,6 +22,11 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 - [Groundwork is an opinionated framework](2026-10-12-groundwork-is-an-opinionated-framework.md)
 - [Declared, through one door](2026-10-14-declared-through-one-door.md)
+- [Everything is declared, the Clojure way](2026-10-22-everything-is-declared-the-clojure-way.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)
+- [The ground-* libraries live in one repo](2026-10-22-the-ground-libraries-live-in-one-repo.md)
+- [A Groundwork app uses the libraries through Groundwork](2026-10-22-a-groundwork-app-uses-the-libraries-through-groundwork.md)
+- [Each library keeps its own decisions](2026-10-22-each-library-keeps-its-own-decisions.md)
+- [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md)
 - [Nothing goes in that the owner does not understand](2026-10-22-nothing-goes-in-that-the-owner-does-not-understand.md)
 - [Each library brings its own settings](2026-10-22-each-library-brings-its-own-settings.md)
 - [Groundwork ships these parts](2026-10-18-groundwork-ships-these-parts.md)
@@ -46,7 +51,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 - [Queries have a time limit](2026-10-12-queries-have-a-time-limit.md)
 - [Slow work gets time through its transaction](2026-10-12-slow-work-gets-time-through-its-transaction.md)
 - [The transaction hook runs only in transactions](2026-10-12-the-transaction-hook-runs-only-in-transactions.md)
-- [SQL lives only in files](2026-10-12-sql-lives-only-in-files.md)
+- [SQL lives only in files](2026-10-12-sql-lives-only-in-files.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)
 - [SQL files are plain SQL](2026-10-12-sql-files-are-plain-sql.md)
 - [A param is named by what it is](2026-10-12-a-param-is-named-by-what-it-is.md)
 - [A list param takes the type Postgres expects](2026-10-12-a-list-param-takes-the-type-postgres-expects.md)
@@ -60,10 +65,11 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 ### Migrations
 
-- [Migrations are numbered SQL files](2026-10-12-migrations-are-numbered-sql-files.md), changed in part by [The schema snapshot is written when the start is done](2026-10-13-the-schema-snapshot-is-written-when-the-start-is-done.md) and [Production migrates before it starts](2026-10-18-production-migrates-before-it-starts.md)
+- [Migrations are numbered SQL files](2026-10-12-migrations-are-numbered-sql-files.md), changed in part by [The schema snapshot is written when the start is done](2026-10-13-the-schema-snapshot-is-written-when-the-start-is-done.md) , [Production migrates before it starts](2026-10-18-production-migrates-before-it-starts.md) and [A table is one map](2026-10-22-a-table-is-one-map.md)
 - [The schema snapshot is written when the start is done](2026-10-13-the-schema-snapshot-is-written-when-the-start-is-done.md)
 - [Production migrates before it starts](2026-10-18-production-migrates-before-it-starts.md)
 - [Migrate changes only the objects that differ](2026-10-22-migrate-changes-only-the-objects-that-differ.md)
+- [A table is one map](2026-10-22-a-table-is-one-map.md)
 
 ### Sessions and logins
 
@@ -76,7 +82,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 - [Groundwork ships permissions](2026-10-12-groundwork-ships-permissions.md), changed in part by [Who may see what is the app's; Groundwork enforces it](2026-10-15-who-may-see-what-is-the-apps.md) and [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
 - [Who may see what is the app's; Groundwork enforces it](2026-10-15-who-may-see-what-is-the-apps.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
-- [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
+- [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)
 - [Every scoped table names its scope](2026-10-12-every-scoped-table-names-its-scope.md)
 - [A record of two scopes may have a parent and children](2026-10-13-a-record-of-two-scopes-may-have-a-parent-and-children.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
 - [A record between fixed sides carries them](2026-10-13-a-record-between-fixed-sides-carries-them.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
@@ -100,7 +106,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 - [An id is text in the browser](2026-10-14-an-id-is-text-in-the-browser.md)
 - [Postgres rings the bell](2026-10-12-postgres-rings-the-bell.md)
 - [Who is rung comes from who may see](2026-10-13-who-is-rung-comes-from-who-may-see.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
-- [Asking again, and bells that miss nothing](2026-10-14-asking-again-and-bells-that-miss-nothing.md)
+- [Asking again, and bells that miss nothing](2026-10-14-asking-again-and-bells-that-miss-nothing.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)
 
 ### Server, browser, routing and build
 
