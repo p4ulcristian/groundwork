@@ -39,6 +39,7 @@ Each library keeps its own decisions, with its own index:
 - [Work is a vector of steps over one map](2026-10-22-work-is-a-vector-of-steps-over-one-map.md), replaced by [Steps are a list over one context](../libraries/steps/decisions/2026-10-22-steps-are-a-list-over-one-context.md)
 - [Libraries pass values](2026-10-22-libraries-pass-values.md), replaced by [Libraries stand in layers](2026-10-22-libraries-stand-in-layers.md)
 - [Libraries stand in layers](2026-10-22-libraries-stand-in-layers.md)
+- [No Polylith tool](2026-10-22-no-polylith-tool.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
 - [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md), changed in part by [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md) and [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)
 - [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md), changed in part by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md) and [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md)
