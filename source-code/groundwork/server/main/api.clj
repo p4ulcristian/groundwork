@@ -23,7 +23,7 @@
    sync's listener, the background job workers, in development the browser
    build's watcher (:browser-build :watch), and the server (mailroom's three
    addresses, from :server :addresses, every page answered by the page
-   shell, files from :files-folder; no ws hooks).
+   shell, files from :page :files; no ws hooks).
 
    In production the deploy runs migrate-app! first, as the role that owns
    the tables (the app's own role owns nothing), and the browser's release
@@ -41,12 +41,30 @@
    [wire.api :as wire]))
 
 (def page-settings-shape
-  "The :page part of the settings: the page shell's details."
+  "The :page part of the settings, every key required: the page shell's
+   details and the files served beside it.
+   :title, :language: the shell's <title> and lang.
+   :viewport: its viewport meta, \"width=device-width, initial-scale=1\".
+   :content-security-policy: the header, or :none for none.
+   :referrer-policy: the header, \"same-origin\".
+   :frame-options: the X-Frame-Options header, \"DENY\" or \"SAMEORIGIN\",
+   or :none when other sites may frame the page.
+   :files: mailroom's files: :folder, where the browser build is (the
+   watcher writes it, the release build's manifests are read from it, a
+   GET no route matches is answered from it); :hashed-name-min-hex-digits,
+   how many hex digits make a name hashed (main.3F9A0C1D.js);
+   :hashed-file-cache-seconds, how long a browser keeps a hashed file."
   [:map {:closed true}
    [:title :string]
    [:language :string]
+   [:viewport :string]
    [:content-security-policy [:or :string [:= :none]]]
-   [:files-folder :string]])
+   [:referrer-policy :string]
+   [:frame-options [:enum "DENY" "SAMEORIGIN" :none]]
+   [:files [:map {:closed true}
+            [:folder :string]
+            [:hashed-name-min-hex-digits [:int {:min 1}]]
+            [:hashed-file-cache-seconds [:int {:min 0}]]]]])
 
 (def settings-shape
   "The whole settings, every key required; each library brings its part."
@@ -138,7 +156,7 @@
            (:server settings)
            {:find-rate-limit-key (make-rate-limit-key-finder settings)
             :on-sse-open  (fn [line]
-                            (mailroom/send-message-on-sse-line! line {:groundwork/version (:version settings)})
+                            (mailroom/send-message-on-sse-line! line {:groundwork/version (:version settings)} nil)
                             (sync/add-sse-line! running-sync line))
             :on-sse-close #(sync/remove-sse-line! running-sync %)
             :on-ws-open   nil
@@ -150,7 +168,7 @@
    shadow-cljs."
   [{:keys [browser-entry settings]}]
   ((requiring-resolve 'showroom.api/start-watching!)
-   {:entry browser-entry :files-folder (get-in settings [:page :files-folder])}))
+   {:entry browser-entry :files-folder (get-in settings [:page :files :folder])}))
 
 (defn- stop-watching-browser-build! [watching]
   ((requiring-resolve 'showroom.api/stop-watching!) watching))
@@ -189,7 +207,7 @@
                                 (start-part! stoppers #(start-watching-browser-build! app) stop-watching-browser-build!))
             server            (mailroom/start-server!
                                (mailroom/make-ring-handler-from-routes (make-routes app handlers running-sync)
-                                                                        {:files-folder (get-in settings [:page :files-folder])})
+                                                                        {:files (get-in settings [:page :files])})
                                (:server settings))]
         {:settings settings :pool pool :handlers handlers :sync running-sync :workers workers
          :watching watching :server server})

@@ -15,10 +15,10 @@
   ;; mailroom: named messages over http, sse and ws, a handler's steps, the routes;
   ;; both sides, its own library, github.com/p4ulcristian/mailroom (it brings
   ;; http-kit, reitit-ring and reitit-frontend)
-  io.github.p4ulcristian/mailroom   {:git/tag "v0.1.1" :git/sha "3b88dd3"}
+  io.github.p4ulcristian/mailroom   {:git/tag "v0.1.3" :git/sha "f9e8131"}
   ;; doorman: who is asking and what may they do, sessions and access, its own
   ;; library, github.com/p4ulcristian/doorman (it brings malli and test.check)
-  io.github.p4ulcristian/doorman    {:git/tag "v0.1.0" :git/sha "207f4c3"}
+  io.github.p4ulcristian/doorman    {:git/tag "v0.1.1" :git/sha "9e5338b"}
   ;; sync's change messages
   metosin/jsonista                  {:mvn/version "1.0.2"}}
 

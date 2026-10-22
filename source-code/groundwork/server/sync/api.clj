@@ -70,6 +70,7 @@
   [handlers]
   (update-vals handlers
                (fn [{:keys [run-steps-in] :as handler}]
+                 ;; nil, written out: the steps run plainly
                  (let [inner (or run-steps-in (fn [run context] (run context)))]
                    (assoc handler :run-steps-in
                           (fn [run context]
@@ -91,7 +92,7 @@
 
 (defn- tell-every-line! [{:keys [lines]} message]
   (doseq [line (vals @lines)]
-    (mailroom/send-message-on-sse-line! line message)))
+    (mailroom/send-message-on-sse-line! line message nil)))
 
 (defn- tell-of-notifications! [sync notifications]
   (doseq [table (telling/list-changed-tables (map :payload notifications))]

@@ -7,13 +7,15 @@ at once), migrates in development or refuses an unsafe or old database in
 production, and starts the pool, the handlers (doorman's check, then sync's notes),
 sync's listener, backroom's background job workers, in development
 showroom's watcher of the browser build, and mailroom's server (its
-`:server` settings: address, the three message addresses, the ping, the
-proxy's header, the stop wait, the ws reopen delay, the rate-limit cleanup
-threshold; askers told apart by session, else address; sse hooks for sync,
-the ws hooks nil). `migrate-app!` is for the deploy, as the owner. The page
+`:server` settings, mailroom's, every key required; askers told apart by
+session, else address; sse hooks for sync, the ws hooks nil; files from
+`:page :files`). `migrate-app!` is for the deploy, as the owner. The page
 shell answers every page address: the app's scripts and styles, and the
-browser's settings (version, addresses, ws reopen delay, pages) as JSON in
-the page.
+browser's settings (version, addresses, sse and ws reopen delays, pages) as
+JSON in the page; its viewport, referrer policy, frame options and content
+security policy are `:page` settings. Every value that sets behaviour is a
+setting; what stays fixed, and why:
+[the decision](../../../../decisions/2026-10-22-every-value-that-sets-behaviour-is-a-setting.md).
 
 API: `groundwork.server.main.api` (`settings-shape`, `page-settings-shape`,
 `check-settings`, `groundwork-tables`, `make-ready-tables`, `migrate-app!`,

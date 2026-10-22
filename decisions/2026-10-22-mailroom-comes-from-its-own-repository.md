@@ -1,5 +1,7 @@
 # mailroom comes from its own repository
 
+> **Changed in part** by [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) (2026-10-22, mailroom v0.1.3): `:server` gains seven more keys, every handler writes out `:rate-limit` and `:run-steps-in`, the page carries `:sse-reconnect-after-ms` and the browser's sse line opens with it.
+
 > **Changed in part** by mailroom's [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md) (2026-10-22, mailroom v0.1.1): main writes out all four hooks (the ws ones nil); `:server` gains `:stop-wait-ms`, `:ws-reopen-after-ms` and `:rate-limit-buckets-before-cleanup`, every key required; the page carries `:ws-reopen-after-ms` to the browser beside the addresses, and a ws line opens with it (`{:reopen-after-ms …}`).
 
 > Changes in part [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md) and [sync keeps screens in step with the database; rate limits are transport's](2026-10-22-sync-keeps-screens-in-step.md): transport and steps are no longer folders in the tree, and their namespace, `mailroom`, says no side.

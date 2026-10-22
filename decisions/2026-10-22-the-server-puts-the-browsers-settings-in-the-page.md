@@ -1,5 +1,7 @@
 # The server puts the browser's settings in the page
 
+> **Changed in part** by [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) (2026-10-22): the page also carries `:sse-reconnect-after-ms` and `:ws-reopen-after-ms`; the shell's viewport, referrer policy and frame options are `:page` settings.
+
 > Replaces the two copies of `contract.cljc` from [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md) and [Named messages over three addresses](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-named-messages-over-three-addresses.md) (the addresses and the pages were said on both sides, kept equal by a test).
 
 **Decision:** the page shell (groundwork.server.main) carries what the browser needs to start, as JSON in a script tag the browser never runs:

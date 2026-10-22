@@ -37,6 +37,12 @@
   [store question]
   (store/find-kept-answer store question))
 
+(def sse-shapes-by-name
+  "The shapes of the server's sync messages, for mailroom's shapes-by-name:
+   {:sync/changed {:table \"orders\"}} and {:sync/missed {}}."
+  {:sync/changed {:params-shape nil :answer-shape [:map {:closed true} [:table :string]]}
+   :sync/missed  {:params-shape nil :answer-shape [:map {:closed true}]}})
+
 (defn make-sse-handlers
   "The handlers for the server's sync messages, to open the sse line with:
    :sync/changed asks again what a changed table touches, :sync/missed asks

@@ -1,5 +1,7 @@
 # One start, and a migrate for the deploy
 
+> **Changed in part** by [Every value that sets behaviour is a setting, in main too](../../2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) (2026-10-22): `:page` has `:viewport`, `:referrer-policy`, `:frame-options` and `:files` (for `:files-folder`), every key required.
+
 **Decision:** groundwork.server.main puts the server libraries together:
 
 - `start-app!` takes the app as one map (`:settings :tables :changes :scope-kinds :handlers :pages :background-job-kinds :schedules`) and returns the running app; `stop-app!` stops it, server first, pool last. A start that fails stops what it had started.

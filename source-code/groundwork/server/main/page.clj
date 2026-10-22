@@ -6,13 +6,21 @@
      <script type=\"application/json\" id=\"groundwork-settings\">
        {\"version\":\"2026-10-22.1\",
         \"addresses\":{\"http\":\"/groundwork/http\",\"sse\":\"/groundwork/sse\",\"ws\":\"/groundwork/ws\"},
+        \"sse-reconnect-after-ms\":3000,
         \"ws-reopen-after-ms\":1000,
         \"pages\":{\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}}}
      </script>
 
    The browser reads it (groundwork.browser.main); the pages, the
-   addresses and the ws reopen delay are said once, on the server. The shell is never cached, so a
-   new version's scripts are what the next load gets."
+   addresses and the sse and ws reopen delays are said once, on the
+   server.
+
+   Fixed, not settings: the shell is never cached (no-store), so a new
+   version's scripts are what the next load gets; nosniff, since every
+   file goes out with its type; UTF-8; the scripts deferred; the app's
+   element is #app. The rest is the :page settings: the title, the
+   language, the viewport, the content security policy, the referrer
+   policy and the frame options."
   (:require
    [clojure.edn :as edn]
    [clojure.java.io :as io]
@@ -38,28 +46,30 @@
     (mapv #(str "/" kind "/" (:output-name %)) (edn/read-string (slurp manifest)))))
 
 (defn list-scripts
-  "The page's scripts: while watching (:browser-build :watch) /js/main.js;
-   built, the files the release build's manifest lists, their names hashed."
-  [{:keys [browser-build] {:keys [files-folder]} :page}]
-  (if (= :watch browser-build) ["/js/main.js"] (list-built-files files-folder "js")))
+  "The page's scripts: while watching (:browser-build :watch) /js/main.js,
+   showroom's watched build; built, the files the release build's manifest
+   lists, their names hashed."
+  [{:keys [browser-build] {{:keys [folder]} :files} :page}]
+  (if (= :watch browser-build) ["/js/main.js"] (list-built-files folder "js")))
 
 (defn list-stylesheets
   "The page's stylesheet bundle: while watching /css/main.css; built, the
    hashed one its manifest lists."
-  [{:keys [browser-build] {:keys [files-folder]} :page}]
-  (if (= :watch browser-build) ["/css/main.css"] (list-built-files files-folder "css")))
+  [{:keys [browser-build] {{:keys [folder]} :files} :page}]
+  (if (= :watch browser-build) ["/css/main.css"] (list-built-files folder "css")))
 
 (defn make-browser-settings
   "What the browser needs to start: the version, the three addresses and
-   the ws reopen delay (from the :server settings), the pages."
-  [{:keys [version] {:keys [addresses ws-reopen-after-ms]} :server} pages]
-  {:version version :addresses addresses :ws-reopen-after-ms ws-reopen-after-ms :pages pages})
+   the sse and ws reopen delays (from the :server settings), the pages."
+  [{:keys [version] {:keys [addresses sse-reconnect-after-ms ws-reopen-after-ms]} :server} pages]
+  {:version version :addresses addresses :sse-reconnect-after-ms sse-reconnect-after-ms
+   :ws-reopen-after-ms ws-reopen-after-ms :pages pages})
 
-(defn make-page-html [{{:keys [title language]} :page} stylesheets scripts browser-settings]
+(defn make-page-html [{{:keys [title language viewport]} :page} stylesheets scripts browser-settings]
   (str "<!doctype html>\n"
        "<html lang=\"" (escape-html language) "\">\n<head>\n"
        "<meta charset=\"utf-8\">\n"
-       "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+       "<meta name=\"viewport\" content=\"" (escape-html viewport) "\">\n"
        "<title>" (escape-html title) "</title>\n"
        (str/join (map #(str "<link rel=\"stylesheet\" href=\"" (escape-html %) "\">\n") stylesheets))
        "<script type=\"application/json\" id=\"groundwork-settings\">"
@@ -68,13 +78,13 @@
        (str/join (map #(str "<script src=\"" (escape-html %) "\" defer></script>\n") scripts))
        "</head>\n<body>\n<div id=\"app\"></div>\n</body>\n</html>\n"))
 
-(defn- make-headers [{{:keys [content-security-policy]} :page}]
+(defn- make-headers [{{:keys [content-security-policy referrer-policy frame-options]} :page}]
   (cond-> {"content-type"           "text/html; charset=utf-8"
            "cache-control"          "no-store"
            "x-content-type-options" "nosniff"
-           "referrer-policy"        "same-origin"
-           "x-frame-options"        "DENY"}
-    (string? content-security-policy) (assoc "content-security-policy" content-security-policy)))
+           "referrer-policy"        referrer-policy}
+    (string? content-security-policy) (assoc "content-security-policy" content-security-policy)
+    (string? frame-options)           (assoc "x-frame-options" frame-options)))
 
 (defn make-page-handler
   "A Ring handler answering every page address with the shell, made once."

@@ -50,8 +50,9 @@
 
 (def ^:private handlers
   {:orders/count {:action :orders/see :params-shape [:map] :answer-shape :int :rate-limit {:max 2 :per-ms 60000}
+                  :run-steps-in nil
                   :steps  [{:name :answer-count :enter #(mailroom/add-answer-to-context % 0)}]}
-   :orders/all {:action :orders/see :params-shape [:map] :answer-shape [:vector :uuid]
+   :orders/all {:action :orders/see :params-shape [:map] :answer-shape [:vector :uuid] :rate-limit nil :run-steps-in nil
                 :steps  [{:name  :answer-all-orders
                           :enter #(mailroom/add-answer-to-context
                                    % (mapv :order/id (database/find-rows (:doorman/transaction %) find-all-orders {})))}]}})
@@ -77,16 +78,19 @@
   {:version           "test-1"
    :migrate-at-start? false
    :browser-build     :built
-   :server            {:ip "127.0.0.1" :port 0 :client-address-header nil
+   :server            {:ip "127.0.0.1" :port 0 :proxy-protocol :disable :client-address-header nil :server-header nil
+                       :max-body-bytes 8388608 :max-header-line-bytes 8192 :max-ws-message-bytes 4194304
                        :addresses {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"}
-                       :ping-every-ms 25000 :stop-wait-ms 10000 :ws-reopen-after-ms 1000
+                       :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
+                       :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
                        :rate-limit-buckets-before-cleanup 10000}
    :database          (make-database-settings user)
    :sessions          {:cookie-name "groundwork_session" :session-days 1 :renew-after-minutes 60
                        :allowed-origin "http://app.test" :secure-cookie? false}
    :background-jobs   {:workers 1 :poll-ms 1000}
-   :page              {:title "Shops <test>" :language "en"
-                       :content-security-policy :none :files-folder files-folder}})
+   :page              {:title "Shops <test>" :language "en" :viewport "width=device-width, initial-scale=1"
+                       :content-security-policy :none :referrer-policy "same-origin" :frame-options "DENY"
+                       :files {:folder files-folder :hashed-name-min-hex-digits 8 :hashed-file-cache-seconds 31536000}}})
 
 (defn- make-app [user]
   {:settings (make-settings user) :tables [shops orders] :changes [] :scope-kinds scope-kinds
@@ -160,12 +164,22 @@
                 (is (str/includes? html "<title>Shops &lt;test&gt;</title>"))
                 (is (str/includes? html "\"version\":\"test-1\""))
                 (is (str/includes? html "\"ws-reopen-after-ms\":1000") "the ws reopen delay, from the :server settings")
+                (is (str/includes? html "\"sse-reconnect-after-ms\":3000") "and the sse one")
+                (is (str/includes? html "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"))
                 (is (str/includes? html "\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}"))
                 (is (str/includes? html "\"sse\":\"/groundwork/sse\""))
                 (is (str/includes? html "<script src=\"/js/main.0A1B2C3D4E5F.js\" defer></script>")
                     "the script the build's manifest lists")
                 (is (str/includes? html "<link rel=\"stylesheet\" href=\"/css/main.9F8E7D6C5B4A.css\">")
                     "the stylesheet bundle its manifest lists")))
+            (testing "the shell's headers: fixed ones and the :page settings'"
+              (let [headers (.headers (.send (HttpClient/newHttpClient)
+                                             (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/orders/42"))))
+                                             (HttpResponse$BodyHandlers/discarding)))
+                    header  #(.orElse (.firstValue headers %) nil)]
+                (is (= ["no-store" "nosniff" "same-origin" "DENY" nil]
+                       (map header ["cache-control" "x-content-type-options" "referrer-policy" "x-frame-options"
+                                    "content-security-policy"])))))
             (testing "files: a hashed one is kept for a year, any other asked again"
               (let [response (.send (HttpClient/newHttpClient)
                                     (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/js/main.0A1B2C3D4E5F.js"))))
