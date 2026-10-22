@@ -1,10 +1,12 @@
-;; groundwork.transport: the server, and http, sse and ws over it; uses groundwork.steps and groundwork.wire.
+;; groundwork.transport: the server, http, sse and ws, and the routes (reitit); uses groundwork.steps and groundwork.wire.
 ;; Its tests, here, see nothing else:   clojure -X:test
 {:paths ["source-code"]
 
  :deps
  {org.clojure/clojure                     {:mvn/version "1.12.6"}
   http-kit/http-kit                       {:mvn/version "2.8.1"}
+  metosin/reitit-ring                     {:mvn/version "0.11.0"}
+  metosin/reitit-frontend                 {:mvn/version "0.11.0"}
   io.github.p4ulcristian/groundwork-steps {:local/root "../steps"}
   io.github.p4ulcristian/groundwork-wire  {:local/root "../wire"}}
 

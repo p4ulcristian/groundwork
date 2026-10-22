@@ -12,6 +12,7 @@
      (transport/open-sse-line! shapes-by-name {:bells/changed on-bell})"
   (:require
    [groundwork.transport.browser-code.http :as http]
+   [groundwork.transport.browser-code.routes :as routes]
    [groundwork.transport.browser-code.sse :as sse]
    [groundwork.transport.browser-code.ws :as ws]))
 
@@ -53,3 +54,23 @@
   "ws: closes the line; it doesn't reopen."
   [line]
   (ws/close-ws-line! line))
+
+;; -----------------------------------------------------------------------------
+;; Pages: the address in the bar leads to a page, by name
+
+(defn start-following-address!
+  "Follows the address bar: (on-page {:name … :page … :path-params … :query …})
+   now and on every move, nil for an address no page has. The page's :title
+   becomes the tab's title."
+  [pages on-page]
+  (routes/start-following-address! pages on-page))
+
+(defn go-to-page!
+  "Moves to the page with this name and path params; Back returns."
+  ([page-name] (routes/go-to-page! page-name))
+  ([page-name path-params] (routes/go-to-page! page-name path-params)))
+
+(defn make-address-of-page
+  "A page's address, for a link."
+  ([page-name] (routes/make-address-of-page page-name))
+  ([page-name path-params] (routes/make-address-of-page page-name path-params)))

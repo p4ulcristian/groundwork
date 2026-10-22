@@ -7,6 +7,10 @@ three addresses Groundwork owns.
 - **sse** `/groundwork/sse`: the server stream, messages to the browser (bells).
 - **ws** `/groundwork/ws`: a websocket, messages both ways.
 
+Routes, with reitit: transport's three addresses, and the app's pages (a
+map by name both sides read) answered when opened fresh; any other address
+is a 404. In the browser, the address in the bar leads to a page by name.
+
 A message is a map of names to data, `{:orders/of-shop {:shop/id 7}}`. The
 server answers it from one handler table by name, whichever pipe it came on,
 each name apart; the browser hands what the server sends to its own handler
@@ -18,10 +22,11 @@ it back with the same shapes. The addresses are a setting (`default-addresses`).
 Needs http-kit, groundwork.steps and groundwork.wire. API:
 `groundwork.transport.api`, a pair: `api.clj` (`default-addresses`,
 `make-routes-for-messages`, `start-server!`, `stop-server!`,
-`send-message-on-sse-line!`, `send-message-on-ws-line!`, `is-line-open?`)
+`send-message-on-sse-line!`, `send-message-on-ws-line!`, `is-line-open?`,
+`answer-message`, `make-server-routes-for-pages`, `make-ring-handler-from-routes`)
 and `api.cljs` (`default-addresses`, `send-message!`, `open-sse-line!`,
 `close-sse-line!`, `open-ws-line!`, `send-message-on-ws-line!`,
-`close-ws-line!`). Decisions: [`decisions/`](decisions/README.md).
+`close-ws-line!`, `start-following-address!`, `go-to-page!`, `make-address-of-page`). Decisions: [`decisions/`](decisions/README.md).
 
 ```clojure
 ;; server

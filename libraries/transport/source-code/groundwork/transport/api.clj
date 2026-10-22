@@ -13,7 +13,7 @@
      (def handlers {:orders/of-shop {:steps [find-orders-of-shop add-orders-answer]}})
 
      (transport/start-server!
-      (routes/make-ring-handler-from-routes (transport/make-routes-for-messages handlers {}))
+      (transport/make-ring-handler-from-routes (transport/make-routes-for-messages handlers {}))
       {:ip \"0.0.0.0\" :port 8080})
 
    A line (an open sse or ws connection) is
@@ -21,6 +21,7 @@
   (:require
    [groundwork.transport.server-code.http :as http]
    [groundwork.transport.server-code.messages :as messages]
+   [groundwork.transport.server-code.routes :as routes]
    [groundwork.transport.server-code.server :as server]
    [groundwork.transport.server-code.sse :as sse]
    [groundwork.transport.server-code.ws :as ws]
@@ -31,7 +32,7 @@
   {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"})
 
 (defn make-routes-for-messages
-  "The three routes, as reitit data, for groundwork.routes to serve.
+  "The three routes, as reitit data, for make-ring-handler-from-routes.
    Options: :addresses (default-addresses), :on-sse-open, :on-sse-close,
    :on-ws-open, :on-ws-close (each (fn [line])), :ping-every-ms (25000)."
   [handlers {:keys [addresses] :or {addresses default-addresses} :as options}]
@@ -73,3 +74,18 @@
    (its cookie, its origin)."
   [handlers request message]
   (messages/answer-named-messages handlers request message))
+
+;; -----------------------------------------------------------------------------
+;; Routes
+
+(defn make-server-routes-for-pages
+  "A GET route for each page, answered by page-handler, so a page opened
+   fresh or reloaded works."
+  [pages page-handler]
+  (routes/make-server-routes-for-pages pages page-handler))
+
+(defn make-ring-handler-from-routes
+  "The one Ring handler, from reitit routes. No route: 404; a method the
+   route doesn't have: 405."
+  [routes]
+  (routes/make-ring-handler-from-routes routes))

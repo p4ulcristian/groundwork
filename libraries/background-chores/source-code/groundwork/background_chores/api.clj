@@ -20,7 +20,7 @@
                                              :poll-ms   1000})
 
    A chore is a row in groundwork.chores; its tables are maps
-   (chores-tables) the app passes to groundwork.schema with its own. Every :poll-ms the workers look for
+   (chores-tables) the app passes to groundwork.database with its own. Every :poll-ms the workers look for
    due chores; each free worker claims one (FOR UPDATE SKIP LOCKED, so no two
    servers run the same one) and runs its kind's :run in one transaction,
    within :timeout-ms. A chore that throws or runs out of time runs again
@@ -36,7 +36,7 @@
   (:require
    [clojure.string :as str]
    [groundwork.background-chores.server-code.cron :as cron]
-   [groundwork.sql.api :as sql]
+   [groundwork.database.api :as database]
    [groundwork.wire.api :as wire])
   (:import
    (java.lang System$Logger System$Logger$Level)
@@ -44,7 +44,7 @@
    (java.util.concurrent ArrayBlockingQueue Semaphore TimeUnit)))
 
 (defn- make-query [file-name]
-  (sql/make-query-from-sql-file (str "groundwork/background_chores/sql_files/" file-name)))
+  (database/make-query-from-sql-file (str "groundwork/background_chores/sql_files/" file-name)))
 
 (def ^:private insert-chore             (make-query "insert_chore.sql"))
 (def ^:private claim-next-chore         (make-query "claim_next_chore.sql"))
@@ -67,7 +67,7 @@
   (subs (str kind-name) 1))
 
 ;; -----------------------------------------------------------------------------
-;; Tables, as maps for groundwork.schema
+;; Tables, as maps for groundwork.database
 
 (def chores-table
   "The queue: one row per chore."
@@ -94,7 +94,7 @@
              [:chore-schedule/next-at :time/instant]]})
 
 (def chores-tables
-  "Both tables, to pass to groundwork.schema with the app's own."
+  "Both tables, to pass to groundwork.database with the app's own."
   [chores-table chore-schedules-table])
 
 ;; -----------------------------------------------------------------------------
@@ -113,7 +113,7 @@
                      {:type   :groundwork.background-chores/bad-params
                       :kind   name
                       :errors (wire/find-errors-in-data-for-shape params-shape params)})))
-   (:chore/id (sql/find-one-row pool-or-transaction insert-chore
+   (:chore/id (database/find-one-row pool-or-transaction insert-chore
                               {:chore/kind         (turn-kind-name-into-text name)
                                :chore/params       (wire/turn-data-into-json-text
                                                   (wire/turn-shaped-data-into-json-data params-shape params))
@@ -153,7 +153,7 @@
                                           params-shape (wire/turn-json-text-into-data params))]
         (when errors
           (throw (ex-info "The chore's params don't fit its shape" {:errors errors})))
-        (sql/run-in-transaction! pool
+        (database/run-in-transaction! pool
           (fn [transaction]
             (run {:transaction transaction :chore-id id :attempt attempts} shaped-data)))
         :ok))
@@ -167,11 +167,11 @@
         result  (deref outcome timeout-ms :timed-out)]
     (when (= :timed-out result) (.interrupt thread))
     (if (= :ok result)
-      (sql/run-statement! pool update-chore-to-done {:chore/id id})
+      (database/run-statement! pool update-chore-to-done {:chore/id id})
       (do
         (when (instance? Throwable result)
           (.log logger System$Logger$Level/WARNING (str "Chore " kind " " id " failed") ^Throwable result))
-        (sql/run-statement! pool update-chore-to-failed
+        (database/run-statement! pool update-chore-to-failed
                             {:chore/id         id
                              :chore/retry-ms   (find-wait-before-retry-ms attempts)
                              :chore/for-good   (and (instance? Throwable result) (does-failure-give-up? result))
@@ -190,13 +190,13 @@
   "Queues the chore of every due schedule this server claims, and moves the
    schedule to its next time."
   [pool schedules-by-key]
-  (sql/run-in-transaction! pool
+  (database/run-in-transaction! pool
     (fn [transaction]
-      (doseq [{key :chore-schedule/key} (sql/find-rows transaction find-due-schedules {})
+      (doseq [{key :chore-schedule/key} (database/find-rows transaction find-due-schedules {})
               :let [{:keys [kind params cron]} (get schedules-by-key key)]
               :when kind]
         (add-chore-to-queue! transaction kind params)
-        (sql/run-statement! transaction update-schedule
+        (database/run-statement! transaction update-schedule
                             {:chore-schedule/key     key
                              :chore-schedule/next-at (turn-instant-into-utc
                                                     (cron/find-next-time-for-cron-line cron (Instant/now)))})))))
@@ -209,10 +209,10 @@
   (while (not @stopped)
     (try
       (add-due-scheduled-chores! pool schedules-by-key)
-      (sql/run-statement! pool update-stuck-chores {})
+      (database/run-statement! pool update-stuck-chores {})
       (loop []
         (when (and (not @stopped) (.tryAcquire free-workers))
-          (if-let [chore (sql/find-one-row pool claim-next-chore {})]
+          (if-let [chore (database/find-one-row pool claim-next-chore {})]
             (do (Thread/startVirtualThread
                  (fn []
                    (try (run-claimed-chore! pool kinds-by-name (update chore :chore/kind keyword))
@@ -253,9 +253,9 @@
                           :stopped          (atom false)
                           :free-workers     (Semaphore. (int workers))
                           :wake             (ArrayBlockingQueue. 1)}]
-    (sql/run-statement! pool delete-old-done-chores {})
+    (database/run-statement! pool delete-old-done-chores {})
     (doseq [[key {:keys [cron]}] schedules-by-key]
-      (sql/run-statement! pool insert-schedule
+      (database/run-statement! pool insert-schedule
                           {:chore-schedule/key     key
                            :chore-schedule/next-at (turn-instant-into-utc
                                                   (cron/find-next-time-for-cron-line cron (Instant/now)))}))
@@ -276,16 +276,16 @@
 (defn list-queued-chores
   "Chores waiting, newest first, at most limit."
   [pool limit]
-  (sql/find-rows pool find-chores-in-state {:chore/state "queued" :limit limit}))
+  (database/find-rows pool find-chores-in-state {:chore/state "queued" :limit limit}))
 
 (defn list-dead-chores
   "Chores that had all their attempts or gave up, with their last error,
    newest first, at most limit."
   [pool limit]
-  (sql/find-rows pool find-chores-in-state {:chore/state "dead" :limit limit}))
+  (database/find-rows pool find-chores-in-state {:chore/state "dead" :limit limit}))
 
 (defn run-chore-again-now!
   "Queues a dead or waiting chore to run now, its attempts counted afresh.
    Whether there was such a chore."
   [pool chore-id]
-  (some? (sql/find-one-row pool update-chore-to-run-again {:chore/id chore-id})))
+  (some? (database/find-one-row pool update-chore-to-run-again {:chore/id chore-id})))

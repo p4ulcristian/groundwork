@@ -5,13 +5,12 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [groundwork.background-chores.api :as background-chores]
-   [groundwork.schema.api :as schema]
-   [groundwork.sql.api :as sql]))
+   [groundwork.database.api :as database]))
 
 (def ^:private port (some-> (System/getenv "GROUNDWORK_SQL_TEST_PORT") parse-long))
 
 (defn- run-sql! [pool text]
-  (sql/run-statement! pool (sql/make-query-from-sql-text "test" text) {}))
+  (database/run-statement! pool (database/make-query-from-sql-text "test" text) {}))
 
 (def ^:private ran (atom []))
 
@@ -38,12 +37,12 @@
 (deftest chores-against-postgres
   (if-not port
     (println "groundwork.background-chores.api-test: skipped, GROUNDWORK_SQL_TEST_PORT is not set")
-    (let [pool (sql/start-pool! {:host "localhost" :port port :database "postgres"
+    (let [pool (database/start-pool! {:host "localhost" :port port :database "postgres"
                                  :user (System/getenv "GROUNDWORK_SQL_TEST_USER") :password nil
                                  :tls :off :pool-size 4 :statement-timeout-ms 5000 :time-zone "UTC"})]
       (try
         (with-out-str (run-sql! pool "DROP SCHEMA IF EXISTS groundwork CASCADE")
-                      @(:slow-part (schema/migrate! pool background-chores/chores-tables [])))
+                      @(:slow-part (database/migrate! pool background-chores/chores-tables [])))
         (let [workers (background-chores/start-workers! pool {:kinds [say-hello give-up] :schedules []
                                                             :workers 2 :poll-ms 100})]
           (try
@@ -63,4 +62,4 @@
               (is (= (background-chores/add-chore-to-queue! pool say-hello {:order/id 1} {:key "k" :run-in-ms 60000})
                      (background-chores/add-chore-to-queue! pool say-hello {:order/id 1} {:key "k" :run-in-ms 60000}))))
             (finally (background-chores/stop-workers! workers))))
-        (finally (sql/stop-pool! pool))))))
+        (finally (database/stop-pool! pool))))))

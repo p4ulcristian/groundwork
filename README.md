@@ -11,18 +11,17 @@ decisions in `decisions/`. A library that uses another lists it in its own
 else. A library uses only libraries in a lower layer (no circles); main's
 layers test checks it.
 
-| library | api | what it is |
+| library | api | the question it answers |
 |---|---|---|
-| wire | `groundwork.wire.api` | how shaped data travels as text and comes back as what it was |
-| steps | `groundwork.steps.api` | work as a list of steps over one map, until one adds an answer |
-| transport | `groundwork.transport.api` | named messages over http, sse and ws, at Groundwork's three addresses |
-| routes | `groundwork.routes.api` | pages by name on both sides, and the one Ring handler (reitit) |
-| sql | `groundwork.sql.api` | Postgres through a pool; every query a `.sql` file |
-| background-chores | `groundwork.background-chores.api` | a queue, workers and schedules in Postgres |
-| schema | `groundwork.schema.api` | tables as maps; Postgres brought to them |
-| sessions | `groundwork.sessions.api` | who is asking: a session in Postgres, a cookie in the browser |
-| access | `groundwork.access.api` | who may see and do what (who belongs where, sentences into SQL, the check, the gates, the leak test) |
-| main | `groundwork.main.api` | puts the libraries together; lists every one it uses |
+| wire | `groundwork.wire.api` | how does data keep its types? |
+| steps | `groundwork.steps.api` | how is work written? |
+| database | `groundwork.database.api` | how do I talk to Postgres, and shape its tables? |
+| transport | `groundwork.transport.api` | how do browser and server talk, at which addresses? |
+| auth | `groundwork.auth.api` | who is asking, and what may they do? |
+| background-chores | `groundwork.background-chores.api` | what runs later? |
+| main | `groundwork.main.api` | how does it all start? (puts the others together) |
+
+Still to come: sync (how do screens stay current?) and browser-build (what does the browser download?).
 
 ```sh
 clojure -X:test                          # every library's tests, from here

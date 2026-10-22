@@ -1,16 +1,13 @@
 (ns groundwork.main.api
   "Groundwork's main library: the one an app requires first, which puts the
-   other libraries together. Today: groundwork.wire, groundwork.steps, and on
-   the server groundwork.transport, groundwork.routes, groundwork.sql, groundwork.background-chores,
-   groundwork.schema, groundwork.sessions and groundwork.access;
-   main grows as libraries are added."
+   other libraries together. Today: groundwork.wire, groundwork.steps and
+   groundwork.transport on both sides; groundwork.database, groundwork.auth
+   and groundwork.background-chores on the server. main grows as libraries
+   are added."
   (:require
    [groundwork.steps.api]
-   #?(:clj [groundwork.background-chores.api])
-   #?(:clj [groundwork.access.api])
-   #?(:clj [groundwork.schema.api])
-   #?(:clj [groundwork.sessions.api])
-   #?(:clj [groundwork.sql.api])
-   [groundwork.routes.api]
    [groundwork.transport.api]
-   [groundwork.wire.api]))
+   [groundwork.wire.api]
+   #?(:clj [groundwork.auth.api])
+   #?(:clj [groundwork.background-chores.api])
+   #?(:clj [groundwork.database.api])))

@@ -5,7 +5,7 @@ workers (they claim due chores, run them, retry a failure, and let a chore give
 up for good), and schedules (cron lines in UTC that queue a chore at their
 times).
 
-Needs groundwork.sql and groundwork.wire. API: `groundwork.background-chores.api`
+Needs groundwork.database and groundwork.wire. API: `groundwork.background-chores.api`
 (`chores-tables`, `add-chore-to-queue!`, `make-give-up-exception`,
 `start-workers!`, `stop-workers!`, `list-queued-chores`, `list-dead-chores`,
 `run-chore-again-now!`). Its queries are in `sql_files/`; cron lines in
@@ -21,7 +21,7 @@ Needs groundwork.sql and groundwork.wire. API: `groundwork.background-chores.api
    :timeout-ms   60000
    :attempts     5})
 
-(schema/migrate! pool (into app-tables background-chores/chores-tables) changes)
+(database/migrate! pool (into app-tables background-chores/chores-tables) changes)
 (def workers (background-chores/start-workers! pool {:kinds [send-invoice-email] :schedules []
                                                      :workers 4 :poll-ms 1000}))
 
@@ -34,5 +34,5 @@ Needs groundwork.sql and groundwork.wire. API: `groundwork.background-chores.api
 clojure -X:test     # in this folder; the Postgres tests are skipped without a database
 ```
 
-With a throwaway Postgres, as in [groundwork.sql's README](../sql/README.md).
+With a throwaway Postgres, as in [groundwork.database's README](../sql/README.md).
 A chore that gives up logs its warning during the tests; that is expected.

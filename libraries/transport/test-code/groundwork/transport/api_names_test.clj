@@ -13,5 +13,7 @@
            send-message-on-sse-line!
            send-message-on-ws-line!
            is-line-open?
-           answer-message}
+           answer-message
+           make-server-routes-for-pages
+           make-ring-handler-from-routes}
          (set (keys (ns-publics 'groundwork.transport.api))))))
