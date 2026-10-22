@@ -1,5 +1,7 @@
 # The question store v1
 
+> **Changed in part** by [sync tells by table and trusts the gates](../../2026-10-22-sync-tells-by-table-and-trusts-the-gates.md) (2026-10-22): `{:sync/changed …}` carries no `:ids` any more, so a screen of one record is asked again on any change to its table by design, not for now.
+
 > Builds on [The browser keeps answers by question](../../2026-10-12-the-browser-keeps-answers-by-question.md), [Asking again, and bells that miss nothing](../../2026-10-14-asking-again-and-bells-that-miss-nothing.md) and [Nothing asks before the start](../../2026-10-13-nothing-asks-before-the-start.md).
 
 **Decision:** groundwork.browser.sync keeps every answer under its question, `[name params]`, with the tables the server's notes say it was read from.

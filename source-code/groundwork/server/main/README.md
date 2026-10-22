@@ -28,4 +28,5 @@ API: `groundwork.server.main.api` (`settings-shape`, `page-settings-shape`,
 
 Its test starts the whole server as production does (`migrate-app!` as the
 owner, `start-app!` as a role that owns nothing) and follows a new order
-through sync to the right sse lines.
+through sync to every open sse line, as only its table, and each person's
+asking again through the gates to only their own shop's orders.

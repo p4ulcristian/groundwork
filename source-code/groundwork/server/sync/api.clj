@@ -2,29 +2,27 @@
   "Keeping what screens show in step with the database. The api of
    groundwork.server.sync; the browser's side is groundwork.browser.sync.
 
-   1. Every table map says how its changes reach screens (:sync :by-access,
-      :everyone or [:silent \"why\"]); put-sync-on-tables checks that and
-      gives the tables that tell their triggers, which call one Postgres
-      function (install-sync-function!) after every statement.
+   1. Every table map says whether its changes reach screens (:sync :tell or
+      [:silent \"why\"]); put-sync-on-tables checks that and gives the
+      tables that tell their triggers, which call one Postgres function
+      (install-sync-function!) after every statement.
    2. Postgres tells every listening server, when a transaction commits,
-      which rows of which table changed. start-sync! listens, and tells each
-      open sse line whose person may read one of the rows:
+      which table changed: no ids, no values. start-sync! listens, and tells
+      every open sse line, once per table in what it gathered:
 
-        {:sync/changed {:table \"orders\" :ids [\"…\"]}}
+        {:sync/changed {:table \"orders\"}}
 
       After a break in listening, every line is told {:sync/missed {}}:
       something may have changed unheard.
    3. Every answer says the tables it was read from (put-sync-into-handlers),
-      so the browser asks again only the questions a change touches.
-
-   The server invalidates nothing; the browser decides what to ask again.
+      so the browser asks again only the questions a change touches; the
+      gates decide what each asker gets. Sync decides no one's access.
 
      (sync/install-sync-function! owner-pool)
-     (database/migrate! owner-pool (sync/put-sync-on-tables tables scope-kinds) changes)
-     (def sync (sync/start-sync! pool {:tables tables :scope-kinds scope-kinds :find-session-step find-session}))
+     (database/migrate! owner-pool (sync/put-sync-on-tables tables) changes)
+     (def sync (sync/start-sync! pool))
      ;; mailroom's :on-sse-open #(sync/add-sse-line! sync %), :on-sse-close #(sync/remove-sse-line! sync %)"
   (:require
-   [groundwork.server.access.api :as access]
    [cellar.api :as database]
    [mailroom.api :as mailroom]
    [groundwork.server.sync.tables :as tables]
@@ -42,7 +40,7 @@
 
 (defn check-sync-of-tables
   "Throws with every problem at once: a table that says nothing about sync,
-   :by-access without :access sentences, [:silent] without a reason."
+   [:silent] without a reason, a value that is neither."
   [tables]
   (tables/check-sync-of-tables tables))
 
@@ -50,9 +48,9 @@
   "The table maps, checked (check-sync-of-tables), each that tells given
    :on-change: the triggers cellar makes.
 
-     (database/migrate! owner-pool (sync/put-sync-on-tables tables scope-kinds) changes)"
-  [tables scope-kinds]
-  (tables/put-on-change-on-tables tables (access/list-readers-of-tables tables scope-kinds)))
+     (database/migrate! owner-pool (sync/put-sync-on-tables tables) changes)"
+  [tables]
+  (tables/put-on-change-on-tables tables))
 
 (defn- turn-key-into-text [k] (subs (str k) 1))
 
@@ -80,56 +78,35 @@
 ;; -----------------------------------------------------------------------------
 ;; Lines and listening
 
-(defn- find-person-id [find-session-step request]
-  (let [context (mailroom/run-steps-until-answered [find-session-step] {:mailroom/request request})]
-    (when-not (mailroom/does-context-have-answer? context)
-      (:groundwork.server.sessions/person-id context))))
-
 (defn add-sse-line!
-  "Keeps an sse line that has just opened, with the person its session
-   names (nil for a visitor), to tell of changes. For mailroom's :on-sse-open."
-  [{:keys [lines find-session-step]} line]
-  (swap! lines assoc (:mailroom/channel line)
-         {:line line :person-id (find-person-id find-session-step (:mailroom/request line))}))
+  "Keeps an sse line that has just opened, to tell of changes. For
+   mailroom's :on-sse-open."
+  [{:keys [lines]} line]
+  (swap! lines assoc (:mailroom/channel line) line))
 
 (defn remove-sse-line!
   "Forgets a line that has closed. For mailroom's :on-sse-close."
   [{:keys [lines]} line]
   (swap! lines dissoc (:mailroom/channel line)))
 
-(defn- tell-line! [{:keys [line]} message]
-  (mailroom/send-message-on-sse-line! line message))
+(defn- tell-every-line! [{:keys [lines]} message]
+  (doseq [line (vals @lines)]
+    (mailroom/send-message-on-sse-line! line message)))
 
-(defn- tell-of-notifications! [{:keys [pool rules lines]} notifications]
-  (let [open (vals @lines)]
-    (doseq [change (telling/merge-changes (map (comp telling/turn-payload-into-change :payload) notifications))
-            :let [rule (get rules (:table change))]
-            :when rule
-            told (telling/find-told-lines pool rule change open)]
-      (tell-line! told (telling/make-message change)))))
-
-(defn- tell-everyone-of-missed! [{:keys [lines]}]
-  (doseq [told (vals @lines)]
-    (tell-line! told {:sync/missed {}})))
+(defn- tell-of-notifications! [sync notifications]
+  (doseq [table (telling/list-changed-tables (map :payload notifications))]
+    (tell-every-line! sync (telling/make-message table))))
 
 (defn start-sync!
-  "Listens for changes and tells the open lines. Setup: :tables (the app's
-   table maps), :scope-kinds, :find-session-step (from groundwork.server.sessions).
-   Holds one connection of the pool. Returns the sync, for add-sse-line!,
-   remove-sse-line! and stop-sync!."
-  [pool {:keys [tables scope-kinds find-session-step]}]
-  (tables/check-sync-of-tables tables)
-  (let [readers (access/list-readers-of-tables tables scope-kinds)
-        sync    {:pool              pool
-                 :lines             (atom {})
-                 :find-session-step find-session-step
-                 :rules             (into {} (for [{:keys [table sync]} tables
-                                                   :when (tables/is-table-told? {:sync sync})]
-                                               [table (if (= :everyone sync) :everyone (get readers table))]))}]
+  "Listens for changes and tells every open line. Holds one connection of
+   the pool. Returns the sync, for add-sse-line!, remove-sse-line! and
+   stop-sync!."
+  [pool]
+  (let [sync {:lines (atom {})}]
     (assoc sync :listener
            (database/start-listening! pool "groundwork_sync"
                                       {:on-notifications #(tell-of-notifications! sync %)
-                                       :on-reconnect     #(tell-everyone-of-missed! sync)}))))
+                                       :on-reconnect     #(tell-every-line! sync {:sync/missed {}})}))))
 
 (defn stop-sync!
   "Stops listening; the lines stay open until the server stops."

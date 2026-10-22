@@ -15,7 +15,7 @@
 ;; any library on either side may use it, through mailroom.api only.
 {:server  {:sessions        #{}
            :access          #{}
-           :sync            #{:access}
+           :sync            #{}
            :main            #{:sessions :access :sync}}
  :browser {:sync      #{}
            :main      #{:sync}}}

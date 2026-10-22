@@ -1,5 +1,7 @@
 # Asking again, and bells that miss nothing
 
+> **Changed in part** by [sync tells by table and trusts the gates](2026-10-22-sync-tells-by-table-and-trusts-the-gates.md) (2026-10-22): a table that tells tells every open screen (`:sync :tell`), not the people of a scope or a person.
+
 > **Changed in part** by [sync keeps screens in step with the database](2026-10-22-sync-keeps-screens-in-step.md) (2026-10-22): bells are called sync, made by groundwork.schema (the trigger) and groundwork.sync (the rest); rate limits are transport's.
 
 > **Changed in part** by [A table is one map](2026-10-22-a-table-is-one-map.md) (2026-10-22): how a table rings is said on its map.

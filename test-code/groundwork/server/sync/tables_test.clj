@@ -1,60 +1,32 @@
 (ns groundwork.server.sync.tables-test
   (:require
-   [clojure.test :refer [deftest is testing]]
-   [groundwork.server.access.api :as access]
+   [clojure.test :refer [deftest is]]
    [groundwork.server.sync.api :as sync]
    [groundwork.server.sync.telling :as telling]))
 
-(def ^:private scope-kinds
-  (access/check-scope-kinds
-   {:shop {:table :shops :actions {:orders/see #{:read} :orders/edit #{:read :insert :update}} :roles {}}}))
-
-(def ^:private shops {:table :shops :columns [[:shop/id :uuid {:primary-key? true}]] :access :public :sync :everyone})
-
-(def ^:private orders
-  {:table   :orders
-   :columns [[:order/id :uuid {:primary-key? true}]
-             [:order/shop-id :uuid {:references :shop/id}]
-             [:order/customer-id :uuid]]
-   :access  [{:allow #{:orders/see :orders/edit} :to [:member :order/shop-id]}
-             {:allow :orders/see :to [:me :order/customer-id]}]
-   :sync    :by-access})
+(def ^:private shops {:table :shops :columns [[:shop/id :uuid {:primary-key? true}]] :sync :tell})
 
 (deftest every-table-says-how-it-syncs
   (let [problems (try (sync/check-sync-of-tables [(dissoc shops :sync)
-                                                  (dissoc orders :access)
                                                   {:table :logs :sync [:silent ""]}
-                                                  {:table :odd :sync :sometimes}])
+                                                  {:table :odd :sync :everyone}])
                       (catch clojure.lang.ExceptionInfo e (:problems (ex-data e))))]
-    (is (= 4 (count problems)) "every problem at once")
+    (is (= 3 (count problems)) "every problem at once")
     (is (re-find #":shops says nothing" (first problems)))
-    (is (re-find #"no :access" (second problems)))))
+    (is (re-find #"without saying why" (second problems)))
+    (is (re-find #"neither :tell nor" (nth problems 2)) "the old values are gone")))
 
 (deftest a-table-that-tells-gets-its-triggers
-  (let [[shops-ready orders-ready] (sync/put-sync-on-tables [shops orders] scope-kinds)]
-    (is (= {:function "groundwork.tell_sync" :arguments ["shop__id"]} (:on-change shops-ready))
-        ":everyone: only the id")
-    (is (= {:function "groundwork.tell_sync" :arguments ["order__id" "order__shop_id" "order__customer_id"]}
-           (:on-change orders-ready))
-        ":by-access: the id and the columns the readers name"))
-  (is (nil? (:on-change (first (sync/put-sync-on-tables [{:table :logs :sync [:silent "nobody reads logs live"]}] scope-kinds))))))
+  (let [[shops-ready logs-ready] (sync/put-sync-on-tables [shops {:table :logs :sync [:silent "nobody reads logs live"]}])]
+    (is (= {:function "groundwork.tell_sync" :arguments []} (:on-change shops-ready))
+        "no arguments: the trigger tells only the table")
+    (is (nil? (:on-change logs-ready)))))
 
-(deftest a-payload-is-read-as-postgres-wrote-it
-  (is (= {:table :orders :ids #{"a"} :columns {"order__shop_id" #{"7"} "order__customer_id" #{}} :all? false}
-         (telling/turn-payload-into-change
-          "{\"folder\":\"public\",\"table\":\"orders\",\"ids\":[\"a\"],\"columns\":{\"order__shop_id\":[\"7\"],\"order__customer_id\":[]}}"))
-      "column names stay as Postgres names them, the names the readers hold")
-  (is (= {:table :groundwork/sessions :ids nil :columns {} :all? true}
-         (telling/turn-payload-into-change "{\"folder\":\"groundwork\",\"table\":\"sessions\",\"all\":true}"))
-      "too many rows: no ids, no columns"))
-
-(deftest changes-of-one-batch-are-joined-by-table
-  (let [changes (telling/merge-changes
-                 [(telling/turn-payload-into-change "{\"folder\":\"public\",\"table\":\"orders\",\"ids\":[\"a\"],\"columns\":{\"order__shop_id\":[\"7\"]}}")
-                  (telling/turn-payload-into-change "{\"folder\":\"public\",\"table\":\"orders\",\"ids\":[\"b\"],\"columns\":{\"order__shop_id\":[\"9\"]}}")])]
-    (is (= [{:table :orders :ids #{"a" "b"} :columns {"order__shop_id" #{"7" "9"}} :all? false}] changes))
-    (is (= {:sync/changed {:table "orders" :ids ["a" "b"]}} (telling/make-message (first changes))))
-    (is (= {:sync/changed {:table "orders"}}
-           (telling/make-message (first (telling/merge-changes
-                                         [(telling/turn-payload-into-change "{\"folder\":\"public\",\"table\":\"orders\",\"all\":true}")]))))
-        "too many rows to list: only the table")))
+(deftest a-batch-tells-each-changed-table-once
+  (let [tables (telling/list-changed-tables
+                ["{\"folder\":\"public\",\"table\":\"orders\"}"
+                 "{\"folder\":\"groundwork\",\"table\":\"sessions\"}"
+                 "{\"folder\":\"public\",\"table\":\"orders\"}"])]
+    (is (= [:orders :groundwork/sessions] tables))
+    (is (= {:sync/changed {:table "orders"}} (telling/make-message (first tables))))
+    (is (= {:sync/changed {:table "groundwork/sessions"}} (telling/make-message (second tables))))))

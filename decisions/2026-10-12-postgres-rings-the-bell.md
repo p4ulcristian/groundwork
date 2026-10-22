@@ -1,5 +1,7 @@
 # Postgres rings the bell
 
+> **Changed in part** by [sync tells by table and trusts the gates](2026-10-22-sync-tells-by-table-and-trusts-the-gates.md) (2026-10-22): the trigger announces only the table, with no scopes or ids, and every open screen hears it; a screen reading that table asks again, and the gates decide what it gets.
+
 > **Changed in part** by [sync keeps screens in step with the database](2026-10-22-sync-keeps-screens-in-step.md) (2026-10-22): bells are called sync, made by groundwork.schema (the trigger) and groundwork.sync (the rest); rate limits are transport's.
 
 > **Changed in part** by [Three ways between browser and server](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-three-ways-between-browser-and-server.md) (2026-10-22): bells reach the browser over a server stream (SSE), not a websocket.

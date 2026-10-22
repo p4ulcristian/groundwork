@@ -17,9 +17,9 @@ Each word in a Groundwork name means one thing, everywhere. See
 | background job | one piece of work saved in Postgres to run outside a request, by a worker (never "job" alone: Iron Rainbow's job is a coating job); [backroom](https://github.com/p4ulcristian/backroom) queues and runs them |
 | answer | what the work returns; once the context has one, no more steps run |
 | http | a request from the browser and the server's one answer: all data travels this way; [mailroom](https://github.com/p4ulcristian/mailroom) carries http, sse and ws |
-| sse | the server stream (Server-Sent Events): one answer per tab that stays open; carries bells, never data |
+| sse | the server stream (Server-Sent Events): one answer per tab that stays open; carries sync's messages, never data |
 | ws | a websocket: both sides talk fast, for features that need it |
-| sync | keeping what screens show in step with the database: a changed row is told to the screens that may show it, and they ask again (not "bells") |
+| sync | keeping what screens show in step with the database: every open screen is told which table changed (never which row), and those showing something read from it ask again, through the gates (not "bells") |
 | table map | a table declared as a Clojure map (`{:table :orders :columns [...]}`); [cellar](https://github.com/p4ulcristian/cellar) brings Postgres to what the maps say |
 | browser build | the app's ClojureScript compiled for the browser: watched in development, built once by the deploy, with the stylesheet bundle; [showroom](https://github.com/p4ulcristian/showroom) makes it, never in production |
 | stylesheet | a plain `.css` file next to the namespace that names it with `(def order-card-styles (styles/use-stylesheet "app/orders/order_card.css"))`, as a query names its `.sql` file; [showroom](https://github.com/p4ulcristian/showroom) bundles them |

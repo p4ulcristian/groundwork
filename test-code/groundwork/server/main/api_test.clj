@@ -1,8 +1,9 @@
 (ns groundwork.server.main.api-test
   "The whole server, started as production starts it: migrate-app! as the
    owner, then start-app! as a role that owns nothing. The page shell, a
-   message with its notes, and sync: a new order reaches the sse line of
-   the shop's member and not another shop's owner. Runs when
+   message with its notes, and sync: a new order is told to every open sse
+   line as only its table, and each person's asking again sees, through the
+   gates, only their own shop's orders. Runs when
    GROUNDWORK_SQL_TEST_PORT is set."
   (:require
    [clojure.java.io :as io]
@@ -28,14 +29,14 @@
            :roles   {"Staff" #{:orders/see :orders/edit}}}}))
 
 (def ^:private shops
-  {:table :shops :columns [[:shop/id :uuid {:primary-key? true}]] :access :public :sync :everyone})
+  {:table :shops :columns [[:shop/id :uuid {:primary-key? true}]] :access :public :sync :tell})
 
 (def ^:private orders
   {:table   :orders
    :columns [[:order/id :uuid {:primary-key? true :default :random-uuid}]
              [:order/shop-id :uuid {:references :shop/id}]]
    :access  [{:allow #{:orders/see :orders/edit} :to [:member :order/shop-id]}]
-   :sync    :by-access})
+   :sync    :tell})
 
 (def ^:private paul #uuid "00000000-0000-4000-8000-00000000000a")
 (def ^:private anna #uuid "00000000-0000-4000-8000-00000000000b")
@@ -195,22 +196,39 @@
                         [200 "{\"orders/count\":{\"error\":\"Too many requests.\"}}"]]
                        (repeatedly 3 #(send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/count\":{}}"))))
                 (is (= [200 counted] (send-request server-port "POST" "/groundwork/http" bob-cookie "{\"orders/count\":{}}")))))
-            (testing "sync: each line hears the version first, then the changes its person may read"
-              (let [anna-line (open-sse server-port anna-cookie)
-                    bob-line  (open-sse server-port bob-cookie)]
+            (testing "sync: each line hears the version first, then every changed table, never a row"
+              (let [anna-line  (open-sse server-port anna-cookie)
+                    bob-line   (open-sse server-port bob-cookie)
+                    ask-orders #(send-request server-port "POST" "/groundwork/http" % "{\"orders/all\":{}}")
+                    orders-are #(str "{\"orders/all\":[" (str/join "," (map (fn [id] (str "\"" id "\"")) %))
+                                     "],\"mailroom/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}")]
                 (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data anna-line)))
                 (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data bob-line)))
                 (Thread/sleep 200)
                 (is (= 2 (count (keys @(get-in running [:sync :lines])))))
                 (run-sql! owner-pool (str "INSERT INTO orders VALUES ('" order-71 "', '" shop-7 "')"))
-                (is (= (str "{\"sync/changed\":{\"table\":\"orders\",\"ids\":[\"" order-71 "\"]}}") (read-next-data anna-line)))
+                (is (= "{\"sync/changed\":{\"table\":\"orders\"}}" (read-next-data anna-line)))
+                (is (= "{\"sync/changed\":{\"table\":\"orders\"}}" (read-next-data bob-line))
+                    "Bob hears that orders changed, not which order")
+                (testing "asking again, the gates give each person only their own shop's orders"
+                  (is (= [200 (orders-are [order-71])] (ask-orders anna-cookie)))
+                  (is (= [200 (orders-are [])] (ask-orders bob-cookie)) "shop 7's order never reaches Bob"))
                 (run-sql! owner-pool (str "INSERT INTO orders VALUES ('" order-91 "', '" shop-9 "')"))
-                (is (= (str "{\"sync/changed\":{\"table\":\"orders\",\"ids\":[\"" order-91 "\"]}}") (read-next-data bob-line))
-                    "Bob's next message is his own shop's order: shop 7's never reached him")
-                (testing "a :sync :everyone table tells every line"
+                (is (= "{\"sync/changed\":{\"table\":\"orders\"}}" (read-next-data anna-line)))
+                (is (= "{\"sync/changed\":{\"table\":\"orders\"}}" (read-next-data bob-line)))
+                (is (= [200 (orders-are [order-91])] (ask-orders bob-cookie)))
+                (is (= [200 (orders-are [order-71])] (ask-orders anna-cookie)) "shop 9's order never reaches Anna")
+                (testing "every table that tells, tells every line"
                   (run-sql! owner-pool "INSERT INTO shops VALUES ('10000000-0000-4000-8000-000000000001')")
-                  (is (= "{\"sync/changed\":{\"table\":\"shops\",\"ids\":[\"10000000-0000-4000-8000-000000000001\"]}}" (read-next-data anna-line)))
-                  (is (= "{\"sync/changed\":{\"table\":\"shops\",\"ids\":[\"10000000-0000-4000-8000-000000000001\"]}}" (read-next-data bob-line))))
+                  (is (= "{\"sync/changed\":{\"table\":\"shops\"}}" (read-next-data anna-line)))
+                  (is (= "{\"sync/changed\":{\"table\":\"shops\"}}" (read-next-data bob-line))))
+                (testing "one transaction's statements on one table tell it once"
+                  (database/run-in-transaction! owner-pool
+                    (fn [transaction]
+                      (run-sql! transaction "UPDATE shops SET shop__id = shop__id")
+                      (run-sql! transaction "DELETE FROM shops WHERE shop__id = '10000000-0000-4000-8000-000000000001'")))
+                  (is (= "{\"sync/changed\":{\"table\":\"shops\"}}" (read-next-data anna-line)))
+                  (is (= :nothing (read-next-data anna-line))))
                 (testing "a statement that changed no row tells nobody"
                   (run-sql! owner-pool "UPDATE orders SET order__shop_id = order__shop_id WHERE false")
                   (is (= :nothing (read-next-data anna-line))))

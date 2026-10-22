@@ -83,7 +83,7 @@
   [{:keys [tables scope-kinds]}]
   (-> (into (vec tables) groundwork-tables)
       (access/put-gates-on-tables scope-kinds)
-      (sync/put-sync-on-tables scope-kinds)))
+      (sync/put-sync-on-tables)))
 
 (defn- install-functions-and-migrate! [pool app]
   (access/install-access-functions! pool)
@@ -169,7 +169,7 @@
   "Starts the app (see the namespace). Returns the running app, for stop-app!:
    {:settings :pool :handlers :sync :workers :server}, :server holding the
    :port it listens on."
-  [{:keys [settings scope-kinds background-job-kinds schedules] :as app}]
+  [{:keys [settings background-job-kinds schedules] :as app}]
   (check-settings settings)
   (let [stoppers (atom ())]
     (try
@@ -180,9 +180,7 @@
             find-session-step (sessions/make-find-session-step pool (:sessions settings))
             handlers          (make-ready-handlers pool app find-session-step)
             running-sync      (start-part! stoppers
-                                           #(sync/start-sync! pool {:tables            (make-ready-tables app)
-                                                                    :scope-kinds       scope-kinds
-                                                                    :find-session-step find-session-step})
+                                           #(sync/start-sync! pool)
                                            sync/stop-sync!)
             workers           (start-part! stoppers
                                            #(backroom/start-workers! pool (assoc (:background-jobs settings)

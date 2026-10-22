@@ -11,7 +11,7 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 |---|---|---|
 | server/sessions | `groundwork.server.sessions` | who is asking? |
 | server/access | `groundwork.server.access` | what may they do? |
-| server/sync | `groundwork.server.sync` | how do screens stay current? (who is told of a change) |
+| server/sync | `groundwork.server.sync` | how do screens stay current? (every open screen told which table changed) |
 | server/main | `groundwork.server.main` | how does the server start? (and the page shell) |
 | browser/sync | `groundwork.browser.sync` | how do screens stay current? (answers kept by question, asked again) |
 | browser/main | `groundwork.browser.main` | how does the browser start? |

@@ -149,10 +149,11 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [Asks travel together and run apart](2026-10-12-asks-travel-together-and-run-apart.md)
 - [Each ask fails alone](2026-10-12-each-ask-fails-alone.md)
 - [Three ways between browser and server, each with one job](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-three-ways-between-browser-and-server.md): moved to mailroom with the library, with "The three ways are named http, sse and ws", "web becomes transport and routes" and "Named messages over three addresses"
-- [sync keeps screens in step with the database; rate limits are transport's](2026-10-22-sync-keeps-screens-in-step.md), changed in part by [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md)
-- [Postgres rings the bell](2026-10-12-postgres-rings-the-bell.md), changed in part by [Three ways between browser and server](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-three-ways-between-browser-and-server.md)
-- [Who is rung comes from who may see](2026-10-13-who-is-rung-comes-from-who-may-see.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
-- [Asking again, and bells that miss nothing](2026-10-14-asking-again-and-bells-that-miss-nothing.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)
+- [sync keeps screens in step with the database; rate limits are transport's](2026-10-22-sync-keeps-screens-in-step.md), changed in part by [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md) and [sync tells by table and trusts the gates](2026-10-22-sync-tells-by-table-and-trusts-the-gates.md)
+- [Postgres rings the bell](2026-10-12-postgres-rings-the-bell.md), changed in part by [Three ways between browser and server](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-three-ways-between-browser-and-server.md) and [sync tells by table and trusts the gates](2026-10-22-sync-tells-by-table-and-trusts-the-gates.md)
+- [Who is rung comes from who may see](2026-10-13-who-is-rung-comes-from-who-may-see.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md) and [sync tells by table and trusts the gates](2026-10-22-sync-tells-by-table-and-trusts-the-gates.md)
+- [Asking again, and bells that miss nothing](2026-10-14-asking-again-and-bells-that-miss-nothing.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md) and [sync tells by table and trusts the gates](2026-10-22-sync-tells-by-table-and-trusts-the-gates.md)
+- [sync tells by table and trusts the gates](2026-10-22-sync-tells-by-table-and-trusts-the-gates.md)
 
 ### Server, browser, routing and build
 
