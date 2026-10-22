@@ -639,7 +639,7 @@ POST /parquery
 
 Door: `groundwork.endpoints` (machinery: `groundwork.endpoints.route`, `.http`, `.websocket`, `.wire`).
 
-Decisions: [parquery is the transport](decisions/2026-10-12-parquery-is-the-transport.md) · [parquery is one address](decisions/2026-10-12-parquery-is-one-address.md) · [Asks travel together and run apart](decisions/2026-10-12-asks-travel-together-and-run-apart.md) · [Each ask fails alone](decisions/2026-10-12-each-ask-fails-alone.md) · [JSON and malli on the wire](libs/ground-wire/decisions/2026-10-12-json-and-malli-on-the-wire.md) · [Dates and decimals keep their types in the browser](libs/ground-wire/decisions/2026-10-12-dates-and-decimals-keep-their-types-in-the-browser.md) · [Browser values are typed, and small](libs/ground-wire/decisions/2026-10-19-browser-values-are-typed-small.md) · [An id is text in the browser](libs/ground-wire/decisions/2026-10-14-an-id-is-text-in-the-browser.md).
+Decisions: [parquery is the transport](decisions/2026-10-12-parquery-is-the-transport.md) · [parquery is one address](decisions/2026-10-12-parquery-is-one-address.md) · [Asks travel together and run apart](decisions/2026-10-12-asks-travel-together-and-run-apart.md) · [Each ask fails alone](decisions/2026-10-12-each-ask-fails-alone.md) · [JSON and malli on the wire](libraries/wire/decisions/2026-10-12-json-and-malli-on-the-wire.md) · [Dates and decimals keep their types in the browser](libraries/wire/decisions/2026-10-12-dates-and-decimals-keep-their-types-in-the-browser.md) · [Browser values are typed, and small](libraries/wire/decisions/2026-10-19-browser-values-are-typed-small.md) · [An id is text in the browser](libraries/wire/decisions/2026-10-14-an-id-is-text-in-the-browser.md).
 
 ### Bells
 

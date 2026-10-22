@@ -22,8 +22,8 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 Each library keeps its own decisions, with its own index:
 
-- [ground-steps](../libs/ground-steps/decisions/README.md): work as a vector of steps
-- [ground-wire](../libs/ground-wire/decisions/README.md): what travels between browser and server
+- [ground-steps](../libs/ground-steps/decisions/README.md): work as a vector of steps (not moved into libraries/ yet)
+- [groundwork.wire](../libraries/wire/decisions/README.md): what travels between browser and server
 
 ### What Groundwork is
 

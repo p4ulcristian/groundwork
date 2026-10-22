@@ -1,8 +1,8 @@
 (ns groundwork.endpoints.wire
   "What travels over parquery. How values travel as text lives in the
-   ground-wire library, ground.wire; its vars keep their old names here.
-   What an ask and an answer are is parquery's, and lives here until
-   parquery is its own library:
+   groundwork.wire library (groundwork.wire.clojure-common and its language
+   parts); its functions keep their old names here. What an ask and an answer
+   are is parquery's, and lives here until parquery is its own library:
 
    An ask:     {\"endpoint\": \"jobs/list\", \"params\": {…}, \"key\": \"…\"}   (key: writes)
    An answer:  {\"status\": \"ok\", \"data\": …}
@@ -23,29 +23,30 @@
                {\"watch\": [[\"jobs/list\", {…}], …]}
                {\"changed\": [[\"jobs/list\", {…}], …], \"tag\": \"…\"}   (tag: a write's)"
   (:require
-   [ground.wire :as wire]))
+   [groundwork.wire.clojure-common :as wire]
+   #?(:clj  [groundwork.wire.clojure.time :as time]
+      :cljs [groundwork.wire.clojurescript.time :as time])
+   #?(:clj  [groundwork.wire.clojure.types :as types]
+      :cljs [groundwork.wire.clojurescript.types :as types])))
 
-(def decimal-schema wire/decimal-schema)
-(def registry wire/registry)
 (def schema wire/schema)
-(def transformer wire/transformer)
 (def decode wire/decode)
 (def encode wire/encode)
 (def fits? wire/fits?)
 (def explain wire/explain)
-(def parse-date wire/parse-date)
-(def parse-instant wire/parse-instant)
-(def decimal wire/decimal)
-(def decimal-text wire/decimal-text)
 (def write-json wire/write-json)
 (def read-json wire/read-json)
+(def parse-date time/parse-date)
+(def parse-instant time/parse-instant)
+(def decimal types/decimal)
+(def decimal-text types/decimal-text)
 
-#?(:cljs (def use-exact-decimals! wire/use-exact-decimals!))
-#?(:cljs (def Instant wire/Instant))
-#?(:cljs (def Day wire/Day))
-#?(:cljs (def read-instant wire/read-instant))
-#?(:cljs (def read-day wire/read-day))
-#?(:cljs (def id-text-schema wire/id-text-schema))
+#?(:cljs (def use-exact-decimals! types/use-exact-decimals!))
+#?(:cljs (def Instant time/Instant))
+#?(:cljs (def Day time/Day))
+#?(:cljs (def read-instant time/read-instant))
+#?(:cljs (def read-day time/read-day))
+#?(:cljs (def id-text-schema types/id-text-schema))
 
 ;; =============================================================================
 ;; Messages: parquery's, not the wire's

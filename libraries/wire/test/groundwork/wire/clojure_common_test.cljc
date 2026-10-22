@@ -1,10 +1,14 @@
-(ns ground.wire-test
+(ns groundwork.wire.clojure-common-test
   "The wire format, the same on both sides: values keep their types; an id
    is a UUID on the server and text in the browser."
   (:require
    [clojure.test :refer [deftest is testing]]
-   #?(:cljs [ground.wire.decimal :as decimal])
-   [ground.wire :as wire])
+   [groundwork.wire.clojure-common :as wire]
+   #?(:clj  [groundwork.wire.clojure.time :as time]
+      :cljs [groundwork.wire.clojurescript.time :as time])
+   #?(:clj  [groundwork.wire.clojure.types :as types]
+      :cljs [groundwork.wire.clojurescript.types :as types])
+   #?(:cljs [groundwork.wire.clojurescript.big :as big]))
   #?(:cljs (:import (goog.date Date UtcDateTime))))
 
 (def shape
@@ -14,11 +18,11 @@
 (def id #uuid "7f3c1e2a-0000-4000-8000-000000000001")
 
 (deftest values-travel-as-text-and-come-back-typed
-  #?(:cljs (wire/use-exact-decimals! decimal/big))
+  #?(:cljs (types/use-exact-decimals! big/big))
   (let [value  {:job/id id
-                :job/due   (wire/parse-date "2026-11-15")
-                :job/at    (wire/parse-instant "2026-10-12T10:00:00Z")
-                :job/area  (wire/decimal "12.30")
+                :job/due   (time/parse-date "2026-11-15")
+                :job/at    (time/parse-instant "2026-10-12T10:00:00Z")
+                :job/area  (types/decimal "12.30")
                 :job/stage :curing
                 :job/cents 4200}
         text   (wire/write-json (wire/encode shape value))
@@ -34,7 +38,7 @@
         (is (= "2026-11-15" (str (:job/due back))) "a day stays that day")
         (is (= "2026-10-12T10:00:00Z" (str (:job/at back))) "a moment prints as the text it came as")
         (is (= (:job/at value) (:job/at back)) "and equals the one sent")
-        (is (= #?(:clj "12.30" :cljs "12.3") (wire/decimal-text (:job/area back)))
+        (is (= #?(:clj "12.30" :cljs "12.3") (types/decimal-text (:job/area back)))
             "exact; the browser doesn't keep trailing zeros")
         (is (= :curing (:job/stage back)))
         (is (= 4200 (:job/cents back)))))
@@ -63,31 +67,31 @@
        (doseq [text ["2026-10-12T10:00:00Z" "2026-10-12T10:00:00.120Z"
                      "2026-10-12T10:00:00.123456Z" "2026-10-12T10:00:00.123456789Z"
                      "1969-12-31T23:59:59.999Z"]]
-         (let [at (wire/parse-instant text)]
+         (let [at (time/parse-instant text)]
            (is (= text (str at)))
            (is (= text (wire/encode :time/instant at)))
            (is (= (str "{\"at\":\"" text "\"}") (wire/write-json {:at at})) "JSON text too"))))
      (testing "the microseconds JavaScript's date drops are kept"
-       (let [at (wire/parse-instant "2026-10-12T10:00:00.123456Z")]
+       (let [at (time/parse-instant "2026-10-12T10:00:00.123456Z")]
          (is (= (js/Date.parse "2026-10-12T10:00:00.123Z") (.getTime at)))
-         (is (not= at (wire/parse-instant "2026-10-12T10:00:00.123Z")))))
+         (is (not= at (time/parse-instant "2026-10-12T10:00:00.123Z")))))
      (testing "an offset is read as the moment it names"
-       (is (= "2026-10-12T10:00:00Z" (str (wire/parse-instant "2026-10-12T12:00:00+02:00"))))
-       (is (= "2026-10-12T10:30:00Z" (str (wire/parse-instant "2026-10-12T09:00:00-01:30")))))
+       (is (= "2026-10-12T10:00:00Z" (str (time/parse-instant "2026-10-12T12:00:00+02:00"))))
+       (is (= "2026-10-12T10:30:00Z" (str (time/parse-instant "2026-10-12T09:00:00-01:30")))))
      (testing "= and compare, and a clone stays an Instant"
-       (let [a (wire/parse-instant "2026-10-12T10:00:00Z")
-             b (wire/parse-instant "2026-10-12T10:00:00.000001Z")]
-         (is (= a (wire/parse-instant "2026-10-12T10:00:00Z")))
-         (is (= (hash a) (hash (wire/parse-instant "2026-10-12T10:00:00Z"))))
+       (let [a (time/parse-instant "2026-10-12T10:00:00Z")
+             b (time/parse-instant "2026-10-12T10:00:00.000001Z")]
+         (is (= a (time/parse-instant "2026-10-12T10:00:00Z")))
+         (is (= (hash a) (hash (time/parse-instant "2026-10-12T10:00:00Z"))))
          (is (= [a b] (sort [b a])))
          (is (= a (.clone a)))))
      (testing "a js/Date given as a param goes out as the same text"
        (is (= "2026-10-12T10:00:00Z" (wire/encode :time/instant (js/Date. "2026-10-12T10:00:00Z")))))
      (testing "text that isn't a moment stays text and fails the shape"
        (doseq [text ["2026-10-12" "2026-02-30T10:00:00Z" "2026-10-12T24:00:00Z" "2026-10-12T10:00:00" "nope"]]
-         (is (nil? (wire/read-instant text)) text)
+         (is (nil? (time/read-instant text)) text)
          (is (contains? (wire/decode [:map [:at :time/instant]] {:at text}) :errors) text))
-       (is (thrown? js/Error (wire/parse-instant "nope"))))))
+       (is (thrown? js/Error (time/parse-instant "nope"))))))
 
 #?(:cljs
    (deftest a-day-is-a-day-built-on-goog-date
@@ -98,30 +102,30 @@
              "its year, month and day are the wire's, wherever the browser is")
          (is (= "2026-11-15" (str due) (wire/encode :time/local-date due) (.toJSON due)))))
      (testing "= and compare, and a clone stays a Day"
-       (let [a (wire/parse-date "2026-11-15") b (wire/parse-date "2026-12-01")]
-         (is (= a (wire/parse-date "2026-11-15")))
+       (let [a (time/parse-date "2026-11-15") b (time/parse-date "2026-12-01")]
+         (is (= a (time/parse-date "2026-11-15")))
          (is (= [a b] (sort [b a])))
          (is (= "2026-11-15" (str (.clone a))))
          (is (= a (.clone a)))))
      (testing "text that isn't a day stays text and fails the shape"
        (doseq [text ["2026-02-30" "2026-13-01" "2026-11-15T00:00:00Z" "15/11/2026"]]
-         (is (nil? (wire/read-day text)) text)
+         (is (nil? (time/read-day text)) text)
          (is (contains? (wire/decode :time/local-date text) :errors) text))
-       (is (wire/read-day "2028-02-29") "a leap day"))))
+       (is (time/read-day "2028-02-29") "a leap day"))))
 
 #?(:cljs
    (deftest decimals-are-the-apps-choice
      (try
        (testing "off: a decimal is its text, exactly as it came"
-         (wire/use-exact-decimals! nil)
+         (types/use-exact-decimals! nil)
          (is (= {:value {:area "12.30"}} (wire/decode [:map [:area :decimal]] {:area "12.30"})))
          (is (= {:area "12.30"} (wire/encode [:map [:area :decimal]] {:area "12.30"})))
-         (is (= "12.30" (wire/decimal "12.30") (wire/decimal-text "12.30")))
+         (is (= "12.30" (types/decimal "12.30") (types/decimal-text "12.30")))
          (is (contains? (wire/decode :decimal "twelve") :errors)))
        (testing "on: big.js, exact"
-         (wire/use-exact-decimals! decimal/big)
+         (types/use-exact-decimals! big/big)
          (let [{^js area :value} (wire/decode :decimal "0.10")]
-           (is ((:decimal? decimal/big) area))
-           (is (= "0.3" (wire/decimal-text (.plus area (wire/decimal "0.2")))))
+           (is ((:decimal? big/big) area))
+           (is (= "0.3" (types/decimal-text (.plus area (types/decimal "0.2")))))
            (is (= "0.1" (wire/encode :decimal area)))))
-       (finally (wire/use-exact-decimals! decimal/big)))))
+       (finally (types/use-exact-decimals! big/big)))))
