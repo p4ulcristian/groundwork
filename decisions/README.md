@@ -27,6 +27,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 - [Groundwork is the default composition](2026-10-22-groundwork-is-the-default-composition.md)
 - [Ring at the edge, steps inside](2026-10-22-ring-at-the-edge-steps-inside.md)
 - [Libraries pass values](2026-10-22-libraries-pass-values.md)
+- [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
 - [Each library keeps its own decisions](2026-10-22-each-library-keeps-its-own-decisions.md)
 - [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md)
 - [Nothing goes in that the owner does not understand](2026-10-22-nothing-goes-in-that-the-owner-does-not-understand.md)
