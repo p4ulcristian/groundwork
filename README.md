@@ -15,7 +15,8 @@ layers test checks it.
 |---|---|---|
 | wire | `groundwork.wire.api` | how shaped data travels as text and comes back as what it was |
 | steps | `groundwork.steps.api` | work as a list of steps over one map, until one adds an answer |
-| web | `groundwork.web.api` | the server, and http, sse and ws between browser and server |
+| transport | `groundwork.transport.api` | the server, and http, sse and ws between browser and server |
+| routes | `groundwork.routes.api` | which address goes where, server and browser (reitit) |
 | sql | `groundwork.sql.api` | Postgres through a pool; every query a `.sql` file |
 | background-chores | `groundwork.background-chores.api` | a queue, workers and schedules in Postgres |
 | schema | `groundwork.schema.api` | tables as maps; Postgres brought to them |

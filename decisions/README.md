@@ -24,7 +24,8 @@ Each library keeps its own decisions, with its own index:
 
 - [groundwork.wire](../libraries/wire/decisions/README.md): what travels between browser and server
 - [groundwork.steps](../libraries/steps/decisions/README.md): work as a list of steps over one context
-- [groundwork.web](../libraries/web/decisions/README.md): the server, its routes, a route's work as steps
+- [groundwork.transport](../libraries/transport/decisions/README.md): the server, and http, sse and ws
+- [groundwork.routes](../libraries/routes/decisions/README.md): which address goes where, server and browser
 - [groundwork.sql](../libraries/sql/decisions/README.md): Postgres through a pool; every query a `.sql` file
 - [groundwork.background-chores](../libraries/background-chores/decisions/README.md): a queue, workers and schedules in Postgres
 - [groundwork.schema](../libraries/schema/decisions/README.md): tables as maps; Postgres brought to them
@@ -135,6 +136,7 @@ Each library keeps its own decisions, with its own index:
 - [Each ask fails alone](2026-10-12-each-ask-fails-alone.md)
 - [Three ways between browser and server, each with one job](2026-10-22-three-ways-between-browser-and-server.md)
 - [The three ways are named http, sse and ws](2026-10-22-the-three-ways-are-named-http-sse-ws.md)
+- [web becomes transport and routes](2026-10-22-transport-and-routes.md)
 - [Postgres rings the bell](2026-10-12-postgres-rings-the-bell.md), changed in part by [Three ways between browser and server](2026-10-22-three-ways-between-browser-and-server.md)
 - [Who is rung comes from who may see](2026-10-13-who-is-rung-comes-from-who-may-see.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
 - [Asking again, and bells that miss nothing](2026-10-14-asking-again-and-bells-that-miss-nothing.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)
