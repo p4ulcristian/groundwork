@@ -9,4 +9,5 @@
   io.github.p4ulcristian/groundwork-routes    {:local/root "../routes"}
   io.github.p4ulcristian/groundwork-sql   {:local/root "../sql"}
   io.github.p4ulcristian/groundwork-background-chores {:local/root "../background-chores"}
-  io.github.p4ulcristian/groundwork-schema {:local/root "../schema"}}}
+  io.github.p4ulcristian/groundwork-schema {:local/root "../schema"}
+  io.github.p4ulcristian/groundwork-sessions {:local/root "../sessions"}}}

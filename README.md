@@ -20,6 +20,7 @@ layers test checks it.
 | sql | `groundwork.sql.api` | Postgres through a pool; every query a `.sql` file |
 | background-chores | `groundwork.background-chores.api` | a queue, workers and schedules in Postgres |
 | schema | `groundwork.schema.api` | tables as maps; Postgres brought to them |
+| sessions | `groundwork.sessions.api` | who is asking: a session in Postgres, a cookie in the browser |
 | main | `groundwork.main.api` | puts the libraries together; lists every one it uses |
 
 ```sh

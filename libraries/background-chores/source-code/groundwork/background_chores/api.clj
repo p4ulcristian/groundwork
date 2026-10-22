@@ -19,7 +19,8 @@
                                              :workers   4
                                              :poll-ms   1000})
 
-   A chore is a row in groundwork.chores. Every :poll-ms the workers look for
+   A chore is a row in groundwork.chores; its tables are maps
+   (chores-tables) the app passes to groundwork.schema with its own. Every :poll-ms the workers look for
    due chores; each free worker claims one (FOR UPDATE SKIP LOCKED, so no two
    servers run the same one) and runs its kind's :run in one transaction,
    within :timeout-ms. A chore that throws or runs out of time runs again
@@ -45,7 +46,6 @@
 (defn- make-query [file-name]
   (sql/make-query-from-sql-file (str "groundwork/background_chores/sql_files/" file-name)))
 
-(def ^:private create-tables          (make-query "create_tables.sql"))
 (def ^:private insert-chore             (make-query "insert_chore.sql"))
 (def ^:private claim-next-chore         (make-query "claim_next_chore.sql"))
 (def ^:private update-chore-to-done     (make-query "update_chore_to_done.sql"))
@@ -67,13 +67,35 @@
   (subs (str kind-name) 1))
 
 ;; -----------------------------------------------------------------------------
-;; Tables
+;; Tables, as maps for groundwork.schema
 
-(defn create-tables!
-  "Creates the schema groundwork and its tables chores and chore_schedules,
-   unless they exist."
-  [pool]
-  (sql/run-statement! pool create-tables {}))
+(def chores-table
+  "The queue: one row per chore."
+  {:table   :groundwork/chores
+   :columns [[:chore/id           :uuid         {:primary-key? true :default :random-uuid}]
+             [:chore/kind         :string]
+             [:chore/params       :string]      ; JSON text, through wire
+             [:chore/state        [:enum "queued" "running" "done" "dead"] {:default "queued"}]
+             [:chore/run-at       :time/instant {:default :now}]
+             [:chore/attempts     :int          {:default 0}]
+             [:chore/max-attempts :int]
+             [:chore/timeout-ms   :int]
+             [:chore/last-error   :string       {:optional? true}]
+             [:chore/locked-at    :time/instant {:optional? true}]
+             [:chore/created-at   :time/instant {:default :now}]
+             [:chore/finished-at  :time/instant {:optional? true}]
+             [:chore/key          :string       {:optional? true :unique? true}]]
+   :indexes [[:chore/state :chore/run-at]]})
+
+(def chore-schedules-table
+  "The schedules: the next time each runs."
+  {:table   :groundwork/chore-schedules
+   :columns [[:chore-schedule/key     :string       {:primary-key? true}]
+             [:chore-schedule/next-at :time/instant]]})
+
+(def chores-tables
+  "Both tables, to pass to groundwork.schema with the app's own."
+  [chores-table chore-schedules-table])
 
 ;; -----------------------------------------------------------------------------
 ;; Queueing

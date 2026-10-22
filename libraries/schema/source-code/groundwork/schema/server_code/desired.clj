@@ -47,6 +47,11 @@
                             [(names/make-foreign-key-name table-name column-name)
                              {:column column-name :foreign-table foreign-table
                               :foreign-column (names/turn-key-into-column-name references)}]))
+      :uniques      (into {}
+                          (for [[k _ {:keys [unique?]}] columns
+                                :when unique?
+                                :let [column-name (names/turn-key-into-column-name k)]]
+                            [(names/make-unique-name table-name column-name) {:column column-name}]))
       :checks       (into {}
                           (for [[k type] columns
                                 :let [values (types/find-enum-values type)]

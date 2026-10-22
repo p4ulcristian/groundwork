@@ -2,8 +2,8 @@
 -- still remembered is kept instead, and its id returned.
 WITH chore AS (
   INSERT INTO groundwork.chores (chore__kind, chore__params, chore__run_at, chore__max_attempts, chore__timeout_ms, chore__key)
-  VALUES (:chore/kind, CAST(:chore/params AS jsonb), :chore/run-at, :chore/max-attempts, :chore/timeout-ms, :chore/key)
-  ON CONFLICT (chore__key) WHERE chore__key IS NOT NULL DO NOTHING
+  VALUES (:chore/kind, :chore/params, :chore/run-at, :chore/max-attempts, :chore/timeout-ms, :chore/key)
+  ON CONFLICT (chore__key) DO NOTHING
   RETURNING chore__id
 )
 SELECT chore__id FROM chore

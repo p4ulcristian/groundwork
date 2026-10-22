@@ -29,6 +29,7 @@ Each library keeps its own decisions, with its own index:
 - [groundwork.sql](../libraries/sql/decisions/README.md): Postgres through a pool; every query a `.sql` file
 - [groundwork.background-chores](../libraries/background-chores/decisions/README.md): a queue, workers and schedules in Postgres
 - [groundwork.schema](../libraries/schema/decisions/README.md): tables as maps; Postgres brought to them
+- [groundwork.sessions](../libraries/sessions/decisions/README.md): who is asking
 
 ### What Groundwork is
 
@@ -103,6 +104,7 @@ Each library keeps its own decisions, with its own index:
 - [A table map says its column types in wire's words](2026-10-22-a-table-map-says-column-types-in-wires-words.md)
 - [A migration runs in two parts: the instant part before the start, the slow part after](2026-10-22-a-migration-runs-in-two-parts.md)
 - [A fresh database takes the maps as they are](2026-10-22-a-fresh-database-takes-the-maps-as-they-are.md)
+- [Groundwork's own tables are table maps, in their own folder](2026-10-22-groundworks-tables-are-maps-in-their-own-folder.md)
 
 ### Sessions and logins
 

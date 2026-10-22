@@ -1,5 +1,5 @@
--- The indexes of the app's tables, with their columns in order.
-SELECT t.relname::text  AS table_name,
+-- The indexes of the tables in the folders the maps name, with their columns in order.
+SELECT CASE WHEN n.nspname = 'public' THEN t.relname::text ELSE n.nspname || '.' || t.relname END AS table_name,
        i.relname::text  AS index_name,
        ix.indisvalid    AS valid,
        ix.indisunique   AS is_unique,
@@ -11,4 +11,4 @@ FROM pg_index ix
 JOIN pg_class i     ON i.oid = ix.indexrelid
 JOIN pg_class t     ON t.oid = ix.indrelid
 JOIN pg_namespace n ON n.oid = t.relnamespace
-WHERE n.nspname = 'public'
+WHERE n.nspname = ANY (string_to_array(:folders, ',')) AND NOT (n.nspname = 'groundwork' AND t.relname = 'changes_done')

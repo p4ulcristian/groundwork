@@ -6,7 +6,7 @@ up for good), and schedules (cron lines in UTC that queue a chore at their
 times).
 
 Needs groundwork.sql and groundwork.wire. API: `groundwork.background-chores.api`
-(`create-tables!`, `add-chore-to-queue!`, `make-give-up-exception`,
+(`chores-tables`, `add-chore-to-queue!`, `make-give-up-exception`,
 `start-workers!`, `stop-workers!`, `list-queued-chores`, `list-dead-chores`,
 `run-chore-again-now!`). Its queries are in `sql_files/`; cron lines in
 `server-code.cron`. Decisions: [`decisions/`](decisions/README.md).
@@ -21,7 +21,7 @@ Needs groundwork.sql and groundwork.wire. API: `groundwork.background-chores.api
    :timeout-ms   60000
    :attempts     5})
 
-(background-chores/create-tables! pool)
+(schema/migrate! pool (into app-tables background-chores/chores-tables) changes)
 (def workers (background-chores/start-workers! pool {:kinds [send-invoice-email] :schedules []
                                                      :workers 4 :poll-ms 1000}))
 

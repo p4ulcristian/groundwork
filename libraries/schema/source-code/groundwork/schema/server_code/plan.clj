@@ -36,6 +36,9 @@
                     (for [[n {:keys [column]}] (:foreign-keys table)
                           :when (= n (names/make-foreign-key-name old-table (old-column column)))]
                       [:foreign-keys n (names/make-foreign-key-name new-table column) :constraint])
+                    (for [[n {:keys [column]}] (:uniques table)
+                          :when (= n (names/make-unique-name old-table (old-column column)))]
+                      [:uniques n (names/make-unique-name new-table column) :constraint])
                     (for [[n {:keys [column]}] (:checks table)
                           :when (= n (names/make-enum-check-name old-table (old-column column)))]
                       [:checks n (names/make-enum-check-name new-table column) :constraint])
@@ -51,7 +54,7 @@
                 (-> state
                     (update-in [:catalog new-table kind] set/rename-keys {old-name new-name})
                     (add-instant (if (= :index what)
-                                   (str "ALTER INDEX " old-name " RENAME TO " new-name)
+                                   (str "ALTER INDEX " (names/qualify-index-name new-table old-name) " RENAME TO " new-name)
                                    (str "ALTER TABLE " new-table " RENAME CONSTRAINT " old-name " TO " new-name))
                                  (str "keep the name of " old-name " after a rename")))))
             state
@@ -73,6 +76,7 @@
         (update :columns (partial mapv #(update % :name rename)))
         (update :primary-key (partial mapv rename))
         (update :foreign-keys update-vals #(update % :column rename))
+        (update :uniques update-vals #(update % :column rename))
         (update :checks update-vals #(update % :column rename))
         (update :not-null-checks update-vals #(update % :column rename))
         (update :indexes update-vals #(update % :columns (partial mapv rename))))))
@@ -95,7 +99,7 @@
           (not (contains? catalog from)) (stop (str "there is no table " from " to rename"))
           (contains? catalog to)         (stop (str "there is already a table " to))
           :else (-> state
-                    (add-instant (str "ALTER TABLE " from " RENAME TO " to) (str "change " id))
+                    (add-instant (str "ALTER TABLE " from " RENAME TO " (names/find-table-part to)) (str "change " id))
                     (assoc :catalog (-> catalog
                                         (set/rename-keys {from to})
                                         (point-references-at from to {})))
@@ -135,6 +139,7 @@
                                    (-> table
                                        (update :columns (partial filterv #(not (uses? (:name %)))))
                                        (update :foreign-keys #(into {} (remove (comp uses? :column val)) %))
+                                       (update :uniques #(into {} (remove (comp uses? :column val)) %))
                                        (update :checks #(into {} (remove (comp uses? :column val)) %))
                                        (update :not-null-checks #(into {} (remove (comp uses? :column val)) %))
                                        (update :indexes #(into {} (remove (fn [[_ {:keys [columns]}]] (some uses? columns))) %)))))))))
@@ -173,17 +178,18 @@
   (str "ALTER TABLE " table-name " ADD CONSTRAINT " fk-name
        " FOREIGN KEY (" column ") REFERENCES " foreign-table " (" foreign-column ")"))
 
+(defn- write-table-parts [{:keys [columns primary-key uniques]}]
+  (concat (map write-column columns)
+          (when (seq primary-key) [(str "PRIMARY KEY (" (str/join ", " primary-key) ")")])
+          (for [[n {:keys [column]}] uniques] (str "CONSTRAINT " n " UNIQUE (" column ")"))))
+
 (defn- plan-new-table
   "A table not in Postgres: made whole. It has no rows, so its keys and
    indexes are made at once, in the instant part."
-  [state table-name {:keys [columns primary-key checks indexes]}]
+  [state table-name {:keys [checks indexes] :as table}]
   (as-> state state
     (add-instant state
-                 (str "CREATE TABLE " table-name " (\n  "
-                      (str/join ",\n  " (concat (map write-column columns)
-                                                (when (seq primary-key)
-                                                  [(str "PRIMARY KEY (" (str/join ", " primary-key) ")")])))
-                      "\n)")
+                 (str "CREATE TABLE " table-name " (\n  " (str/join ",\n  " (write-table-parts table)) "\n)")
                  (str "missing table " table-name))
     (reduce (fn [state [n check]] (add-instant state (write-enum-check table-name n check) (str "enum of new table " table-name)))
             state checks)
@@ -256,6 +262,26 @@
    state
    (:columns desired-table)))
 
+(defn- plan-uniques
+  "A unique key on a table that may have rows: its index built CONCURRENTLY,
+   then the key made from it, in the slow part. One in no map is dropped."
+  [state table-name existing desired]
+  (as-> state state
+    (reduce (fn [state [n {:keys [column]}]]
+              (if (contains? (:uniques existing) n)
+                state
+                (-> state
+                    (add-slow (str "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS " n " ON " table-name " (" column ")")
+                              (str "missing unique key " n))
+                    (add-slow (str "ALTER TABLE " table-name " ADD CONSTRAINT " n " UNIQUE USING INDEX " n)
+                              (str "unique key " n " from its index")))))
+            state (:uniques desired))
+    (reduce (fn [state [n _]]
+              (if (contains? (:uniques desired) n)
+                state
+                (add-instant state (str "ALTER TABLE " table-name " DROP CONSTRAINT " n) (str "unique key " n " is in no map"))))
+            state (:uniques existing))))
+
 (defn- plan-existing-table [state has-rows? table-name existing desired]
   (let [existing-columns (into {} (map (juxt :name identity)) (:columns existing))
         desired-names    (set (map :name (:columns desired)))]
@@ -271,6 +297,7 @@
         state
         (add-stop state (str table-name "'s primary key differs from its map; changing it isn't in v1")))
       (plan-required state table-name existing desired)
+      (plan-uniques state table-name existing desired)
       ;; references: NOT VALID now, VALIDATE in the slow part
       (reduce (fn [state [n fk]]
                 (let [found (get-in existing [:foreign-keys n])]
@@ -320,7 +347,7 @@
                               (str "missing index " n))
                     (not (:valid? found))
                     (-> state
-                        (add-slow (str "DROP INDEX CONCURRENTLY IF EXISTS " n) (str "index " n " was left invalid"))
+                        (add-slow (str "DROP INDEX CONCURRENTLY IF EXISTS " (names/qualify-index-name table-name n)) (str "index " n " was left invalid"))
                         (add-slow (str "CREATE INDEX CONCURRENTLY IF NOT EXISTS " n " ON " table-name
                                        " (" (str/join ", " columns) ")")
                                   (str "rebuild index " n)))
@@ -329,7 +356,7 @@
       (reduce (fn [state [n _]]
                 (if (contains? (:indexes desired) n)
                   state
-                  (add-slow state (str "DROP INDEX CONCURRENTLY IF EXISTS " n) (str "index " n " is in no map"))))
+                  (add-slow state (str "DROP INDEX CONCURRENTLY IF EXISTS " (names/qualify-index-name table-name n)) (str "index " n " is in no map"))))
               state (:indexes existing)))))
 
 (defn make-plan
@@ -344,7 +371,9 @@
         state    (if fresh? start (reduce apply-change start pending))
         catalog  (:catalog state)
         new      (remove #(contains? catalog %) (keys desired))
+        folders  (->> new (map names/find-folder-of-table) (remove #{"public"}) distinct)
         state    (as-> state state
+                   (reduce #(add-instant %1 (str "CREATE SCHEMA IF NOT EXISTS " %2) (str "folder " %2 " for its tables")) state folders)
                    (reduce #(plan-new-table %1 %2 (get desired %2)) state new)
                    (reduce #(plan-foreign-keys-of-new-table %1 %2 (get desired %2)) state new)
                    (reduce (fn [state table-name]

@@ -15,9 +15,12 @@
 
    A column is [key type options]; the type is in wire's words (:uuid :int
    :decimal :double :string :boolean :time/instant :time/local-date
-   [:enum …]); it is NOT NULL unless {:optional? true}; :default is
+   [:enum …]); it is NOT NULL unless {:optional? true}; {:unique? true}
+   makes a unique key; :default is
    :random-uuid, :now, a number, true/false or text; {:references :shop/id}
-   points at another table's one-column primary key.
+   points at another table's one-column primary key. A table key with a
+   namespace is in that Postgres schema (folder): :groundwork/sessions is
+   groundwork.sessions; one without is in public.
 
    Changes are data, for what a map can't say; each runs once, remembered in
    groundwork.changes_done, and a fresh database marks them all done:
@@ -36,6 +39,7 @@
    [clojure.string :as str]
    [groundwork.schema.server-code.catalog :as catalog]
    [groundwork.schema.server-code.desired :as desired]
+   [groundwork.schema.server-code.names :as names]
    [groundwork.schema.server-code.plan :as plan]
    [groundwork.sql.api :as sql]))
 
@@ -61,11 +65,13 @@
    :changes-to-mark [id]}."
   [pool tables changes]
   (sql/run-statement! pool create-changes-done {})
-  (plan/make-plan {:catalog      (catalog/read-catalog pool)
-                   :desired      (desired/turn-table-maps-into-desired tables)
+  (let [desired (desired/turn-table-maps-into-desired tables)
+        folders (set (map names/find-folder-of-table (keys desired)))]
+    (plan/make-plan {:catalog      (catalog/read-catalog pool folders)
+                   :desired      desired
                    :changes      changes
                    :changes-done (set (map :change-done/id (sql/find-rows pool find-changes-done {})))
-                   :has-rows?    (memoize #(find-whether-table-has-rows pool %))}))
+                   :has-rows?    (memoize #(find-whether-table-has-rows pool %))})))
 
 (defn run-instant-part!
   "Runs the plan's instant part and marks its changes done, in one

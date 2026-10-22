@@ -6,4 +6,4 @@ WHERE chore__id = (SELECT chore__id FROM groundwork.chores
                  ORDER BY chore__run_at
                  FOR UPDATE SKIP LOCKED
                  LIMIT 1)
-RETURNING chore__id, chore__kind, chore__params::text AS chore__params, chore__attempts, chore__timeout_ms
+RETURNING chore__id, chore__kind, chore__params, chore__attempts, chore__timeout_ms

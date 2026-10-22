@@ -6,7 +6,9 @@
    [groundwork.background-chores.api]))
 
 (deftest the-api-names
-  (is (= '#{create-tables!
+  (is (= '#{chores-table
+           chore-schedules-table
+           chores-tables
            add-chore-to-queue!
            make-give-up-exception
            start-workers!

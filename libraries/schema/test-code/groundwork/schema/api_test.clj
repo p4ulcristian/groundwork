@@ -58,6 +58,29 @@
 
 (def ^:private nothing-to-do {:instant [] :slow [] :stops [] :changes-to-mark []})
 
+(def ^:private things
+  {:table   :groundwork/things
+   :columns [[:thing/id   :uuid   {:primary-key? true :default :random-uuid}]
+             [:thing/code :string {:unique? true}]]})
+
+(deftest a-folder-and-a-unique-key
+  (if-not port
+    (println "groundwork.schema.api-test: skipped, GROUNDWORK_SQL_TEST_PORT is not set")
+    (with-empty-database
+      (fn [pool]
+        (run-sql! pool "DROP SCHEMA IF EXISTS groundwork CASCADE")
+        (testing "a namespaced table key: its own folder, made with the table"
+          (migrate-and-wait! pool [shops things] [])
+          (is (= nothing-to-do (plan-of pool [shops things] []))))
+        (testing "a unique key added to a table with rows: built in the slow part"
+          (run-sql! pool "INSERT INTO shops (shop__name) VALUES ('Hotcoats')")
+          (let [unique-shops (assoc-in shops [:columns 1] [:shop/name :string {:unique? true}])
+                plan         (plan-of pool [unique-shops things] [])]
+            (is (= [] (:instant plan)))
+            (is (= 2 (count (:slow plan))))
+            (migrate-and-wait! pool [unique-shops things] [])
+            (is (= nothing-to-do (plan-of pool [unique-shops things] [])))))))))
+
 (deftest the-row-shape-comes-from-the-map
   (is (= [:map [:shop/id :uuid] [:shop/name :string]] (schema/turn-table-into-row-shape shops)))
   (is (= [:order/note {:optional true} [:maybe :string]]

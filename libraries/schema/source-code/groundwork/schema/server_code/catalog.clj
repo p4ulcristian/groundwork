@@ -9,8 +9,9 @@
                  :checks       {\"orders_order__status_enum\" {:column \"order__status\" :values [\"draft\" \"done\"] :validated? true}}
                  :indexes      {\"orders_order__shop_id_idx\" {:columns [\"order__shop_id\"] :valid? true}}}}
 
-   Only what schema makes is read: checks whose names end in _enum or
-   _not_null, and indexes that are neither unique nor a primary key."
+   Only what schema makes is read: unique keys, checks whose names end in
+   _enum or _not_null, and indexes that are neither unique nor a primary key.
+   A table outside the public folder is named folder.table."
   (:require
    [clojure.string :as str]
    [groundwork.sql.api :as sql]))
@@ -37,6 +38,7 @@
                    :foreign-table  foreign-table
                    :foreign-column (first foreign-column-names)
                    :validated?     validated})
+    "u" (assoc-in tables [table-name :uniques constraint-name] {:column (first column-names)})
     "c" (cond
           (str/ends-with? constraint-name "_enum")
           (assoc-in tables [table-name :checks constraint-name]
@@ -48,22 +50,23 @@
     tables))
 
 (defn read-catalog
-  "The app's tables as Postgres has them."
-  [pool]
-  (let [empty-tables (into {} (map (fn [{:keys [table-name]}]
-                                     [table-name {:columns [] :primary-key [] :foreign-keys {}
+  "The tables in these folders (Postgres schemas) as Postgres has them."
+  [pool folders]
+  (let [params       {:folders (str/join "," folders)}
+        empty-tables (into {} (map (fn [{:keys [table-name]}]
+                                     [table-name {:columns [] :primary-key [] :foreign-keys {} :uniques {}
                                                   :checks {} :not-null-checks {} :indexes {}}]))
-                           (sql/find-rows pool find-tables {}))
+                           (sql/find-rows pool find-tables params))
         with-columns (reduce (fn [tables {:keys [table-name column-name column-type not-null default-text]}]
                                (update-in tables [table-name :columns] conj
                                           {:name column-name :type column-type
                                            :not-null? not-null :default default-text}))
                              empty-tables
-                             (sql/find-rows pool find-columns {}))
-        with-constraints (reduce add-constraint with-columns (sql/find-rows pool find-constraints {}))]
+                             (sql/find-rows pool find-columns params))
+        with-constraints (reduce add-constraint with-columns (sql/find-rows pool find-constraints params))]
     (reduce (fn [tables {:keys [table-name index-name valid is-unique is-primary column-names]}]
               (if (or is-unique is-primary)
                 tables
                 (assoc-in tables [table-name :indexes index-name] {:columns column-names :valid? valid})))
             with-constraints
-            (sql/find-rows pool find-indexes {}))))
+            (sql/find-rows pool find-indexes params))))
