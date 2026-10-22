@@ -6,7 +6,8 @@
    [groundwork.server.background-jobs.api]))
 
 (deftest the-api-names
-  (is (= '#{background-jobs-table
+  (is (= '#{settings-shape
+           background-jobs-table
            background-job-schedules-table
            background-jobs-tables
            add-background-job-to-queue!

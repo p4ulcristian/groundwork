@@ -26,3 +26,13 @@
           (keyword (underscores-into-dashes entity) (underscores-into-dashes field))))
       (when (re-matches column-part column-name)
         (keyword (underscores-into-dashes column-name))))))
+
+(defn find-key-for-table
+  "A table's key from its folder (schema) and name: \"public\" \"orders\" ->
+   :orders; \"groundwork\" \"background_jobs\" -> :groundwork/background-jobs.
+   nil when either isn't a name Groundwork reads."
+  [folder table-name]
+  (when (and (re-matches column-part folder) (re-matches column-part table-name))
+    (if (= "public" folder)
+      (keyword (underscores-into-dashes table-name))
+      (keyword (underscores-into-dashes folder) (underscores-into-dashes table-name)))))

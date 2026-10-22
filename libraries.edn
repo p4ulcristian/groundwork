@@ -2,14 +2,16 @@
 ;; test-code/groundwork/libraries_test.clj checks every namespace against it:
 ;; a library requires only the libraries it lists, and only their api;
 ;; nobody uses another around a circle.
-{:server  {:wire              #{}
-           :steps             #{}
-           :database          #{}
-           :transport         #{:steps :wire}
-           :sessions          #{:database :steps}
-           :access            #{:database :steps :wire :transport}
+{:server  {:wire            #{}
+           :steps           #{}
+           :database        #{}
+           :transport       #{:steps :wire}
+           :sessions        #{:database :steps}
+           :access          #{:database :steps :wire :transport}
            :background-jobs #{:database :wire}
-           :main              #{:wire :steps :database :transport :sessions :access :background-jobs}}
+           :sync            #{:database :transport :access :steps :wire}
+           :main            #{:wire :steps :database :transport :sessions :access :background-jobs :sync}}
  :browser {:wire      #{}
            :transport #{:wire}
-           :main      #{:wire :transport}}}
+           :sync      #{}
+           :main      #{:wire :transport :sync}}}

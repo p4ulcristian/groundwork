@@ -1,9 +1,9 @@
 (ns groundwork.browser.transport.routes
   "The browser's routes, with reitit-frontend: the address in the bar leads
    to a page, found by name. Back and Forward work (HTML5 history), and the
-   page's :title becomes the tab's title on every move."
+   page's :title becomes the tab's title on every move. The pages come from
+   the server, in the page, already checked there."
   (:require
-   [groundwork.browser.transport.contract :as pages]
    [reitit.frontend :as reitit]
    [reitit.frontend.easy :as easy]))
 
@@ -18,11 +18,15 @@
      :path-params (:path-params match)
      :query       (:query-params match)}))
 
+(defn- turn-pages-into-reitit-routes [pages]
+  (vec (for [[page-name page] pages]
+         [(:address page) (assoc page :name page-name)])))
+
 (defn start-following-address!
   "Follows the address bar: (on-page {:name … :page … :path-params … :query …})
    now and on every move, nil for an address no page has."
   [pages on-page]
-  (easy/start! (reitit/router (pages/turn-pages-into-reitit-routes pages))
+  (easy/start! (reitit/router (turn-pages-into-reitit-routes pages))
                (fn [match _history]
                  (set-tab-title! match)
                  (on-page (turn-match-into-page match)))

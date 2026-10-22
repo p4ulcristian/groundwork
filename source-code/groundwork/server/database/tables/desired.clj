@@ -11,6 +11,7 @@
   (:require
    [groundwork.server.database.tables.gates :as gates]
    [groundwork.server.database.tables.names :as names]
+   [groundwork.server.database.tables.triggers :as triggers]
    [groundwork.server.database.tables.types :as types]))
 
 (defn- find-table-of-primary-key
@@ -22,7 +23,7 @@
               :when (:primary-key? options)]
           [k (names/turn-table-key-into-table-name table)])))
 
-(defn- turn-table-map-into-desired [tables-by-primary-key {:keys [table columns indexes gates]}]
+(defn- turn-table-map-into-desired [tables-by-primary-key {:keys [table columns indexes gates on-change]}]
   (let [table-name (names/turn-table-key-into-table-name table)
         column     (fn [[k type {:keys [optional? default]}]]
                      (let [postgres-type (types/turn-type-into-postgres-type type)]
@@ -62,6 +63,7 @@
                              {:column column-name :values values}]))
       :gated?       (some? gates)
       :policies     (if gates (gates/turn-gates-into-policies (names/turn-table-key-into-table-name table) gates) {})
+      :triggers     (if on-change (triggers/turn-on-change-into-triggers table-name on-change) {})
       :indexes      (into {}
                           (for [index-keys indexes
                                 :let [column-names (mapv names/turn-key-into-column-name index-keys)]]

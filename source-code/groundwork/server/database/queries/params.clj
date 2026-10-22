@@ -1,9 +1,11 @@
 (ns groundwork.server.database.queries.params
   "A .sql file's text with :name params turned into what JDBC sends: the
-   text with ? in their place, and the param names in order.
+   text with ? in their place, and the param names in order; and the text
+   with $1, $2… in their place, for asking Postgres to plan it.
 
      SELECT order__id FROM orders WHERE order__shop_id = :order/shop-id LIMIT :limit
      => {:text-with-question-marks \"SELECT order__id FROM orders WHERE order__shop_id = ? LIMIT ?\"
+         :text-with-dollar-numbers \"SELECT order__id FROM orders WHERE order__shop_id = $1 LIMIT $2\"
          :param-names              [:order/shop-id :limit]}
 
    A field of the data is namespaced (:post/title); a control of the query
@@ -61,18 +63,20 @@
        (not (and (> i 1) (ident-char? (.charAt text (- i 2)))))))
 
 (defn turn-sql-text-into-statement
-  "SQL text -> {:text-with-question-marks … :param-names [one per ?, in order]}."
+  "SQL text -> {:text-with-question-marks … :text-with-dollar-numbers …
+   :param-names [one per ?, in order]}."
   [^String text]
-  (let [n   (count text)
-        out (StringBuilder.)
-        at  (fn [i] (when (< i n) (.charAt text i)))]
+  (let [n        (count text)
+        out      (StringBuilder.)
+        numbered (StringBuilder.)
+        at       (fn [i] (when (< i n) (.charAt text i)))]
     (loop [i 0, params []]
       (if (>= i n)
-        {:text-with-question-marks (str out) :param-names params}
+        {:text-with-question-marks (str out) :text-with-dollar-numbers (str numbered) :param-names params}
         (let [c    (.charAt text i)
               nxt  (at (inc i))
               prev (when (pos? i) (.charAt text (dec i)))
-              copy (fn [j] (.append out text (int i) (int j)) j)]
+              copy (fn [j] (.append out text (int i) (int j)) (.append numbered text (int i) (int j)) j)]
           (cond
             (= c \')
             (recur (copy (quoted-end text i (escape-string? text i))) params)
@@ -96,6 +100,7 @@
 
             (= c \?)
             (do (.append out "??")
+                (.append numbered "?")
                 (recur (inc i) params))
 
             (and (= c \:) (= nxt \:))
@@ -104,6 +109,7 @@
             (and (= c \:) (not (ident-char? prev)))
             (if-let [pname (re-find param-name (subs text (inc i)))]
               (do (.append out "?")
+                  (.append numbered (str "$" (inc (count params))))
                   (recur (+ i 1 (count pname)) (conj params (keyword pname))))
               (recur (copy (inc i)) params))
 

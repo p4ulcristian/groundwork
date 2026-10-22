@@ -23,26 +23,31 @@
    [groundwork.server.access.check :as check]
    [groundwork.server.access.conditions :as conditions]
    [groundwork.server.access.leaks :as leaks]
+   [groundwork.server.access.readers :as readers]
    [groundwork.server.access.scope-kinds :as scope-kinds]
    [groundwork.server.database.api :as database]))
 
 (def access-tables
   "The scopes, their roles and actions, and the memberships, in Groundwork's folder."
   [{:table   :groundwork/scopes
+    :sync    [:silent "access is read again on each message; no screen lists it yet"]
     :columns [[:scope/kind      :string {:primary-key? true}]
               [:scope/id        :uuid   {:primary-key? true}]
               [:scope/parent-kind :string {:optional? true}]   ; for parent scopes, later
               [:scope/parent-id   :uuid   {:optional? true}]]}
    {:table   :groundwork/roles
+    :sync    [:silent "access is read again on each message; no screen lists it yet"]
     :columns [[:role/scope-kind :string {:primary-key? true}]
               [:role/scope-id   :uuid   {:primary-key? true}]
               [:role/name       :string {:primary-key? true}]]}
    {:table   :groundwork/role-actions
+    :sync    [:silent "access is read again on each message; no screen lists it yet"]
     :columns [[:role-action/scope-kind :string {:primary-key? true}]
               [:role-action/scope-id   :uuid   {:primary-key? true}]
               [:role-action/role       :string {:primary-key? true}]
               [:role-action/action     :string {:primary-key? true}]]}
    {:table   :groundwork/memberships
+    :sync    [:silent "access is read again on each message; no screen lists it yet"]
     :columns [[:membership/person-id  :uuid   {:primary-key? true}]
               [:membership/scope-kind :string {:primary-key? true}]
               [:membership/scope-id   :uuid   {:primary-key? true}]
@@ -59,6 +64,7 @@
 (def ^:private insert-membership      (make-query "insert_membership.sql"))
 (def ^:private delete-membership      (make-query "delete_membership.sql"))
 (def ^:private find-actions-of-person (make-query "find_actions_of_person.sql"))
+(def ^:private find-people-holding-actions (make-query "find_people_holding_actions.sql"))
 
 (defn- turn-keyword-into-text [k] (subs (str k) 1))
 
@@ -123,6 +129,32 @@
   (-> (reduce #(add-row-to-actions scope-kinds %1 %2) {}
               (database/find-rows transaction find-actions-of-person {:membership/person-id person-id}))
       (update-vals #(disj % nil))))
+
+(defn list-people-holding-actions
+  "Of person-ids, those who hold one of the actions in one of the scopes
+   (ids) of a kind, by their role there; Owners hold every action. A set."
+  [pool-or-transaction {:keys [kind scope-ids actions person-ids]}]
+  (if (and (seq scope-ids) (seq actions) (seq person-ids))
+    (set (map :membership/person-id
+              (database/find-rows pool-or-transaction find-people-holding-actions
+                                  {:person-ids (clojure.string/join "," person-ids)
+                                   :scope-kind (name kind)
+                                   :scope-ids  (clojure.string/join "," scope-ids)
+                                   :actions    (clojure.string/join "," (map turn-keyword-into-text actions))})))
+    #{}))
+
+(defn list-readers-of-tables
+  "Who may read each table's rows, from its sentences, as data:
+
+     {:orders [{:to :member :column \"order__shop_id\" :kind :shop :actions #{:orders/see}}
+               {:to :me :column \"order__customer_id\"}
+               {:to :signed-in} {:to :anyone}]}
+
+   Only sentences allowing a reading action count; their :when is left out
+   (those named may read some rows, never more). :access :public is
+   [{:to :anyone}]; a table without :access isn't in the map."
+  [tables scope-kinds]
+  (readers/list-readers-of-tables tables scope-kinds))
 
 (defn make-sql-conditions
   "The :access sentences of every table map, checked (unknown actions or

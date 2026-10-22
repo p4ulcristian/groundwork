@@ -19,9 +19,17 @@
   (:import
    (java.time Duration Instant OffsetDateTime ZoneOffset)))
 
+(def settings-shape
+  "The :sessions part of the settings, every key required."
+  [:map {:closed true}
+   [:session-days pos-int?]
+   [:allowed-origin :string]
+   [:secure-cookie? :boolean]])
+
 (def sessions-table
   "The sessions, in Groundwork's own folder."
   {:table   :groundwork/sessions
+   :sync    [:silent "no screen shows sessions"]
    :columns [[:session/fingerprint :string       {:primary-key? true}]
              [:session/person-id   :uuid]
              [:session/created-at  :time/instant {:default :now}]

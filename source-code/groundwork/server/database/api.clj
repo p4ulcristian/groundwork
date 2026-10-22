@@ -52,10 +52,17 @@
    A table map with :gates ({:read sql :insert sql :update sql :delete sql},
    made by groundwork.server.access from its sentences) gets row-level security,
    on and forced, and one policy per operation; grant-tables-to-role! lets
-   the app's own role, which owns nothing, use the tables through them."
+   the app's own role, which owns nothing, use the tables through them.
+
+   A table map with :on-change ({:function \"groundwork.tell_sync\" :arguments
+   [\"order__id\" …]}, made by groundwork.server.sync) gets three statement
+   triggers calling that function after each insert, update and delete."
   (:require
    [clojure.string :as str]
+   [groundwork.server.database.queries.listen :as listen]
+   [groundwork.server.database.queries.names :as query-names]
    [groundwork.server.database.queries.postgres :as sql]
+   [groundwork.server.database.queries.tables-read :as tables-read]
    [groundwork.server.database.tables.catalog :as catalog]
    [groundwork.server.database.tables.desired :as desired]
    [groundwork.server.database.tables.names :as names]
@@ -63,6 +70,21 @@
 
 ;; -----------------------------------------------------------------------------
 ;; Queries
+
+(def settings-shape
+  "The :database part of the settings, every key required (nil and :none
+   are choices): what start-pool! takes."
+  [:map {:closed true}
+   [:host :string]
+   [:port :int]
+   [:database :string]
+   [:user :string]
+   [:password [:maybe :string]]
+   [:tls [:enum :verified :off]]
+   [:tls-root-cert {:optional true} :string]
+   [:pool-size pos-int?]
+   [:statement-timeout-ms [:or pos-int? [:= :none]]]
+   [:time-zone :string]])
 
 (defn start-pool!
   "Opens a HikariCP pool of connections to Postgres. Every setting is
@@ -119,6 +141,37 @@
   (sql/run-in-transaction! pool-or-transaction f))
 
 ;; -----------------------------------------------------------------------------
+;; What a question read, and hearing changes
+
+(defn run-and-list-tables-read
+  "Runs (f) and returns [what f returned, the tables its queries read]: a
+   set of table keys (#{:orders :shops}), or :unknown when Postgres's
+   planner couldn't say for one of them (a function that reads tables
+   inside it). Each query is planned once, without running it."
+  [f]
+  (tables-read/run-and-list-tables-read f))
+
+(defn turn-table-name-into-table-key
+  "A table's key from its folder and name: \"public\" \"orders\" -> :orders,
+   \"groundwork\" \"background_jobs\" -> :groundwork/background-jobs."
+  [folder table-name]
+  (query-names/find-key-for-table folder table-name))
+
+(defn start-listening!
+  "LISTENs on a Postgres channel, on one connection of the pool held for as
+   long as it runs. (on-notifications [{:channel :payload} …]) for each batch
+   (notifications within 50 ms of each other); (on-reconnect) after the
+   connection broke and listening began again, since what came in between
+   was missed. Returns the listener."
+  [pool channel handlers]
+  (listen/start-listening! pool channel handlers))
+
+(defn stop-listening!
+  "Stops a listener; its connection goes back to the pool."
+  [listener]
+  (listen/stop-listening! listener))
+
+;; -----------------------------------------------------------------------------
 ;; Tables
 
 
@@ -128,6 +181,16 @@
 (def ^:private create-changes-done (make-query "create_changes_done.sql"))
 (def ^:private find-changes-done   (make-query "find_changes_done.sql"))
 (def ^:private insert-change-done  (make-query "insert_change_done.sql"))
+
+(def ^:private does-changes-done-exist
+  (sql/make-query-from-sql-text "changes_done is there" "SELECT to_regclass('groundwork.changes_done') IS NOT NULL AS exists"))
+
+(defn- find-changes-done-if-any
+  "The changes done, or none when the table isn't there yet: planning reads
+   only, so the app's own role can check a database it can't change."
+  [pool]
+  (when (:exists (sql/find-one-row pool does-changes-done-exist {}))
+    (sql/find-rows pool find-changes-done {})))
 
 (defn- turn-statement-into-query [{:keys [sql why]}]
   (sql/make-query-from-sql-text why sql))
@@ -143,13 +206,12 @@
    anything: {:instant [{:sql :why}] :slow [{:sql :why}] :stops [message]
    :changes-to-mark [id]}."
   [pool tables changes]
-  (sql/run-statement! pool create-changes-done {})
   (let [desired (desired/turn-table-maps-into-desired tables)
         folders (set (map names/find-folder-of-table (keys desired)))]
     (plan/make-plan {:catalog      (catalog/read-catalog pool folders)
                    :desired      desired
                    :changes      changes
-                   :changes-done (set (map :change-done/id (sql/find-rows pool find-changes-done {})))
+                   :changes-done (set (map :change-done/id (find-changes-done-if-any pool)))
                    :has-rows?    (memoize #(find-whether-table-has-rows pool %))})))
 
 (defn run-instant-part!
@@ -161,6 +223,7 @@
                     {:type :groundwork.server.database/stops :stops stops})))
   (sql/run-in-transaction! pool
     (fn [transaction]
+      (sql/run-statement! transaction create-changes-done {})
       (doseq [statement instant]
         (sql/run-statement! transaction (turn-statement-into-query statement) {}))
       (doseq [id changes-to-mark]

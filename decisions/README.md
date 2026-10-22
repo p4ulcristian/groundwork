@@ -29,6 +29,8 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [server/sessions](server/sessions/README.md): who is asking
 - [server/access](server/access/README.md): what they may do
 - [server/background-jobs](server/background-jobs/README.md): what runs later
+- [server/sync](server/sync/README.md): how screens stay current (both sides; [browser/sync](browser/sync/README.md))
+- [server/main](server/main/README.md): the one start, and the page shell
 
 ### What Groundwork is
 
@@ -45,7 +47,8 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md), changed in part by [A library says where it runs](2026-10-22-a-library-says-where-it-runs.md)
 - [A library says where it runs; sessions and access stay apart](2026-10-22-a-library-says-where-it-runs.md), changed in part by [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md)
 - [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), changed in part by [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md)
-- [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md)
+- [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), changed in part by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md)
+- [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
 - [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md), changed in part by [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md) and [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)
 - [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md), changed in part by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md) and [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md)
@@ -144,7 +147,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [sync keeps screens in step with the database; rate limits are transport's](2026-10-22-sync-keeps-screens-in-step.md)
 - [The three ways are named http, sse and ws](2026-10-22-the-three-ways-are-named-http-sse-ws.md)
 - [web becomes transport and routes](2026-10-22-transport-and-routes.md), changed in part by [Named messages over three addresses](2026-10-22-named-messages-over-three-addresses.md)
-- [Named messages over three addresses Groundwork owns](2026-10-22-named-messages-over-three-addresses.md)
+- [Named messages over three addresses Groundwork owns](2026-10-22-named-messages-over-three-addresses.md), changed in part by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md)
 - [Postgres rings the bell](2026-10-12-postgres-rings-the-bell.md), changed in part by [Three ways between browser and server](2026-10-22-three-ways-between-browser-and-server.md)
 - [Who is rung comes from who may see](2026-10-13-who-is-rung-comes-from-who-may-see.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
 - [Asking again, and bells that miss nothing](2026-10-14-asking-again-and-bells-that-miss-nothing.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)

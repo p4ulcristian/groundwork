@@ -6,7 +6,8 @@
    [groundwork.server.transport.api]))
 
 (deftest the-api-names
-  (is (= '#{default-addresses
+  (is (= '#{settings-shape
+           default-addresses
            make-routes-for-messages
            start-server!
            stop-server!

@@ -1,5 +1,7 @@
 # Named messages over three addresses Groundwork owns
 
+> **Changed in part** by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md) (2026-10-22): the addresses and the pages are said once, on the server, and reach the browser in the page; the `contract.cljc` copies are gone.
+
 > Changes in part [web becomes transport and routes](2026-10-22-transport-and-routes.md): data never travels to an address an app writes; only pages have those.
 
 **Decision:**

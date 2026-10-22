@@ -5,5 +5,6 @@
    [groundwork.server.sessions.api]))
 
 (deftest the-api-names
-  (is (= '#{sessions-table sign-in! sign-out! sign-out-everywhere! delete-ended-sessions! make-find-session-step}
+  (is (= '#{settings-shape
+           sessions-table sign-in! sign-out! sign-out-everywhere! delete-ended-sessions! make-find-session-step}
          (set (keys (ns-publics 'groundwork.server.sessions.api))))))

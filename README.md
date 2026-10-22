@@ -16,19 +16,22 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 | server/sessions | `groundwork.server.sessions` | who is asking? |
 | server/access | `groundwork.server.access` | what may they do? |
 | server/background-jobs | `groundwork.server.background-jobs` | what runs later? |
-| server/main | `groundwork.server.main` | how does the server start? |
+| server/sync | `groundwork.server.sync` | how do screens stay current? (who is told of a change) |
+| server/main | `groundwork.server.main` | how does the server start? (and the page shell) |
 | browser/wire | `groundwork.browser.wire` | how does data keep its types? (in the browser) |
 | browser/transport | `groundwork.browser.transport` | how does the browser talk to the server? (and the pages in the bar) |
+| browser/sync | `groundwork.browser.sync` | how do screens stay current? (answers kept by question, asked again) |
 | browser/main | `groundwork.browser.main` | how does the browser start? |
 
 Every namespace says its side right after `groundwork`; no file is `.cljc`.
 Which library may use which is `libraries.edn`, checked by a test.
 
-Still to come: sync on both sides (how do screens stay current?) and the
-browser build (what does the browser download?).
+Still to come: the browser build (what does the browser download?). The
+browser libraries aren't tested until it exists.
 
 ```sh
-clojure -X:test                                                    # every test
+clojure -X:test                                                    # every test; Postgres ones need
+                                                                   # GROUNDWORK_SQL_TEST_PORT and _USER (Postgres 16+)
 clojure -X:test :dirs '["test-code/groundwork/server/database"]'   # one library
 clj -A:test                                                        # one REPL, every library
 ```

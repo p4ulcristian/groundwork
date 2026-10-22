@@ -8,12 +8,17 @@
 
 (defn open-sse-line!
   "Opens the server stream; each named message, shaped by its :answer-shape,
-   goes to its handler. Returns the line."
-  [address shapes-by-name handlers]
-  (doto (js/EventSource. address #js {:withCredentials true})
-    (set! -onmessage #(->> (wire/turn-json-text-into-data (.-data %))
-                           (shapes/turn-answer-into-shaped-data shapes-by-name)
-                           (messages/hand-named-messages! handlers)))))
+   goes to its handler. (on-open again?) each time it opens, again? true
+   after a break. Returns the line."
+  [address shapes-by-name handlers {:keys [on-open]}]
+  (let [opened-before? (atom false)]
+    (doto (js/EventSource. address #js {:withCredentials true})
+      (set! -onopen #(when on-open
+                       (on-open @opened-before?)
+                       (reset! opened-before? true)))
+      (set! -onmessage #(->> (wire/turn-json-text-into-data (.-data %))
+                             (shapes/turn-answer-into-shaped-data shapes-by-name)
+                             (messages/hand-named-messages! handlers))))))
 
 (defn close-sse-line!
   "Closes the line; it doesn't reopen."

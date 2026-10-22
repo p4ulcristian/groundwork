@@ -6,7 +6,8 @@
    [groundwork.server.access.api]))
 
 (deftest the-api-names
-  (is (= '#{access-tables check-scope-kinds add-scope! add-role! add-membership! remove-membership!
+  (is (= '#{list-readers-of-tables list-people-holding-actions
+           access-tables check-scope-kinds add-scope! add-role! add-membership! remove-membership!
            list-actions-of-person make-sql-conditions install-access-functions!
            put-access-into-handlers put-gates-on-tables find-leaks}
          (set (keys (ns-publics 'groundwork.server.access.api))))))

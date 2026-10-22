@@ -1,5 +1,7 @@
 # One tree; libraries.edn says, and a test checks, who uses whom
 
+> **Changed in part** by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md) (2026-10-22): the addresses and the pages are said once, on the server, and reach the browser in the page; the `contract.cljc` copies are gone.
+
 > Replaces [A library is a folder with its own deps.edn](2026-10-22-a-library-is-a-folder-with-its-own-deps.md). Changes in part [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md) and [No Polylith tool](2026-10-22-no-polylith-tool.md). Brings back what [Libraries are folders in one tree, their edges declared](2026-10-22-libraries-are-folders-in-one-tree.md) decided.
 
 **Decision:**

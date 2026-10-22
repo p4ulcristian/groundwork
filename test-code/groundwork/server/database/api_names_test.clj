@@ -6,7 +6,8 @@
    [groundwork.server.database.api]))
 
 (deftest the-api-names
-  (is (= '#{start-pool! stop-pool!
+  (is (= '#{settings-shape run-and-list-tables-read turn-table-name-into-table-key start-listening! stop-listening!
+           start-pool! stop-pool!
            make-query-from-sql-file make-query-from-sql-text
            find-rows find-one-row run-statement! run-in-transaction!
            make-plan-from-tables run-instant-part! run-slow-part! migrate!

@@ -10,3 +10,4 @@ Tables: the ones they are built on are in the top folder: [A table is one map](.
 
 - [Changes are data, and v1 makes tables, columns, references, enums and indexes](2026-10-22-changes-are-data-and-what-v1-makes.md)
 - Gates (row-level security from a map's `:gates`) and `grant-tables-to-role!`: decided in groundwork.server.access, [piece 4](../access/2026-10-22-access-piece-4-the-gates.md)
+- [A query knows the tables it reads; a table can call a function on change; NOTIFY can be heard](2026-10-22-a-query-knows-its-tables-and-postgres-can-be-heard.md)

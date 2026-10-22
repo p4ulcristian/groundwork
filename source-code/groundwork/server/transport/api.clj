@@ -20,7 +20,6 @@
    A line (an open sse or ws connection) is
    {:groundwork.server.transport/channel … :groundwork.server.transport/request …}."
   (:require
-   [groundwork.server.transport.contract :as contract]
    [groundwork.server.transport.http :as http]
    [groundwork.server.transport.messages :as messages]
    [groundwork.server.transport.routes :as routes]
@@ -30,8 +29,14 @@
    [org.httpkit.server :as http-kit]))
 
 (def default-addresses
-  "Where the three pipes are, unless the settings say otherwise."
-  contract/default-addresses)
+  "Where the three pipes are. The browser reads them from the page."
+  {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"})
+
+(def settings-shape
+  "The :server part of the settings, every key required."
+  [:map {:closed true}
+   [:ip :string]
+   [:port :int]])
 
 (defn make-routes-for-messages
   "The three routes, as reitit data, for make-ring-handler-from-routes.
@@ -73,7 +78,8 @@
 (defn answer-message
   "The answer a message gets from the handlers, as over http, without a
    server: for tests and the REPL. request is the Ring request it came with
-   (its cookie, its origin)."
+   (its cookie, its origin). Notes, when a handler has them, are beside the
+   answers under :groundwork/notes."
   [handlers request message]
   (messages/answer-named-messages handlers request message))
 
@@ -87,7 +93,9 @@
   (routes/make-server-routes-for-pages pages page-handler))
 
 (defn make-ring-handler-from-routes
-  "The one Ring handler, from reitit routes. No route: 404; a method the
+  "The one Ring handler, from reitit routes. Options: :files-folder, a
+   folder on the classpath a GET no route matches is answered from (the
+   browser's code and styles). No route and no file: 404; a method the
    route doesn't have: 405."
-  [routes]
-  (routes/make-ring-handler-from-routes routes))
+  ([routes] (make-ring-handler-from-routes routes {}))
+  ([routes options] (routes/make-ring-handler-from-routes routes options)))

@@ -17,6 +17,7 @@
    [clojure.java.io :as io]
    [groundwork.server.database.queries.params :as params]
    [groundwork.server.database.queries.rows :as rows]
+   [groundwork.server.database.queries.tables-read :as tables-read]
    [next.jdbc :as jdbc]
    [next.jdbc.connection :as connection])
   (:import
@@ -101,7 +102,8 @@
   (let [url (or (io/resource path)
                 (throw (ex-info (str "No SQL file " path) {:type :groundwork.server.database/missing-file :path path})))]
     (assoc (params/turn-sql-text-into-statement (slurp url))
-           :groundwork.server.database/path path)))
+           :groundwork.server.database/path path
+           :groundwork.server.database/tables-read (atom nil))))
 
 (defn make-query-from-sql-text
   "A query from SQL text made by code, not read from a file: for statements
@@ -109,12 +111,16 @@
    stands where a file's path would, in errors."
   [query-name sql-text]
   (assoc (params/turn-sql-text-into-statement sql-text)
-         :groundwork.server.database/path query-name))
+         :groundwork.server.database/path query-name
+         :groundwork.server.database/tables-read (atom nil)))
 
 (defn- run-on-connection
   "Rows as a vector when the statement returns rows, else {:count n}. With
-   max-rows, Postgres sends at most that many rows."
-  [^Connection connection query params max-rows]
+   :max-rows, Postgres sends at most that many rows. A query run for its
+   rows (:rows? true) notes the tables it reads, for run-and-list-tables-read."
+  [^Connection connection query params {:keys [max-rows rows?]}]
+  (when rows?
+    (tables-read/note-tables-of-query! connection query))
   (let [path   (:groundwork.server.database/path query)
         values (mapv rows/turn-param-value-into-jdbc-value (params/list-param-values query params path))]
     (with-open [^PreparedStatement statement (jdbc/prepare connection (into [(:text-with-question-marks query)] values))]
@@ -124,11 +130,11 @@
           (rows/list-rows-in-result-set rs path))
         {:count (.getLargeUpdateCount statement)}))))
 
-(defn- run-query [pool-or-transaction query params max-rows]
+(defn- run-query [pool-or-transaction query params options]
   (if-let [connection (:groundwork.server.database/connection pool-or-transaction)]
-    (run-on-connection connection query params max-rows)
+    (run-on-connection connection query params options)
     (with-open [connection (jdbc/get-connection (:groundwork.server.database/datasource pool-or-transaction))]
-      (run-on-connection connection query params max-rows))))
+      (run-on-connection connection query params options))))
 
 (defn- throw-when-no-rows [result query]
   (when-not (vector? result)
@@ -139,7 +145,7 @@
   "Every row of a query that returns rows (a SELECT, or a write with
    RETURNING): a vector, empty when none."
   [pool-or-transaction query params]
-  (let [result (run-query pool-or-transaction query params nil)]
+  (let [result (run-query pool-or-transaction query params {:rows? true})]
     (throw-when-no-rows result query)
     result))
 
@@ -147,7 +153,7 @@
   "The one row of a query, or nil. A second row throws; Postgres sends at
    most two, so a runaway query isn't read in full first."
   [pool-or-transaction query params]
-  (let [result (run-query pool-or-transaction query params 2)]
+  (let [result (run-query pool-or-transaction query params {:rows? true :max-rows 2})]
     (throw-when-no-rows result query)
     (when (second result)
       (throw (ex-info (str (:groundwork.server.database/path query) " returned more than one row")
@@ -158,7 +164,7 @@
   "Runs a statement for what it changes (an INSERT, UPDATE, DELETE).
    Returns how many rows it changed."
   [pool-or-transaction query params]
-  (let [result (run-query pool-or-transaction query params nil)]
+  (let [result (run-query pool-or-transaction query params {})]
     (if (vector? result) (count result) (:count result))))
 
 (defn run-in-transaction!

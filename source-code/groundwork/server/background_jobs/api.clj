@@ -69,9 +69,16 @@
 ;; -----------------------------------------------------------------------------
 ;; Tables, as maps for groundwork.server.database
 
+(def settings-shape
+  "The :background-jobs part of the settings, every key required."
+  [:map {:closed true}
+   [:workers pos-int?]
+   [:poll-ms pos-int?]])
+
 (def background-jobs-table
   "The queue: one row per background job."
   {:table   :groundwork/background-jobs
+   :sync    [:silent "no screen shows the queue"]
    :columns [[:background-job/id           :uuid         {:primary-key? true :default :random-uuid}]
              [:background-job/kind         :string]
              [:background-job/params       :string]      ; JSON text, through wire
@@ -90,6 +97,7 @@
 (def background-job-schedules-table
   "The schedules: the next time each runs."
   {:table   :groundwork/background-job-schedules
+   :sync    [:silent "no screen shows the schedules"]
    :columns [[:background-job-schedule/key     :string       {:primary-key? true}]
              [:background-job-schedule/next-at :time/instant]]})
 

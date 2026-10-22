@@ -306,6 +306,21 @@
                 (add-instant state policy-sql (str "missing policy " policy-name))))
             state (:policies desired))))
 
+(defn- plan-triggers
+  "The change triggers made and dropped by name. All instant."
+  [state table-name existing desired]
+  (as-> state state
+    (reduce (fn [state [trigger-name _]]
+              (if (contains? (:triggers desired) trigger-name)
+                state
+                (add-instant state (str "DROP TRIGGER " trigger-name " ON " table-name) (str "trigger " trigger-name " is in no map"))))
+            state (:triggers existing))
+    (reduce (fn [state [trigger-name trigger-sql]]
+              (if (contains? (:triggers existing) trigger-name)
+                state
+                (add-instant state trigger-sql (str "missing trigger " trigger-name))))
+            state (:triggers desired))))
+
 (defn- plan-existing-table [state has-rows? table-name existing desired]
   (let [existing-columns (into {} (map (juxt :name identity)) (:columns existing))
         desired-names    (set (map :name (:columns desired)))]
@@ -323,6 +338,7 @@
       (plan-required state table-name existing desired)
       (plan-uniques state table-name existing desired)
       (plan-gates state table-name existing desired)
+      (plan-triggers state table-name existing desired)
       ;; references: NOT VALID now, VALIDATE in the slow part
       (reduce (fn [state [n fk]]
                 (let [found (get-in existing [:foreign-keys n])]
@@ -402,6 +418,7 @@
                    (reduce #(plan-new-table %1 %2 (get desired %2)) state new)
                    (reduce #(plan-foreign-keys-of-new-table %1 %2 (get desired %2)) state new)
                    (reduce #(plan-gates %1 %2 {:gated? false :policies {}} (get desired %2)) state new)
+                   (reduce #(plan-triggers %1 %2 {:triggers {}} (get desired %2)) state new)
                    (reduce (fn [state table-name]
                              (plan-existing-table state has-rows? table-name (get catalog table-name) (get desired table-name)))
                            state

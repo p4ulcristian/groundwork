@@ -10,7 +10,8 @@
                  :indexes      {\"orders_order__shop_id_idx\" {:columns [\"order__shop_id\"] :valid? true}}}}
 
    Only what schema makes is read: unique keys, checks whose names end in
-   _enum or _not_null, and indexes that are neither unique nor a primary key.
+   _enum or _not_null, indexes that are neither unique nor a primary key,
+   row security and policies, and triggers (but Postgres's own).
    A table outside the public folder is named folder.table."
   (:require
    [clojure.string :as str]
@@ -25,6 +26,7 @@
 (def ^:private find-indexes     (make-query "find_indexes.sql"))
 (def ^:private find-row-security (make-query "find_row_security.sql"))
 (def ^:private find-policies    (make-query "find_policies.sql"))
+(def ^:private find-triggers    (make-query "find_triggers.sql"))
 
 (defn- add-gates [tables params pool]
   (as-> tables tables
@@ -38,6 +40,13 @@
                 (assoc-in tables [table-name :policies policy-name] true)
                 tables))
             tables (sql/find-rows pool find-policies params))))
+
+(defn- add-triggers [tables params pool]
+  (reduce (fn [tables {:keys [table-name trigger-name]}]
+            (if (contains? tables table-name)
+              (assoc-in tables [table-name :triggers trigger-name] true)
+              tables))
+          tables (sql/find-rows pool find-triggers params)))
 
 (defn find-values-in-check
   "The text values a CHECK (… = ANY (ARRAY['a'::text, …])) allows, in order."
@@ -71,7 +80,7 @@
         empty-tables (into {} (map (fn [{:keys [table-name]}]
                                      [table-name {:columns [] :primary-key [] :foreign-keys {} :uniques {}
                                                   :checks {} :not-null-checks {} :indexes {}
-                                                  :gated? false :policies {}}]))
+                                                  :gated? false :policies {} :triggers {}}]))
                            (sql/find-rows pool find-tables params))
         with-columns (reduce (fn [tables {:keys [table-name column-name column-type not-null default-text]}]
                                (update-in tables [table-name :columns] conj
@@ -86,4 +95,5 @@
                     (assoc-in tables [table-name :indexes index-name] {:columns column-names :valid? valid})))
                 with-constraints
                 (sql/find-rows pool find-indexes params))
-        (add-gates params pool))))
+        (add-gates params pool)
+        (add-triggers params pool))))

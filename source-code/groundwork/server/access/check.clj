@@ -102,7 +102,7 @@
   (fn [run context]
     (let [context (steps/run-steps-until-answered [find-session-step] context)]
       (if (steps/does-context-have-answer? context)
-        (:groundwork.server.steps/answer context)
+        context
         (database/run-in-transaction! pool
           (fn [transaction]
             (let [person-id (:groundwork.server.sessions/person-id context)

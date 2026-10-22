@@ -29,7 +29,7 @@
         (uuid? value)    (str (quote-text value) "::uuid")
         :else            (str value)))
 
-(defn- find-scope-kind-of-column
+(defn find-scope-kind-of-column
   "The scope kind a column names: the kind whose :table its reference points at."
   [{:keys [columns]} column-key tables-by-key scope-kinds]
   (let [references  (some (fn [[k _ options]] (when (= k column-key) (:references options))) columns)
