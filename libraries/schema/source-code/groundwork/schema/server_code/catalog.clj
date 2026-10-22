@@ -23,6 +23,21 @@
 (def ^:private find-columns     (make-query "find_columns.sql"))
 (def ^:private find-constraints (make-query "find_constraints.sql"))
 (def ^:private find-indexes     (make-query "find_indexes.sql"))
+(def ^:private find-row-security (make-query "find_row_security.sql"))
+(def ^:private find-policies    (make-query "find_policies.sql"))
+
+(defn- add-gates [tables params pool]
+  (as-> tables tables
+    (reduce (fn [tables {:keys [table-name row-security forced-row-security]}]
+              (if (contains? tables table-name)
+                (assoc-in tables [table-name :gated?] (boolean (and row-security forced-row-security)))
+                tables))
+            tables (sql/find-rows pool find-row-security params))
+    (reduce (fn [tables {:keys [table-name policy-name]}]
+              (if (contains? tables table-name)
+                (assoc-in tables [table-name :policies policy-name] true)
+                tables))
+            tables (sql/find-rows pool find-policies params))))
 
 (defn find-values-in-check
   "The text values a CHECK (… = ANY (ARRAY['a'::text, …])) allows, in order."
@@ -55,7 +70,8 @@
   (let [params       {:folders (str/join "," folders)}
         empty-tables (into {} (map (fn [{:keys [table-name]}]
                                      [table-name {:columns [] :primary-key [] :foreign-keys {} :uniques {}
-                                                  :checks {} :not-null-checks {} :indexes {}}]))
+                                                  :checks {} :not-null-checks {} :indexes {}
+                                                  :gated? false :policies {}}]))
                            (sql/find-rows pool find-tables params))
         with-columns (reduce (fn [tables {:keys [table-name column-name column-type not-null default-text]}]
                                (update-in tables [table-name :columns] conj
@@ -64,9 +80,10 @@
                              empty-tables
                              (sql/find-rows pool find-columns params))
         with-constraints (reduce add-constraint with-columns (sql/find-rows pool find-constraints params))]
-    (reduce (fn [tables {:keys [table-name index-name valid is-unique is-primary column-names]}]
-              (if (or is-unique is-primary)
-                tables
-                (assoc-in tables [table-name :indexes index-name] {:columns column-names :valid? valid})))
-            with-constraints
-            (sql/find-rows pool find-indexes params))))
+    (-> (reduce (fn [tables {:keys [table-name index-name valid is-unique is-primary column-names]}]
+                  (if (or is-unique is-primary)
+                    tables
+                    (assoc-in tables [table-name :indexes index-name] {:columns column-names :valid? valid})))
+                with-constraints
+                (sql/find-rows pool find-indexes params))
+        (add-gates params pool))))

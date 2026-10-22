@@ -21,7 +21,7 @@ layers test checks it.
 | background-chores | `groundwork.background-chores.api` | a queue, workers and schedules in Postgres |
 | schema | `groundwork.schema.api` | tables as maps; Postgres brought to them |
 | sessions | `groundwork.sessions.api` | who is asking: a session in Postgres, a cookie in the browser |
-| access | `groundwork.access.api` | who may see and do what (pieces 1-3: who belongs where; sentences into SQL; the check) |
+| access | `groundwork.access.api` | who may see and do what (pieces 1-4: who belongs where; sentences into SQL; the check; the gates) |
 | main | `groundwork.main.api` | puts the libraries together; lists every one it uses |
 
 ```sh

@@ -9,6 +9,7 @@
                 [:order/note    :string  {:optional? true}]]
       :indexes [[:order/shop-id]]}"
   (:require
+   [groundwork.schema.server-code.gates :as gates]
    [groundwork.schema.server-code.names :as names]
    [groundwork.schema.server-code.types :as types]))
 
@@ -21,7 +22,7 @@
               :when (:primary-key? options)]
           [k (names/turn-table-key-into-table-name table)])))
 
-(defn- turn-table-map-into-desired [tables-by-primary-key {:keys [table columns indexes]}]
+(defn- turn-table-map-into-desired [tables-by-primary-key {:keys [table columns indexes gates]}]
   (let [table-name (names/turn-table-key-into-table-name table)
         column     (fn [[k type {:keys [optional? default]}]]
                      (let [postgres-type (types/turn-type-into-postgres-type type)]
@@ -59,6 +60,8 @@
                                 :let [column-name (names/turn-key-into-column-name k)]]
                             [(names/make-enum-check-name table-name column-name)
                              {:column column-name :values values}]))
+      :gated?       (some? gates)
+      :policies     (if gates (gates/turn-gates-into-policies (names/turn-table-key-into-table-name table) gates) {})
       :indexes      (into {}
                           (for [index-keys indexes
                                 :let [column-names (mapv names/turn-key-into-column-name index-keys)]]

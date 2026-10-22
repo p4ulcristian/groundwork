@@ -13,5 +13,6 @@
            does-database-match-tables?
            turn-table-into-row-shape
            turn-key-into-column-name
-           turn-table-key-into-table-name}
+           turn-table-key-into-table-name
+           grant-tables-to-role!}
          (set (keys (ns-publics 'groundwork.schema.api))))))

@@ -7,12 +7,15 @@ A scope's Owner holds every action of its kind. Piece 2, the `:access`
 sentences on table maps turned into one SQL condition per action and per
 operation, for the check and the gates. Piece 3, the check: every handler
 declares its action and shapes, and Groundwork puts the check in front of its
-steps, inside one transaction that tells Postgres who is asking.
+steps, inside one transaction that tells Postgres who is asking. Piece 4,
+the gates: Postgres's row rules made from the same conditions, so a query
+with no WHERE still returns only the asker's rows.
 
 Needs groundwork.sql and groundwork.schema. API: `groundwork.access.api`
 (`access-tables`, `check-scope-kinds`, `add-scope!`, `add-role!`,
 `add-membership!`, `remove-membership!`, `list-actions-of-person`,
-`make-sql-conditions`, `install-access-functions!`, `put-access-into-handlers`). Decisions:
+`make-sql-conditions`, `install-access-functions!`, `put-access-into-handlers`,
+`put-gates-on-tables`). Decisions:
 [`decisions/`](decisions/README.md).
 
 ```clojure

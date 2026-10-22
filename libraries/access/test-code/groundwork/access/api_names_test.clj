@@ -8,5 +8,6 @@
   (is (= '#{access-tables check-scope-kinds add-scope! add-role! add-membership! remove-membership! list-actions-of-person
            make-sql-conditions
            install-access-functions!
-           put-access-into-handlers}
+           put-access-into-handlers
+           put-gates-on-tables}
          (set (keys (ns-publics 'groundwork.access.api))))))

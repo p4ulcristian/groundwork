@@ -2,7 +2,9 @@
   "Who may see and do what. The api of groundwork.access. Piece 1: who
    belongs where. Piece 2: the :access sentences on table maps, turned into
    SQL conditions (make-sql-conditions). Piece 3: the check, put in front
-   of every handler's steps (put-access-into-handlers).
+   of every handler's steps (put-access-into-handlers). Piece 4: the gates,
+   Postgres's row rules made from the same conditions (put-gates-on-tables,
+   for groundwork.schema).
 
    The app says, in its code, its kinds of scope (a shop), their actions and
    the roles a new scope starts with (check-scope-kinds). Groundwork keeps,
@@ -138,7 +140,8 @@
 (defn install-access-functions!
   "Installs, or replaces, the two SQL functions the check and the gates read
    who is asking from: groundwork.find_asking_person() and
-   groundwork.find_scopes_holding(kind, action)."
+   groundwork.find_scopes_holding(kind, action). Run it before migrate:
+   Postgres refuses a gate whose function doesn't exist yet."
   [pool]
   (sql/run-statement! pool create-access-functions {}))
 
@@ -161,3 +164,18 @@
    (assoc setup
           :conditions   (conditions/make-sql-conditions tables scope-kinds)
           :list-actions #(list-actions-of-person %1 scope-kinds %2))))
+
+(defn put-gates-on-tables
+  "The table maps, each with sentences given :gates (its :operations
+   conditions) for groundwork.schema to make Postgres's row rules from. A
+   table that names a scope (references a scope kind's table) must have
+   :access, or :access :public on purpose; otherwise this throws.
+
+     (schema/migrate! pool (access/put-gates-on-tables tables scope-kinds) changes)"
+  [tables scope-kinds]
+  (let [conditions (conditions/make-sql-conditions tables scope-kinds)]
+    (mapv (fn [{:keys [table] :as table-map}]
+            (if-let [operations (get-in conditions [table :operations])]
+              (assoc table-map :gates operations)
+              table-map))
+          tables)))

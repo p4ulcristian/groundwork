@@ -35,12 +35,33 @@
                       (nil? (:when sentence)))]
        (str table ": " action " writes, so " (:to sentence) " may have it only with a :when")))))
 
+(defn- has-sentences? [table]
+  (sequential? (:access table)))
+
+(defn- find-scope-tables [scope-kinds]
+  (set (map :table (vals scope-kinds))))
+
+(defn- names-a-scope? [{:keys [columns]} tables scope-kinds]
+  (let [scope-tables (find-scope-tables scope-kinds)
+        pk-of-scope  (set (for [{:keys [table columns]} tables
+                                :when (contains? scope-tables table)
+                                [k _ options] columns :when (:primary-key? options)]
+                            k))]
+    (some (fn [[_ _ options]] (contains? pk-of-scope (:references options))) columns)))
+
+(defn- find-problems-of-table [table tables scope-kinds]
+  (when (and (nil? (:access table)) (names-a-scope? table tables scope-kinds))
+    [(str (:table table) " names a scope but has no :access: say who may see it, or :access :public")]))
+
 (defn check-sentences
   "Throws with every problem of every table's sentences at once."
   [tables scope-kinds]
   (let [actions-do (find-what-actions-do scope-kinds)
-        problems   (for [table tables, sentence (:access table), problem (find-problems-of-sentence table actions-do sentence)]
-                     problem)]
+        problems   (concat
+                    (mapcat #(find-problems-of-table % tables scope-kinds) tables)
+                    (for [table tables :when (has-sentences? table)
+                          sentence (:access table), problem (find-problems-of-sentence table actions-do sentence)]
+                      problem))]
     (when (seq problems)
       (throw (ex-info (str "The access sentences have problems:\n  " (str/join "\n  " problems))
                       {:type :groundwork.access/bad-sentences :problems (vec problems)})))))
@@ -61,5 +82,5 @@
   (check-sentences tables scope-kinds)
   (let [place      {:tables-by-key (into {} (map (juxt :table identity)) tables) :scope-kinds scope-kinds}
         actions-do (find-what-actions-do scope-kinds)]
-    (into {} (for [table tables :when (:access table)]
+    (into {} (for [table tables :when (has-sentences? table)]
                [(:table table) (make-conditions-of-table table place actions-do)]))))

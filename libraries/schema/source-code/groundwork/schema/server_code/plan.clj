@@ -282,6 +282,30 @@
                 (add-instant state (str "ALTER TABLE " table-name " DROP CONSTRAINT " n) (str "unique key " n " is in no map"))))
             state (:uniques existing))))
 
+(defn- plan-gates
+  "Row-level security on and forced when the map has :gates, off when it
+   hasn't; the policies made and dropped by name. All instant."
+  [state table-name existing desired]
+  (as-> state state
+    (cond
+      (and (:gated? desired) (not (:gated? existing)))
+      (add-instant state (str "ALTER TABLE " table-name " ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY")
+                   (str table-name " gets its gates"))
+      (and (not (:gated? desired)) (:gated? existing))
+      (add-instant state (str "ALTER TABLE " table-name " DISABLE ROW LEVEL SECURITY, NO FORCE ROW LEVEL SECURITY")
+                   (str table-name " has no gates in its map"))
+      :else state)
+    (reduce (fn [state [policy-name _]]
+              (if (contains? (:policies desired) policy-name)
+                state
+                (add-instant state (str "DROP POLICY " policy-name " ON " table-name) (str "policy " policy-name " is in no map"))))
+            state (:policies existing))
+    (reduce (fn [state [policy-name policy-sql]]
+              (if (contains? (:policies existing) policy-name)
+                state
+                (add-instant state policy-sql (str "missing policy " policy-name))))
+            state (:policies desired))))
+
 (defn- plan-existing-table [state has-rows? table-name existing desired]
   (let [existing-columns (into {} (map (juxt :name identity)) (:columns existing))
         desired-names    (set (map :name (:columns desired)))]
@@ -298,6 +322,7 @@
         (add-stop state (str table-name "'s primary key differs from its map; changing it isn't in v1")))
       (plan-required state table-name existing desired)
       (plan-uniques state table-name existing desired)
+      (plan-gates state table-name existing desired)
       ;; references: NOT VALID now, VALIDATE in the slow part
       (reduce (fn [state [n fk]]
                 (let [found (get-in existing [:foreign-keys n])]
@@ -376,6 +401,7 @@
                    (reduce #(add-instant %1 (str "CREATE SCHEMA IF NOT EXISTS " %2) (str "folder " %2 " for its tables")) state folders)
                    (reduce #(plan-new-table %1 %2 (get desired %2)) state new)
                    (reduce #(plan-foreign-keys-of-new-table %1 %2 (get desired %2)) state new)
+                   (reduce #(plan-gates %1 %2 {:gated? false :policies {}} (get desired %2)) state new)
                    (reduce (fn [state table-name]
                              (plan-existing-table state has-rows? table-name (get catalog table-name) (get desired table-name)))
                            state

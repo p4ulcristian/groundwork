@@ -34,7 +34,12 @@
    A plan has two parts: :instant (only Postgres's catalog changes; before
    the app starts) and :slow (reads or writes every row: indexes built
    CONCURRENTLY, constraints validated; after, in the background). A
-   difference that could lose data, or that v1 can't make, is a stop."
+   difference that could lose data, or that v1 can't make, is a stop.
+
+   A table map with :gates ({:read sql :insert sql :update sql :delete sql},
+   made by groundwork.access from its sentences) gets row-level security,
+   on and forced, and one policy per operation; grant-tables-to-role! lets
+   the app's own role, which owns nothing, use the tables through them."
   (:require
    [clojure.string :as str]
    [groundwork.schema.server-code.catalog :as catalog]
@@ -134,3 +139,17 @@
   "A table key's Postgres name: :orders -> \"orders\", :groundwork/sessions -> \"groundwork.sessions\"."
   [k]
   (names/turn-table-key-into-table-name k))
+
+(defn grant-tables-to-role!
+  "Lets the app's own database role use the tables of these maps: their
+   folders, their rows (select, insert, update, delete), and the functions
+   in them. The role owns nothing, so the gates hold for it. Run by migrate
+   as the owner; safe to run again."
+  [pool tables role]
+  (doseq [folder (set (map (comp names/find-folder-of-table names/turn-table-key-into-table-name :table) tables))]
+    (sql/run-statement! pool (sql/make-query-from-sql-text
+                              (str "grant " folder " to " role)
+                              (str "GRANT USAGE ON SCHEMA " folder " TO " role "; "
+                                   "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA " folder " TO " role "; "
+                                   "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA " folder " TO " role))
+                        {})))
