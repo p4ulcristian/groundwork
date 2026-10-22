@@ -52,6 +52,9 @@
            :when    (and (str/starts-with? (str required) "showroom.") (not= 'showroom.api required))]
        (str (second ns-form) " requires " required ": only showroom's api, showroom.api"))
      (for [required (list-required-namespaces ns-form)
+           :when    (and (str/starts-with? (str required) "mailroom.") (not= 'mailroom.api required))]
+       (str (second ns-form) " requires " required ": only mailroom's api, mailroom.api"))
+     (for [required (list-required-namespaces ns-form)
            :when    (and (str/starts-with? (str required) "showroom.") (= :server side))]
        (str (second ns-form) " requires " required ": the server loads showroom only when it watches (requiring-resolve)"))
      (for [required (list-required-namespaces ns-form)

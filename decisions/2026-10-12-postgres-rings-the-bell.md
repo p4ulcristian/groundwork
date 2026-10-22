@@ -2,7 +2,7 @@
 
 > **Changed in part** by [sync keeps screens in step with the database](2026-10-22-sync-keeps-screens-in-step.md) (2026-10-22): bells are called sync, made by groundwork.schema (the trigger) and groundwork.sync (the rest); rate limits are transport's.
 
-> **Changed in part** by [Three ways between browser and server](2026-10-22-three-ways-between-browser-and-server.md) (2026-10-22): bells reach the browser over a server stream (SSE), not a websocket.
+> **Changed in part** by [Three ways between browser and server](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-three-ways-between-browser-and-server.md) (2026-10-22): bells reach the browser over a server stream (SSE), not a websocket.
 
 **Decision:** live updates come from the database itself. At start, Groundwork installs a trigger on every table in the permission description (and on global and person-owned tables): after a statement changes rows, it announces the table, the scopes of the changed rows (from their own scope column) and their ids, through Postgres's NOTIFY. Postgres delivers announcements only when the transaction commits, once per distinct message. Every server listens; each rings its own open browser lines. Groundwork learns at start which tables each read uses by asking Postgres to plan its SQL.
 

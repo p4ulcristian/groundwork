@@ -21,7 +21,7 @@
   (:require
    [clojure.string :as str]
    [cellar.api :as database]
-   [groundwork.server.steps.api :as steps]
+   [mailroom.api :as mailroom]
    [jsonista.core :as json]))
 
 (def ^:private not-found {:error "Not found."})
@@ -88,7 +88,7 @@
   "{:allowed bool :visible bool} for the record the message names."
   [query record context]
   (database/find-one-row (:groundwork.server.access/transaction context) query
-                         {:record/id (get-in context [:groundwork.server.transport/message-data (second record)])}))
+                         {:record/id (get-in context [:mailroom/message-data (second record)])}))
 
 (defn- make-check-step [{:keys [tables] :as setup} {:keys [record action] :as handler}]
   (let [query (when record (make-record-query setup handler))
@@ -98,11 +98,11 @@
               (if query
                 (let [{:keys [allowed visible]} (find-reach-of-record query record context)]
                   (cond allowed context
-                        visible (steps/add-answer-to-context context not-allowed)
-                        :else   (steps/add-answer-to-context context not-found)))
+                        visible (mailroom/add-answer-to-context context not-allowed)
+                        :else   (mailroom/add-answer-to-context context not-found)))
                 (if (may-person-have-action? reach action context)
                   context
-                  (steps/add-answer-to-context context not-found))))}))
+                  (mailroom/add-answer-to-context context not-found))))}))
 
 (defn- turn-actions-into-asking
   "Who is asking, as the JSON text access's SQL functions read from
@@ -123,8 +123,8 @@
 
 (defn- make-run-steps-in [{:keys [pool find-session-step list-actions] :as setup} {:keys [action]}]
   (fn [run context]
-    (let [context (steps/run-steps-until-answered [find-session-step] context)]
-      (if (steps/does-context-have-answer? context)
+    (let [context (mailroom/run-steps-until-answered [find-session-step] context)]
+      (if (mailroom/does-context-have-answer? context)
         context
         (database/run-in-transaction! pool {:read-only? (does-action-only-read? setup action)}
           (fn [transaction]

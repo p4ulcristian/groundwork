@@ -22,14 +22,13 @@
      (sync/install-sync-function! owner-pool)
      (database/migrate! owner-pool (sync/put-sync-on-tables tables scope-kinds) changes)
      (def sync (sync/start-sync! pool {:tables tables :scope-kinds scope-kinds :find-session-step find-session}))
-     ;; transport's :on-sse-open #(sync/add-sse-line! sync %), :on-sse-close #(sync/remove-sse-line! sync %)"
+     ;; mailroom's :on-sse-open #(sync/add-sse-line! sync %), :on-sse-close #(sync/remove-sse-line! sync %)"
   (:require
    [groundwork.server.access.api :as access]
    [cellar.api :as database]
-   [groundwork.server.steps.api :as steps]
+   [mailroom.api :as mailroom]
    [groundwork.server.sync.tables :as tables]
-   [groundwork.server.sync.telling :as telling]
-   [groundwork.server.transport.api :as transport]))
+   [groundwork.server.sync.telling :as telling]))
 
 (def ^:private create-sync-function
   (database/make-query-from-sql-file "groundwork/server/sync/create_sync_function.sql"))
@@ -62,12 +61,12 @@
 
 (defn- run-and-note-tables [run context]
   (let [[context tables] (database/run-and-list-tables-read #(run context))]
-    (assoc context :groundwork.server.transport/notes (turn-tables-into-notes tables))))
+    (assoc context :mailroom/notes (turn-tables-into-notes tables))))
 
 (defn put-sync-into-handlers
   "Every handler's answer gets a note of the tables its steps read,
    {:tables [\"orders\" \"shops\"]}, or {:tables \"any\"} when Postgres's planner
-   couldn't say for one of its queries; transport sends it beside the answer.
+   couldn't say for one of its queries; mailroom sends it beside the answer.
    Only the steps count, not what runs around them (the session, who holds
    what): put it in after groundwork.server.access."
   [handlers]
@@ -82,24 +81,24 @@
 ;; Lines and listening
 
 (defn- find-person-id [find-session-step request]
-  (let [context (steps/run-steps-until-answered [find-session-step] {:groundwork.server.transport/request request})]
-    (when-not (steps/does-context-have-answer? context)
+  (let [context (mailroom/run-steps-until-answered [find-session-step] {:mailroom/request request})]
+    (when-not (mailroom/does-context-have-answer? context)
       (:groundwork.server.sessions/person-id context))))
 
 (defn add-sse-line!
   "Keeps an sse line that has just opened, with the person its session
-   names (nil for a visitor), to tell of changes. For transport's :on-sse-open."
+   names (nil for a visitor), to tell of changes. For mailroom's :on-sse-open."
   [{:keys [lines find-session-step]} line]
-  (swap! lines assoc (:groundwork.server.transport/channel line)
-         {:line line :person-id (find-person-id find-session-step (:groundwork.server.transport/request line))}))
+  (swap! lines assoc (:mailroom/channel line)
+         {:line line :person-id (find-person-id find-session-step (:mailroom/request line))}))
 
 (defn remove-sse-line!
-  "Forgets a line that has closed. For transport's :on-sse-close."
+  "Forgets a line that has closed. For mailroom's :on-sse-close."
   [{:keys [lines]} line]
-  (swap! lines dissoc (:groundwork.server.transport/channel line)))
+  (swap! lines dissoc (:mailroom/channel line)))
 
 (defn- tell-line! [{:keys [line]} message]
-  (transport/send-message-on-sse-line! line message))
+  (mailroom/send-message-on-sse-line! line message))
 
 (defn- tell-of-notifications! [{:keys [pool rules lines]} notifications]
   (let [open (vals @lines)]

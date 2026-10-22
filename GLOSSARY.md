@@ -13,10 +13,10 @@ Each word in a Groundwork name means one thing, everywhere. See
 | data | maps, lists, text, numbers: no claim about types |
 | errors | a map from each key that doesn't fit to readable messages: `{:order/id ["should be a uuid"]}` |
 | context | the one map that steps pass along |
-| step | `{:name a-keyword :enter (fn [context] context)}` |
+| step | `{:name a-keyword :enter (fn [context] context)}`; a handler's steps are its work, run by [mailroom](https://github.com/p4ulcristian/mailroom) |
 | background job | one piece of work saved in Postgres to run outside a request, by a worker (never "job" alone: Iron Rainbow's job is a coating job); [backroom](https://github.com/p4ulcristian/backroom) queues and runs them |
 | answer | what the work returns; once the context has one, no more steps run |
-| http | a request from the browser and the server's one answer: all data travels this way |
+| http | a request from the browser and the server's one answer: all data travels this way; [mailroom](https://github.com/p4ulcristian/mailroom) carries http, sse and ws |
 | sse | the server stream (Server-Sent Events): one answer per tab that stays open; carries bells, never data |
 | ws | a websocket: both sides talk fast, for features that need it |
 | sync | keeping what screens show in step with the database: a changed row is told to the screens that may show it, and they ask again (not "bells") |

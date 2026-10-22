@@ -18,7 +18,7 @@
 
 (defn make-store
   "A store asking through send-message!, (fn [message]) -> a promise of the
-   answer, keyed by name, with :groundwork/notes beside it."
+   answer, keyed by name, with :mailroom/notes beside it."
   [send-message!]
   {:send-message! send-message!
    :questions     (atom {})
@@ -56,7 +56,7 @@
       (-> (send-message! {message-name params})
           (.then (fn [answer]
                    (take-answer! store question number (get answer message-name)
-                                 (get-in answer [:groundwork/notes message-name :tables] "any"))))
+                                 (get-in answer [:mailroom/notes message-name :tables] "any"))))
           (.catch (fn [_]
                     (take-answer! store question number {:error "No answer from the server."} "any")))
           (.finally #(land! store question))))))

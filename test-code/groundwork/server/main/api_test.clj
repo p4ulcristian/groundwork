@@ -12,7 +12,7 @@
    [cellar.api :as database]
    [groundwork.server.main.api :as main]
    [groundwork.server.sessions.api :as sessions]
-   [groundwork.server.steps.api :as steps])
+   [mailroom.api :as mailroom])
   (:import
    (java.io BufferedReader)
    (java.net URI)
@@ -50,10 +50,10 @@
 
 (def ^:private handlers
   {:orders/count {:action :orders/see :params-shape [:map] :answer-shape :int :rate-limit {:max 2 :per-ms 60000}
-                  :steps  [{:name :answer-count :enter #(steps/add-answer-to-context % 0)}]}
+                  :steps  [{:name :answer-count :enter #(mailroom/add-answer-to-context % 0)}]}
    :orders/all {:action :orders/see :params-shape [:map] :answer-shape [:vector :uuid]
                 :steps  [{:name  :answer-all-orders
-                          :enter #(steps/add-answer-to-context
+                          :enter #(mailroom/add-answer-to-context
                                    % (mapv :order/id (database/find-rows (:groundwork.server.access/transaction %) find-all-orders {})))}]}})
 
 (def ^:private files-folder
@@ -77,7 +77,9 @@
   {:version           "test-1"
    :migrate-at-start? false
    :browser-build     :built
-   :server            {:ip "127.0.0.1" :port 0 :client-address-header nil}
+   :server            {:ip "127.0.0.1" :port 0 :client-address-header nil
+                       :addresses {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"}
+                       :ping-every-ms 25000}
    :database          (make-database-settings user)
    :sessions          {:session-days 1 :allowed-origin "http://app.test" :secure-cookie? false}
    :background-jobs   {:workers 1 :poll-ms 1000}
@@ -119,10 +121,13 @@
          3000 :nothing))
 
 (deftest the-settings-are-checked-all-at-once
-  (let [problems (try (main/check-settings (-> (make-settings "x") (dissoc :version) (assoc-in [:server :port] "80")))
+  (let [problems (try (main/check-settings (-> (make-settings "x") (dissoc :version) (assoc-in [:server :port] "80")
+                                               (update :server dissoc :addresses :ping-every-ms)))
                       (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
     (is (contains? problems :version))
-    (is (contains? (:server problems) :port))))
+    (is (contains? (:server problems) :port))
+    (is (= #{:port :addresses :ping-every-ms} (set (keys (:server problems))))
+        "mailroom's settings have no defaults: each missing one is named")))
 
 (deftest the-whole-server
   (if-not port
@@ -180,10 +185,10 @@
             (testing "no page, no file: 404"
               (is (= 404 (first (send-request server-port "GET" "/nowhere" nil nil)))))
             (testing "an answer comes with the tables its steps read"
-              (is (= [200 "{\"orders/all\":[],\"groundwork/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}"]
+              (is (= [200 "{\"orders/all\":[],\"mailroom/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}"]
                      (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/all\":{}}"))))
             (testing "a rate limit: two a minute per session, a third is refused; another session has its own"
-              (let [counted "{\"orders/count\":0,\"groundwork/notes\":{\"orders/count\":{\"tables\":[]}}}"]
+              (let [counted "{\"orders/count\":0,\"mailroom/notes\":{\"orders/count\":{\"tables\":[]}}}"]
                 (is (= [[200 counted] [200 counted]
                         [200 "{\"orders/count\":{\"error\":\"Too many requests.\"}}"]]
                        (repeatedly 3 #(send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/count\":{}}"))))

@@ -23,12 +23,11 @@ The decisions in force: every file not replaced. A file changed in part names wh
 Each library keeps its own decisions, in decisions/<side>/<library>/, with its own index:
 
 - [wire](https://github.com/p4ulcristian/wire): how data keeps its types (both sides), a library of its own since [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md); its decisions are there
-- [server/steps](server/steps/README.md): how work is written
 - [cellar](https://github.com/p4ulcristian/cellar): Postgres, queries and tables as maps, a library of its own since [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md); its decisions are there
 - [backroom](https://github.com/p4ulcristian/backroom): background jobs on Postgres, what runs later, a library of its own since [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md); its decisions are there
 - [showroom](https://github.com/p4ulcristian/showroom): what the browser downloads and how the page looks, the build and the stylesheets it bundles, a library of its own since [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md); its decisions are there
 - [Groundwork's libraries share the GitHub topic groundwork](2026-10-22-groundworks-libraries-share-the-topic-groundwork.md)
-- [server/transport](server/transport/README.md): http, sse, ws, the routes (both sides; [browser/transport](browser/transport/README.md))
+- [mailroom](https://github.com/p4ulcristian/mailroom): how the browser and the server talk (both sides): named messages over http, sse and ws, a handler's steps, the routes; a library of its own since [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md); its decisions are there
 - [server/sessions](server/sessions/README.md): who is asking
 - [server/access](server/access/README.md): what they may do
 - [server/sync](server/sync/README.md): how screens stay current (both sides; [browser/sync](browser/sync/README.md))
@@ -41,19 +40,19 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [Everything is declared, the Clojure way](2026-10-22-everything-is-declared-the-clojure-way.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)
 - [The ground-* libraries live in one repo](2026-10-22-the-ground-libraries-live-in-one-repo.md), changed in part by [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)
 - [Groundwork is the default composition](2026-10-22-groundwork-is-the-default-composition.md)
-- [Ring at the edge, steps inside](2026-10-22-ring-at-the-edge-steps-inside.md)
-- [Work is a vector of steps over one map](2026-10-22-work-is-a-vector-of-steps-over-one-map.md), replaced by [Steps are a list over one context](server/steps/2026-10-22-steps-are-a-list-over-one-context.md)
+- [Ring at the edge, steps inside](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-ring-at-the-edge-steps-inside.md): moved to mailroom with the library, with "Work is a vector of steps over one map" and "Steps are a list over one context"
 - [Libraries pass values](2026-10-22-libraries-pass-values.md), replaced by [Libraries stand in layers](2026-10-22-libraries-stand-in-layers.md)
 - [Libraries stand in layers](2026-10-22-libraries-stand-in-layers.md)
 - [No Polylith tool](2026-10-22-no-polylith-tool.md)
-- [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md), changed in part by [A library says where it runs](2026-10-22-a-library-says-where-it-runs.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md) and [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
+- [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md), changed in part by [A library says where it runs](2026-10-22-a-library-says-where-it-runs.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md), [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md) and [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md)
 - [A library says where it runs; sessions and access stay apart](2026-10-22-a-library-says-where-it-runs.md), changed in part by [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md)
-- [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), changed in part by [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md) and [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
-- [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), changed in part by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md) and [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
+- [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), changed in part by [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md), [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md) and [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md)
+- [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), changed in part by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md), [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md) and [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md)
 - [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md)
 - [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md)
 - [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
 - [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
+- [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md)
 - [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
 - [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md), changed in part by [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md) and [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)
@@ -65,7 +64,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [A library is a folder with its own deps.edn](2026-10-22-a-library-is-a-folder-with-its-own-deps.md), replaced by [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md)
 - [Every library has an api, and its parts are server-code, browser-code or shared-code](2026-10-22-server-code-browser-code-shared-code.md)
 - [Each library keeps its own decisions](2026-10-22-each-library-keeps-its-own-decisions.md), changed in part by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md)
-- [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md), changed in part by [The background work is called background jobs](2026-10-22-the-background-work-is-called-background-jobs.md) and [Three ways between browser and server](2026-10-22-three-ways-between-browser-and-server.md)
+- [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md), changed in part by [The background work is called background jobs](2026-10-22-the-background-work-is-called-background-jobs.md) and [Three ways between browser and server](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-three-ways-between-browser-and-server.md)
 - [The jobs library is named groundwork.background-jobs](2026-10-22-the-jobs-library-is-named-background-jobs.md), replaced by [The background work is called chores](2026-10-22-the-background-work-is-called-chores.md)
 - [The background work is called chores](2026-10-22-the-background-work-is-called-chores.md), replaced by [The background work is called background jobs](2026-10-22-the-background-work-is-called-background-jobs.md)
 - [The background work is called background jobs](2026-10-22-the-background-work-is-called-background-jobs.md), changed in part by [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
@@ -149,18 +148,15 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [parquery is one address](2026-10-12-parquery-is-one-address.md)
 - [Asks travel together and run apart](2026-10-12-asks-travel-together-and-run-apart.md)
 - [Each ask fails alone](2026-10-12-each-ask-fails-alone.md)
-- [Three ways between browser and server, each with one job](2026-10-22-three-ways-between-browser-and-server.md)
-- [sync keeps screens in step with the database; rate limits are transport's](2026-10-22-sync-keeps-screens-in-step.md)
-- [The three ways are named http, sse and ws](2026-10-22-the-three-ways-are-named-http-sse-ws.md)
-- [web becomes transport and routes](2026-10-22-transport-and-routes.md), changed in part by [Named messages over three addresses](2026-10-22-named-messages-over-three-addresses.md)
-- [Named messages over three addresses Groundwork owns](2026-10-22-named-messages-over-three-addresses.md), changed in part by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md)
-- [Postgres rings the bell](2026-10-12-postgres-rings-the-bell.md), changed in part by [Three ways between browser and server](2026-10-22-three-ways-between-browser-and-server.md)
+- [Three ways between browser and server, each with one job](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-three-ways-between-browser-and-server.md): moved to mailroom with the library, with "The three ways are named http, sse and ws", "web becomes transport and routes" and "Named messages over three addresses"
+- [sync keeps screens in step with the database; rate limits are transport's](2026-10-22-sync-keeps-screens-in-step.md), changed in part by [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md)
+- [Postgres rings the bell](2026-10-12-postgres-rings-the-bell.md), changed in part by [Three ways between browser and server](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-three-ways-between-browser-and-server.md)
 - [Who is rung comes from who may see](2026-10-13-who-is-rung-comes-from-who-may-see.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
 - [Asking again, and bells that miss nothing](2026-10-14-asking-again-and-bells-that-miss-nothing.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)
 
 ### Server, browser, routing and build
 
-- [http-kit serves, reitit routes](2026-10-12-http-kit-and-reitit.md)
+- [http-kit serves, reitit routes](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-12-http-kit-and-reitit.md): moved to mailroom with the library
 - [Groundwork ships the page shell](2026-10-12-groundwork-ships-the-page-shell.md)
 - [re-frame and Reagent in the browser](2026-10-12-re-frame-and-reagent-in-the-browser.md), changed in part by [A namespace names its stylesheets](https://github.com/p4ulcristian/showroom/blob/main/decisions/2026-10-17-a-namespace-names-its-stylesheets.md)
 - [Groundwork starts the browser and owns the build](2026-10-12-groundwork-starts-the-browser-and-owns-the-build.md), changed in part by [The browser build is Groundwork's](https://github.com/p4ulcristian/showroom/blob/main/decisions/2026-10-22-the-browser-build-is-groundworks.md) and [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)

@@ -11,11 +11,11 @@ Keeping what screens show in step with the database, the server's side.
   person may read one of the rows (by the `:access` sentences):
   `{:sync/changed {:table "orders" :ids ["…"]}}`; after a break,
   `{:sync/missed {}}`.
-- Every answer says the tables its steps read (`:groundwork/notes`), so the
+- Every answer says the tables its steps read (`:mailroom/notes`), so the
   browser asks again only what a change touches.
 
 The browser's side is [groundwork.browser.sync](../../browser/sync/README.md).
-Needs cellar, access, transport, steps; it reads
+Needs cellar, access and mailroom; it reads
 Postgres's change messages itself, with jsonista. API:
 `groundwork.server.sync.api` (`install-sync-function!`, `check-sync-of-tables`,
 `put-sync-on-tables`, `put-sync-into-handlers`, `start-sync!`, `stop-sync!`,

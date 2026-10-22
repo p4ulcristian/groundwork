@@ -9,8 +9,7 @@
    [groundwork.server.access.api :as access]
    [groundwork.server.sessions.api :as sessions]
    [cellar.api :as database]
-   [groundwork.server.steps.api :as steps]
-   [groundwork.server.transport.api :as transport-server])
+   [mailroom.api :as mailroom])
   (:import
    (java.net URI)
    (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)))
@@ -47,18 +46,18 @@
 (def ^:private handlers
   {:orders/all   {:action :orders/see :params-shape [:map] :answer-shape [:vector :uuid]
                   :steps  [{:name  :answer-all-orders
-                            :enter #(steps/add-answer-to-context
+                            :enter #(mailroom/add-answer-to-context
                                      % (mapv :order/id (database/find-rows (:groundwork.server.access/transaction %) find-all-orders {})))}]}
    :orders/sneak {:action :orders/see :params-shape [:map [:order/shop-id :uuid]] :answer-shape [:map]
                   :steps  [{:name  :insert-order-while-only-seeing
                             :enter #(do (database/run-statement! (:groundwork.server.access/transaction %) insert-order
-                                                                 (:groundwork.server.transport/message-data %))
-                                        (steps/add-answer-to-context % {}))}]}
+                                                                 (:mailroom/message-data %))
+                                        (mailroom/add-answer-to-context % {}))}]}
    :orders/place {:action :orders/edit :params-shape [:map [:order/shop-id :uuid]] :answer-shape [:map]
                   :steps  [{:name  :insert-order
                             :enter #(do (database/run-statement! (:groundwork.server.access/transaction %) insert-order
-                                                            (:groundwork.server.transport/message-data %))
-                                        (steps/add-answer-to-context % {}))}]}})
+                                                            (:mailroom/message-data %))
+                                        (mailroom/add-answer-to-context % {}))}]}})
 
 (defn- run-sql! [pool text] (database/run-statement! pool (database/make-query-from-sql-text "test" text) {}))
 
@@ -89,6 +88,12 @@
                   true   (-> (.POST (HttpRequest$BodyPublishers/ofString message-text)) (.build)))
                 (HttpResponse$BodyHandlers/ofString))))
 
+(def ^:private server-settings
+  "mailroom's settings: Groundwork's three addresses, no proxy in front."
+  {:ip "127.0.0.1" :port 0 :client-address-header nil
+   :addresses {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"}
+   :ping-every-ms 25000})
+
 (deftest a-table-that-names-a-scope-needs-access
   (is (thrown-with-msg? clojure.lang.ExceptionInfo #"names a scope but has no :access"
                         (access/put-gates-on-tables [shops (dissoc orders :access)] scope-kinds))))
@@ -101,8 +106,8 @@
       (let [app-pool (start-pool! "gw_app")
             ready    (access/put-access-into-handlers handlers {:pool app-pool :tables [shops orders] :scope-kinds scope-kinds
                                                                 :find-session-step (sessions/make-find-session-step app-pool settings)})
-            server   (transport-server/start-server! (get-in (first (transport-server/make-routes-for-messages ready {})) [1 :post :handler])
-                                              {:ip "127.0.0.1" :port 0})
+            server   (mailroom/start-server! (get-in (first (mailroom/make-routes-for-messages ready server-settings {:find-rate-limit-key #(mailroom/find-client-address % nil)})) [1 :post :handler])
+                                              server-settings)
             cookie   #(first (str/split (:set-cookie (sessions/sign-in! owner-pool % settings)) #";"))]
         (try
           (testing "a query with no WHERE: Postgres returns only the asker's rows"
@@ -127,13 +132,13 @@
               (testing "and a handler that reads past the gates is caught"
                 (let [leaky {:orders/leaky {:action :orders/see :params-shape [:map] :answer-shape [:vector :uuid]
                                             :steps [{:name  :read-with-the-owner
-                                                     :enter #(steps/add-answer-to-context
+                                                     :enter #(mailroom/add-answer-to-context
                                                               % (mapv :order/id (database/find-rows owner-pool find-all-orders {})))}]}}
                       ready-leaky (access/put-access-into-handlers leaky {:pool app-pool :tables [shops orders] :scope-kinds scope-kinds
                                                                           :find-session-step (sessions/make-find-session-step app-pool settings)})]
                   (is (= [{:handler :orders/leaky :gave-back [(str order-99)]}]
                          (access/find-leaks ready-leaky anna-request {:orders [order-99]})))))))
           (finally
-            (transport-server/stop-server! server)
+            (mailroom/stop-server! server)
             (database/stop-pool! app-pool)
             (database/stop-pool! owner-pool)))))))

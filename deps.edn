@@ -12,14 +12,13 @@
   io.github.p4ulcristian/cellar     {:git/tag "v0.1.1" :git/sha "1354d94"}
   ;; backroom: background jobs on Postgres, its own library, github.com/p4ulcristian/backroom
   io.github.p4ulcristian/backroom   {:git/tag "v0.1.0" :git/sha "3edc326"}
+  ;; mailroom: named messages over http, sse and ws, a handler's steps, the routes;
+  ;; both sides, its own library, github.com/p4ulcristian/mailroom (it brings
+  ;; http-kit, reitit-ring and reitit-frontend)
+  io.github.p4ulcristian/mailroom   {:git/tag "v0.1.0" :git/sha "264d157"}
   ;; access's sentences and leak test, sync's change messages
   metosin/malli                     {:mvn/version "0.20.3"}
   metosin/jsonista                  {:mvn/version "1.0.2"}
-  ;; transport
-  http-kit/http-kit                 {:mvn/version "2.8.1"}
-  metosin/reitit-ring               {:mvn/version "0.11.0"}
-  ;; the browser's transport: ClojureScript sources, compiled into the app's JS
-  metosin/reitit-frontend           {:mvn/version "0.11.0"}
   ;; access's leak test: malli's generator
   org.clojure/test.check            {:mvn/version "1.1.1"}}
 

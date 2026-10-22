@@ -8,7 +8,7 @@
         :tables               [shops orders]        ; table maps, with :access and :sync
         :changes              []                    ; cellar's changes
         :scope-kinds          scope-kinds           ; groundwork.server.access
-        :handlers             handlers              ; transport's table, each with :action and shapes
+        :handlers             handlers              ; mailroom's table, each with :action and shapes
         :pages                {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}}
         :background-job-kinds [send-invoice-email]
         :schedules            []})
@@ -21,9 +21,9 @@
    true) or else refuses a database that isn't current or a role that could
    pass the gates, then starts the pool, the handlers (access, then sync),
    sync's listener, the background job workers, in development the browser
-   build's watcher (:browser-build :watch), and the server (transport's three
-   addresses, every page answered by the page shell, files from
-   :files-folder).
+   build's watcher (:browser-build :watch), and the server (mailroom's three
+   addresses, from :server :addresses, every page answered by the page
+   shell, files from :files-folder).
 
    In production the deploy runs migrate-app! first, as the role that owns
    the tables (the app's own role owns nothing), and the browser's release
@@ -37,9 +37,8 @@
    [cellar.api :as database]
    [groundwork.server.main.page :as page]
    [groundwork.server.sessions.api :as sessions]
-   [groundwork.server.steps.api]
+   [mailroom.api :as mailroom]
    [groundwork.server.sync.api :as sync]
-   [groundwork.server.transport.api :as transport]
    [wire.api :as wire]))
 
 (def page-settings-shape
@@ -56,7 +55,7 @@
    [:version :string]
    [:migrate-at-start? :boolean]
    [:browser-build [:enum :watch :built]]
-   [:server transport/settings-shape]
+   [:server mailroom/settings-shape]
    [:database database/settings-shape]
    [:sessions sessions/settings-shape]
    [:background-jobs backroom/settings-shape]
@@ -132,18 +131,19 @@
   [settings]
   (fn [request]
     (or (sessions/find-session-key-of-request request)
-        (transport/find-client-address request (get-in settings [:server :client-address-header])))))
+        (mailroom/find-client-address request (get-in settings [:server :client-address-header])))))
 
 (defn- make-routes [{:keys [settings pages]} handlers running-sync]
-  (let [browser-settings (page/make-browser-settings settings transport/default-addresses pages)]
-    (into (transport/make-routes-for-messages
+  (let [browser-settings (page/make-browser-settings settings (get-in settings [:server :addresses]) pages)]
+    (into (mailroom/make-routes-for-messages
            handlers
+           (:server settings)
            {:find-rate-limit-key (make-rate-limit-key-finder settings)
             :on-sse-open  (fn [line]
-                            (transport/send-message-on-sse-line! line {:groundwork/version (:version settings)})
+                            (mailroom/send-message-on-sse-line! line {:groundwork/version (:version settings)})
                             (sync/add-sse-line! running-sync line))
             :on-sse-close #(sync/remove-sse-line! running-sync %)})
-          (transport/make-server-routes-for-pages pages (page/make-page-handler settings browser-settings)))))
+          (mailroom/make-server-routes-for-pages pages (page/make-page-handler settings browser-settings)))))
 
 (defn- start-watching-browser-build!
   "Loaded here, not required above: production has neither showroom nor
@@ -189,8 +189,8 @@
                                            backroom/stop-workers!)
             watching          (when (= :watch (:browser-build settings))
                                 (start-part! stoppers #(start-watching-browser-build! app) stop-watching-browser-build!))
-            server            (transport/start-server!
-                               (transport/make-ring-handler-from-routes (make-routes app handlers running-sync)
+            server            (mailroom/start-server!
+                               (mailroom/make-ring-handler-from-routes (make-routes app handlers running-sync)
                                                                         {:files-folder (get-in settings [:page :files-folder])})
                                (:server settings))]
         {:settings settings :pool pool :handlers handlers :sync running-sync :workers workers
@@ -203,7 +203,7 @@
   "Stops taking requests, stops the watcher, lets running background jobs
    finish, stops listening, closes the pool."
   [{:keys [pool sync server workers watching]}]
-  (transport/stop-server! server)
+  (mailroom/stop-server! server)
   (when watching (stop-watching-browser-build! watching))
   (backroom/stop-workers! workers)
   (sync/stop-sync! sync)

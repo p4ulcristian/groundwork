@@ -7,8 +7,7 @@
    [groundwork.server.access.api :as access]
    [groundwork.server.sessions.api :as sessions]
    [cellar.api :as database]
-   [groundwork.server.steps.api :as steps]
-   [groundwork.server.transport.api :as transport-server])
+   [mailroom.api :as mailroom])
   (:import
    (java.net URI)
    (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)))
@@ -39,7 +38,7 @@
 
 (def ^:private answer-the-order
   {:name  :answer-the-order
-   :enter #(steps/add-answer-to-context % {:order/id (get-in % [:groundwork.server.transport/message-data :order/id])})})
+   :enter #(mailroom/add-answer-to-context % {:order/id (get-in % [:mailroom/message-data :order/id])})})
 
 (def ^:private carl #uuid "00000000-0000-4000-8000-00000000000e")
 
@@ -47,7 +46,7 @@
   {:orders/remind {:action       :orders/see                ; no :record: an email, say
                    :params-shape [:map]
                    :answer-shape [:map]
-                   :steps        [{:name :remind :enter #(steps/add-answer-to-context % {})}]}
+                   :steps        [{:name :remind :enter #(mailroom/add-answer-to-context % {})}]}
    :orders/one {:action       :orders/see
                 :record       [:orders :order/id]
                 :params-shape [:map [:order/id :uuid]]
@@ -77,6 +76,12 @@
       (access/add-scope! transaction scope-kinds :shop shop-9 bob)
       (access/add-membership! transaction [:shop shop-7] anna "Staff"))))
 
+(def ^:private server-settings
+  "mailroom's settings: Groundwork's three addresses, no proxy in front."
+  {:ip "127.0.0.1" :port 0 :client-address-header nil
+   :addresses {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"}
+   :ping-every-ms 25000})
+
 (deftest a-handler-must-declare-its-action-and-shapes
   (is (thrown-with-msg? clojure.lang.ExceptionInfo #"has no :action"
                         (access/put-access-into-handlers {:x/y {:steps []}} {:tables [shops orders] :scope-kinds scope-kinds}))))
@@ -89,8 +94,8 @@
                                    :tls :off :pool-size 4 :statement-timeout-ms 5000 :time-zone "UTC"})
           ready  (access/put-access-into-handlers handlers {:pool pool :tables [shops orders] :scope-kinds scope-kinds
                                                             :find-session-step (sessions/make-find-session-step pool settings)})
-          server (transport-server/start-server! (get-in (first (transport-server/make-routes-for-messages ready {})) [1 :post :handler])
-                                          {:ip "127.0.0.1" :port 0})
+          server (mailroom/start-server! (get-in (first (mailroom/make-routes-for-messages ready server-settings {:find-rate-limit-key #(mailroom/find-client-address % nil)})) [1 :post :handler])
+                                          server-settings)
           cookie #(first (str/split (:set-cookie (sessions/sign-in! pool % settings)) #";"))]
       (try
         (make-database! pool)
@@ -114,5 +119,5 @@
         (testing "nobody signed in: not found"
           (is (= "{\"orders/one\":{\"error\":\"Not found.\"}}" (ask (:port server) nil order-42))))
         (finally
-          (transport-server/stop-server! server)
+          (mailroom/stop-server! server)
           (database/stop-pool! pool))))))

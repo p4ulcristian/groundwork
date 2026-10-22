@@ -15,7 +15,7 @@
    [groundwork.server.sessions.cookie :as cookie]
    [groundwork.server.sessions.origin :as origin]
    [cellar.api :as database]
-   [groundwork.server.steps.api :as steps])
+   [mailroom.api :as mailroom])
   (:import
    (java.time Duration Instant OffsetDateTime ZoneOffset)))
 
@@ -107,11 +107,11 @@
    come from the app's own pages (its Origin), or it is answered with an
    error; then :groundwork.server.sessions/person-id is added to the context, nil
    when nobody is signed in. Reads the request at
-   :groundwork.server.transport/request."
+   :mailroom/request."
   [pool {:keys [allowed-origin] :as settings}]
   {:name  :groundwork.server.sessions/find-session
    :enter (fn [context]
-            (let [request (:groundwork.server.transport/request context)]
+            (let [request (:mailroom/request context)]
               (if (origin/does-request-come-from-allowed-origin? request allowed-origin)
                 (assoc context :groundwork.server.sessions/person-id (find-person-id pool request settings))
-                (steps/add-answer-to-context context not-from-the-app))))})
+                (mailroom/add-answer-to-context context not-from-the-app))))})

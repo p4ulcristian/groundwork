@@ -15,8 +15,7 @@
 
 (defn make-question-store
   "A store that asks through send-message!: (fn [message]) -> a promise of
-   the answer keyed by name, as groundwork.browser.transport's send-message!
-   gives it."
+   the answer keyed by name, as mailroom's send-message! gives it."
   [send-message!]
   (store/make-store send-message!))
 

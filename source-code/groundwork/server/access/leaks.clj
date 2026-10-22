@@ -7,7 +7,7 @@
    must hold none of the foreign ids. The other params come from the
    handler's :params-shape (malli's generator)."
   (:require
-   [groundwork.server.transport.api :as transport-server]
+   [mailroom.api :as mailroom]
    [malli.generator :as generator]))
 
 (defn- generate-params [{:keys [params-shape]}]
@@ -20,7 +20,7 @@
   (set (map str (filter #(or (uuid? %) (string? %)) (tree-seq coll? seq data)))))
 
 (defn- ask [handlers request handler-name params]
-  (get (transport-server/answer-message handlers request {handler-name params}) handler-name))
+  (get (mailroom/answer-message handlers request {handler-name params}) handler-name))
 
 (defn- check-record-handler [handlers request [handler-name {[table-key id-key] :record :as handler}] foreign-ids]
   (for [id (get foreign-ids table-key)

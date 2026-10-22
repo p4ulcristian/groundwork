@@ -1,9 +1,0 @@
-# groundwork.transport decisions
-
-The decisions of the groundwork.transport library (named groundwork.web, then split from groundwork.routes, then joined with it again on 2026-10-22: see [Nine libraries](../../2026-10-22-nine-libraries-by-the-questions-an-app-asks.md)). Decisions about Groundwork as a whole are in [the top decisions](../../README.md); the rules for these files are there too.
-
-- [A route is a Ring handler made from steps](2026-10-22-a-route-is-a-ring-handler-made-from-steps.md), added to by [web has http, sse and ws](2026-10-22-web-has-http-sse-and-ws.md)
-- [web has http, sse and ws, a file each, and a route says its kind](2026-10-22-web-has-http-sse-and-ws.md), changed in part by [web becomes transport and routes](../../2026-10-22-transport-and-routes.md)
-- [A handler says its shapes](2026-10-22-a-handler-says-its-shapes.md)
-- [Answers are checked, errors stay in the log, and a handler may run its steps inside something](2026-10-22-answers-are-checked-and-errors-stay-in-the-log.md), changed in part by [An answer may carry notes](2026-10-22-an-answer-may-carry-notes.md)
-- [An answer may carry notes, and a handler's run returns its context](2026-10-22-an-answer-may-carry-notes.md)

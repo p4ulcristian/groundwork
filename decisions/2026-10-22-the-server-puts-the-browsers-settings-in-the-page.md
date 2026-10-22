@@ -1,6 +1,6 @@
 # The server puts the browser's settings in the page
 
-> Replaces the two copies of `contract.cljc` from [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md) and [Named messages over three addresses](2026-10-22-named-messages-over-three-addresses.md) (the addresses and the pages were said on both sides, kept equal by a test).
+> Replaces the two copies of `contract.cljc` from [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md) and [Named messages over three addresses](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-named-messages-over-three-addresses.md) (the addresses and the pages were said on both sides, kept equal by a test).
 
 **Decision:** the page shell (groundwork.server.main) carries what the browser needs to start, as JSON in a script tag the browser never runs:
 

@@ -14,7 +14,7 @@
    and follows the address bar. Nothing can ask before it: the store is made here."
   (:require
    [groundwork.browser.sync.api :as sync]
-   [groundwork.browser.transport.api :as transport]
+   [mailroom.api :as mailroom]
    [wire.api :as wire]))
 
 (defn read-settings-from-page
@@ -37,11 +37,11 @@
   "Starts the browser half (see the namespace). Returns {:settings :store :sse-line}."
   [{:keys [shapes-by-name sse-handlers on-page]}]
   (let [{:keys [addresses pages] :as settings} (read-settings-from-page)
-        store    (sync/make-question-store #(transport/send-message! (:http addresses) shapes-by-name %))
-        sse-line (transport/open-sse-line! (:sse addresses) shapes-by-name
+        store    (sync/make-question-store #(mailroom/send-message! (:http addresses) shapes-by-name %))
+        sse-line (mailroom/open-sse-line! (:sse addresses) shapes-by-name
                                            (merge sse-handlers
                                                   (sync/make-sse-handlers store)
                                                   {:groundwork/version #(reload-when-older! settings %)})
                                            {:on-open (fn [again?] (when again? (sync/hear-missed-changes! store)))})]
-    (transport/start-following-address! pages on-page)
+    (mailroom/start-following-address! pages on-page)
     {:settings settings :store store :sse-line sse-line}))

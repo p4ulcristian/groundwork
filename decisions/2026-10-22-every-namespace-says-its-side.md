@@ -1,5 +1,7 @@
 # Every namespace says its side
 
+> **Changed in part** by [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md) (2026-10-22): transport (both sides) and steps are mailroom, a library of its own taken from git, one public namespace `mailroom.api` with no side, a `.clj` for the server and a `.cljs` for the browser.
+
 > **Changed in part** by [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md) (2026-10-22): the browser build and styles libraries are showroom, a library of its own taken from git, one public namespace `showroom.api` with no side, taken only in the build aliases.
 
 > **Changed in part** by [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md) (2026-10-22): the background-jobs library is backroom, a library of its own taken from git, one public namespace `backroom.api` with no side.

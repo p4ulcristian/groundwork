@@ -179,7 +179,7 @@
   (database/run-statement! pool create-access-functions {}))
 
 (defn put-access-into-handlers
-  "Every handler (transport's table) checked for :action, :params-shape and
+  "Every handler (mailroom's table) checked for :action, :params-shape and
    :answer-shape, and for a sentence allowing its action on its :record;
    then each gets the check in front of its steps and runs them in one
    transaction that tells Postgres who is asking. A message found on no

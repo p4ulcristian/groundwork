@@ -9,13 +9,10 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 
 | library | namespace | the question it answers |
 |---|---|---|
-| server/steps | `groundwork.server.steps` | how is work written? |
-| server/transport | `groundwork.server.transport` | how does the server answer the browser? (http, sse, ws, routes) |
 | server/sessions | `groundwork.server.sessions` | who is asking? |
 | server/access | `groundwork.server.access` | what may they do? |
 | server/sync | `groundwork.server.sync` | how do screens stay current? (who is told of a change) |
 | server/main | `groundwork.server.main` | how does the server start? (and the page shell) |
-| browser/transport | `groundwork.browser.transport` | how does the browser talk to the server? (and the pages in the bar) |
 | browser/sync | `groundwork.browser.sync` | how do screens stay current? (answers kept by question, asked again) |
 | browser/main | `groundwork.browser.main` | how does the browser start? |
 
@@ -32,6 +29,10 @@ schedules. And what the browser downloads and how the page looks:
 [showroom](https://github.com/p4ulcristian/showroom), the shadow-cljs build
 (watched in development, built once by the deploy) and the stylesheets a
 namespace names, bundled; taken only in the build aliases, never in production.
+And how the browser and the server talk, on both sides:
+[mailroom](https://github.com/p4ulcristian/mailroom), named messages over http,
+sse and ws answered by a handler's steps, and the routes; its addresses and
+ping are in the `:server` settings, with no defaults.
 Every Groundwork repository carries the GitHub topic `groundwork`:
 `user:p4ulcristian topic:groundwork` lists them all.
 

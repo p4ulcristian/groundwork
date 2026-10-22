@@ -6,7 +6,7 @@
    [groundwork.server.sessions.api :as sessions]
    [groundwork.server.sessions.cookie :as cookie]
    [cellar.api :as database]
-   [groundwork.server.steps.api :as steps]))
+   [mailroom.api :as mailroom]))
 
 (def ^:private port (some-> (System/getenv "GROUNDWORK_SQL_TEST_PORT") parse-long))
 
@@ -20,7 +20,7 @@
                      set-cookie (assoc "cookie" (first (clojure.string/split set-cookie #";"))))})
 
 (defn- run-find-session [step request]
-  (steps/run-steps-until-answered [step] {:groundwork.server.transport/request request}))
+  (mailroom/run-steps-until-answered [step] {:mailroom/request request}))
 
 (deftest the-cookie
   (testing "only the fingerprint is kept, and it is the same for the same cookie"
@@ -44,7 +44,7 @@
           (testing "a signed-in request: the person is in the context"
             (is (= anna (:groundwork.server.sessions/person-id (run-find-session step (make-request set-cookie "https://app.test"))))))
           (testing "another site's request is answered with an error, before any work"
-            (is (contains? (:groundwork.server.steps/answer (run-find-session step (make-request set-cookie "https://evil.test"))) :error)))
+            (is (contains? (:mailroom/answer (run-find-session step (make-request set-cookie "https://evil.test"))) :error)))
           (testing "no cookie: nobody"
             (is (nil? (:groundwork.server.sessions/person-id (run-find-session step (make-request nil "https://app.test"))))))
           (testing "signed out: the same cookie finds nobody"

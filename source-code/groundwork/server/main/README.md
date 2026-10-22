@@ -6,7 +6,9 @@ schedules), checks the settings (each library brings its part; every problem
 at once), migrates in development or refuses an unsafe or old database in
 production, and starts the pool, the handlers (access, then sync's notes),
 sync's listener, backroom's background job workers, in development
-showroom's watcher of the browser build, and the server. `migrate-app!`
+showroom's watcher of the browser build, and mailroom's server (its
+`:server` settings: address, the three message addresses, the ping, the
+proxy's header; askers told apart by session, else address). `migrate-app!`
 is for the deploy, as the owner. The page shell answers every page address:
 the app's scripts and styles, and the browser's settings (version,
 addresses, pages) as JSON in the page.
