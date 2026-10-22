@@ -1,4 +1,4 @@
-(ns groundwork.wire.clojure-common.api
+(ns groundwork.wire.api
   "How a value travels as text and comes back as what it was, the same rules
    on the JVM and in the browser. The api of groundwork.wire.
 

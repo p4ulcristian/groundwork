@@ -1,4 +1,4 @@
-(ns groundwork.main.clojurescript.api
+(ns groundwork.main.api
   "The main library's api in the browser: an app's one start. For now it
    opens onto today's Groundwork (groundwork.browser)."
   (:require

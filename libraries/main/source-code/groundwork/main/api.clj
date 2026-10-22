@@ -1,4 +1,4 @@
-(ns groundwork.main.clojure.api
+(ns groundwork.main.api
   "The main library's api on the server: start, stop and migrate an app.
    For now it opens onto today's Groundwork (groundwork.core); as the parts
    become libraries of their own, this is where they are put together."

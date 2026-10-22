@@ -1,5 +1,7 @@
 # A library is laid out by its languages
 
+> **Changed in part** by [The api sits at the library's root](2026-10-22-the-api-sits-at-the-librarys-root.md) (2026-10-22): the api is at the root; language folders hold only parts.
+
 > **Changed in part** by [The door is a door file, in its language's folder](2026-10-22-the-door-is-a-door-file.md) (2026-10-22): every language is a folder; the door is its `door` file.
 
 > **Changed in part** by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md) (2026-10-22): the prefix is groundwork, folders are libraries/<name>, the main library is groundwork.main.

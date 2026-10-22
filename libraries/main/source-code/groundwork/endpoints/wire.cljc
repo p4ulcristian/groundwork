@@ -1,6 +1,6 @@
 (ns groundwork.endpoints.wire
   "What travels over parquery. How values travel as text lives in the
-   groundwork.wire library (groundwork.wire.clojure-common.api and its language
+   groundwork.wire library (groundwork.wire.api and its language
    parts); its functions keep their old names here. What an ask and an answer
    are is parquery's, and lives here until parquery is its own library:
 
@@ -23,7 +23,7 @@
                {\"watch\": [[\"jobs/list\", {…}], …]}
                {\"changed\": [[\"jobs/list\", {…}], …], \"tag\": \"…\"}   (tag: a write's)"
   (:require
-   [groundwork.wire.clojure-common.api :as wire]
+   [groundwork.wire.api :as wire]
    #?(:clj  [groundwork.wire.clojure.time :as time]
       :cljs [groundwork.wire.clojurescript.time :as time])
    #?(:clj  [groundwork.wire.clojure.types :as types]
