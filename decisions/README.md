@@ -95,6 +95,7 @@ Each library keeps its own decisions, with its own index:
 - [Production migrates before it starts](2026-10-18-production-migrates-before-it-starts.md)
 - [Migrate changes only the objects that differ](2026-10-22-migrate-changes-only-the-objects-that-differ.md)
 - [A table is one map](2026-10-22-a-table-is-one-map.md)
+- [A table map says its column types in wire's words](2026-10-22-a-table-map-says-column-types-in-wires-words.md)
 
 ### Sessions and logins
 
