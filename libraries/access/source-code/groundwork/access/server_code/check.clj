@@ -11,7 +11,10 @@
    Each message then runs: find the session; in one transaction, tell
    Postgres who is asking (groundwork.asking); the check: may this person do
    the action on the record? Not: \"Not found.\", and no step runs; yes: the
-   handler's steps, with :groundwork.access/transaction in the context."
+   handler's steps, with :groundwork.access/transaction in the context. A
+   handler without a :record (a list, a new row, an email) runs only if the
+   person can have its action at all: held in some scope, or open to them
+   by a sentence; the gates decide which rows."
   (:require
    [clojure.string :as str]
    [groundwork.schema.api :as schema]
@@ -52,13 +55,39 @@
         " WHERE " (find-primary-key-column tables table-key) " = :record/id"
         " AND (" (get-in conditions [table-key :actions action]) ")) AS allowed")))
 
-(defn- make-check-step [setup {:keys [record] :as handler}]
-  (let [query (when record (make-record-query setup handler))]
+(defn- find-reach-of-action
+  "How an action can be had without a membership, from the sentences that
+   allow it: :anyone (everyone), :signed-in (anyone signed in: :signed-in
+   or [:me column] sentences), or nil (only through a scope's role)."
+  [tables action]
+  (let [tos (for [{:keys [access]} tables :when (sequential? access)
+                  {:keys [allow to]} access
+                  :when (contains? (if (set? allow) allow #{allow}) action)]
+              to)]
+    (cond (some #{:anyone} tos) :anyone
+          (some #(or (= :signed-in %) (and (vector? %) (= :me (first %)))) tos) :signed-in)))
+
+(defn- may-person-have-action?
+  "For a handler without a :record: whether the person can have its action
+   at all: held in some scope, or open to them by a sentence. Which rows,
+   the gates decide."
+  [reach action context]
+  (or (= :anyone reach)
+      (and (= :signed-in reach) (some? (:groundwork.sessions/person-id context)))
+      (some #(contains? % action) (vals (:groundwork.access/actions context)))))
+
+(defn- may-person-reach-record? [query record context]
+  (:allowed (sql/find-one-row (:groundwork.access/transaction context) query
+                              {:record/id (get-in context [:groundwork.transport/message-data (second record)])})))
+
+(defn- make-check-step [{:keys [tables] :as setup} {:keys [record action] :as handler}]
+  (let [query (when record (make-record-query setup handler))
+        reach (find-reach-of-action tables action)]
     {:name  :groundwork.access/check
      :enter (fn [context]
-              (if (or (nil? query)
-                      (:allowed (sql/find-one-row (:groundwork.access/transaction context) query
-                                                  {:record/id (get-in context [:groundwork.transport/message-data (second record)])})))
+              (if (if query
+                    (may-person-reach-record? query record context)
+                    (may-person-have-action? reach action context))
                 context
                 (steps/add-answer-to-context context not-found)))}))
 
@@ -80,7 +109,9 @@
             (let [person-id (:groundwork.sessions/person-id context)
                   actions   (if person-id (list-actions transaction person-id) {})]
               (sql/find-one-row transaction set-asking {:asking (turn-actions-into-asking person-id actions)})
-              (run (assoc context :groundwork.access/transaction transaction)))))))))
+              (run (assoc context
+                          :groundwork.access/transaction transaction
+                          :groundwork.access/actions actions)))))))))
 
 (defn put-access-into-handlers
   "Every handler checked, then given the check in front of its steps and the

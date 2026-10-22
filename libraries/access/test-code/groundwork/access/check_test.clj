@@ -42,8 +42,14 @@
   {:name  :answer-the-order
    :enter #(steps/add-answer-to-context % {:order/id (get-in % [:groundwork.transport/message-data :order/id])})})
 
+(def ^:private carl #uuid "00000000-0000-4000-8000-00000000000e")
+
 (def ^:private handlers
-  {:orders/one {:action       :orders/see
+  {:orders/remind {:action       :orders/see                ; no :record: an email, say
+                   :params-shape [:map]
+                   :answer-shape [:map]
+                   :steps        [{:name :remind :enter #(steps/add-answer-to-context % {})}]}
+   :orders/one {:action       :orders/see
                 :record       [:orders :order/id]
                 :params-shape [:map [:order/id :uuid]]
                 :answer-shape [:map [:order/id :uuid]]
@@ -96,6 +102,16 @@
             (is (= "{\"orders/one\":{\"error\":\"Not found.\"}}" (ask (:port server) anna-cookie order-99)))))
         (testing "Bob, Owner of shop 9 only, asks for order 42: not found"
           (is (= "{\"orders/one\":{\"error\":\"Not found.\"}}" (ask (:port server) (cookie bob) order-42))))
+        (testing "a handler without a :record: only for someone who holds its action somewhere"
+          (let [remind #(.body (.send (HttpClient/newHttpClient)
+                                      (cond-> (HttpRequest/newBuilder (URI. (str "http://localhost:" (:port server) "/groundwork/http")))
+                                        true (.header "origin" "http://app.test")
+                                        %    (.header "cookie" %)
+                                        true (-> (.POST (HttpRequest$BodyPublishers/ofString "{\"orders/remind\":{}}")) (.build)))
+                                      (HttpResponse$BodyHandlers/ofString)))]
+            (is (= "{\"orders/remind\":{}}" (remind (cookie anna))) "Anna is Staff somewhere")
+            (is (= "{\"orders/remind\":{\"error\":\"Not found.\"}}" (remind (cookie carl))) "Carl is in no shop")
+            (is (= "{\"orders/remind\":{\"error\":\"Not found.\"}}" (remind nil)) "nobody signed in")))
         (testing "nobody signed in: not found"
           (is (= "{\"orders/one\":{\"error\":\"Not found.\"}}" (ask (:port server) nil order-42))))
         (finally

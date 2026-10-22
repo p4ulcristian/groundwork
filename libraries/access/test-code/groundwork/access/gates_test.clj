@@ -104,7 +104,8 @@
           (testing "a query with no WHERE: Postgres returns only the asker's rows"
             (is (= (str "{\"orders/all\":[\"" order-42 "\"]}") (ask (:port server) (cookie anna) "{\"orders/all\":{}}")))
             (is (= (str "{\"orders/all\":[\"" order-99 "\"]}") (ask (:port server) (cookie bob) "{\"orders/all\":{}}")))
-            (is (= "{\"orders/all\":[]}" (ask (:port server) nil "{\"orders/all\":{}}")) "nobody: no rows"))
+            (is (= "{\"orders/all\":{\"error\":\"Not found.\"}}" (ask (:port server) nil "{\"orders/all\":{}}"))
+                "nobody can hold orders/see: the list doesn't run at all"))
           (testing "a new row in another shop is refused by the gate"
             (is (= "{\"orders/place\":{\"error\":\"Something went wrong.\"}}"
                    (ask (:port server) (cookie anna) (str "{\"orders/place\":{\"order/shop-id\":\"" shop-9 "\"}}"))))

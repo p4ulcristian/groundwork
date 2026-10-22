@@ -1,5 +1,7 @@
 # access, piece 3: the check, put in front of every handler
 
+> **Added to** on 2026-10-22: a handler without a `:record` (a list, a new row, an email) runs only if the person can have its action at all: held in some scope, or open to them by an `:anyone`, `:signed-in` or `[:me …]` sentence; otherwise "Not found.". Which rows, the gates decide.
+
 > Builds on [Groundwork ships permissions](../../../decisions/2026-10-12-groundwork-ships-permissions.md), [What every endpoint declares](../../../decisions/2026-10-12-what-every-endpoint-declares.md) and [Ring at the edge, steps inside](../../../decisions/2026-10-22-ring-at-the-edge-steps-inside.md).
 
 **Decision:**
