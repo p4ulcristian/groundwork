@@ -60,6 +60,8 @@
     (io/make-parents (io/file folder "js" "x"))
     (spit (io/file folder "js" "manifest.edn") (pr-str [{:module-id :main :output-name "main.0A1B2C3D4E5F.js"}]))
     (spit (io/file folder "js" "main.0A1B2C3D4E5F.js") "start();")
+    (with-open [out (java.util.zip.GZIPOutputStream. (io/output-stream (io/file folder "js" "main.0A1B2C3D4E5F.js.gz")))]
+      (.write out (.getBytes "start();")))
     (io/make-parents (io/file folder "css" "x"))
     (spit (io/file folder "css" "manifest.edn") (pr-str [{:output-name "main.9F8E7D6C5B4A.css"}]))
     (spit (io/file folder "robots.txt") "User-agent: *")
@@ -160,6 +162,15 @@
                                     (HttpResponse$BodyHandlers/ofString))]
                 (is (= ["start();" "public, max-age=31536000, immutable"]
                        [(.body response) (.orElse (.firstValue (.headers response) "cache-control") nil)])))
+              (let [response (.send (HttpClient/newHttpClient)
+                                    (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/js/main.0A1B2C3D4E5F.js")))
+                                        (.header "accept-encoding" "gzip, br") (.build))
+                                    (HttpResponse$BodyHandlers/ofInputStream))]
+                (is (= ["gzip" "start();" "text/javascript"]
+                       [(.orElse (.firstValue (.headers response) "content-encoding") nil)
+                        (slurp (java.util.zip.GZIPInputStream. (.body response)))
+                        (first (str/split (.orElse (.firstValue (.headers response) "content-type") "") #";"))])
+                    "a browser that takes gzip gets the gzipped copy, as JavaScript"))
               (let [response (.send (HttpClient/newHttpClient)
                                     (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/robots.txt"))))
                                     (HttpResponse$BodyHandlers/ofString))]

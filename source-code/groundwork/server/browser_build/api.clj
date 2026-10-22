@@ -17,9 +17,13 @@
    shadow-cljs is needed only to build: production starts without it, so
    groundwork.server.main loads this library only when it watches."
   (:require
+   [clojure.edn :as edn]
+   [clojure.java.io :as io]
    [groundwork.server.browser-build.styles :as styles]
    [shadow.cljs.devtools.api :as shadow]
-   [shadow.cljs.devtools.server :as shadow-server]))
+   [shadow.cljs.devtools.server :as shadow-server])
+  (:import
+   (java.util.zip GZIPOutputStream)))
 
 (defn make-build
   "The shadow-cljs build: one module, main, starting at the app's entry;
@@ -51,12 +55,28 @@
   (shadow/stop-worker :groundwork-browser)
   (shadow-server/stop!))
 
+(defn- write-gzipped-copy!
+  "file.gz beside the file, for the server to send to browsers that take gzip."
+  [file]
+  (with-open [in  (io/input-stream file)
+              out (GZIPOutputStream. (io/output-stream (str file ".gz")))]
+    (io/copy in out)))
+
+(defn- gzip-built-files! [files-folder]
+  (doseq [kind ["js" "css"]
+          {:keys [output-name]} (edn/read-string (slurp (io/file files-folder kind "manifest.edn")))]
+    (write-gzipped-copy! (io/file files-folder kind output-name))))
+
 (defn build-for-release!
   "Compiles the browser's code once, optimized, each file's name with a
-   hash of its content (cached for ever, never stale), and the manifests
-   listing them (js/manifest.edn, css/manifest.edn). A stylesheet beside
-   the namespaces that none names stops it. For the deploy: clojure -X:browser-release :entry … :files-folder …"
-  [build]
+   hash of its content (cached for ever, never stale), the manifests
+   listing them (js/manifest.edn, css/manifest.edn), and a gzipped copy of
+   each (file.gz), which the server sends to browsers that take gzip. The
+   CSS isn't minified: gzipped, its spaces and comments cost almost
+   nothing. A stylesheet beside the namespaces that none names stops it.
+   For the deploy: clojure -X:browser-release :entry … :files-folder …"
+  [{:keys [files-folder] :as build}]
   (shadow/with-runtime
     (shadow/release* (assoc (make-build build) :module-hash-names true) {}))
+  (gzip-built-files! files-folder)
   :built)

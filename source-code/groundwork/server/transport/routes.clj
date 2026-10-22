@@ -32,6 +32,24 @@
   [uri]
   (boolean (re-find #"\.[0-9A-Fa-f]{8,}\.[a-z]+$" uri)))
 
+(defn- does-browser-take-gzip? [request]
+  (boolean (some-> (get-in request [:headers "accept-encoding"]) (.contains "gzip"))))
+
+(defn- send-gzipped-copy-when-there
+  "A built file with file.gz beside it goes out gzipped to a browser that
+   takes gzip: the same file, a tenth of the bytes."
+  [file-handler files-folder]
+  (fn [request]
+    (let [gzipped (when (does-browser-take-gzip? request)
+                    (java.io.File. (str files-folder (:uri request) ".gz")))]
+      (if-let [response (and gzipped (.isFile gzipped) (file-handler request))]
+        (-> response
+            (assoc :body gzipped)
+            (update :headers dissoc "Content-Length" "content-length")
+            (assoc-in [:headers "content-encoding"] "gzip")
+            (assoc-in [:headers "vary"] "accept-encoding"))
+        (file-handler request)))))
+
 (defn- add-cache-header
   "A hashed file never changes, so it is kept for a year; any other file
    is asked again each time (its name stays when it changes)."
@@ -49,6 +67,6 @@
   [routes {:keys [files-folder]}]
   (reitit/ring-handler (reitit/router routes)
                        (if files-folder
-                         (reitit/routes (add-cache-header (reitit/create-file-handler {:path "/" :root files-folder}))
+                         (reitit/routes (add-cache-header (send-gzipped-copy-when-there (reitit/create-file-handler {:path "/" :root files-folder}) files-folder))
                                         (reitit/create-default-handler))
                          (reitit/create-default-handler))))

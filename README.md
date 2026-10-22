@@ -28,7 +28,7 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 Every namespace says its side right after `groundwork`; no file is `.cljc`.
 Which library may use which is `libraries.edn`, checked by a test.
 
-Still to come in styles: minifying the bundle for the app's browsers.
+Still to come: the smaller list (visitor sessions, access extras, rate limits, clean-ups).
 
 ```sh
 clojure -X:test                                                    # every test; Postgres ones need
