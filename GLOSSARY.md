@@ -20,9 +20,9 @@ Each word in a Groundwork name means one thing, everywhere. See
 | gates | Postgres's row rules made from the app's `:access` sentences, by [doorman](https://github.com/p4ulcristian/doorman): a query with no WHERE still gets only the asker's rows |
 | answer | what the work returns; once the context has one, no more steps run |
 | http | a request from the browser and the server's one answer: all data travels this way; [mailroom](https://github.com/p4ulcristian/mailroom) carries http, sse and ws |
-| sse | the server stream (Server-Sent Events): one answer per tab that stays open; carries sync's messages, never data |
+| sse | the server stream (Server-Sent Events): one answer per tab that stays open; carries doorbell's messages, never data |
 | ws | a websocket: both sides talk fast, for features that need it |
-| sync | keeping what screens show in step with the database: every open screen is told which table changed (never which row), and those showing something read from it ask again, through the gates (not "bells") |
+| sync | keeping what screens show in step with the database: every open screen is told which table changed (never which row), and those showing something read from it ask again, through the gates; [doorbell](https://github.com/p4ulcristian/doorbell) does it (a table map's `:doorbell`, its messages `:doorbell/changed` and `:doorbell/missed`) |
 | table map | a table declared as a Clojure map (`{:table :orders :columns [...]}`); [cellar](https://github.com/p4ulcristian/cellar) brings Postgres to what the maps say |
 | browser build | the app's ClojureScript compiled for the browser: watched in development, built once by the deploy, with the stylesheet bundle; [showroom](https://github.com/p4ulcristian/showroom) makes it, never in production |
 | stylesheet | a plain `.css` file next to the namespace that names it with `(def order-card-styles (styles/use-stylesheet "app/orders/order_card.css"))`, as a query names its `.sql` file; [showroom](https://github.com/p4ulcristian/showroom) bundles them |

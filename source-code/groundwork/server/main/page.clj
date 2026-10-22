@@ -8,12 +8,13 @@
         \"addresses\":{\"http\":\"/groundwork/http\",\"sse\":\"/groundwork/sse\",\"ws\":\"/groundwork/ws\"},
         \"sse-reconnect-after-ms\":3000,
         \"ws-reopen-after-ms\":1000,
+        \"doorbell\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000},
         \"pages\":{\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}}}
      </script>
 
    The browser reads it (groundwork.browser.main); the pages, the
-   addresses and the sse and ws reopen delays are said once, on the
-   server.
+   addresses, the sse and ws reopen delays and the question store's
+   settings (doorbell's) are said once, on the server.
 
    Fixed, not settings: the shell is never cached (no-store), so a new
    version's scripts are what the next load gets; nosniff, since every
@@ -60,10 +61,11 @@
 
 (defn make-browser-settings
   "What the browser needs to start: the version, the three addresses and
-   the sse and ws reopen delays (from the :server settings), the pages."
-  [{:keys [version] {:keys [addresses sse-reconnect-after-ms ws-reopen-after-ms]} :server} pages]
+   the sse and ws reopen delays (from the :server settings), the question
+   store's settings (:doorbell), the pages."
+  [{:keys [version doorbell] {:keys [addresses sse-reconnect-after-ms ws-reopen-after-ms]} :server} pages]
   {:version version :addresses addresses :sse-reconnect-after-ms sse-reconnect-after-ms
-   :ws-reopen-after-ms ws-reopen-after-ms :pages pages})
+   :ws-reopen-after-ms ws-reopen-after-ms :doorbell doorbell :pages pages})
 
 (defn make-page-html [{{:keys [title language viewport]} :page} stylesheets scripts browser-settings]
   (str "<!doctype html>\n"

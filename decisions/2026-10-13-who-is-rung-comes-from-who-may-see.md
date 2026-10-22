@@ -1,12 +1,12 @@
 # Who is rung comes from who may see
 
-> **Changed in part** by [sync tells by table and trusts the gates](2026-10-22-sync-tells-by-table-and-trusts-the-gates.md) (2026-10-22): every open screen is told which table changed and nobody is told of a row; who may see it is decided only by the gates, when a screen asks again.
+> **Changed in part** by [sync tells by table and trusts the gates](https://github.com/p4ulcristian/doorbell/blob/main/decisions/2026-10-22-sync-tells-by-table-and-trusts-the-gates.md) (2026-10-22): every open screen is told which table changed and nobody is told of a row; who may see it is decided only by the gates, when a screen asks again.
 
 > **Changed in part** by [sync keeps screens in step with the database](2026-10-22-sync-keeps-screens-in-step.md) (2026-10-22): bells are called sync, made by groundwork.schema (the trigger) and groundwork.sync (the rest); rate limits are transport's.
 
 > **Changed in part** by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md) (2026-10-17): the description is the app's sentences, and a case it can't express gains a word, not a shape.
 
-> Adds to [Postgres rings the bell](2026-10-12-postgres-rings-the-bell.md) and [Asking again, and bells that miss nothing](2026-10-14-asking-again-and-bells-that-miss-nothing.md).
+> Adds to [Postgres rings the bell](https://github.com/p4ulcristian/doorbell/blob/main/decisions/2026-10-12-postgres-rings-the-bell.md) and [Asking again, and bells that miss nothing](https://github.com/p4ulcristian/doorbell/blob/main/decisions/2026-10-14-asking-again-and-bells-that-miss-nothing.md).
 
 **Decision:**
 

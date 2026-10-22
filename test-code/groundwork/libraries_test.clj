@@ -23,7 +23,7 @@
     (if (sequential? spec) (first spec) spec)))
 
 (defn- find-library-of
-  "groundwork.server.sync.telling -> [:server :sync], or nil
+  "groundwork.server.main.page -> [:server :main], or nil
    for a namespace that isn't Groundwork's."
   [ns-symbol]
   (let [[top side library] (str/split (str ns-symbol) #"\.")]
@@ -57,6 +57,9 @@
      (for [required (list-required-namespaces ns-form)
            :when    (and (str/starts-with? (str required) "doorman.") (not= 'doorman.api required))]
        (str (second ns-form) " requires " required ": only doorman's api, doorman.api"))
+     (for [required (list-required-namespaces ns-form)
+           :when    (and (str/starts-with? (str required) "doorbell.") (not= 'doorbell.api required))]
+       (str (second ns-form) " requires " required ": only doorbell's api, doorbell.api"))
      (for [required (list-required-namespaces ns-form)
            :when    (and (str/starts-with? (str required) "showroom.") (= :server side))]
        (str (second ns-form) " requires " required ": the server loads showroom only when it watches (requiring-resolve)"))

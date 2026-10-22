@@ -5,7 +5,7 @@
   (:require
    [groundwork.browser.main.api :as main]
    [showroom.api :as styles]
-   [groundwork.browser.sync.api :as sync]))
+   [doorbell.api :as doorbell]))
 
 (def ^:private build-check-styles (styles/use-stylesheet "groundwork/browser/build_check.css"))
 
@@ -16,4 +16,4 @@
   (let [app (main/start-app! {:shapes-by-name shapes-by-name
                               :sse-handlers   {}
                               :on-page        #(js/console.log "page" (pr-str (:name %)))})]
-    (sync/watch-question! (:store app) [:orders/all {}] #(js/console.log "orders" (pr-str %)))))
+    (doorbell/watch-question! (:store app) [:orders/all {}] #(js/console.log "orders" (pr-str %)))))

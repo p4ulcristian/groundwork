@@ -1,5 +1,7 @@
 # Groundwork's own tables are table maps, in their own folder
 
+> **Changed in part** by [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md) (2026-10-22): the tables say `:doorbell`, not `:sync`; the trigger's function is doorbell's, `doorbell.tell()` in the folder `doorbell`.
+
 > **Changed in part** by [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md) (2026-10-22): the sessions and access tables are doorman's, in its folder (`doorman.sessions`, not `groundwork.sessions`).
 
 > Changes in part [A job kind is a map, and the library makes its own tables](../libraries/background-jobs/decisions/2026-10-22-a-job-kind-is-a-map-and-the-library-makes-its-own-tables.md): background-jobs hands out its tables as maps; it no longer makes them.

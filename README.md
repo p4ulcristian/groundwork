@@ -9,9 +9,7 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 
 | library | namespace | the question it answers |
 |---|---|---|
-| server/sync | `groundwork.server.sync` | how do screens stay current? (every open screen told which table changed) |
 | server/main | `groundwork.server.main` | how does the server start? (and the page shell) |
-| browser/sync | `groundwork.browser.sync` | how do screens stay current? (answers kept by question, asked again) |
 | browser/main | `groundwork.browser.main` | how does the browser start? |
 
 Every namespace says its side right after `groundwork`; no file is `.cljc`.
@@ -35,6 +33,11 @@ And who is asking and what they may do, at one door:
 [doorman](https://github.com/p4ulcristian/doorman), sessions in Postgres and
 access (scopes, roles, memberships, the check in front of every handler, the
 gates, the leak test); its settings are the `:sessions` part, with no defaults.
+And how screens stay current, on both sides:
+[doorbell](https://github.com/p4ulcristian/doorbell), a change to a table rings
+every open screen with only the table's name, and the screens that read it ask
+again through the gates; table maps say `:doorbell :tell` or `[:silent "why"]`,
+and the browser's question store takes the `:doorbell` settings, with no defaults.
 Every Groundwork repository carries the GitHub topic `groundwork`:
 `user:p4ulcristian topic:groundwork` lists them all.
 
@@ -43,7 +46,7 @@ Still to come: the smaller list (visitor sessions, access extras, rate limits, c
 ```sh
 clojure -X:test                                                    # every test; Postgres ones need
                                                                    # GROUNDWORK_SQL_TEST_PORT and _USER (Postgres 16+)
-clojure -X:test :dirs '["test-code/groundwork/server/sync"]'       # one library
+clojure -X:test :dirs '["test-code/groundwork/server/main"]'       # one library
 clj -A:test                                                        # one REPL, every library
 ```
 

@@ -1,10 +1,12 @@
 # sync keeps screens in step with the database; rate limits are transport's
 
-> **Changed in part** by [sync tells by table and trusts the gates](2026-10-22-sync-tells-by-table-and-trusts-the-gates.md) (2026-10-22): `:sync` is `:tell` or `[:silent "why"]` (no `:by-access`, `:everyone`, `:person`), the message is `{:sync/changed {:table "orders"}}` without ids and goes to every open line, and sync no longer works out who to tell from the access sentences.
+> **Changed in part** by [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md) (2026-10-22): sync is the library doorbell (`doorbell.api`), both sides; a table map says `:doorbell`, the messages are `:doorbell/changed` and `:doorbell/missed`. "sync" stays the word for what the user gets.
+
+> **Changed in part** by [sync tells by table and trusts the gates](https://github.com/p4ulcristian/doorbell/blob/main/decisions/2026-10-22-sync-tells-by-table-and-trusts-the-gates.md) (2026-10-22): `:sync` is `:tell` or `[:silent "why"]` (no `:by-access`, `:everyone`, `:person`), the message is `{:sync/changed {:table "orders"}}` without ids and goes to every open line, and sync no longer works out who to tell from the access sentences.
 
 > **Changed in part** by [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md) (2026-10-22): rate limits are mailroom's, and the asker key is the app's to give (Groundwork gives the session's, else the address the `:server :client-address-header` setting points to).
 
-> Changes in part [Postgres rings the bell](2026-10-12-postgres-rings-the-bell.md), [Who is rung comes from who may see](2026-10-13-who-is-rung-comes-from-who-may-see.md), [Asking again, and bells that miss nothing](2026-10-14-asking-again-and-bells-that-miss-nothing.md) and [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md): "bells" and "ringing" are called sync; bells and the browser queries are one library; rate limits go into transport.
+> Changes in part [Postgres rings the bell](https://github.com/p4ulcristian/doorbell/blob/main/decisions/2026-10-12-postgres-rings-the-bell.md), [Who is rung comes from who may see](2026-10-13-who-is-rung-comes-from-who-may-see.md), [Asking again, and bells that miss nothing](https://github.com/p4ulcristian/doorbell/blob/main/decisions/2026-10-14-asking-again-and-bells-that-miss-nothing.md) and [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md): "bells" and "ringing" are called sync; bells and the browser queries are one library; rate limits go into transport.
 
 **Decision:**
 

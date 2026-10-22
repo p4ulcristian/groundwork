@@ -2,28 +2,29 @@
   "The browser's one start: the browser libraries put together. The
    server's start is groundwork.server.main, whose page shell carries what
    this reads: the version, the three addresses, the sse and ws reopen
-   delays and the pages.
+   delays, the question store's settings and the pages.
 
      (def app (main/start-app! {:shapes-by-name shapes-by-name     ; the app's .cljc, by message name
                                 :sse-handlers   {}                 ; the app's own sse messages, by name
                                 :on-page        show-page!}))      ; (on-page {:name … :path-params …})
 
-     (sync/watch-question! (:store app) [:orders/of-shop {:shop/id id}] show-orders!)
+     (doorbell/watch-question! (:store app) [:orders/of-shop {:shop/id id}] show-orders!)
 
      ;; a ws line, when the app wants one: the address and the delay from the page
      (let [{:keys [addresses ws-reopen-after-ms]} (:settings app)]
        (mailroom/open-ws-line! (:ws addresses) shapes-by-name {:chat/said show-said!}
                                {:reopen-after-ms ws-reopen-after-ms}))
 
-   start-app! makes the question store, opens the sse line (sync's messages,
+   start-app! makes the question store (doorbell's, with the :doorbell
+   settings from the page), opens the sse line (doorbell's messages,
    the app's own, and the version: a page older than the server reloads;
    reopened after :sse-reconnect-after-ms when the server answered with an
    error, and every watched question asked again after any break), and
    follows the address bar. Nothing can ask before it: the store is made
    here. The app's shapes-by-name has both shapes for each of its names;
-   Groundwork's own (:groundwork/version, sync's) are added here."
+   Groundwork's own (:groundwork/version, doorbell's) are added here."
   (:require
-   [groundwork.browser.sync.api :as sync]
+   [doorbell.api :as doorbell]
    [mailroom.api :as mailroom]
    [wire.api :as wire]))
 
@@ -32,7 +33,7 @@
 
 (defn read-settings-from-page
   "What the server put in the page: {:version :addresses
-   :sse-reconnect-after-ms :ws-reopen-after-ms :pages}."
+   :sse-reconnect-after-ms :ws-reopen-after-ms :doorbell :pages}."
   []
   (if-let [element (js/document.getElementById "groundwork-settings")]
     (wire/turn-json-text-into-data (.-textContent element))
@@ -50,14 +51,15 @@
 (defn start-app!
   "Starts the browser half (see the namespace). Returns {:settings :store :sse-line}."
   [{:keys [shapes-by-name sse-handlers on-page]}]
-  (let [{:keys [addresses pages sse-reconnect-after-ms] :as settings} (read-settings-from-page)
-        shapes-by-name (merge shapes-by-name sync/sse-shapes-by-name version-shapes-by-name)
-        store          (sync/make-question-store #(mailroom/send-message! (:http addresses) shapes-by-name %))
+  (let [{:keys [addresses pages sse-reconnect-after-ms] store-settings :doorbell :as settings} (read-settings-from-page)
+        shapes-by-name (merge shapes-by-name doorbell/message-shapes-by-name version-shapes-by-name)
+        store          (doorbell/make-question-store #(mailroom/send-message! (:http addresses) shapes-by-name %)
+                                                     store-settings)
         sse-line       (mailroom/open-sse-line! (:sse addresses) shapes-by-name
                                                  (merge sse-handlers
-                                                        (sync/make-sse-handlers store)
+                                                        (doorbell/make-sse-handlers store)
                                                         {:groundwork/version #(reload-when-older! settings %)})
-                                                 {:on-open            (fn [again?] (when again? (sync/hear-missed-changes! store)))
+                                                 {:on-open            (fn [again?] (when again? (doorbell/hear-missed-changes! store)))
                                                   :reconnect-after-ms sse-reconnect-after-ms})]
     (mailroom/start-following-address! pages on-page)
     {:settings settings :store store :sse-line sse-line}))

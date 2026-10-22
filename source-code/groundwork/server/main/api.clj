@@ -5,7 +5,7 @@
      (def app
        {:settings             settings              ; checked against settings-shape
         :browser-entry        'app.browser.main/start!  ; the function the page runs
-        :tables               [shops orders]        ; table maps, with :access and :sync
+        :tables               [shops orders]        ; table maps, with :access and :doorbell
         :changes              []                    ; cellar's changes
         :scope-kinds          scope-kinds           ; doorman's
         :handlers             handlers              ; mailroom's table, each with :action and shapes
@@ -19,8 +19,8 @@
    start-app! checks the settings (every problem at once), puts Groundwork's
    own tables with the app's, migrates in development (:migrate-at-start?
    true) or else refuses a database that isn't current or a role that could
-   pass the gates, then starts the pool, the handlers (doorman's check, then sync),
-   sync's listener, the background job workers, in development the browser
+   pass the gates, then starts the pool, the handlers (doorman's check, then
+   doorbell's notes), doorbell's listener, the background job workers, in development the browser
    build's watcher (:browser-build :watch), and the server (mailroom's three
    addresses, from :server :addresses, every page answered by the page
    shell, files from :page :files; no ws hooks).
@@ -35,9 +35,9 @@
    [backroom.api :as backroom]
    [cellar.api :as database]
    [doorman.api :as doorman]
+   [doorbell.api :as doorbell]
    [groundwork.server.main.page :as page]
    [mailroom.api :as mailroom]
-   [groundwork.server.sync.api :as sync]
    [wire.api :as wire]))
 
 (def page-settings-shape
@@ -76,6 +76,7 @@
    [:database database/settings-shape]
    [:sessions doorman/settings-shape]
    [:background-jobs backroom/settings-shape]
+   [:doorbell doorbell/store-settings-shape]
    [:page page-settings-shape]])
 
 (defn check-settings
@@ -88,22 +89,22 @@
 
 (def groundwork-tables
   "doorman's tables and backroom's, each in their own folder, put with the
-   app's. Neither knows of sync: their tables are made silent here."
-  (vec (concat (map #(assoc % :sync [:silent "no screen shows sessions"]) [doorman/sessions-table])
-               (map #(assoc % :sync [:silent "access is read again on each message; no screen lists it yet"]) doorman/access-tables)
-               (map #(assoc % :sync [:silent "no screen shows background jobs"]) backroom/background-jobs-tables))))
+   app's. Neither knows of doorbell: their tables are made silent here."
+  (vec (concat (map #(assoc % :doorbell [:silent "no screen shows sessions"]) [doorman/sessions-table])
+               (map #(assoc % :doorbell [:silent "access is read again on each message; no screen lists it yet"]) doorman/access-tables)
+               (map #(assoc % :doorbell [:silent "no screen shows background jobs"]) backroom/background-jobs-tables))))
 
 (defn make-ready-tables
   "The app's tables and Groundwork's, with their gates (doorman) and change
-   triggers (sync): what migrate brings Postgres to."
+   triggers (doorbell): what migrate brings Postgres to."
   [{:keys [tables scope-kinds]}]
   (-> (into (vec tables) groundwork-tables)
       (doorman/put-gates-on-tables scope-kinds)
-      (sync/put-sync-on-tables)))
+      (doorbell/put-doorbell-on-tables)))
 
 (defn- install-functions-and-migrate! [pool app]
   (doorman/install-access-functions! pool)
-  (sync/install-sync-function! pool)
+  (doorbell/install-tell-function! pool)
   (database/migrate! pool (make-ready-tables app) (:changes app)))
 
 (defn migrate-app!
@@ -139,7 +140,7 @@
   (-> handlers
       (doorman/put-access-into-handlers {:pool pool :tables tables :scope-kinds scope-kinds
                                          :find-session-step find-session-step})
-      (sync/put-sync-into-handlers)))
+      (doorbell/put-table-notes-into-handlers)))
 
 (defn- make-rate-limit-key-finder
   "Askers told apart by their session (a hash of its cookie), else by
@@ -149,7 +150,7 @@
     (or (doorman/find-session-key-of-request request (:sessions settings))
         (mailroom/find-client-address request (get-in settings [:server :client-address-header])))))
 
-(defn- make-routes [{:keys [settings pages]} handlers running-sync]
+(defn- make-routes [{:keys [settings pages]} handlers running-doorbell]
   (let [browser-settings (page/make-browser-settings settings pages)]
     (into (mailroom/make-routes-for-messages
            handlers
@@ -157,8 +158,8 @@
            {:find-rate-limit-key (make-rate-limit-key-finder settings)
             :on-sse-open  (fn [line]
                             (mailroom/send-message-on-sse-line! line {:groundwork/version (:version settings)} nil)
-                            (sync/add-sse-line! running-sync line))
-            :on-sse-close #(sync/remove-sse-line! running-sync %)
+                            (doorbell/add-sse-line! running-doorbell line))
+            :on-sse-close #(doorbell/remove-sse-line! running-doorbell %)
             :on-ws-open   nil
             :on-ws-close  nil})
           (mailroom/make-server-routes-for-pages pages (page/make-page-handler settings browser-settings)))))
@@ -183,7 +184,7 @@
 
 (defn start-app!
   "Starts the app (see the namespace). Returns the running app, for stop-app!:
-   {:settings :pool :handlers :sync :workers :server}, :server holding the
+   {:settings :pool :handlers :doorbell :workers :server}, :server holding the
    :port it listens on."
   [{:keys [settings background-job-kinds schedules] :as app}]
   (check-settings settings)
@@ -195,9 +196,9 @@
                                 (refuse-unsafe-database! pool app))
             find-session-step (doorman/make-find-session-step pool (:sessions settings))
             handlers          (make-ready-handlers pool app find-session-step)
-            running-sync      (start-part! stoppers
-                                           #(sync/start-sync! pool)
-                                           sync/stop-sync!)
+            running-doorbell  (start-part! stoppers
+                                           #(doorbell/start-listening! pool)
+                                           doorbell/stop-listening!)
             workers           (start-part! stoppers
                                            #(backroom/start-workers! pool (assoc (:background-jobs settings)
                                                                                  :kinds background-job-kinds
@@ -206,10 +207,10 @@
             watching          (when (= :watch (:browser-build settings))
                                 (start-part! stoppers #(start-watching-browser-build! app) stop-watching-browser-build!))
             server            (mailroom/start-server!
-                               (mailroom/make-ring-handler-from-routes (make-routes app handlers running-sync)
+                               (mailroom/make-ring-handler-from-routes (make-routes app handlers running-doorbell)
                                                                         {:files (get-in settings [:page :files])})
                                (:server settings))]
-        {:settings settings :pool pool :handlers handlers :sync running-sync :workers workers
+        {:settings settings :pool pool :handlers handlers :doorbell running-doorbell :workers workers
          :watching watching :server server})
       (catch Throwable e
         (doseq [stop @stoppers] (stop))
@@ -218,9 +219,9 @@
 (defn stop-app!
   "Stops taking requests, stops the watcher, lets running background jobs
    finish, stops listening, closes the pool."
-  [{:keys [pool sync server workers watching]}]
+  [{:keys [pool server workers watching] running-doorbell :doorbell}]
   (mailroom/stop-server! server)
   (when watching (stop-watching-browser-build! watching))
   (backroom/stop-workers! workers)
-  (sync/stop-sync! sync)
+  (doorbell/stop-listening! running-doorbell)
   (database/stop-pool! pool))

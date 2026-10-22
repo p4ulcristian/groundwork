@@ -1,5 +1,7 @@
 # Every value that sets behaviour is a setting, in main too
 
+> **Changed in part** by [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md) (2026-10-22): sync's message shapes are doorbell's `message-shapes-by-name`, and its messages `:doorbell/changed` and `:doorbell/missed`.
+
 > Changes in part [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md), [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md) and [One start, and a migrate for the deploy](server/main/2026-10-22-one-start-and-a-migrate-for-the-deploy.md): Groundwork takes mailroom v0.1.3 and doorman v0.1.1, and main's own fixed values become `:page` settings.
 
 **Decision:** Groundwork follows mailroom's [Every value that sets behaviour is a setting; no hidden defaults](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) and [An sse line reopens after an HTTP error too](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-sse-reopens-after-an-http-error.md), and holds its own main to the same rule.

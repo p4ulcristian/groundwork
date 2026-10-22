@@ -1,5 +1,7 @@
 # One tree; libraries.edn says, and a test checks, who uses whom
 
+> **Changed in part** by [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md) (2026-10-22): sync, both sides, is doorbell, one library of its own taken from git, one public namespace `doorbell.api` with no side; the tree holds only main.
+
 > **Changed in part** by [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md) (2026-10-22): sessions and access are doorman, one library of its own taken from git, one public namespace `doorman.api` with no side.
 
 > **Changed in part** by [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md) (2026-10-22): transport (both sides) and steps are mailroom, a library of its own taken from git, one public namespace `mailroom.api` with no side, a `.clj` for the server and a `.cljs` for the browser.
