@@ -79,7 +79,8 @@
    :browser-build     :built
    :server            {:ip "127.0.0.1" :port 0 :client-address-header nil
                        :addresses {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"}
-                       :ping-every-ms 25000}
+                       :ping-every-ms 25000 :stop-wait-ms 10000 :ws-reopen-after-ms 1000
+                       :rate-limit-buckets-before-cleanup 10000}
    :database          (make-database-settings user)
    :sessions          {:session-days 1 :allowed-origin "http://app.test" :secure-cookie? false}
    :background-jobs   {:workers 1 :poll-ms 1000}
@@ -157,6 +158,7 @@
                 (is (= 200 status))
                 (is (str/includes? html "<title>Shops &lt;test&gt;</title>"))
                 (is (str/includes? html "\"version\":\"test-1\""))
+                (is (str/includes? html "\"ws-reopen-after-ms\":1000") "the ws reopen delay, from the :server settings")
                 (is (str/includes? html "\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}"))
                 (is (str/includes? html "\"sse\":\"/groundwork/sse\""))
                 (is (str/includes? html "<script src=\"/js/main.0A1B2C3D4E5F.js\" defer></script>")

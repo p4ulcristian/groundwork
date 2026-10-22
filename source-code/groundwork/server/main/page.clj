@@ -6,11 +6,12 @@
      <script type=\"application/json\" id=\"groundwork-settings\">
        {\"version\":\"2026-10-22.1\",
         \"addresses\":{\"http\":\"/groundwork/http\",\"sse\":\"/groundwork/sse\",\"ws\":\"/groundwork/ws\"},
+        \"ws-reopen-after-ms\":1000,
         \"pages\":{\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}}}
      </script>
 
-   The browser reads it (groundwork.browser.main); the pages and the
-   addresses are said once, on the server. The shell is never cached, so a
+   The browser reads it (groundwork.browser.main); the pages, the
+   addresses and the ws reopen delay are said once, on the server. The shell is never cached, so a
    new version's scripts are what the next load gets."
   (:require
    [clojure.edn :as edn]
@@ -49,9 +50,10 @@
   (if (= :watch browser-build) ["/css/main.css"] (list-built-files files-folder "css")))
 
 (defn make-browser-settings
-  "What the browser needs to start: the version, the three addresses, the pages."
-  [{:keys [version]} addresses pages]
-  {:version version :addresses addresses :pages pages})
+  "What the browser needs to start: the version, the three addresses and
+   the ws reopen delay (from the :server settings), the pages."
+  [{:keys [version] {:keys [addresses ws-reopen-after-ms]} :server} pages]
+  {:version version :addresses addresses :ws-reopen-after-ms ws-reopen-after-ms :pages pages})
 
 (defn make-page-html [{{:keys [title language]} :page} stylesheets scripts browser-settings]
   (str "<!doctype html>\n"

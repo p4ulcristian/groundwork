@@ -52,7 +52,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md)
 - [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
 - [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
-- [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md)
+- [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md), changed in part by mailroom's [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md)
 - [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
 - [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md), changed in part by [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md) and [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)

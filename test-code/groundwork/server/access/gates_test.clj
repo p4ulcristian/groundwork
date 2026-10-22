@@ -92,7 +92,13 @@
   "mailroom's settings: Groundwork's three addresses, no proxy in front."
   {:ip "127.0.0.1" :port 0 :client-address-header nil
    :addresses {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"}
-   :ping-every-ms 25000})
+   :ping-every-ms 25000 :stop-wait-ms 10000 :ws-reopen-after-ms 1000
+   :rate-limit-buckets-before-cleanup 10000})
+
+(def ^:private server-options
+  "mailroom's options: askers by address, no hooks."
+  {:find-rate-limit-key #(mailroom/find-client-address % nil)
+   :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
 
 (deftest a-table-that-names-a-scope-needs-access
   (is (thrown-with-msg? clojure.lang.ExceptionInfo #"names a scope but has no :access"
@@ -106,7 +112,7 @@
       (let [app-pool (start-pool! "gw_app")
             ready    (access/put-access-into-handlers handlers {:pool app-pool :tables [shops orders] :scope-kinds scope-kinds
                                                                 :find-session-step (sessions/make-find-session-step app-pool settings)})
-            server   (mailroom/start-server! (get-in (first (mailroom/make-routes-for-messages ready server-settings {:find-rate-limit-key #(mailroom/find-client-address % nil)})) [1 :post :handler])
+            server   (mailroom/start-server! (get-in (first (mailroom/make-routes-for-messages ready server-settings server-options)) [1 :post :handler])
                                               server-settings)
             cookie   #(first (str/split (:set-cookie (sessions/sign-in! owner-pool % settings)) #";"))]
         (try

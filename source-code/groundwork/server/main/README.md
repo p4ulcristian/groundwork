@@ -8,10 +8,12 @@ production, and starts the pool, the handlers (access, then sync's notes),
 sync's listener, backroom's background job workers, in development
 showroom's watcher of the browser build, and mailroom's server (its
 `:server` settings: address, the three message addresses, the ping, the
-proxy's header; askers told apart by session, else address). `migrate-app!`
-is for the deploy, as the owner. The page shell answers every page address:
-the app's scripts and styles, and the browser's settings (version,
-addresses, pages) as JSON in the page.
+proxy's header, the stop wait, the ws reopen delay, the rate-limit cleanup
+threshold; askers told apart by session, else address; sse hooks for sync,
+the ws hooks nil). `migrate-app!` is for the deploy, as the owner. The page
+shell answers every page address: the app's scripts and styles, and the
+browser's settings (version, addresses, ws reopen delay, pages) as JSON in
+the page.
 
 API: `groundwork.server.main.api` (`settings-shape`, `page-settings-shape`,
 `check-settings`, `groundwork-tables`, `make-ready-tables`, `migrate-app!`,

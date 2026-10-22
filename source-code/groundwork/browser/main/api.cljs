@@ -1,13 +1,19 @@
 (ns groundwork.browser.main.api
   "The browser's one start: the browser libraries put together. The
    server's start is groundwork.server.main, whose page shell carries what
-   this reads: the version, the three addresses and the pages.
+   this reads: the version, the three addresses, the ws reopen delay and
+   the pages.
 
      (def app (main/start-app! {:shapes-by-name shapes-by-name     ; the app's .cljc, by message name
                                 :sse-handlers   {}                 ; the app's own sse messages, by name
                                 :on-page        show-page!}))      ; (on-page {:name … :path-params …})
 
      (sync/watch-question! (:store app) [:orders/of-shop {:shop/id id}] show-orders!)
+
+     ;; a ws line, when the app wants one: the address and the delay from the page
+     (let [{:keys [addresses ws-reopen-after-ms]} (:settings app)]
+       (mailroom/open-ws-line! (:ws addresses) shapes-by-name {:chat/said show-said!}
+                               {:reopen-after-ms ws-reopen-after-ms}))
 
    start-app! makes the question store, opens the sse line (sync's messages,
    the app's own, and the version: a page older than the server reloads),
@@ -18,7 +24,7 @@
    [wire.api :as wire]))
 
 (defn read-settings-from-page
-  "What the server put in the page: {:version :addresses :pages}."
+  "What the server put in the page: {:version :addresses :ws-reopen-after-ms :pages}."
   []
   (if-let [element (js/document.getElementById "groundwork-settings")]
     (wire/turn-json-text-into-data (.-textContent element))

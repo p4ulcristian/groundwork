@@ -7,15 +7,15 @@
  :deps
  {org.clojure/clojure               {:mvn/version "1.12.6"}
   ;; wire: its own library, github.com/p4ulcristian/wire
-  io.github.p4ulcristian/wire       {:git/tag "v0.1.2" :git/sha "1e8e9aa"}
+  io.github.p4ulcristian/wire       {:git/tag "v0.1.3" :git/sha "0d446b3"}
   ;; cellar: Postgres, its own library, github.com/p4ulcristian/cellar
   io.github.p4ulcristian/cellar     {:git/tag "v0.1.1" :git/sha "1354d94"}
   ;; backroom: background jobs on Postgres, its own library, github.com/p4ulcristian/backroom
-  io.github.p4ulcristian/backroom   {:git/tag "v0.1.0" :git/sha "3edc326"}
+  io.github.p4ulcristian/backroom   {:git/tag "v0.1.1" :git/sha "fcc5e94"}
   ;; mailroom: named messages over http, sse and ws, a handler's steps, the routes;
   ;; both sides, its own library, github.com/p4ulcristian/mailroom (it brings
   ;; http-kit, reitit-ring and reitit-frontend)
-  io.github.p4ulcristian/mailroom   {:git/tag "v0.1.0" :git/sha "264d157"}
+  io.github.p4ulcristian/mailroom   {:git/tag "v0.1.1" :git/sha "3b88dd3"}
   ;; access's sentences and leak test, sync's change messages
   metosin/malli                     {:mvn/version "0.20.3"}
   metosin/jsonista                  {:mvn/version "1.0.2"}

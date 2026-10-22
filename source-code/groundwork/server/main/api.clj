@@ -23,7 +23,7 @@
    sync's listener, the background job workers, in development the browser
    build's watcher (:browser-build :watch), and the server (mailroom's three
    addresses, from :server :addresses, every page answered by the page
-   shell, files from :files-folder).
+   shell, files from :files-folder; no ws hooks).
 
    In production the deploy runs migrate-app! first, as the role that owns
    the tables (the app's own role owns nothing), and the browser's release
@@ -134,7 +134,7 @@
         (mailroom/find-client-address request (get-in settings [:server :client-address-header])))))
 
 (defn- make-routes [{:keys [settings pages]} handlers running-sync]
-  (let [browser-settings (page/make-browser-settings settings (get-in settings [:server :addresses]) pages)]
+  (let [browser-settings (page/make-browser-settings settings pages)]
     (into (mailroom/make-routes-for-messages
            handlers
            (:server settings)
@@ -142,7 +142,9 @@
             :on-sse-open  (fn [line]
                             (mailroom/send-message-on-sse-line! line {:groundwork/version (:version settings)})
                             (sync/add-sse-line! running-sync line))
-            :on-sse-close #(sync/remove-sse-line! running-sync %)})
+            :on-sse-close #(sync/remove-sse-line! running-sync %)
+            :on-ws-open   nil
+            :on-ws-close  nil})
           (mailroom/make-server-routes-for-pages pages (page/make-page-handler settings browser-settings)))))
 
 (defn- start-watching-browser-build!
