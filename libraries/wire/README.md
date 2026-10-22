@@ -6,7 +6,7 @@ lists and maps; a value's shape (a malli schema) turns UUIDs, exact
 decimals, dates and moments into text on the way out, and back into what
 they are on the way in.
 
-Needs only malli and jsonista. Door: `groundwork.wire.clojure-common`
+Needs only malli and jsonista. Door: `groundwork.wire.clojure-common.door`
 (`schema`, `decode`, `encode`, `fits?`, `explain`, `write-json`,
 `read-json`). What differs per language lives beside it:
 `groundwork.wire.clojure.*` on the JVM, `groundwork.wire.clojurescript.*`
@@ -14,7 +14,7 @@ in the browser (load `groundwork.wire.clojurescript.big` for exact
 decimals with big.js). Decisions: [`decisions/`](decisions/README.md).
 
 ```clojure
-(require '[groundwork.wire.clojure-common :as wire])
+(require '[groundwork.wire.clojure-common.door :as wire])
 
 (def order [:map [:order/id :uuid] [:order/total :decimal] [:order/day :time/local-date]])
 

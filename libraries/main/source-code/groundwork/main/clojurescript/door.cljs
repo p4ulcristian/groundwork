@@ -1,4 +1,4 @@
-(ns groundwork.main.clojurescript
+(ns groundwork.main.clojurescript.door
   "The main library's door in the browser: an app's one start. For now it
    opens onto today's Groundwork (groundwork.browser)."
   (:require

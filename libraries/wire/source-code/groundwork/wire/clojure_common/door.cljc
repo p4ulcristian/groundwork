@@ -1,4 +1,4 @@
-(ns groundwork.wire.clojure-common
+(ns groundwork.wire.clojure-common.door
   "How a value travels as text and comes back as what it was, the same rules
    on the JVM and in the browser. The door of groundwork.wire.
 

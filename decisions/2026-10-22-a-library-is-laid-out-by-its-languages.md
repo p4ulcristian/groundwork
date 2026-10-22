@@ -1,5 +1,7 @@
 # A library is laid out by its languages
 
+> **Changed in part** by [The door is a door file, in its language's folder](2026-10-22-the-door-is-a-door-file.md) (2026-10-22): every language is a folder; the door is its `door` file.
+
 > **Changed in part** by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md) (2026-10-22): the prefix is groundwork, folders are libraries/<name>, the main library is groundwork.main.
 
 > Replaces [A library is named by its languages](2026-10-22-a-library-is-named-by-its-languages.md): the languages are spelled out, the libraries share the `ground` namespace, and parts sit in a folder per language.

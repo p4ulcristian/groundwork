@@ -1,5 +1,7 @@
 # Every library is groundwork.<name>, and the main one is groundwork.main
 
+> **Changed in part** by [The door is a door file, in its language's folder](2026-10-22-the-door-is-a-door-file.md) (2026-10-22): every language is a folder; the door is its `door` file.
+
 > Changes in part [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md): the prefix is `groundwork`, not `ground`, the folders drop the `ground/` level, and the main library is `groundwork.main`, not `ground.work`.
 
 **Decision:** the project is Groundwork, and every library in it is named `groundwork.<name>`: `groundwork.wire`, `groundwork.sql`, `groundwork.session`. A library lives in `libraries/<name>/` (the folder is the name after `groundwork.`), its code in `source-code/groundwork/<name>/`, laid out by its languages as decided (`groundwork.wire.clojure-common`, `groundwork.wire.clojure.json`, `groundwork.wire.clojurescript.time`). The main library, the one an app requires first and which composes the others, is `groundwork.main`, in `libraries/main/`. Keywords a library owns: `:groundwork.wire/id-text`, `:groundwork.session/person`. Artifacts: `io.github.p4ulcristian/groundwork-<name>`.

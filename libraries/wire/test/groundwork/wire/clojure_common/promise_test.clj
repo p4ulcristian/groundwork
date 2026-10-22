@@ -1,10 +1,10 @@
-(ns groundwork.wire.door-test
+(ns groundwork.wire.clojure-common.promise-test
   "The door of groundwork.wire: what it promises. Adding or removing a public
    name fails here, so a promise changes on purpose."
   (:require
    [clojure.test :refer [deftest is]]
-   [groundwork.wire.clojure-common]))
+   [groundwork.wire.clojure-common.door]))
 
 (deftest the-door
   (is (= '#{schema decode encode fits? explain write-json read-json}
-         (set (keys (ns-publics 'groundwork.wire.clojure-common))))))
+         (set (keys (ns-publics 'groundwork.wire.clojure-common.door))))))
