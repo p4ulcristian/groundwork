@@ -7,7 +7,7 @@
         :browser-entry        'app.browser.main/start!  ; the function the page runs
         :tables               [shops orders]        ; table maps, with :access and :sync
         :changes              []                    ; cellar's changes
-        :scope-kinds          scope-kinds           ; groundwork.server.access
+        :scope-kinds          scope-kinds           ; doorman's
         :handlers             handlers              ; mailroom's table, each with :action and shapes
         :pages                {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}}
         :background-job-kinds [send-invoice-email]
@@ -19,7 +19,7 @@
    start-app! checks the settings (every problem at once), puts Groundwork's
    own tables with the app's, migrates in development (:migrate-at-start?
    true) or else refuses a database that isn't current or a role that could
-   pass the gates, then starts the pool, the handlers (access, then sync),
+   pass the gates, then starts the pool, the handlers (doorman's check, then sync),
    sync's listener, the background job workers, in development the browser
    build's watcher (:browser-build :watch), and the server (mailroom's three
    addresses, from :server :addresses, every page answered by the page
@@ -33,10 +33,9 @@
   (:require
    [clojure.string :as str]
    [backroom.api :as backroom]
-   [groundwork.server.access.api :as access]
    [cellar.api :as database]
+   [doorman.api :as doorman]
    [groundwork.server.main.page :as page]
-   [groundwork.server.sessions.api :as sessions]
    [mailroom.api :as mailroom]
    [groundwork.server.sync.api :as sync]
    [wire.api :as wire]))
@@ -57,7 +56,7 @@
    [:browser-build [:enum :watch :built]]
    [:server mailroom/settings-shape]
    [:database database/settings-shape]
-   [:sessions sessions/settings-shape]
+   [:sessions doorman/settings-shape]
    [:background-jobs backroom/settings-shape]
    [:page page-settings-shape]])
 
@@ -70,23 +69,22 @@
   settings)
 
 (def groundwork-tables
-  "Groundwork's own tables, in its own folder, and backroom's, in theirs,
-   put with the app's. backroom knows nothing of sync: its tables are made
-   silent here."
-  (vec (concat [sessions/sessions-table]
-               access/access-tables
+  "doorman's tables and backroom's, each in their own folder, put with the
+   app's. Neither knows of sync: their tables are made silent here."
+  (vec (concat (map #(assoc % :sync [:silent "no screen shows sessions"]) [doorman/sessions-table])
+               (map #(assoc % :sync [:silent "access is read again on each message; no screen lists it yet"]) doorman/access-tables)
                (map #(assoc % :sync [:silent "no screen shows background jobs"]) backroom/background-jobs-tables))))
 
 (defn make-ready-tables
-  "The app's tables and Groundwork's, with their gates (access) and change
+  "The app's tables and Groundwork's, with their gates (doorman) and change
    triggers (sync): what migrate brings Postgres to."
   [{:keys [tables scope-kinds]}]
   (-> (into (vec tables) groundwork-tables)
-      (access/put-gates-on-tables scope-kinds)
+      (doorman/put-gates-on-tables scope-kinds)
       (sync/put-sync-on-tables)))
 
 (defn- install-functions-and-migrate! [pool app]
-  (access/install-access-functions! pool)
+  (doorman/install-access-functions! pool)
   (sync/install-sync-function! pool)
   (database/migrate! pool (make-ready-tables app) (:changes app)))
 
@@ -121,8 +119,8 @@
 
 (defn- make-ready-handlers [pool {:keys [handlers tables scope-kinds]} find-session-step]
   (-> handlers
-      (access/put-access-into-handlers {:pool pool :tables tables :scope-kinds scope-kinds
-                                        :find-session-step find-session-step})
+      (doorman/put-access-into-handlers {:pool pool :tables tables :scope-kinds scope-kinds
+                                         :find-session-step find-session-step})
       (sync/put-sync-into-handlers)))
 
 (defn- make-rate-limit-key-finder
@@ -130,7 +128,7 @@
    their address, the proxy's header when the settings name one."
   [settings]
   (fn [request]
-    (or (sessions/find-session-key-of-request request)
+    (or (doorman/find-session-key-of-request request (:sessions settings))
         (mailroom/find-client-address request (get-in settings [:server :client-address-header])))))
 
 (defn- make-routes [{:keys [settings pages]} handlers running-sync]
@@ -177,7 +175,7 @@
             _                 (if (:migrate-at-start? settings)
                                 @(:slow-part (install-functions-and-migrate! pool app))
                                 (refuse-unsafe-database! pool app))
-            find-session-step (sessions/make-find-session-step pool (:sessions settings))
+            find-session-step (doorman/make-find-session-step pool (:sessions settings))
             handlers          (make-ready-handlers pool app find-session-step)
             running-sync      (start-part! stoppers
                                            #(sync/start-sync! pool)

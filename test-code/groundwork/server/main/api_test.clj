@@ -9,10 +9,9 @@
    [clojure.java.io :as io]
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
-   [groundwork.server.access.api :as access]
    [cellar.api :as database]
+   [doorman.api :as doorman]
    [groundwork.server.main.api :as main]
-   [groundwork.server.sessions.api :as sessions]
    [mailroom.api :as mailroom])
   (:import
    (java.io BufferedReader)
@@ -23,7 +22,7 @@
 (def ^:private owner (System/getenv "GROUNDWORK_SQL_TEST_USER"))
 
 (def ^:private scope-kinds
-  (access/check-scope-kinds
+  (doorman/check-scope-kinds
    {:shop {:table   :shops
            :actions {:orders/see #{:read} :orders/edit #{:read :insert :update}}
            :roles   {"Staff" #{:orders/see :orders/edit}}}}))
@@ -55,7 +54,7 @@
    :orders/all {:action :orders/see :params-shape [:map] :answer-shape [:vector :uuid]
                 :steps  [{:name  :answer-all-orders
                           :enter #(mailroom/add-answer-to-context
-                                   % (mapv :order/id (database/find-rows (:groundwork.server.access/transaction %) find-all-orders {})))}]}})
+                                   % (mapv :order/id (database/find-rows (:doorman/transaction %) find-all-orders {})))}]}})
 
 (def ^:private files-folder
   "A release build's folder, as the deploy leaves it: a manifest and one hashed file."
@@ -83,7 +82,8 @@
                        :ping-every-ms 25000 :stop-wait-ms 10000 :ws-reopen-after-ms 1000
                        :rate-limit-buckets-before-cleanup 10000}
    :database          (make-database-settings user)
-   :sessions          {:session-days 1 :allowed-origin "http://app.test" :secure-cookie? false}
+   :sessions          {:cookie-name "groundwork_session" :session-days 1 :renew-after-minutes 60
+                       :allowed-origin "http://app.test" :secure-cookie? false}
    :background-jobs   {:workers 1 :poll-ms 1000}
    :page              {:title "Shops <test>" :language "en"
                        :content-security-policy :none :files-folder files-folder}})
@@ -136,7 +136,7 @@
     (println "groundwork.server.main.api-test: skipped, GROUNDWORK_SQL_TEST_PORT is not set")
     (let [owner-pool (database/start-pool! (make-database-settings owner))]
       (try
-        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE")
+        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE")
         (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gw_app') THEN CREATE ROLE gw_app LOGIN; END IF; END $$")
         (testing "an owner role, or a database not migrated, is refused"
           (is (thrown-with-msg? clojure.lang.ExceptionInfo #"owns tables or passes the gates"
@@ -145,12 +145,12 @@
         (run-sql! owner-pool (str "INSERT INTO shops VALUES ('" shop-7 "'), ('" shop-9 "')"))
         (database/run-in-transaction! owner-pool
           (fn [transaction]
-            (access/add-scope! transaction scope-kinds :shop shop-7 paul)
-            (access/add-scope! transaction scope-kinds :shop shop-9 bob)
-            (access/add-membership! transaction [:shop shop-7] anna "Staff")))
+            (doorman/add-scope! transaction scope-kinds :shop shop-7 paul)
+            (doorman/add-scope! transaction scope-kinds :shop shop-9 bob)
+            (doorman/add-membership! transaction [:shop shop-7] anna "Staff")))
         (let [running     (main/start-app! (make-app "gw_app"))
               server-port (get-in running [:server :port])
-              cookie      #(first (str/split (:set-cookie (sessions/sign-in! (:pool running) % (get-in running [:settings :sessions]))) #";"))
+              cookie      #(first (str/split (:set-cookie (doorman/sign-in! (:pool running) % (get-in running [:settings :sessions]))) #";"))
               anna-cookie (cookie anna)
               bob-cookie  (cookie bob)]
           (try

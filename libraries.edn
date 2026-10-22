@@ -12,10 +12,11 @@
 ;; watches, by requiring-resolve); a browser namespace names its stylesheets
 ;; through showroom.api only. So is mailroom, how the browser and the server
 ;; talk, with a handler's steps and the routes (github.com/p4ulcristian/mailroom):
-;; any library on either side may use it, through mailroom.api only.
-{:server  {:sessions        #{}
-           :access          #{}
-           :sync            #{}
-           :main            #{:sessions :access :sync}}
+;; any library on either side may use it, through mailroom.api only. So is
+;; doorman, who is asking and what they may do, sessions and access
+;; (github.com/p4ulcristian/doorman): any server library may use it, through
+;; doorman.api only.
+{:server  {:sync            #{}
+           :main            #{:sync}}
  :browser {:sync      #{}
            :main      #{:sync}}}

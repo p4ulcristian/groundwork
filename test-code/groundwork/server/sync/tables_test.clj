@@ -25,8 +25,8 @@
 (deftest a-batch-tells-each-changed-table-once
   (let [tables (telling/list-changed-tables
                 ["{\"folder\":\"public\",\"table\":\"orders\"}"
-                 "{\"folder\":\"groundwork\",\"table\":\"sessions\"}"
+                 "{\"folder\":\"doorman\",\"table\":\"sessions\"}"
                  "{\"folder\":\"public\",\"table\":\"orders\"}"])]
-    (is (= [:orders :groundwork/sessions] tables))
+    (is (= [:orders :doorman/sessions] tables))
     (is (= {:sync/changed {:table "orders"}} (telling/make-message (first tables))))
-    (is (= {:sync/changed {:table "groundwork/sessions"}} (telling/make-message (second tables))))))
+    (is (= {:sync/changed {:table "doorman/sessions"}} (telling/make-message (second tables))))))

@@ -28,8 +28,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [showroom](https://github.com/p4ulcristian/showroom): what the browser downloads and how the page looks, the build and the stylesheets it bundles, a library of its own since [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md); its decisions are there
 - [Groundwork's libraries share the GitHub topic groundwork](2026-10-22-groundworks-libraries-share-the-topic-groundwork.md)
 - [mailroom](https://github.com/p4ulcristian/mailroom): how the browser and the server talk (both sides): named messages over http, sse and ws, a handler's steps, the routes; a library of its own since [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md); its decisions are there
-- [server/sessions](server/sessions/README.md): who is asking
-- [server/access](server/access/README.md): what they may do
+- [doorman](https://github.com/p4ulcristian/doorman): who is asking and what they may do, sessions and access, a library of its own since [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md); its decisions are there
 - [server/sync](server/sync/README.md): how screens stay current (both sides; [browser/sync](browser/sync/README.md))
 - [server/main](server/main/README.md): the one start, and the page shell
 
@@ -44,14 +43,15 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [Libraries pass values](2026-10-22-libraries-pass-values.md), replaced by [Libraries stand in layers](2026-10-22-libraries-stand-in-layers.md)
 - [Libraries stand in layers](2026-10-22-libraries-stand-in-layers.md)
 - [No Polylith tool](2026-10-22-no-polylith-tool.md)
-- [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md), changed in part by [A library says where it runs](2026-10-22-a-library-says-where-it-runs.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md), [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md) and [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md)
-- [A library says where it runs; sessions and access stay apart](2026-10-22-a-library-says-where-it-runs.md), changed in part by [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md)
-- [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), changed in part by [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md), [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md) and [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md)
-- [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), changed in part by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md), [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md) and [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md)
+- [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md), changed in part by [A library says where it runs](2026-10-22-a-library-says-where-it-runs.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md), [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md) [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md) and [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md)
+- [A library says where it runs; sessions and access stay apart](2026-10-22-a-library-says-where-it-runs.md), changed in part by [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md) and [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md)
+- [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), changed in part by [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md), [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md) [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md) and [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md)
+- [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), changed in part by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md), [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md) [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md) and [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md)
 - [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md)
 - [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md)
 - [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
 - [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
+- [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md)
 - [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md), changed in part by mailroom's [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md)
 - [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
@@ -116,13 +116,12 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [A table map says its column types in wire's words](2026-10-22-a-table-map-says-column-types-in-wires-words.md)
 - [A migration runs in two parts: the instant part before the start, the slow part after](2026-10-22-a-migration-runs-in-two-parts.md)
 - [A fresh database takes the maps as they are](2026-10-22-a-fresh-database-takes-the-maps-as-they-are.md)
-- [Groundwork's own tables are table maps, in their own folder](2026-10-22-groundworks-tables-are-maps-in-their-own-folder.md)
+- [Groundwork's own tables are table maps, in their own folder](2026-10-22-groundworks-tables-are-maps-in-their-own-folder.md), changed in part by [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md)
 
 ### Sessions and logins
 
 - [Groundwork ships no logins](2026-10-12-groundwork-ships-no-logins.md)
-- [Sessions live in Postgres](2026-10-12-sessions-live-in-postgres.md)
-- [The session is the only truth](2026-10-12-the-session-is-the-only-truth.md)
+- [Sessions live in Postgres](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-12-sessions-live-in-postgres.md): moved to doorman with the library, with "The session is the only truth"
 - [Pages for other sites, visitors, and servers](2026-10-12-pages-for-other-sites-visitors-and-servers.md)
 
 ### Permissions and the access language
@@ -130,18 +129,14 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [Groundwork ships permissions](2026-10-12-groundwork-ships-permissions.md), changed in part by [Who may see what is the app's; Groundwork enforces it](2026-10-15-who-may-see-what-is-the-apps.md) and [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
 - [Who may see what is the app's; Groundwork enforces it](2026-10-15-who-may-see-what-is-the-apps.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
 - [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)
-- [Every scoped table names its scope](2026-10-12-every-scoped-table-names-its-scope.md)
+- [Every scoped table names its scope](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-12-every-scoped-table-names-its-scope.md): moved to doorman with the library, with "A record may wait for its scope", "A record can belong to a visitor", "Shared rows may belong to nobody" and "One request may name several scopes"
 - [A record of two scopes may have a parent and children](2026-10-13-a-record-of-two-scopes-may-have-a-parent-and-children.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
 - [A record between fixed sides carries them](2026-10-13-a-record-between-fixed-sides-carries-them.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
-- [A record may wait for its scope](2026-10-13-a-record-may-wait-for-its-scope.md), changed in part by [Shared rows may belong to nobody](2026-10-16-shared-rows-may-belong-to-nobody.md)
-- [A record can belong to a visitor](2026-10-13-a-record-can-belong-to-a-visitor.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
-- [Shared rows may belong to nobody](2026-10-16-shared-rows-may-belong-to-nobody.md)
 - [Money and personal data live in their own tables](2026-10-17-money-and-personal-data-live-in-their-own-tables.md)
 
 ### Endpoints, parquery and live updates
 
 - [What every endpoint declares](2026-10-12-what-every-endpoint-declares.md)
-- [One request may name several scopes](2026-10-18-one-request-may-name-several-scopes.md)
 - [Every endpoint declares its answer](2026-10-12-every-endpoint-declares-its-answer.md)
 - [Reads and writes share one path](2026-10-12-reads-and-writes-share-one-path.md)
 - [parquery is the transport](2026-10-12-parquery-is-the-transport.md), changed in part by [Groundwork ships these parts](2026-10-18-groundwork-ships-these-parts.md)

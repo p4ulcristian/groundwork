@@ -15,6 +15,9 @@ Each word in a Groundwork name means one thing, everywhere. See
 | context | the one map that steps pass along |
 | step | `{:name a-keyword :enter (fn [context] context)}`; a handler's steps are its work, run by [mailroom](https://github.com/p4ulcristian/mailroom) |
 | background job | one piece of work saved in Postgres to run outside a request, by a worker (never "job" alone: Iron Rainbow's job is a coating job); [backroom](https://github.com/p4ulcristian/backroom) queues and runs them |
+| session | who is asking: a row in Postgres, the browser's cookie only random bytes; [doorman](https://github.com/p4ulcristian/doorman) signs in and out and finds it first in every handler |
+| scope | a place data belongs to (a shop): the app's own row, known to [doorman](https://github.com/p4ulcristian/doorman) by its kind and id; a person is in it with one role, a bundle of actions |
+| gates | Postgres's row rules made from the app's `:access` sentences, by [doorman](https://github.com/p4ulcristian/doorman): a query with no WHERE still gets only the asker's rows |
 | answer | what the work returns; once the context has one, no more steps run |
 | http | a request from the browser and the server's one answer: all data travels this way; [mailroom](https://github.com/p4ulcristian/mailroom) carries http, sse and ws |
 | sse | the server stream (Server-Sent Events): one answer per tab that stays open; carries sync's messages, never data |

@@ -1,5 +1,7 @@
 # Groundwork's own tables are table maps, in their own folder
 
+> **Changed in part** by [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md) (2026-10-22): the sessions and access tables are doorman's, in its folder (`doorman.sessions`, not `groundwork.sessions`).
+
 > Changes in part [A job kind is a map, and the library makes its own tables](../libraries/background-jobs/decisions/2026-10-22-a-job-kind-is-a-map-and-the-library-makes-its-own-tables.md): background-jobs hands out its tables as maps; it no longer makes them.
 
 **Decision:** a library that needs tables hands them out as table maps (`sessions-table`, `background-jobs-tables`); it never makes them. Whoever starts the app passes them to groundwork.schema with the app's own, and schema makes and changes them like any table. A table key's namespace is its Postgres schema (folder): `:groundwork/sessions` is `groundwork.sessions`, `:orders` stays in `public`. schema reads only the folders the maps name (`public` too when a map is in it), makes a folder the first time it is needed, and calls a table undeclared only inside those folders: a library's tables can be made without knowing the app's.

@@ -66,7 +66,7 @@
    {:tables [\"orders\" \"shops\"]}, or {:tables \"any\"} when Postgres's planner
    couldn't say for one of its queries; mailroom sends it beside the answer.
    Only the steps count, not what runs around them (the session, who holds
-   what): put it in after groundwork.server.access."
+   what): put it in after doorman's put-access-into-handlers."
   [handlers]
   (update-vals handlers
                (fn [{:keys [run-steps-in] :as handler}]
