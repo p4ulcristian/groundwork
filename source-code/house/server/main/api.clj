@@ -20,7 +20,12 @@
    one wire from the :wire settings (wire.api's make-wire-from-settings)
    and passes it to every library that sends or reads data across the
    app's edges (mailroom's routes, backroom's workers, the page, the
-   health checks; no library makes its own), puts house's own tables with
+   health checks; no library makes its own), makes the app's one logbook
+   from the :logbook settings and passes its log to every library that
+   writes a line (cellar's migrate, doorbell's listener, backroom's
+   workers, showroom's watcher, mailroom's routes and server, the health
+   checks; each message's steps get one with its request id, the person
+   added once doorman finds them), puts house's own tables with
    the app's, migrates in development (:migrate-at-start?
    true) or else refuses a database that isn't current or a role that could
    pass the gates, then starts the pool, the handlers (doorman's check, then
@@ -38,14 +43,23 @@
    Two GETs answer whoever runs the app, outside sessions, access and rate
    limits (house.server.main.health, the :health settings): live, 200
    while the process answers; ready, 200 once started while the database
-   answers, else 503, and 503 from the start of stop-app!."
+   answers, else 503, and 503 from the start of stop-app!.
+
+   One more GET, for a monitor, outside them too (house.server.main.errors,
+   the :errors settings): the :error lines logbook keeps, after ?since=N,
+   only with the settings' bearer token. And one handler of house's own,
+   :house/browser-error: the browser's uncaught errors, sent by
+   house.browser.main, written at :error as :browser/uncaught, so they are
+   kept with the server's; its rate limit is the :errors settings'."
   (:require
    [clojure.string :as str]
    [backroom.api :as backroom]
    [cellar.api :as database]
    [doorman.api :as doorman]
    [doorbell.api :as doorbell]
+   [house.server.main.errors :as errors]
    [house.server.main.health :as health]
+   [logbook.api :as logbook]
    [house.server.main.page :as page]
    [mailroom.api :as mailroom]
    [malli.core :as malli]
@@ -122,23 +136,24 @@
    [:store doorbell/store-settings-shape]
    [:listening doorbell/listening-settings-shape]])
 
-(defn- leaves-entry-and-folder-out? [watch-options]
-  (not (or (contains? watch-options :entry) (contains? watch-options :files-folder))))
+(defn- leaves-entry-folder-and-log-out? [watch-options]
+  (not-any? #(contains? watch-options %) [:entry :files-folder :log]))
 
 (def browser-build-settings-shape
   "The :browser-build setting: :built, the release build's files, listed
    by their manifests; or {:watch options}, development, showroom's
    watcher started with these options: every one of showroom's
-   start-watching! options but :entry and :files-folder, which come from
-   the app's :browser-entry and the :page :files :folder. showroom checks
-   them, every key required, before the app starts anything."
+   start-watching! options but :entry, :files-folder and :log, which come
+   from the app's :browser-entry, the :page :files :folder and the app's
+   log. showroom checks them, every key required, before the app starts
+   anything."
   [:or
    [:= :built]
    [:map {:closed true}
     [:watch [:and
              [:map-of :keyword :any]
-             [:fn {:error/message ":entry and :files-folder come from :browser-entry and :page :files :folder"}
-              leaves-entry-and-folder-out?]]]]])
+             [:fn {:error/message ":entry, :files-folder and :log come from :browser-entry, :page :files :folder and the app's log"}
+              leaves-entry-folder-and-log-out?]]]]])
 
 (def browser-wire-settings-shape
   "The :browser-wire part of the settings, every key required: the
@@ -152,13 +167,34 @@
    [:most-shapes-kept [:int {:min 1}]]
    [:most-keys-kept [:int {:min 1}]]])
 
+(def errors-settings-shape
+  "The :errors part of the settings, every key required: the errors a
+   monitor pulls, and the browser's (house.server.main.errors).
+   :path: the GET a monitor asks the kept errors from, \"/house/errors\".
+   :token: the bearer token it must send (Authorization: Bearer …); kept
+   out of the code, as a secret.
+   :browser-rate-limit: how many browser errors one asker may send,
+   {:max 10 :per-ms 60000}; more are answered \"Too many requests.\" and
+   not written."
+  [:map {:closed true}
+   [:path :string]
+   [:token [:string {:min 1}]]
+   [:browser-rate-limit [:map {:closed true}
+                         [:max [:int {:min 1}]]
+                         [:per-ms [:int {:min 1}]]]]])
+
 (def settings-shape
   "The whole settings, every key required; each library brings its part.
    :wire is wire's settings on the JVM (wire.api/settings-shape), which
-   house makes the app's one wire from; :browser-wire the browser's."
+   house makes the app's one wire from; :browser-wire the browser's.
+   :logbook is logbook's settings (logbook.api/settings-shape), which
+   house makes the app's one logbook from; :errors where its kept errors
+   are pulled, and how often a browser may send one."
   [:map {:closed true}
    [:version :string]
    [:wire wire/settings-shape]
+   [:logbook logbook/settings-shape]
+   [:errors errors-settings-shape]
    [:browser-wire browser-wire-settings-shape]
    [:migrate-at-start? :boolean]
    [:browser-build browser-build-settings-shape]
@@ -197,21 +233,23 @@
       (doorman/put-gates-on-tables scope-kinds)
       (doorbell/put-doorbell-on-tables)))
 
-(defn- install-functions-and-migrate! [pool app]
+(defn- install-functions-and-migrate! [pool app log]
   (doorman/install-access-functions! pool)
   (doorbell/install-tell-function! pool)
-  (database/migrate! pool (make-ready-tables app) (:changes app) (get-in app [:settings :migration])))
+  (database/migrate! pool (make-ready-tables app) (:changes app) (assoc (get-in app [:settings :migration]) :log log)))
 
 (defn migrate-app!
   "For the deploy, before the app starts: as the role that owns the tables
    (owner-db-settings), installs doorman's and doorbell's functions, brings Postgres to
    the tables and changes (waiting for the slow part too), each part under
    the :migration settings' time limits, and lets the app's own role
-   (app-role) use them. Prints the plan."
+   (app-role) use them. Each planned statement is written to a log made
+   from the :logbook settings (:cellar/planned)."
   [app owner-db-settings app-role]
-  (let [pool (database/start-pool! owner-db-settings)]
+  (let [log  (logbook/log-function (logbook/make-logbook (get-in app [:settings :logbook])))
+        pool (database/start-pool! owner-db-settings)]
     (try
-      (deref (:slow-part (install-functions-and-migrate! pool app)))
+      (deref (:slow-part (install-functions-and-migrate! pool app log)))
       (database/grant-tables-to-role! pool (make-ready-tables app) app-role)
       (finally (database/stop-pool! pool)))))
 
@@ -246,13 +284,15 @@
     (or (doorman/find-session-key-of-request request (:sessions settings))
         (mailroom/find-client-address request (get-in settings [:server :client-address-header])))))
 
-(defn- make-routes [{:keys [settings pages]} wire pool running-health handlers running-doorbell]
+(defn- make-routes [{:keys [settings pages]} wire running-logbook log pool running-health handlers running-doorbell]
   (let [browser-settings (page/make-browser-settings settings pages)]
-    (-> (health/make-health-routes wire pool running-health settings)
+    (-> (health/make-health-routes wire log pool running-health settings)
+        (into (errors/make-errors-routes wire running-logbook settings))
         (into (mailroom/make-routes-for-messages
                handlers
                (:server settings)
                {:wire                wire
+                :log                 log
                 :find-rate-limit-key (make-rate-limit-key-finder settings)
                 :on-sse-open  (fn [line]
                                 (mailroom/send-message-on-sse-line! line {:house/version (:version settings)} nil)
@@ -267,23 +307,24 @@
 
 (defn- make-watch-options
   "showroom's start-watching! options: the :browser-build :watch settings,
-   with the app's entry and the files folder."
-  [{:keys [browser-entry settings]}]
+   with the app's entry, the files folder and the app's log."
+  [{:keys [browser-entry settings]} log]
   (assoc (get-in settings [:browser-build :watch])
          :entry browser-entry
-         :files-folder (get-in settings [:page :files :folder])))
+         :files-folder (get-in settings [:page :files :folder])
+         :log log))
 
 (defn- check-watch-options!
   "showroom checks the watch options, every key required, before anything
    starts: showroom's make-build checks them and builds nothing."
-  [app]
-  ((requiring-resolve 'showroom.api/make-build) :watch (make-watch-options app)))
+  [app log]
+  ((requiring-resolve 'showroom.api/make-build) :watch (make-watch-options app log)))
 
 (defn- start-watching-browser-build!
   "Loaded here, not required above: production has neither showroom nor
    shadow-cljs."
-  [app]
-  ((requiring-resolve 'showroom.api/start-watching!) (make-watch-options app)))
+  [app log]
+  ((requiring-resolve 'showroom.api/start-watching!) (make-watch-options app log)))
 
 (defn- stop-watching-browser-build! [watching]
   ((requiring-resolve 'showroom.api/stop-watching!) watching))
@@ -298,48 +339,59 @@
 
 (defn start-app!
   "Starts the app (see the namespace). Returns the running app, for stop-app!:
-   {:settings :wire :pool :handlers :doorbell :workers :watching :health :server}, :server holding the
-   :port it listens on, :wire the app's one wire, made from the :wire settings."
+   {:settings :wire :logbook :log :pool :handlers :doorbell :workers :watching :health :server},
+   :server holding the :port it listens on, :wire the app's one wire, made
+   from the :wire settings, :logbook the app's one logbook, made from the
+   :logbook settings, and :log its log function, for the app's own lines."
   [{:keys [settings background-job-kinds schedules] :as app}]
   (check-settings settings)
-  (when (is-watching? settings) (check-watch-options! app))
-  (let [wire     (wire/make-wire-from-settings (:wire settings))
-        stoppers (atom ())]
-    (try
-      (let [pool              (start-part! stoppers #(database/start-pool! (:database settings)) database/stop-pool!)
-            _                 (if (:migrate-at-start? settings)
-                                @(:slow-part (install-functions-and-migrate! pool app))
-                                (refuse-unsafe-database! pool app))
-            find-session-step (doorman/make-find-session-step pool (:sessions settings))
-            handlers          (make-ready-handlers pool app find-session-step)
-            running-doorbell  (start-part! stoppers
-                                           #(doorbell/start-listening! pool (get-in settings [:doorbell :listening]))
-                                           doorbell/stop-listening!)
-            workers           (start-part! stoppers
-                                           #(backroom/start-workers! pool (assoc (:background-jobs settings)
-                                                                                 :wire wire
-                                                                                 :kinds background-job-kinds
-                                                                                 :schedules schedules))
-                                           backroom/stop-workers!)
-            watching          (when (is-watching? settings)
-                                (start-part! stoppers #(start-watching-browser-build! app) stop-watching-browser-build!))
-            running-health    (health/make-health)
-            server            (mailroom/start-server!
-                               (mailroom/make-ring-handler-from-routes (make-routes app wire pool running-health handlers running-doorbell)
-                                                                        {:files (get-in settings [:page :files])})
-                               (:server settings))]
-        (health/mark-stage! running-health :started)
-        {:settings settings :wire wire :pool pool :handlers handlers :doorbell running-doorbell :workers workers
-         :watching watching :health running-health :server server})
-      (catch Throwable e
-        (doseq [stop @stoppers] (stop))
-        (throw e)))))
+  (let [running-logbook (logbook/make-logbook (:logbook settings))
+        log             (logbook/log-function running-logbook)]
+    (when (is-watching? settings) (check-watch-options! app log))
+    (let [wire     (wire/make-wire-from-settings (:wire settings))
+          stoppers (atom ())]
+      (try
+        (let [pool              (start-part! stoppers #(database/start-pool! (:database settings)) database/stop-pool!)
+              _                 (if (:migrate-at-start? settings)
+                                  @(:slow-part (install-functions-and-migrate! pool app log))
+                                  (refuse-unsafe-database! pool app))
+              find-session-step (doorman/make-find-session-step pool (:sessions settings))
+              handlers          (-> (make-ready-handlers pool app find-session-step)
+                                    (errors/add-browser-error-handler find-session-step
+                                                                      (get-in settings [:errors :browser-rate-limit])))
+              running-doorbell  (start-part! stoppers
+                                             #(doorbell/start-listening! pool (get-in settings [:doorbell :listening]) {:log log})
+                                             doorbell/stop-listening!)
+              workers           (start-part! stoppers
+                                             #(backroom/start-workers! pool (assoc (:background-jobs settings)
+                                                                                   :wire wire
+                                                                                   :log log
+                                                                                   :kinds background-job-kinds
+                                                                                   :schedules schedules))
+                                             backroom/stop-workers!)
+              watching          (when (is-watching? settings)
+                                  (start-part! stoppers #(start-watching-browser-build! app log) stop-watching-browser-build!))
+              running-health    (health/make-health)
+              server            (mailroom/start-server!
+                                 (mailroom/make-ring-handler-from-routes
+                                  (make-routes app wire running-logbook log pool running-health handlers running-doorbell)
+                                  {:files (get-in settings [:page :files])})
+                                 (:server settings)
+                                 {:log log})]
+          (health/mark-stage! running-health :started)
+          (log :info :house/started {:house/version (:version settings) :house/port (:port server)})
+          {:settings settings :wire wire :logbook running-logbook :log log :pool pool :handlers handlers
+           :doorbell running-doorbell :workers workers :watching watching :health running-health :server server})
+        (catch Throwable e
+          (doseq [stop @stoppers] (stop))
+          (throw e))))))
 
 (defn stop-app!
   "Answers ready with 503 for the :health settings' :not-ready-before-stop-ms,
    then stops taking requests, stops the watcher, lets running background
    jobs finish, stops listening, closes the pool."
-  [{:keys [settings pool server workers watching] running-doorbell :doorbell running-health :health}]
+  [{:keys [settings log pool server workers watching] running-doorbell :doorbell running-health :health}]
+  (log :info :house/stopping {:house/version (:version settings)})
   (health/mark-stage! running-health :stopping)
   (Thread/sleep (long (get-in settings [:health :not-ready-before-stop-ms])))
   (mailroom/stop-server! server)

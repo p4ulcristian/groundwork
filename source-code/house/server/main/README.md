@@ -5,7 +5,10 @@ tables, changes, scope kinds, handlers, pages, background job kinds,
 schedules), checks the settings (each library brings its part; every problem
 at once), makes the app's one wire from the `:wire` settings and passes it to
 mailroom's routes, backroom's workers, the page and the health checks (no
-library makes its own; the running app holds it, `:wire`), migrates in development or refuses an unsafe or old database in
+library makes its own; the running app holds it, `:wire`), makes the app's
+one logbook from the `:logbook` settings and passes its log to every library
+that writes a line (the running app holds both, `:logbook` and `:log`;
+[the decision](../../../../decisions/2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md)), migrates in development or refuses an unsafe or old database in
 production, and starts the pool, the handlers (doorman's check, then doorbell's notes),
 doorbell's listener (the `:doorbell :listening` settings), backroom's
 background job workers (`:background-jobs`), in development showroom's
@@ -39,7 +42,21 @@ with 503 for `:not-ready-before-stop-ms` before the server stops:
          :database-timeout-ms 1000 :not-ready-before-stop-ms 0}
 ```
 
+One more GET, for a monitor, outside them too: the `:error` lines logbook
+keeps, after `?since=N`, as a JSON array, only with the `:errors` settings'
+token as a bearer token (else 401). The browser's uncaught errors and
+unhandled rejections come in as a message, `:house/browser-error`, a handler
+of house's own (doorman's session step, then `:error :browser/uncaught`),
+limited per asker by `:browser-rate-limit`, and are kept with the server's:
+[the decision](../../../../decisions/server/main/2026-10-22-main-serves-the-kept-errors-and-logs-the-browsers.md).
+
 ```clojure
+:errors {:path "/house/errors" :token "…" :browser-rate-limit {:max 10 :per-ms 60000}}
+```
+
+```clojure
+:logbook         {:lowest-level :info :format :json                      ; logbook's; development :debug, :readable
+                  :errors-kept 1000 :write-to :stdout}
 :wire            {:most-shapes-kept 1000                                 ; wire's settings on the JVM
                   :json-limits      {:max-nesting-depth 1000 :max-number-length 1000 :max-string-length 20000000
                                      :max-name-length 50000 :max-document-length nil :max-token-count nil
@@ -55,7 +72,7 @@ with 503 for `:not-ready-before-stop-ms` before the server stops:
                   :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                               :reconnect-after-ms 1000 :stop-wait-ms 2000}}
 :browser-build   :built                                                  ; or {:watch {…}}: showroom's watch options
-                                                                         ; but :entry and :files-folder
+                                                                         ; but :entry, :files-folder and :log
 ```
 
 API: `house.server.main.api` (`settings-shape`, `page-settings-shape`,

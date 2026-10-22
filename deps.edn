@@ -11,20 +11,23 @@
   io.github.p4ulcristian/wire       {:git/tag "v0.2.0" :git/sha "d66b7cb"}
   ;; the settings and the browser start's options, checked by their shapes
   metosin/malli                     {:mvn/version "0.20.3"}
+  ;; logbook: the app's log, its own library, github.com/p4ulcristian/logbook;
+  ;; main makes one logbook from the :logbook settings and passes its log to every library
+  io.github.p4ulcristian/logbook    {:git/tag "v0.1.0" :git/sha "7c3222f"}
   ;; cellar: Postgres, its own library, github.com/p4ulcristian/cellar
-  io.github.p4ulcristian/cellar     {:git/tag "v0.1.3" :git/sha "e23e1b4"}
+  io.github.p4ulcristian/cellar     {:git/tag "v0.2.0" :git/sha "ec613de"}
   ;; backroom: background jobs on Postgres, its own library, github.com/p4ulcristian/backroom
-  io.github.p4ulcristian/backroom   {:git/tag "v0.2.0" :git/sha "7797360"}
+  io.github.p4ulcristian/backroom   {:git/tag "v0.3.0" :git/sha "fd3348e"}
   ;; mailroom: named messages over http, sse and ws, a handler's steps, the routes;
   ;; both sides, its own library, github.com/p4ulcristian/mailroom (it brings
   ;; http-kit, reitit-ring and reitit-frontend)
-  io.github.p4ulcristian/mailroom   {:git/tag "v0.2.0" :git/sha "ee4331c"}
+  io.github.p4ulcristian/mailroom   {:git/tag "v0.3.0" :git/sha "81ef0ab"}
   ;; doorman: who is asking and what may they do, sessions and access, its own
   ;; library, github.com/p4ulcristian/doorman (it brings malli and test.check)
-  io.github.p4ulcristian/doorman    {:git/tag "v0.2.0" :git/sha "cdc2e70"}
+  io.github.p4ulcristian/doorman    {:git/tag "v0.3.0" :git/sha "49af9f9"}
   ;; doorbell: a change to a table rings every open screen, which asks again;
   ;; both sides, its own library, github.com/p4ulcristian/doorbell
-  io.github.p4ulcristian/doorbell   {:git/tag "v0.2.0" :git/sha "8e8cdb3"}}
+  io.github.p4ulcristian/doorbell   {:git/tag "v0.3.0" :git/sha "1c28ac4"}}
 
  :aliases
  {;; every test:                  clojure -X:test
@@ -34,7 +37,7 @@
                        ;; HikariCP (in cellar) logs through SLF4J; tests pick no logger
                        org.slf4j/slf4j-nop {:mvn/version "2.0.17"}
                        ;; the browser build's test compiles every browser library
-                       io.github.p4ulcristian/showroom {:git/tag "v0.1.1" :git/sha "82b9ae9"}}
+                       io.github.p4ulcristian/showroom {:git/tag "v0.2.0" :git/sha "47696cf"}}
          :exec-fn     cognitect.test-runner.api/test
          :exec-args   {:dirs ["test-code"]}}
 
@@ -43,8 +46,8 @@
   ;; aliases, not in :deps. Development: add :browser-build to the REPL or the dev start
   ;; (its watch options are the :browser-build {:watch …} settings).
   ;; The deploy:  clojure -X:browser-release (an app writes its own :entry and :files-folder)
-  :browser-build   {:extra-deps {io.github.p4ulcristian/showroom {:git/tag "v0.1.1" :git/sha "82b9ae9"}}}
-  :browser-release {:extra-deps {io.github.p4ulcristian/showroom {:git/tag "v0.1.1" :git/sha "82b9ae9"}}
+  :browser-build   {:extra-deps {io.github.p4ulcristian/showroom {:git/tag "v0.2.0" :git/sha "47696cf"}}}
+  :browser-release {:extra-deps {io.github.p4ulcristian/showroom {:git/tag "v0.2.0" :git/sha "47696cf"}}
                     :exec-fn    showroom.api/build-for-release!
                     :exec-args  {:entry              app.browser.main/start!
                                  :files-folder       "target/public"

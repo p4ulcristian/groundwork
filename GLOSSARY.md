@@ -13,6 +13,7 @@ Each word in a manor name means one thing, everywhere. See
 | data | maps, lists, text, numbers: no claim about types |
 | errors | a map from each key that doesn't fit to readable messages: `{:order/id ["should be a uuid"]}` |
 | context | the one map that steps pass along |
+| log | the one function `(log level event data)` a library is handed to write a line; [logbook](https://github.com/p4ulcristian/logbook) makes it, `with-context` makes one that carries a request's id or a person; a line's context is that, not the steps' context |
 | step | `{:name a-keyword :enter (fn [context] context)}`; a handler's steps are its work, run by [mailroom](https://github.com/p4ulcristian/mailroom) |
 | background job | one piece of work saved in Postgres to run outside a request, by a worker (never "job" alone: Iron Rainbow's job is a coating job); [backroom](https://github.com/p4ulcristian/backroom) queues and runs them |
 | session | who is asking: a row in Postgres, the browser's cookie only random bytes; [doorman](https://github.com/p4ulcristian/doorman) signs in and out and finds it first in every handler |

@@ -1,5 +1,7 @@
 # Main answers health checks
 
+> **Changed in part** by [main makes one logbook and passes its log to every library](../../2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md) (2026-10-22): the database's error goes to the app's log, `:warn :house/database-not-ready`.
+
 **Decision:** groundwork.server.main answers two GETs for whoever runs the app (a deploy's proxy, a load balancer, a monitor), as Iron Rainbow's `/health/live` and `/health/ready` do, with their paths and numbers in a required `:health` part of the settings:
 
 ```clojure

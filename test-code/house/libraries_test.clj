@@ -43,6 +43,12 @@
            :when    (and (str/starts-with? (str required) "wire.") (not= 'wire.api required))]
        (str (second ns-form) " requires " required ": only wire's api, wire.api"))
      (for [required (list-required-namespaces ns-form)
+           :when    (and (str/starts-with? (str required) "logbook.") (not= 'logbook.api required))]
+       (str (second ns-form) " requires " required ": only logbook's api, logbook.api"))
+     (for [required (list-required-namespaces ns-form)
+           :when    (and (str/starts-with? (str required) "logbook.") (= :browser side))]
+       (str (second ns-form) " requires " required ": logbook is the server's"))
+     (for [required (list-required-namespaces ns-form)
            :when    (and (str/starts-with? (str required) "cellar.") (not= 'cellar.api required))]
        (str (second ns-form) " requires " required ": only cellar's api, cellar.api"))
      (for [required (list-required-namespaces ns-form)

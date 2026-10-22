@@ -18,11 +18,7 @@
    database holds one query, not one per check. Never cached (no-store)."
   (:require
    [cellar.api :as database]
-   [wire.api :as wire])
-  (:import
-   (java.lang System$Logger System$Logger$Level)))
-
-(def ^:private ^System$Logger logger (System/getLogger "house"))
+   [wire.api :as wire]))
 
 (def ^:private find-database-answer
   (database/make-query-from-sql-file "house/server/main/find_database_answer.sql"))
@@ -52,21 +48,21 @@
 
 (defn- find-database-problem
   "Why the database isn't ready, or nil when it answered in time. The
-   error goes to the log, not to the asker."
-  [pool health timeout-ms]
+   error goes to the app's log, :warn :house/database-not-ready, not to
+   the asker."
+  [log pool health timeout-ms]
   (let [result (deref (find-or-start-database-check! pool health) timeout-ms :timed-out)]
     (cond
       (= :answered result)  nil
       (= :timed-out result) (str "the database did not answer within " timeout-ms " ms")
-      :else                 (do (.log logger System$Logger$Level/WARNING "ready: the database answered with an error"
-                                      ^Throwable result)
+      :else                 (do (log :warn :house/database-not-ready {:error result})
                                 "the database answered with an error"))))
 
-(defn- find-reason-not-ready [pool health timeout-ms]
+(defn- find-reason-not-ready [log pool health timeout-ms]
   (case @(:stage health)
     :starting "the app is starting"
     :stopping "the app is stopping"
-    :started  (find-database-problem pool health timeout-ms)))
+    :started  (find-database-problem log pool health timeout-ms)))
 
 (defn- answer-json [wire status body]
   {:status  status
@@ -75,10 +71,11 @@
 
 (defn make-health-routes
   "The live and ready routes, at the :health settings' paths, as reitit
-   data, answered as JSON by the app's wire."
-  [wire pool health {:keys [version] {:keys [live-path ready-path database-timeout-ms]} :health}]
+   data, answered as JSON by the app's wire; a database that answered
+   with an error is written to the app's log."
+  [wire log pool health {:keys [version] {:keys [live-path ready-path database-timeout-ms]} :health}]
   [[live-path  {:get {:handler (fn [_] (answer-json wire 200 {:status "live" :version version}))}}]
    [ready-path {:get {:handler (fn [_]
-                                 (if-let [reason (find-reason-not-ready pool health database-timeout-ms)]
+                                 (if-let [reason (find-reason-not-ready log pool health database-timeout-ms)]
                                    (answer-json wire 503 {:status "not-ready" :version version :reason reason})
                                    (answer-json wire 200 {:status "ready" :version version})))}}]])

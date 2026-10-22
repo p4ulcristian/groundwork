@@ -2,8 +2,8 @@
 
 An opinionated Clojure framework for web apps on Postgres: the part of
 **manor** that puts its libraries together into one running app. manor is the
-group: house and its cellar, backroom, showroom, mailroom, doorman, doorbell
-and wire. The spec is [`decisions/`](decisions/README.md).
+group: house and its cellar, backroom, showroom, mailroom, doorman, doorbell,
+wire and logbook. The spec is [`decisions/`](decisions/README.md).
 
 One tree: each library is a folder `source-code/house/<side>/<name>/` with
 its README, its tests in `test-code/house/<side>/<name>/`, its decisions in
@@ -48,6 +48,13 @@ every open screen with only the table's name, and the screens that read it ask
 again through the gates; table maps say `:doorbell :tell` or `[:silent "why"]`,
 and the `:doorbell` settings hold the browser's question store's (`:store`) and
 the server's listener's (`:listening`), with no defaults.
+And what the app says, on the server:
+[logbook](https://github.com/p4ulcristian/logbook), one function
+`(log level event data)`; house makes the app's one logbook from the
+`:logbook` settings and passes its log to every library, each message's steps
+get one with its request id (and the person, once doorman finds them), and a
+monitor pulls the kept errors, the browser's among them, from the `:errors`
+route.
 Every manor repository carries the GitHub topic `manor`:
 `user:p4ulcristian topic:manor` lists them all.
 

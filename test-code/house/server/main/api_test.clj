@@ -3,7 +3,11 @@
    owner, then start-app! as a role that owns nothing. The page shell, a
    message with its notes, and doorbell: a new order is told to every open
    sse line as only its table, and each person's asking again sees, through the
-   gates, only their own shop's orders. Then the health checks: live and
+   gates, only their own shop's orders. One message's lines, written by
+   mailroom, by cellar through doorbell and by the app's own step, carry
+   its request id and the person doorman found; the errors route hands a
+   monitor the kept errors, only with its token; a browser's error, sent
+   as a message, is kept with them. Then the health checks: live and
    ready, a database that doesn't answer or lets nobody in, and stopping.
    Runs when
    HOUSE_SQL_TEST_PORT is set."
@@ -15,6 +19,7 @@
    [doorbell.api :as doorbell]
    [doorman.api :as doorman]
    [house.server.main.api :as main]
+   [jsonista.core :as json]
    [mailroom.api :as mailroom])
   (:import
    (java.io BufferedReader)
@@ -56,6 +61,16 @@
 (def ^:private find-all-orders
   (database/make-query-from-sql-text "all orders, no WHERE" "SELECT order__id FROM orders ORDER BY order__id"))
 
+(def ^:private find-untyped
+  (database/make-query-from-sql-text "a param Postgres can't type" "SELECT :x IS NULL AS b"))
+
+(def ^:private lines
+  "The lines the app's logbook wrote, as JSON data."
+  (atom []))
+
+(defn- find-lines [event]
+  (filterv #(= event (get % "event")) @lines))
+
 (def ^:private handlers
   {:orders/count {:action :orders/see :params-shape [:map] :answer-shape :int :rate-limit {:max 2 :per-ms 60000}
                   :run-steps-in nil
@@ -63,7 +78,14 @@
    :orders/all {:action :orders/see :params-shape [:map] :answer-shape [:vector :uuid] :rate-limit nil :run-steps-in nil
                 :steps  [{:name  :answer-all-orders
                           :enter #(mailroom/add-answer-to-context
-                                   % (mapv :order/id (database/find-rows (:doorman/transaction %) find-all-orders {})))}]}})
+                                   % (mapv :order/id (database/find-rows (:doorman/transaction %) find-all-orders {})))}]}
+   :orders/broken {:action :orders/see :params-shape [:map] :answer-shape :int :rate-limit nil :run-steps-in nil
+                   :steps  [{:name  :say-and-ask-untyped
+                             :enter (fn [{:mailroom/keys [log] :as context}]
+                                      (log :info :test/about-to-break {})
+                                      (database/find-one-row (:doorman/transaction context) find-untyped {:x "a"})
+                                      context)}
+                            {:name :break :enter (fn [_] (throw (ex-info "the app's step broke" {})))}]}})
 
 (def ^:private files-folder
   "A release build's folder, as the deploy leaves it: a manifest and one hashed file."
@@ -96,6 +118,9 @@
                                           :max-name-length 50000 :max-document-length nil :max-token-count nil
                                           :max-writing-nesting-depth 1000}}
    :browser-wire      {:most-shapes-kept 1000 :most-keys-kept 10000}
+   :logbook           {:lowest-level :debug :format :json :errors-kept 100
+                       :write-to     #(swap! lines conj (json/read-value %))}
+   :errors            {:path "/house/errors" :token "the-errors-token" :browser-rate-limit {:max 2 :per-ms 60000}}
    :migrate-at-start? false
    :browser-build     :built
    :server            {:ip "127.0.0.1" :port 0 :proxy-protocol :disable :client-address-header nil :server-header nil
@@ -195,9 +220,20 @@
             :browser-wire ["missing required key"]}
            problems)
         "wire's settings, the JVM's and the browser's, have no defaults: house makes the one wire from them"))
+  (let [problems (try (main/check-settings (-> (make-settings "x")
+                                               (update :logbook dissoc :lowest-level)
+                                               (update :errors dissoc :token :browser-rate-limit)))
+                      (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
+    (is (= {:logbook {:lowest-level ["missing required key"]}
+            :errors  {:token ["missing required key"] :browser-rate-limit ["missing required key"]}}
+           problems)
+        "logbook's settings and the errors' have no defaults"))
   (is (thrown? clojure.lang.ExceptionInfo
                (main/check-settings (assoc (make-settings "x") :browser-build {:watch {:entry 'app.browser.main/start!}})))
-      "the watch options leave out the entry and the folder: they come from the app and :page"))
+      "the watch options leave out the entry and the folder: they come from the app and :page")
+  (is (thrown? clojure.lang.ExceptionInfo
+               (main/check-settings (assoc (make-settings "x") :browser-build {:watch {:log (fn [_ _ _])}})))
+      "and the log: house passes its own"))
 
 (deftest the-whole-server
   (if-not port
@@ -318,6 +354,65 @@
                 ;; not closed here: a read that timed out still holds them;
                 ;; stopping the server ends both streams
                 ))
+            (testing "one message's lines, mailroom's, cellar's and the app's own, carry its request id and the person"
+              (reset! lines [])
+              (is (= [200 "{\"orders/broken\":{\"error\":\"Something went wrong.\"}}"]
+                     (send-request server-port "POST" "/house/http" anna-cookie "{\"orders/broken\":{}}")))
+              (let [said    (first (find-lines "test/about-to-break"))
+                    unknown (first (find-lines "cellar/tables-read-unknown"))
+                    failed  (first (find-lines "mailroom/handler-failed"))]
+                (is (some? (get-in said ["context" "request-id"])))
+                (is (= [(get said "context")] (distinct (map #(get % "context") [said unknown failed])))
+                    "the same context on all three: one request id")
+                (is (= (str anna) (get-in failed ["context" "person-id"])) "added by doorman's session step")
+                (is (= ["info" "warn" "error"] (map #(get % "level") [said unknown failed])))
+                (is (= "the app's step broke" (get-in failed ["error" "message"])))))
+            (testing "the errors route: only with its token; the kept errors after ?since="
+              (let [ask-errors (fn [token query]
+                                 (let [response (.send (HttpClient/newHttpClient)
+                                                       (cond-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/house/errors" query)))
+                                                         token (.header "authorization" (str "Bearer " token))
+                                                         true  (.build))
+                                                       (HttpResponse$BodyHandlers/ofString))]
+                                   [(.statusCode response) (.body response)]))]
+                (is (= 401 (first (ask-errors nil "?since=0"))))
+                (is (= 401 (first (ask-errors "a-wrong-token" "?since=0"))))
+                (is (= 400 (first (ask-errors "the-errors-token" ""))) "since is said")
+                (is (= 400 (first (ask-errors "the-errors-token" "?since=-1"))))
+                (let [[status body] (ask-errors "the-errors-token" "?since=0")
+                      errors        (json/read-value body)
+                      last-seq      (get (peek errors) "seq")]
+                  (is (= 200 status))
+                  (is (= "mailroom/handler-failed" (get (peek errors) "event")))
+                  (is (= ["seq" "time" "level" "event" "context" "data" "error"] (vec (keys (peek errors))))
+                      "each as written, its number first")
+                  (is (= [200 "[]"] (ask-errors "the-errors-token" (str "?since=" last-seq))) "none after the last")
+                  (testing "a browser's error, sent as a message, is kept with them, with the person"
+                    (let [send-error #(send-request server-port "POST" "/house/http" anna-cookie
+                                                    (str "{\"house/browser-error\":{\"message\":\"x is undefined\","
+                                                         "\"stack\":\"at start (main.js:1)\",\"url\":\"http://app.test/orders/42\"}}"))]
+                      (is (= [200 "{\"house/browser-error\":true}"] (send-error)))
+                      (let [[status body] (ask-errors "the-errors-token" (str "?since=" last-seq))
+                            [kept]        (json/read-value body)]
+                        (is (= 200 status))
+                        (is (= ["error" "browser/uncaught" (str anna)
+                                {"browser/message" "x is undefined" "browser/stack" "at start (main.js:1)"
+                                 "browser/url"     "http://app.test/orders/42"}]
+                               [(get kept "level") (get kept "event") (get-in kept ["context" "person-id"]) (get kept "data")])))
+                      (testing "its rate limit, from the :errors settings: two a minute per asker"
+                        (is (= [200 "{\"house/browser-error\":true}"] (send-error)))
+                        (is (= [200 "{\"house/browser-error\":{\"error\":\"Too many requests.\"}}"] (send-error))))
+                      (testing "from another site: refused by doorman's session step, not written"
+                        (let [before (count (find-lines "browser/uncaught"))
+                              answer (.body (.send (HttpClient/newHttpClient)
+                                                   (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/house/http")))
+                                                       (.header "origin" "https://evil.test")
+                                                       (.POST (HttpRequest$BodyPublishers/ofString
+                                                               "{\"house/browser-error\":{\"message\":\"m\",\"stack\":null,\"url\":\"u\"}}"))
+                                                       (.build))
+                                                   (HttpResponse$BodyHandlers/ofString)))]
+                          (is (str/includes? answer "error"))
+                          (is (= before (count (find-lines "browser/uncaught")))))))))))
             (testing "health: plain GETs, no origin, no session, no rate limit, never cached"
               (is (= [200 "{\"status\":\"live\",\"version\":\"test-1\"}" "no-store"]
                      (ask-health server-port "/health/live")))

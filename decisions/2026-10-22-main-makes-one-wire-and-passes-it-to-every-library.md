@@ -1,5 +1,7 @@
 # main makes one wire and passes it to every library
 
+> **Changed in part** by [main makes one logbook and passes its log to every library](2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md) (2026-10-22): the settings have a `:logbook` and an `:errors` part more, and house takes the libraries' versions that take a log.
+
 > Changes in part [main takes every library's new settings](2026-10-22-main-takes-every-librarys-new-settings.md) and [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md): two settings parts more, the page carries the browser's wire settings, and house takes wire v0.2.0, mailroom v0.2.0, backroom v0.2.0, doorman v0.2.0 and doorbell v0.2.0.
 
 **Decision:** wire v0.2.0 makes a wire from settings, and every one of its functions takes the wire first. house makes the app's one wire on each side and passes the same value to every library that sends or reads data across the app's edges, as a required argument or option; no library makes its own wire or carries wire settings ("the app passes its wire; the library never makes one", each library's decision).

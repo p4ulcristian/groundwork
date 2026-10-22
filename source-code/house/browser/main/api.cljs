@@ -27,7 +27,15 @@
    error, and every watched question asked again after any break), and
    follows the address bar. Nothing can ask before it: the store is made
    here. The app's shapes-by-name has both shapes for each of its names;
-   house's own (:house/version, doorbell's) are added here."
+   house's own (:house/version, :house/browser-error, doorbell's) are
+   added here.
+
+   It also listens, once for the page, for the uncaught errors and the
+   unhandled promise rejections, and sends each to the server as
+   {:house/browser-error {:message … :stack … :url …}}, where it is logged
+   at :error with the server's errors (its rate limit is the server's
+   :errors settings'). A failure sending one is dropped: it can't be
+   sent either."
   (:require
    [doorbell.api :as doorbell]
    [mailroom.api :as mailroom]
@@ -35,8 +43,13 @@
    [malli.error :as malli-error]
    [wire.api :as wire]))
 
-(def ^:private version-shapes-by-name
-  {:house/version {:params-shape nil :answer-shape :string}})
+(def ^:private house-shapes-by-name
+  {:house/version       {:params-shape nil :answer-shape :string}
+   :house/browser-error {:params-shape [:map {:closed true}
+                                        [:message :string]
+                                        [:stack [:maybe :string]]
+                                        [:url :string]]
+                         :answer-shape :boolean}})
 
 (defn read-settings-from-page
   "What the server put in the page: {:version :addresses
@@ -79,6 +92,27 @@
                       {:type :house.browser.main/bad-options :errors errors}))))
   options)
 
+(defonce ^:private sending-errors? (atom false))
+
+(defn- describe-error
+  "The message and stack of what was thrown or rejected: an Error's own,
+   else its text and no stack."
+  [thrown fallback-message]
+  (if (instance? js/Error thrown)
+    {:message (str (.-message thrown)) :stack (some-> (.-stack thrown) str)}
+    {:message (if (some? thrown) (str thrown) fallback-message) :stack nil}))
+
+(defn- send-errors-to-server!
+  "Once for the page (a hot reload starts the app again): every uncaught
+   error and unhandled rejection is sent as a :house/browser-error."
+  [send!]
+  (when (compare-and-set! sending-errors? false true)
+    (let [send-error! (fn [{:keys [message stack]}]
+                        (-> (send! {:house/browser-error {:message message :stack stack :url (str js/location.href)}})
+                            (.catch (fn [_] nil))))]
+      (js/window.addEventListener "error" #(send-error! (describe-error (.-error %) (str (.-message %)))))
+      (js/window.addEventListener "unhandledrejection" #(send-error! (describe-error (.-reason %) "A promise was rejected"))))))
+
 (defn start-app!
   "Starts the browser half (see the namespace). The options are checked
    first, every key required. Returns {:settings :wire :store :sse-line},
@@ -87,9 +121,10 @@
   (let [{:keys [shapes-by-name sse-handlers on-page exact-decimals]} (check-start-options options)
         {:keys [addresses pages sse-reconnect-after-ms] store-settings :doorbell :as settings} (read-settings-from-page)
         wire           (wire/make-wire-from-settings (assoc (:wire settings) :exact-decimals exact-decimals))
-        shapes-by-name (merge shapes-by-name doorbell/message-shapes-by-name version-shapes-by-name)
-        store          (doorbell/make-question-store #(mailroom/send-message! (:http addresses) shapes-by-name % {:wire wire})
-                                                     store-settings)
+        shapes-by-name (merge shapes-by-name doorbell/message-shapes-by-name house-shapes-by-name)
+        send!          #(mailroom/send-message! (:http addresses) shapes-by-name % {:wire wire})
+        _              (send-errors-to-server! send!)
+        store          (doorbell/make-question-store send! store-settings)
         sse-line       (mailroom/open-sse-line! (:sse addresses) shapes-by-name
                                                  (merge sse-handlers
                                                         (doorbell/make-sse-handlers store)
