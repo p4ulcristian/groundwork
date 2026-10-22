@@ -14,10 +14,28 @@
   (is (= '#{make-build start-watching! stop-watching! build-for-release!}
          (set (keys (ns-publics 'groundwork.server.browser-build.api))))))
 
+(defn- make-folder [] (str (Files/createTempDirectory "groundwork-build" (make-array FileAttribute 0))))
+
 (deftest a-release-build
-  (let [folder (str (Files/createTempDirectory "groundwork-build" (make-array FileAttribute 0)))]
+  (let [folder (make-folder)]
     (with-out-str (browser-build/build-for-release! {:entry 'groundwork.browser.build-check/start! :files-folder folder}))
     (let [[{:keys [module-id output-name]}] (edn/read-string (slurp (io/file folder "js" "manifest.edn")))]
       (is (= :main module-id))
       (is (re-matches #"main\.[0-9A-F]{8,}\.js" output-name) "the name carries a hash of the content")
-      (is (.exists (io/file folder "js" output-name))))))
+      (is (.exists (io/file folder "js" output-name))))
+    (let [[{:keys [output-name]}] (edn/read-string (slurp (io/file folder "css" "manifest.edn")))]
+      (is (re-matches #"main\.[0-9A-F]{16}\.css" output-name))
+      (is (= "/* groundwork/browser/build_check.css */\n.build-check { color: rebeccapurple; }\n"
+             (slurp (io/file folder "css" output-name)))
+          "the named stylesheet, whole, as written"))))
+
+(deftest a-missing-stylesheet-stops-the-build
+  (is (thrown? Exception
+               (with-out-str (browser-build/build-for-release! {:entry 'groundwork.browser.missing-check.entry/start! :files-folder (make-folder)})))))
+
+(deftest a-stylesheet-no-namespace-names-stops-a-release
+  (let [message (try (with-out-str (browser-build/build-for-release! {:entry 'groundwork.browser.unnamed-check.entry/start! :files-folder (make-folder)}))
+                     nil
+                     (catch Exception e (pr-str e)))]
+    (is (re-find #"forgotten\.css" (str message)))
+    (is (not (re-find #"named\.css\n" (str message))))))

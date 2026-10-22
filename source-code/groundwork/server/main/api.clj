@@ -47,7 +47,6 @@
   [:map {:closed true}
    [:title :string]
    [:language :string]
-   [:stylesheets [:vector :string]]
    [:content-security-policy [:or :string [:= :none]]]
    [:files-folder :string]])
 

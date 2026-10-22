@@ -17,4 +17,5 @@
  :browser {:wire      #{}
            :transport #{:wire}
            :sync      #{}
+           :styles    #{}
            :main      #{:wire :transport :sync}}}

@@ -60,6 +60,8 @@
     (io/make-parents (io/file folder "js" "x"))
     (spit (io/file folder "js" "manifest.edn") (pr-str [{:module-id :main :output-name "main.0A1B2C3D4E5F.js"}]))
     (spit (io/file folder "js" "main.0A1B2C3D4E5F.js") "start();")
+    (io/make-parents (io/file folder "css" "x"))
+    (spit (io/file folder "css" "manifest.edn") (pr-str [{:output-name "main.9F8E7D6C5B4A.css"}]))
     (spit (io/file folder "robots.txt") "User-agent: *")
     (str folder)))
 
@@ -75,7 +77,7 @@
    :database          (make-database-settings user)
    :sessions          {:session-days 1 :allowed-origin "http://app.test" :secure-cookie? false}
    :background-jobs   {:workers 1 :poll-ms 1000}
-   :page              {:title "Shops <test>" :language "en" :stylesheets []
+   :page              {:title "Shops <test>" :language "en"
                        :content-security-policy :none :files-folder files-folder}})
 
 (defn- make-app [user]
@@ -149,7 +151,9 @@
                 (is (str/includes? html "\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}"))
                 (is (str/includes? html "\"sse\":\"/groundwork/sse\""))
                 (is (str/includes? html "<script src=\"/js/main.0A1B2C3D4E5F.js\" defer></script>")
-                    "the script the build's manifest lists")))
+                    "the script the build's manifest lists")
+                (is (str/includes? html "<link rel=\"stylesheet\" href=\"/css/main.9F8E7D6C5B4A.css\">")
+                    "the stylesheet bundle its manifest lists")))
             (testing "files: a hashed one is kept for a year, any other asked again"
               (let [response (.send (HttpClient/newHttpClient)
                                     (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/js/main.0A1B2C3D4E5F.js"))))

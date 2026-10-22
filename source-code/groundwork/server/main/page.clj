@@ -26,25 +26,34 @@
   [json-text]
   (str/replace json-text "<" "\\u003c"))
 
+(defn- list-built-files
+  "The files a release build's manifest in <files-folder>/<kind> lists, as
+   addresses; none throws: build first."
+  [files-folder kind]
+  (let [manifest (io/file files-folder kind "manifest.edn")]
+    (when-not (.exists manifest)
+      (throw (ex-info (str "No browser build in " files-folder ": run the release build first (clojure -X:browser-release)")
+                      {:type :groundwork.server.main/not-built :files-folder files-folder})))
+    (mapv #(str "/" kind "/" (:output-name %)) (edn/read-string (slurp manifest)))))
+
 (defn list-scripts
-  "The page's scripts: in development (:browser-build :watch) the watcher's
-   /js/main.js; built, the files the release build's manifest lists, their
-   names hashed. Built without a manifest throws: build first."
+  "The page's scripts: while watching (:browser-build :watch) /js/main.js;
+   built, the files the release build's manifest lists, their names hashed."
   [{:keys [browser-build] {:keys [files-folder]} :page}]
-  (if (= :watch browser-build)
-    ["/js/main.js"]
-    (let [manifest (io/file files-folder "js" "manifest.edn")]
-      (when-not (.exists manifest)
-        (throw (ex-info (str "No browser build in " files-folder ": run the release build first (clojure -X:browser-release)")
-                        {:type :groundwork.server.main/not-built :files-folder files-folder})))
-      (mapv #(str "/js/" (:output-name %)) (edn/read-string (slurp manifest))))))
+  (if (= :watch browser-build) ["/js/main.js"] (list-built-files files-folder "js")))
+
+(defn list-stylesheets
+  "The page's stylesheet bundle: while watching /css/main.css; built, the
+   hashed one its manifest lists."
+  [{:keys [browser-build] {:keys [files-folder]} :page}]
+  (if (= :watch browser-build) ["/css/main.css"] (list-built-files files-folder "css")))
 
 (defn make-browser-settings
   "What the browser needs to start: the version, the three addresses, the pages."
   [{:keys [version]} addresses pages]
   {:version version :addresses addresses :pages pages})
 
-(defn make-page-html [{{:keys [title language stylesheets]} :page} scripts browser-settings]
+(defn make-page-html [{{:keys [title language]} :page} stylesheets scripts browser-settings]
   (str "<!doctype html>\n"
        "<html lang=\"" (escape-html language) "\">\n<head>\n"
        "<meta charset=\"utf-8\">\n"
@@ -69,5 +78,5 @@
   "A Ring handler answering every page address with the shell, made once."
   [settings browser-settings]
   (let [response {:status 200 :headers (make-headers settings)
-                  :body   (make-page-html settings (list-scripts settings) browser-settings)}]
+                  :body   (make-page-html settings (list-stylesheets settings) (list-scripts settings) browser-settings)}]
     (fn [_request] response)))

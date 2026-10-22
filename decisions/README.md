@@ -31,6 +31,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [server/background-jobs](server/background-jobs/README.md): what runs later
 - [server/sync](server/sync/README.md): how screens stay current (both sides; [browser/sync](browser/sync/README.md))
 - [server/browser-build](server/browser-build/README.md): what the browser downloads, and who builds it
+- [browser/styles](browser/styles/README.md): how the page looks
 - [server/main](server/main/README.md): the one start, and the page shell
 
 ### What Groundwork is
@@ -166,7 +167,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 
 ### Styles
 
-- [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md)
+- [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md), changed in part by [A def names its stylesheet](browser/styles/2026-10-22-a-def-names-its-stylesheet-as-a-query-names-its-sql.md)
 
 ### Jobs and the REPL
 

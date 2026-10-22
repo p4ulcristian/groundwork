@@ -3,7 +3,10 @@
    compiles all of them, as an app's release build would."
   (:require
    [groundwork.browser.main.api :as main]
+   [groundwork.browser.styles.api :as styles]
    [groundwork.browser.sync.api :as sync]))
+
+(def ^:private build-check-styles (styles/use-stylesheet "groundwork/browser/build_check.css"))
 
 (def ^:private shapes-by-name
   {:orders/all {:params-shape [:map] :answer-shape [:vector :uuid]}})

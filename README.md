@@ -21,13 +21,14 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 | server/main | `groundwork.server.main` | how does the server start? (and the page shell) |
 | browser/wire | `groundwork.browser.wire` | how does data keep its types? (in the browser) |
 | browser/transport | `groundwork.browser.transport` | how does the browser talk to the server? (and the pages in the bar) |
+| browser/styles | `groundwork.browser.styles` | how does the page look? (a def names its stylesheet) |
 | browser/sync | `groundwork.browser.sync` | how do screens stay current? (answers kept by question, asked again) |
 | browser/main | `groundwork.browser.main` | how does the browser start? |
 
 Every namespace says its side right after `groundwork`; no file is `.cljc`.
 Which library may use which is `libraries.edn`, checked by a test.
 
-Still to come: styles (how does the page look?).
+Still to come in styles: minifying the bundle for the app's browsers.
 
 ```sh
 clojure -X:test                                                    # every test; Postgres ones need

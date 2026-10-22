@@ -1,5 +1,7 @@
 # A namespace names its stylesheets
 
+> **Changed in part** by [A def names its stylesheet, as a query names its .sql file](browser/styles/2026-10-22-a-def-names-its-stylesheet-as-a-query-names-its-sql.md) (2026-10-22): a stylesheet is named by `(styles/use-stylesheet "…")` in the namespace, not in its ns metadata.
+
 > Replaces [A class is a namespaced keyword](2026-10-15-a-class-is-a-namespaced-keyword.md), [A stylesheet paints only its own room](2026-10-15-a-stylesheet-paints-only-its-own-room.md), [The styles tree](2026-10-15-the-styles-tree.md), [The styles tree's order is cascade layers](2026-10-13-the-styles-trees-order-is-cascade-layers.md) and [A page loads the stylesheets its code uses](2026-10-15-a-page-loads-the-stylesheets-its-code-uses.md). Lifts the freeze for styles ([Groundwork is frozen](2026-10-15-groundwork-is-frozen.md)).
 
 **Decision:** a namespace says which stylesheets it needs in its own metadata, `(ns app.flex.job-card {:css ["job-card.css"]})`, with paths next to the namespace's file. Classes are plain text, stylesheets plain CSS.
