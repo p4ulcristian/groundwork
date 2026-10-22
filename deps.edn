@@ -14,16 +14,17 @@
                       io.github.p4ulcristian/groundwork-background-chores {:local/root "libraries/background-chores"}
                       io.github.p4ulcristian/groundwork-schema {:local/root "libraries/schema"}
                       io.github.p4ulcristian/groundwork-sessions {:local/root "libraries/sessions"}
+                      io.github.p4ulcristian/groundwork-access {:local/root "libraries/access"}
                       io.github.p4ulcristian/groundwork-main  {:local/root "libraries/main"}}}
 
   ;; every library's tests together:   clojure -X:test
-  :test {:extra-paths ["libraries/wire/test-code" "libraries/steps/test-code" "libraries/transport/test-code" "libraries/routes/test-code" "libraries/sql/test-code" "libraries/background-chores/test-code" "libraries/schema/test-code" "libraries/sessions/test-code" "libraries/main/test-code"]
+  :test {:extra-paths ["libraries/wire/test-code" "libraries/steps/test-code" "libraries/transport/test-code" "libraries/routes/test-code" "libraries/sql/test-code" "libraries/background-chores/test-code" "libraries/schema/test-code" "libraries/sessions/test-code" "libraries/access/test-code" "libraries/main/test-code"]
          :extra-deps  {io.github.cognitect-labs/test-runner
                        {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                        ;; HikariCP logs through SLF4J; tests pick no logger
                        org.slf4j/slf4j-nop {:mvn/version "2.0.17"}}
          :exec-fn     cognitect.test-runner.api/test
-         :exec-args   {:dirs ["libraries/wire/test-code" "libraries/steps/test-code" "libraries/transport/test-code" "libraries/routes/test-code" "libraries/sql/test-code" "libraries/background-chores/test-code" "libraries/schema/test-code" "libraries/sessions/test-code" "libraries/main/test-code"]}}
+         :exec-args   {:dirs ["libraries/wire/test-code" "libraries/steps/test-code" "libraries/transport/test-code" "libraries/routes/test-code" "libraries/sql/test-code" "libraries/background-chores/test-code" "libraries/schema/test-code" "libraries/sessions/test-code" "libraries/access/test-code" "libraries/main/test-code"]}}
 
   ;; the browser half's tests:   npx shadow-cljs compile test
   :cljs {:extra-paths ["libraries/wire/test-code" "libraries/steps/test-code"]

@@ -30,6 +30,7 @@ Each library keeps its own decisions, with its own index:
 - [groundwork.background-chores](../libraries/background-chores/decisions/README.md): a queue, workers and schedules in Postgres
 - [groundwork.schema](../libraries/schema/decisions/README.md): tables as maps; Postgres brought to them
 - [groundwork.sessions](../libraries/sessions/decisions/README.md): who is asking
+- [groundwork.access](../libraries/access/decisions/README.md): who may see and do what
 
 ### What Groundwork is
 
