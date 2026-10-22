@@ -51,6 +51,7 @@ Each library keeps its own decisions, with its own index:
 - [Groundwork ships no team endpoints and no eval bridge](2026-10-18-groundwork-ships-no-team-endpoints-and-no-eval-bridge.md)
 - [Groundwork is no longer frozen](2026-10-17-groundwork-is-no-longer-frozen.md)
 - [Names are made consistent once](2026-10-18-names-are-made-consistent-once.md)
+- [A name is a sentence that starts with a verb](2026-10-22-a-name-is-a-sentence-that-starts-with-a-verb.md); the words: [GLOSSARY.md](../GLOSSARY.md)
 - [Java 25 or newer](2026-10-12-java-25-or-newer.md)
 - [Renovate keeps the libraries current](2026-10-20-renovate-keeps-the-libraries-current.md)
 

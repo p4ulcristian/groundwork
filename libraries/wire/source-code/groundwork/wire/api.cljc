@@ -54,42 +54,43 @@
                                    :encoders {:int types/int-to-wire}})
                   types/id-transformer])))
 
-(defn schema
-  "A shape as a malli schema, with this library's schemas."
+(defn make-schema-from-shape
+  "A shape made into a malli schema, with this library's schemas."
   [shape]
   (m/schema shape {:registry registry}))
 
-(defn decode
-  "A value from JSON, given its shape: {:value …} when it fits, or
-   {:errors …} (readable, by key) when it doesn't."
-  [s value]
-  (let [s       (schema s)
-        decoded (m/decode s value transformer)]
-    (if (m/validate s decoded)
-      {:value decoded}
-      {:errors (me/humanize (m/explain s decoded))})))
+(defn turn-json-data-into-value-or-errors
+  "JSON data turned into a value, given its shape: {:value …} when it fits,
+   or {:errors …} (readable, by key) when it doesn't."
+  [shape json-data]
+  (let [schema (make-schema-from-shape shape)
+        value  (m/decode schema json-data transformer)]
+    (if (m/validate schema value)
+      {:value value}
+      {:errors (me/humanize (m/explain schema value))})))
 
-(defn encode
-  "A value made ready for JSON, given its shape."
-  [s value]
-  (m/encode (schema s) value transformer))
+(defn turn-value-into-json-data
+  "A value turned into JSON data, given its shape: ids, decimals and dates
+   become text."
+  [shape value]
+  (m/encode (make-schema-from-shape shape) value transformer))
 
-(defn fits?
+(defn does-value-fit-shape?
   "Whether a value fits its shape."
-  [s value]
-  (m/validate (schema s) value))
+  [shape value]
+  (m/validate (make-schema-from-shape shape) value))
 
-(defn explain
-  "Why a value doesn't fit its shape, readable."
-  [s value]
-  (me/humanize (m/explain (schema s) value)))
+(defn find-errors-in-value-for-shape
+  "Why a value doesn't fit its shape, readable, by key; nil when it fits."
+  [shape value]
+  (me/humanize (m/explain (make-schema-from-shape shape) value)))
 
-(defn write-json
+(defn turn-data-into-json-text
   "Data as JSON text; keyword keys keep their namespace: \"post/title\"."
-  [x]
-  (json/write-json x))
+  [data]
+  (json/write-json data))
 
-(defn read-json
+(defn turn-json-text-into-data
   "JSON text as data; keys become keywords, \"post/title\" → :post/title."
-  [s]
-  (json/read-json s))
+  [json-text]
+  (json/read-json json-text))

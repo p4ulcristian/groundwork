@@ -6,5 +6,11 @@
    [groundwork.wire.api]))
 
 (deftest the-api-names
-  (is (= '#{schema decode encode fits? explain write-json read-json}
+  (is (= '#{make-schema-from-shape
+           turn-json-data-into-value-or-errors
+           turn-value-into-json-data
+           does-value-fit-shape?
+           find-errors-in-value-for-shape
+           turn-data-into-json-text
+           turn-json-text-into-data}
          (set (keys (ns-publics 'groundwork.wire.api))))))

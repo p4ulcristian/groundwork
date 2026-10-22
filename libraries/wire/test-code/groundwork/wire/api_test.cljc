@@ -25,14 +25,14 @@
                 :job/area  (types/decimal "12.30")
                 :job/stage :curing
                 :job/cents 4200}
-        text   (wire/write-json (wire/encode shape value))
-        parsed (wire/read-json text)]
+        text   (wire/turn-data-into-json-text (wire/turn-value-into-json-data shape value))
+        parsed (wire/turn-json-text-into-data text)]
     (testing "on the wire: plain JSON, keys with their namespace"
       (is (= {:job/id "7f3c1e2a-0000-4000-8000-000000000001" :job/due "2026-11-15"
               :job/at "2026-10-12T10:00:00Z" :job/area #?(:clj "12.30" :cljs "12.3") :job/stage "curing" :job/cents 4200}
              parsed)))
     (testing "back by the shape: the same values"
-      (let [{back :value} (wire/decode shape parsed)]
+      (let [{back :value} (wire/turn-json-data-into-value-or-errors shape parsed)]
         (is (= #?(:clj id :cljs (str id)) (:job/id back))
             "an id: a UUID on the server, its text in the browser")
         (is (= "2026-11-15" (str (:job/due back))) "a day stays that day")
@@ -43,7 +43,7 @@
         (is (= :curing (:job/stage back)))
         (is (= 4200 (:job/cents back)))))
     (testing "what doesn't fit says why"
-      (is (contains? (:errors (wire/decode shape (assoc parsed :job/id "nope"))) :job/id)))))
+      (is (contains? (:errors (wire/turn-json-data-into-value-or-errors shape (assoc parsed :job/id "nope"))) :job/id)))))
 
 #?(:cljs
    (deftest an-id-is-text-in-the-browser
@@ -53,13 +53,13 @@
          (is (not (wire/fits? :uuid "nope")))
          (is (not (wire/fits? :uuid id)) "a UUID value isn't what the browser keeps"))
        (testing "a UUID value given goes out, and is read, as its text"
-         (is (= {:shop/id text} (wire/encode [:map [:shop/id :uuid]] {:shop/id id})))
-         (is (= {:value [text]} (wire/decode [:vector :uuid] [id])))))))
+         (is (= {:shop/id text} (wire/turn-value-into-json-data [:map [:shop/id :uuid]] {:shop/id id})))
+         (is (= {:value [text]} (wire/turn-json-data-into-value-or-errors [:vector :uuid] [id])))))))
 
 #?(:cljs
    (deftest a-moment-is-an-instant-built-on-goog-date
      (testing "the decoder: ISO text becomes an Instant, a goog.date.UtcDateTime"
-       (let [{at :value} (wire/decode :time/instant "2026-10-12T10:00:00Z")]
+       (let [{at :value} (wire/turn-json-data-into-value-or-errors :time/instant "2026-10-12T10:00:00Z")]
          (is (instance? UtcDateTime at))
          (is (= (js/Date.parse "2026-10-12T10:00:00Z") (.getTime at)))
          (is (= 10 (.getUTCHours at)))))
@@ -69,8 +69,8 @@
                      "1969-12-31T23:59:59.999Z"]]
          (let [at (time/parse-instant text)]
            (is (= text (str at)))
-           (is (= text (wire/encode :time/instant at)))
-           (is (= (str "{\"at\":\"" text "\"}") (wire/write-json {:at at})) "JSON text too"))))
+           (is (= text (wire/turn-value-into-json-data :time/instant at)))
+           (is (= (str "{\"at\":\"" text "\"}") (wire/turn-data-into-json-text {:at at})) "JSON text too"))))
      (testing "the microseconds JavaScript's date drops are kept"
        (let [at (time/parse-instant "2026-10-12T10:00:00.123456Z")]
          (is (= (js/Date.parse "2026-10-12T10:00:00.123Z") (.getTime at)))
@@ -86,21 +86,21 @@
          (is (= [a b] (sort [b a])))
          (is (= a (.clone a)))))
      (testing "a js/Date given as a param goes out as the same text"
-       (is (= "2026-10-12T10:00:00Z" (wire/encode :time/instant (js/Date. "2026-10-12T10:00:00Z")))))
+       (is (= "2026-10-12T10:00:00Z" (wire/turn-value-into-json-data :time/instant (js/Date. "2026-10-12T10:00:00Z")))))
      (testing "text that isn't a moment stays text and fails the shape"
        (doseq [text ["2026-10-12" "2026-02-30T10:00:00Z" "2026-10-12T24:00:00Z" "2026-10-12T10:00:00" "nope"]]
          (is (nil? (time/read-instant text)) text)
-         (is (contains? (wire/decode [:map [:at :time/instant]] {:at text}) :errors) text))
+         (is (contains? (wire/turn-json-data-into-value-or-errors [:map [:at :time/instant]] {:at text}) :errors) text))
        (is (thrown? js/Error (time/parse-instant "nope"))))))
 
 #?(:cljs
    (deftest a-day-is-a-day-built-on-goog-date
      (testing "the decoder: ISO text becomes a Day, a goog.date.Date"
-       (let [{due :value} (wire/decode :time/local-date "2026-11-15")]
+       (let [{due :value} (wire/turn-json-data-into-value-or-errors :time/local-date "2026-11-15")]
          (is (instance? Date due))
          (is (= [2026 10 15] [(.getFullYear due) (.getMonth due) (.getDate due)])
              "its year, month and day are the wire's, wherever the browser is")
-         (is (= "2026-11-15" (str due) (wire/encode :time/local-date due) (.toJSON due)))))
+         (is (= "2026-11-15" (str due) (wire/turn-value-into-json-data :time/local-date due) (.toJSON due)))))
      (testing "= and compare, and a clone stays a Day"
        (let [a (time/parse-date "2026-11-15") b (time/parse-date "2026-12-01")]
          (is (= a (time/parse-date "2026-11-15")))
@@ -110,7 +110,7 @@
      (testing "text that isn't a day stays text and fails the shape"
        (doseq [text ["2026-02-30" "2026-13-01" "2026-11-15T00:00:00Z" "15/11/2026"]]
          (is (nil? (time/read-day text)) text)
-         (is (contains? (wire/decode :time/local-date text) :errors) text))
+         (is (contains? (wire/turn-json-data-into-value-or-errors :time/local-date text) :errors) text))
        (is (time/read-day "2028-02-29") "a leap day"))))
 
 #?(:cljs
@@ -118,14 +118,14 @@
      (try
        (testing "off: a decimal is its text, exactly as it came"
          (types/use-exact-decimals! nil)
-         (is (= {:value {:area "12.30"}} (wire/decode [:map [:area :decimal]] {:area "12.30"})))
-         (is (= {:area "12.30"} (wire/encode [:map [:area :decimal]] {:area "12.30"})))
+         (is (= {:value {:area "12.30"}} (wire/turn-json-data-into-value-or-errors [:map [:area :decimal]] {:area "12.30"})))
+         (is (= {:area "12.30"} (wire/turn-value-into-json-data [:map [:area :decimal]] {:area "12.30"})))
          (is (= "12.30" (types/decimal "12.30") (types/decimal-text "12.30")))
-         (is (contains? (wire/decode :decimal "twelve") :errors)))
+         (is (contains? (wire/turn-json-data-into-value-or-errors :decimal "twelve") :errors)))
        (testing "on: big.js, exact"
          (types/use-exact-decimals! big/big)
-         (let [{^js area :value} (wire/decode :decimal "0.10")]
+         (let [{^js area :value} (wire/turn-json-data-into-value-or-errors :decimal "0.10")]
            (is ((:decimal? big/big) area))
            (is (= "0.3" (types/decimal-text (.plus area (types/decimal "0.2")))))
-           (is (= "0.1" (wire/encode :decimal area)))))
+           (is (= "0.1" (wire/turn-value-into-json-data :decimal area)))))
        (finally (types/use-exact-decimals! big/big)))))
