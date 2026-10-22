@@ -26,13 +26,12 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [server/steps](server/steps/README.md): how work is written
 - [cellar](https://github.com/p4ulcristian/cellar): Postgres, queries and tables as maps, a library of its own since [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md); its decisions are there
 - [backroom](https://github.com/p4ulcristian/backroom): background jobs on Postgres, what runs later, a library of its own since [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md); its decisions are there
+- [showroom](https://github.com/p4ulcristian/showroom): what the browser downloads and how the page looks, the build and the stylesheets it bundles, a library of its own since [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md); its decisions are there
 - [Groundwork's libraries share the GitHub topic groundwork](2026-10-22-groundworks-libraries-share-the-topic-groundwork.md)
 - [server/transport](server/transport/README.md): http, sse, ws, the routes (both sides; [browser/transport](browser/transport/README.md))
 - [server/sessions](server/sessions/README.md): who is asking
 - [server/access](server/access/README.md): what they may do
 - [server/sync](server/sync/README.md): how screens stay current (both sides; [browser/sync](browser/sync/README.md))
-- [server/browser-build](server/browser-build/README.md): what the browser downloads, and who builds it
-- [browser/styles](browser/styles/README.md): how the page looks
 - [server/main](server/main/README.md): the one start, and the page shell
 
 ### What Groundwork is
@@ -47,13 +46,14 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [Libraries pass values](2026-10-22-libraries-pass-values.md), replaced by [Libraries stand in layers](2026-10-22-libraries-stand-in-layers.md)
 - [Libraries stand in layers](2026-10-22-libraries-stand-in-layers.md)
 - [No Polylith tool](2026-10-22-no-polylith-tool.md)
-- [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md), changed in part by [A library says where it runs](2026-10-22-a-library-says-where-it-runs.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md) and [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
+- [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md), changed in part by [A library says where it runs](2026-10-22-a-library-says-where-it-runs.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md) and [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
 - [A library says where it runs; sessions and access stay apart](2026-10-22-a-library-says-where-it-runs.md), changed in part by [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md)
-- [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), changed in part by [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md) and [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
-- [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), changed in part by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md) and [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
+- [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), changed in part by [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md) and [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
+- [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), changed in part by [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md), [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md), [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md), [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md) and [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
 - [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md)
 - [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md)
 - [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
+- [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
 - [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
 - [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md), changed in part by [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md) and [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)
@@ -162,8 +162,8 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 
 - [http-kit serves, reitit routes](2026-10-12-http-kit-and-reitit.md)
 - [Groundwork ships the page shell](2026-10-12-groundwork-ships-the-page-shell.md)
-- [re-frame and Reagent in the browser](2026-10-12-re-frame-and-reagent-in-the-browser.md), changed in part by [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md)
-- [Groundwork starts the browser and owns the build](2026-10-12-groundwork-starts-the-browser-and-owns-the-build.md)
+- [re-frame and Reagent in the browser](2026-10-12-re-frame-and-reagent-in-the-browser.md), changed in part by [A namespace names its stylesheets](https://github.com/p4ulcristian/showroom/blob/main/decisions/2026-10-17-a-namespace-names-its-stylesheets.md)
+- [Groundwork starts the browser and owns the build](2026-10-12-groundwork-starts-the-browser-and-owns-the-build.md), changed in part by [The browser build is Groundwork's](https://github.com/p4ulcristian/showroom/blob/main/decisions/2026-10-22-the-browser-build-is-groundworks.md) and [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
 - [A build can have several modules](2026-10-12-a-build-can-have-several-modules.md)
 - [The browser keeps answers by question](2026-10-12-the-browser-keeps-answers-by-question.md), changed in part by [Asking again, and bells that miss nothing](2026-10-14-asking-again-and-bells-that-miss-nothing.md)
 - [Nothing asks before the start](2026-10-13-nothing-asks-before-the-start.md)
@@ -171,7 +171,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 
 ### Styles
 
-- [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md), changed in part by [A def names its stylesheet](browser/styles/2026-10-22-a-def-names-its-stylesheet-as-a-query-names-its-sql.md)
+- [A namespace names its stylesheets](https://github.com/p4ulcristian/showroom/blob/main/decisions/2026-10-17-a-namespace-names-its-stylesheets.md): moved to showroom with the library, with the styles decisions before it
 
 ### Jobs and the REPL
 

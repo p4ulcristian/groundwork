@@ -14,10 +14,8 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 | server/sessions | `groundwork.server.sessions` | who is asking? |
 | server/access | `groundwork.server.access` | what may they do? |
 | server/sync | `groundwork.server.sync` | how do screens stay current? (who is told of a change) |
-| server/browser-build | `groundwork.server.browser-build` | what does the browser download? (shadow-cljs; never in production) |
 | server/main | `groundwork.server.main` | how does the server start? (and the page shell) |
 | browser/transport | `groundwork.browser.transport` | how does the browser talk to the server? (and the pages in the bar) |
-| browser/styles | `groundwork.browser.styles` | how does the page look? (a def names its stylesheet) |
 | browser/sync | `groundwork.browser.sync` | how do screens stay current? (answers kept by question, asked again) |
 | browser/main | `groundwork.browser.main` | how does the browser start? |
 
@@ -30,7 +28,10 @@ takes from git; its decisions live there. So is talking to Postgres and shaping
 its tables: [cellar](https://github.com/p4ulcristian/cellar), every query a
 `.sql` file, tables as maps. And what runs later, background jobs on Postgres:
 [backroom](https://github.com/p4ulcristian/backroom), a queue, workers and
-schedules.
+schedules. And what the browser downloads and how the page looks:
+[showroom](https://github.com/p4ulcristian/showroom), the shadow-cljs build
+(watched in development, built once by the deploy) and the stylesheets a
+namespace names, bundled; taken only in the build aliases, never in production.
 Every Groundwork repository carries the GitHub topic `groundwork`:
 `user:p4ulcristian topic:groundwork` lists them all.
 

@@ -6,17 +6,17 @@
 ;; So is cellar, Postgres (github.com/p4ulcristian/cellar): any server library
 ;; may use it, through cellar.api only. So is backroom, background jobs
 ;; (github.com/p4ulcristian/backroom): any server library may use it, through
-;; backroom.api only.
+;; backroom.api only. So is showroom, the browser build and the stylesheets it
+;; bundles (github.com/p4ulcristian/showroom): only to build, never in
+;; production, so no server namespace requires it (main loads it only when it
+;; watches, by requiring-resolve); a browser namespace names its stylesheets
+;; through showroom.api only.
 {:server  {:steps           #{}
            :transport       #{:steps}
            :sessions        #{:steps}
            :access          #{:steps :transport}
            :sync            #{:transport :access :steps}
-           ;; main loads browser-build only when it watches (requiring-resolve):
-           ;; production has no shadow-cljs
-           :browser-build   #{}
-           :main            #{:steps :transport :sessions :access :sync :browser-build}}
+           :main            #{:steps :transport :sessions :access :sync}}
  :browser {:transport #{}
            :sync      #{}
-           :styles    #{}
            :main      #{:transport :sync}}}

@@ -27,9 +27,9 @@
 
    In production the deploy runs migrate-app! first, as the role that owns
    the tables (the app's own role owns nothing), and the browser's release
-   build (groundwork.server.browser-build), whose files the page lists
-   (:browser-build :built). Production has no shadow-cljs: the watcher's
-   library is loaded only when it watches."
+   build (showroom, its own library), whose files the page lists
+   (:browser-build :built). Production has neither showroom nor
+   shadow-cljs: showroom is loaded only when it watches."
   (:require
    [clojure.string :as str]
    [backroom.api :as backroom]
@@ -146,13 +146,14 @@
           (transport/make-server-routes-for-pages pages (page/make-page-handler settings browser-settings)))))
 
 (defn- start-watching-browser-build!
-  "Loaded here, not required above: production has no shadow-cljs."
+  "Loaded here, not required above: production has neither showroom nor
+   shadow-cljs."
   [{:keys [browser-entry settings]}]
-  ((requiring-resolve 'groundwork.server.browser-build.api/start-watching!)
+  ((requiring-resolve 'showroom.api/start-watching!)
    {:entry browser-entry :files-folder (get-in settings [:page :files-folder])}))
 
 (defn- stop-watching-browser-build! [watching]
-  ((requiring-resolve 'groundwork.server.browser-build.api/stop-watching!) watching))
+  ((requiring-resolve 'showroom.api/stop-watching!) watching))
 
 (defn- start-part!
   "Starts one part, remembering how to stop it, so a failed start stops

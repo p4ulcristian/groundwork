@@ -21,3 +21,5 @@ Each word in a Groundwork name means one thing, everywhere. See
 | ws | a websocket: both sides talk fast, for features that need it |
 | sync | keeping what screens show in step with the database: a changed row is told to the screens that may show it, and they ask again (not "bells") |
 | table map | a table declared as a Clojure map (`{:table :orders :columns [...]}`); [cellar](https://github.com/p4ulcristian/cellar) brings Postgres to what the maps say |
+| browser build | the app's ClojureScript compiled for the browser: watched in development, built once by the deploy, with the stylesheet bundle; [showroom](https://github.com/p4ulcristian/showroom) makes it, never in production |
+| stylesheet | a plain `.css` file next to the namespace that names it with `(def order-card-styles (styles/use-stylesheet "app/orders/order_card.css"))`, as a query names its `.sql` file; [showroom](https://github.com/p4ulcristian/showroom) bundles them |

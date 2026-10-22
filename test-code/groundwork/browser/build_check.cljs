@@ -1,9 +1,10 @@
 (ns groundwork.browser.build-check
-  "An entry that uses every browser library, so the browser build's test
-   compiles all of them, as an app's release build would."
+  "An entry that uses every browser library, and names a stylesheet through
+   showroom, so the browser build's test compiles all of them, as an app's
+   release build would."
   (:require
    [groundwork.browser.main.api :as main]
-   [groundwork.browser.styles.api :as styles]
+   [showroom.api :as styles]
    [groundwork.browser.sync.api :as sync]))
 
 (def ^:private build-check-styles (styles/use-stylesheet "groundwork/browser/build_check.css"))
