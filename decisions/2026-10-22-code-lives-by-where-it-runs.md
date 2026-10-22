@@ -1,5 +1,7 @@
 # Code lives by where it runs
 
+> **Replaced** by [A library is named by its languages](2026-10-22-a-library-is-named-by-its-languages.md) (2026-10-22): the side is in the namespace, named by its language (clj, cljs, cljc).
+
 > Adds to [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md).
 
 **Decision:** every `ground-*` library keeps its code under `source-code/`, in three folders named by where the code runs:

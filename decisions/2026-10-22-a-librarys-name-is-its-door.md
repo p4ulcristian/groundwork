@@ -1,5 +1,7 @@
 # A library's name is its door
 
+> **Changed in part** by [A library is named by its languages](2026-10-22-a-library-is-named-by-its-languages.md) (2026-10-22): the door is ground-<name>.cljc; keywords are :ground-<name>/….
+
 > Adds to [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md) and [One folder per area](2026-10-18-one-folder-per-area.md) (the area's plain file is the door).
 
 **Decision:** each `ground-*` library has one door: the namespace named after it, `ground.<library>` (`ground.wire`). The door holds only what other code uses. Everything else lives in files under it, `ground.<library>.*` (`ground.wire.time`), which are the library's insides and not for outside use. A light test in each library lists the door's public names and fails when one is added or removed, so a promise changes on purpose, never by accident.
