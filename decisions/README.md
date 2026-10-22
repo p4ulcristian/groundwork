@@ -22,9 +22,9 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 Each library keeps its own decisions, in decisions/<side>/<library>/, with its own index:
 
-- [wire](https://github.com/p4ulcristian/wire): how data keeps its types (both sides), a library of its own since [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md); its decisions are there
+- [wire](https://github.com/p4ulcristian/wire): how data keeps its types (both sides), a library of its own since [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md); its decisions are there; in `libraries/wire` as a submodule ([wire and cellar sit in libraries/ as submodules](2026-10-22-wire-and-cellar-sit-in-libraries-as-submodules.md))
 - [server/steps](server/steps/README.md): how work is written
-- [cellar](https://github.com/p4ulcristian/cellar): Postgres, queries and tables as maps, a library of its own since [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md); its decisions are there
+- [cellar](https://github.com/p4ulcristian/cellar): Postgres, queries and tables as maps, a library of its own since [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md); its decisions are there; in `libraries/cellar` as a submodule
 - [server/transport](server/transport/README.md): http, sse, ws, the routes (both sides; [browser/transport](browser/transport/README.md))
 - [server/sessions](server/sessions/README.md): who is asking
 - [server/access](server/access/README.md): what they may do
