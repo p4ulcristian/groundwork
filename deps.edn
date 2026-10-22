@@ -10,14 +10,17 @@
                       io.github.p4ulcristian/groundwork-steps {:local/root "libraries/steps"}
                       io.github.p4ulcristian/groundwork-web   {:local/root "libraries/web"}
                       io.github.p4ulcristian/groundwork-sql   {:local/root "libraries/sql"}
+                      io.github.p4ulcristian/groundwork-background-jobs {:local/root "libraries/background-jobs"}
                       io.github.p4ulcristian/groundwork-main  {:local/root "libraries/main"}}}
 
   ;; every library's tests together:   clojure -X:test
-  :test {:extra-paths ["libraries/wire/test-code" "libraries/steps/test-code" "libraries/web/test-code" "libraries/sql/test-code"]
+  :test {:extra-paths ["libraries/wire/test-code" "libraries/steps/test-code" "libraries/web/test-code" "libraries/sql/test-code" "libraries/background-jobs/test-code"]
          :extra-deps  {io.github.cognitect-labs/test-runner
-                       {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
+                       {:git/tag "v0.5.1" :git/sha "dfb30dd"}
+                       ;; HikariCP logs through SLF4J; tests pick no logger
+                       org.slf4j/slf4j-nop {:mvn/version "2.0.17"}}
          :exec-fn     cognitect.test-runner.api/test
-         :exec-args   {:dirs ["libraries/wire/test-code" "libraries/steps/test-code" "libraries/web/test-code" "libraries/sql/test-code"]}}
+         :exec-args   {:dirs ["libraries/wire/test-code" "libraries/steps/test-code" "libraries/web/test-code" "libraries/sql/test-code" "libraries/background-jobs/test-code"]}}
 
   ;; the browser half's tests:   npx shadow-cljs compile test
   :cljs {:extra-paths ["libraries/wire/test-code" "libraries/steps/test-code"]

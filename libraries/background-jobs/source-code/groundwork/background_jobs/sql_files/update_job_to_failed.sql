@@ -1,0 +1,10 @@
+-- A job that failed: queued again after :job/retry-ms, or dead when it has
+-- had all its attempts or gave up for good.
+UPDATE groundwork.jobs
+SET job__state       = CASE WHEN CAST(:job/for-good AS boolean) OR job__attempts >= job__max_attempts THEN 'dead' ELSE 'queued' END,
+    job__run_at      = now() + :job/retry-ms * interval '1 millisecond',
+    job__last_error  = :job/last-error,
+    job__locked_at   = NULL,
+    job__finished_at = CASE WHEN CAST(:job/for-good AS boolean) OR job__attempts >= job__max_attempts THEN now() END
+WHERE job__id = :job/id
+RETURNING job__state

@@ -26,6 +26,7 @@ Each library keeps its own decisions, with its own index:
 - [groundwork.steps](../libraries/steps/decisions/README.md): work as a list of steps over one context
 - [groundwork.web](../libraries/web/decisions/README.md): the server, its routes, a route's work as steps
 - [groundwork.sql](../libraries/sql/decisions/README.md): Postgres through a pool; every query a `.sql` file
+- [groundwork.background-jobs](../libraries/background-jobs/decisions/README.md): a queue, workers and schedules in Postgres
 
 ### What Groundwork is
 
