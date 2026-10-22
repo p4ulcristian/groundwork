@@ -236,12 +236,17 @@
    3. everything Groundwork puts into the database from the settings is
       installed and its fingerprint recorded: the wall (row-level security,
       its policies, the vias' functions and guards, the functions that
-      narrow a list), the fill rules, the bells' triggers;
-   4. the app's role is granted what it needs, and checked to hold it
-      (groundwork.migrations.roles).
+      narrow a list), the fill rules, the bells' triggers. Only the objects
+      that differ from what the settings make are created, replaced or
+      dropped (groundwork.migrations.installs);
+   4. the app's role is granted what it lacks of what it needs, and checked
+      to hold it (groundwork.migrations.roles).
 
-   Returns {:ran [[source file] …]}. The app's own hooks (:on-transaction,
-   :on-query) don't run here."
+   Returns {:ran [[source file] …] :changed {:wall […] :bells […] :grants […]}}:
+   the migrations that ran, and each object it created, replaced or dropped
+   and each grant it gave or took back, as [:replaced \"policy
+   groundwork_read on orders\"]; all empty when nothing differed. The app's
+   own hooks (:on-transaction, :on-query) don't run here."
   [settings owner]
   (settings/check! settings)
   (when-let [problem (owner-problems owner)]
@@ -258,11 +263,14 @@
         (fn [conn-db]
           (let [ran    (migrations/run-new! db conn-db (migrations/sources-of (:migrations settings)))
                 perms  (permissions/install! db (:permissions settings))
-                tables (bells/ringing-tables (:description perms) bells)]
-            (bells/check-every-table-rings! db tables bells)
-            (bells/install-bells! db tables)
-            (roles/grant! db app-role)
-            {:ran ran})))
+                tables (bells/ringing-tables (:description perms) bells)
+                _      (bells/check-every-table-rings! db tables bells)
+                rung   (bells/install-bells! db tables)
+                grants (roles/grant! db app-role)]
+            {:ran     ran
+             :changed {:wall   (::permissions/changed perms)
+                       :bells  rung
+                       :grants grants}})))
       (finally
         (pg/stop db)))))
 
@@ -276,7 +284,7 @@
    arguments that returns them. The owner role comes from the environment
    of this command alone, never from the running app's: GROUNDWORK_OWNER_USER,
    and GROUNDWORK_OWNER_PASSWORD (unset for none). Prints the migrations
-   that ran."
+   that ran and what it installed."
   [{:keys [settings]}]
   (let [v (when (qualified-symbol? settings) (requiring-resolve settings))
         _ (when-not v
@@ -284,12 +292,21 @@
                                  (pr-str settings))
                             {:type ::bad-settings-var :settings settings})))
         s (if (fn? @v) (@v) @v)
-        {:keys [ran]} (migrate! s {:user     (System/getenv "GROUNDWORK_OWNER_USER")
-                                   :password (System/getenv "GROUNDWORK_OWNER_PASSWORD")})]
+        {:keys [ran changed]} (migrate! s {:user     (System/getenv "GROUNDWORK_OWNER_USER")
+                                           :password (System/getenv "GROUNDWORK_OWNER_PASSWORD")})
+        said (fn [what part]
+               (let [n (count (get changed part))]
+                 (str what ": " (if (zero? n) "unchanged" (str n (if (= 1 n) " change" " changes"))))))]
     (println (str "Migrated: " (count ran) (if (= 1 (count ran)) " migration" " migrations") " ran"
                   (when (seq ran) (str ": " (str/join ", " (map (fn [[source file]] (str source "/" file)) ran))))
-                  "; the wall, the fill rules and the bells' triggers installed; "
-                  (get-in s [:db :user]) " granted."))))
+                  "; " (said "the wall and the fill rules" :wall)
+                  "; " (said "the bells' triggers" :bells)
+                  "; " (said (str (get-in s [:db :user]) "'s grants") :grants) "."))
+    (doseq [[part done] changed
+            [action object] (take 20 done)]
+      (println (str "  " (name part) ": " (name action) " " object)))
+    (when (some #(< 20 (count %)) (vals changed))
+      (println "  (the first 20 of each; migrate!'s :changed has them all)"))))
 
 (defn stop
   "Stop a running app, its parts in reverse order."

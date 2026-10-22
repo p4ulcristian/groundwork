@@ -219,3 +219,20 @@ about several scopes (one cart paid as an order in each shop):
   action in and the foreign one, and expects not-found.
 - The browser's `can?` takes a list of scope ids: true when the action is
   given in every one.
+
+## Migrate changes only the objects that differ
+
+Since 2026-10-22 ([decision](decisions/2026-10-22-migrate-changes-only-the-objects-that-differ.md)).
+
+- Migration 021 (`groundwork.installed_objects`) runs at the next migrate,
+  or the next start in development; the schema snapshot changes with it.
+  The app's role may only read it, like `groundwork.installs`.
+- That first migrate replaces every object of the wall and the bells once,
+  as none is recorded yet. Every later one touches only what differs; one
+  with nothing new sends no statement.
+- `migrate!` returns `:changed` (each object created, replaced or dropped,
+  each grant given or taken back) beside `:ran`.
+- A record kind taken out of the description loses its row-level security,
+  its policies and its functions at the next migrate. Policies and
+  triggers named `groundwork…` that the settings no longer make are dropped
+  too.

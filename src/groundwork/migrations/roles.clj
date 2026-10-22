@@ -4,23 +4,26 @@
    which serves requests, owns nothing and holds only what migrate grants
    it. What it is granted, and how it is checked, is in two files:
 
-     groundwork/migrator/grants.sql          the statements migrate runs
-     groundwork/migrator/missing_grants.sql  what a role lacks of them
+     groundwork/migrator/missing_grants.sql  what a role lacks, and the grant of each
+     groundwork/migrator/extra_grants.sql    the writes on Groundwork's own records
+                                             it holds, and the revoke of each
 
    USAGE on the schemas public and groundwork; SELECT, INSERT, UPDATE and
-   DELETE on every table, but only SELECT on Groundwork's records of
-   migrations and installs; SELECT on every view; USAGE, SELECT and UPDATE
-   on every sequence; EXECUTE on every function."
+   DELETE on every table, but only SELECT on Groundwork's own records (of
+   migrations and installs); SELECT on every view; USAGE, SELECT and UPDATE
+   on every sequence; EXECUTE on every function. migrate grants only what is
+   missing and revokes only what is extra, so a migrate with nothing new
+   changes nothing."
   (:require
    [clojure.string :as str]
-   [groundwork.postgres :as pg]
-   [next.jdbc :as jdbc]))
+   [groundwork.migrations.batch :as batch]
+   [groundwork.postgres :as pg]))
 
 (pg/defsql current-role "groundwork/migrator/current_role.sql")
 (pg/defsql role-by-name "groundwork/migrator/role.sql")
 (pg/defsql owned-by "groundwork/migrator/owned_by.sql")
 (pg/defsql missing-grants "groundwork/migrator/missing_grants.sql")
-(pg/defsql grants "groundwork/migrator/grants.sql")
+(pg/defsql extra-grants "groundwork/migrator/extra_grants.sql")
 
 (def ^:private run-migrate
   "Production starts on a migrated database: run migrate first (groundwork.core/migrate!, see the README's Production).")
@@ -92,14 +95,31 @@
       (owns-nothing! db role))))
 
 (defn grant!
-  "Grant the app's role what it needs (grants.sql), then check it holds it:
-   a grant the owner may not give (an object it neither owns nor holds WITH
-   GRANT OPTION) is only a warning in Postgres, so it throws here."
+  "Give the app's role what it lacks of what it needs, one grant per
+   privilege missing (missing_grants.sql), and take back a write it holds
+   on Groundwork's own records (extra_grants.sql); nothing when it holds
+   exactly that already. Then check it holds it: a grant the owner may not
+   give (an object it neither owns nor holds WITH GRANT OPTION) is only a
+   warning in Postgres, so it throws here. The statements go together, in
+   one transaction (groundwork.migrations.batch). Returns what changed,
+   [[:granted \"INSERT on public.orders\"] [:revoked …] …]."
   [db role]
-  (pg/with-transaction [tx db]
-    (doseq [{:grant/keys [statement]} (pg/rows tx grants {:role/name role})]
-      (jdbc/execute! (::pg/conn tx) [statement])))
-  (when-let [lacks (seq (missing db role))]
-    (throw (ex-info (str "migrate couldn't grant " role " " (listed lacks)
-                         ": the role it connects as neither owns them nor may grant them.")
-                    {:type ::not-granted :role role :missing (vec lacks)}))))
+  (let [grants  (pg/rows db missing-grants {:role/name role})
+        revokes (pg/rows db extra-grants {:role/name role})
+        changed (into (mapv (fn [g] [:granted (:missing-grant/what g)]) grants)
+                      (map (fn [r] [:revoked (:extra-grant/what r)]) revokes))]
+    (when (seq changed)
+      (pg/with-transaction [tx db]
+        (batch/execute-all! tx (concat (map :missing-grant/statement grants)
+                                       (map :extra-grant/statement revokes))))
+      (when-let [lacks (seq (missing db role))]
+        (throw (ex-info (str "migrate couldn't grant " role " " (listed lacks)
+                             ": the role it connects as neither owns them nor may grant them.")
+                        {:type ::not-granted :role role :missing (vec lacks)}))))
+    changed))
+
+(defn extra
+  "The writes a role holds itself on Groundwork's own records, which migrate
+   takes back: [\"INSERT on groundwork.installs\" …]."
+  [db role]
+  (mapv :extra-grant/what (pg/rows db extra-grants {:role/name role})))

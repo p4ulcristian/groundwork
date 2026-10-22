@@ -61,6 +61,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 - [Migrations are numbered SQL files](2026-10-12-migrations-are-numbered-sql-files.md), changed in part by [The schema snapshot is written when the start is done](2026-10-13-the-schema-snapshot-is-written-when-the-start-is-done.md) and [Production migrates before it starts](2026-10-18-production-migrates-before-it-starts.md)
 - [The schema snapshot is written when the start is done](2026-10-13-the-schema-snapshot-is-written-when-the-start-is-done.md)
 - [Production migrates before it starts](2026-10-18-production-migrates-before-it-starts.md)
+- [Migrate changes only the objects that differ](2026-10-22-migrate-changes-only-the-objects-that-differ.md)
 
 ### Sessions and logins
 

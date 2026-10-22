@@ -21,9 +21,7 @@
    [groundwork.permissions.sql :as sql]
    [groundwork.postgres :as pg]
    [groundwork.postgres.names :as names]
-   [jsonista.core :as json]
-   [next.jdbc :as jdbc]
-   [next.jdbc.result-set :as rs])
+   [jsonista.core :as json])
   (:import
    (java.lang System$Logger System$Logger$Level)
    (java.sql Connection)))
@@ -79,15 +77,6 @@
       (throw (ex-info problem {:type ::tables-not-declared :twice (vec twice) :missing (vec missing)
                                :undeclared (vec unsaid)})))))
 
-(def ^:private stale-bells
-  "The app's tables that carry a ring trigger: [{:trigger/table … :trigger/name …}]."
-  (str "SELECT c.relname AS trigger__table, t.tgname AS trigger__name"
-       " FROM pg_catalog.pg_trigger t"
-       " JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid"
-       " JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace"
-       " WHERE n.nspname = 'public' AND NOT t.tgisinternal"
-       "   AND t.tgname IN ('groundwork_ring_insert', 'groundwork_ring_update', 'groundwork_ring_delete')"))
-
 (defn statements
   "The ring triggers of the tables that ring: one per table and kind of
    change, calling groundwork.ring."
@@ -104,22 +93,15 @@
               (when universal? ", 'u'") ")"))))
 
 (defn install-bells!
-  "A trigger per table and kind of change, calling groundwork.ring, and
-   their fingerprint recorded (groundwork.migrations.installs). Safe to run
-   again. A table that rang under an earlier start and is silent now loses
-   its triggers: left on, it would go on ringing in a database that was
-   there before, and stay quiet only in a new one. The start in development
-   and tests, and migrate."
+  "A trigger per table and kind of change, calling groundwork.ring,
+   brought to what these tables make, changing only the triggers that
+   differ, and recorded (groundwork.migrations.installs/install!). Safe to
+   run again. A table that rang under an earlier start and is silent now
+   loses its triggers: left on, it would go on ringing in a database that
+   was there before, and stay quiet only in a new one. The start in
+   development and tests, and migrate. Returns what changed."
   [db tables]
-  (pg/with-transaction [tx db]
-    (doseq [{trigger_table :trigger__table trigger_name :trigger__name}
-            (jdbc/execute! (::pg/conn tx) [stale-bells] {:builder-fn rs/as-unqualified-lower-maps})
-            :when (not (contains? tables trigger_table))]
-      (jdbc/execute! (::pg/conn tx)
-                     [(str "DROP TRIGGER IF EXISTS " trigger_name " ON " (sql/quote-table trigger_table))]))
-    (doseq [statement (statements tables)]
-      (jdbc/execute! (::pg/conn tx) [statement])))
-  (installs/record! db :bells (statements tables)))
+  (installs/install! db :bells (map installs/statement-object (statements tables))))
 
 (defn check-installed!
   "Production's start: the triggers migrate installed are the ones these
