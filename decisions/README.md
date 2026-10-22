@@ -22,6 +22,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 - [Groundwork is an opinionated framework](2026-10-12-groundwork-is-an-opinionated-framework.md)
 - [Declared, through one door](2026-10-14-declared-through-one-door.md)
+- [Nothing goes in that the owner does not understand](2026-10-22-nothing-goes-in-that-the-owner-does-not-understand.md)
 - [Groundwork ships these parts](2026-10-18-groundwork-ships-these-parts.md)
 - [Groundwork ships no team endpoints and no eval bridge](2026-10-18-groundwork-ships-no-team-endpoints-and-no-eval-bridge.md)
 - [Groundwork is no longer frozen](2026-10-17-groundwork-is-no-longer-frozen.md)
