@@ -10,7 +10,10 @@ three addresses Groundwork owns.
 A message is a map of names to data, `{:orders/of-shop {:shop/id 7}}`. The
 server answers it from one handler table by name, whichever pipe it came on,
 each name apart; the browser hands what the server sends to its own handler
-table by name. The addresses are a setting (`default-addresses`).
+table by name. A handler may say `:params-shape` and `:answer-shape`: its
+params arrive as real types (UUIDs, decimals, dates) or are answered
+`{:errors …}`, and its answer leaves as JSON by its shape; the browser reads
+it back with the same shapes. The addresses are a setting (`default-addresses`).
 
 Needs http-kit, groundwork.steps and groundwork.wire. API:
 `groundwork.transport.api`, a pair: `api.clj` (`default-addresses`,
@@ -22,14 +25,16 @@ and `api.cljs` (`default-addresses`, `send-message!`, `open-sse-line!`,
 
 ```clojure
 ;; server
-(def handlers {:orders/of-shop {:steps [find-orders-of-shop add-orders-answer]}})
+(def handlers {:orders/of-shop {:params-shape [:map [:shop/id :uuid]]
+                                :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]
+                                :steps        [find-orders-of-shop add-orders-answer]}})
 (transport/make-routes-for-messages handlers {:on-sse-open remember-line! :on-sse-close forget-line!})
 ;; => the three routes, for groundwork.routes to serve
 
 ;; browser
-(-> (transport/send-message! {:orders/of-shop {:shop/id 7}})
-    (.then (fn [{:orders/keys [of-shop]}] …)))
-(transport/open-sse-line! {:bells/changed on-bell})
+(-> (transport/send-message! shapes-by-name {:orders/of-shop {:shop/id shop-id}})
+    (.then (fn [{:orders/keys [of-shop]}] …)))   ; totals are decimals again
+(transport/open-sse-line! shapes-by-name {:bells/changed on-bell})
 ```
 
 ## Tests

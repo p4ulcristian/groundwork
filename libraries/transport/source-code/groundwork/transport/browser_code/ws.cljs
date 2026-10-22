@@ -4,28 +4,36 @@
    to its handler, answers included."
   (:require
    [groundwork.transport.browser-code.messages :as messages]
+   [groundwork.transport.browser-code.shapes :as shapes]
    [groundwork.wire.api :as wire]))
 
 (defn- make-full-address [address]
   (str (if (= "https:" (.. js/location -protocol)) "wss://" "ws://") (.. js/location -host) address))
 
-(defn- connect! [{:keys [socket closed?] :as line} address handlers]
+(defn- hand-text! [{:keys [shapes-by-name handlers]} text]
+  (->> (wire/turn-json-text-into-data text)
+       (shapes/turn-answer-into-shaped-data shapes-by-name)
+       (messages/hand-named-messages! handlers)))
+
+(defn- connect! [{:keys [socket closed? address] :as line}]
   (let [websocket (js/WebSocket. (make-full-address address))]
-    (set! (.-onmessage websocket) #(messages/hand-named-messages! handlers (wire/turn-json-text-into-data (.-data %))))
-    (set! (.-onclose websocket) #(when-not @closed? (js/setTimeout (fn [] (connect! line address handlers)) 1000)))
+    (set! (.-onmessage websocket) #(hand-text! line (.-data %)))
+    (set! (.-onclose websocket) #(when-not @closed? (js/setTimeout (fn [] (connect! line)) 1000)))
     (reset! socket websocket)))
 
 (defn open-ws-line!
-  "Opens the websocket; each named message goes to its handler. Returns the line."
-  [address handlers]
-  (doto {:socket (atom nil) :closed? (atom false)}
-    (connect! address handlers)))
+  "Opens the websocket; each named message, answers included, shaped by its
+   :answer-shape, goes to its handler. Returns the line."
+  [address shapes-by-name handlers]
+  (doto {:socket (atom nil) :closed? (atom false) :address address
+         :shapes-by-name shapes-by-name :handlers handlers}
+    connect!))
 
 (defn send-message-on-ws-line!
-  "Sends a named message on the line. Whether it was open."
-  [{:keys [socket]} message]
+  "Sends a named message on the line, by its :params-shape. Whether it was open."
+  [{:keys [socket shapes-by-name]} message]
   (let [open? (= 1 (.-readyState @socket))]
-    (when open? (.send @socket (wire/turn-data-into-json-text message)))
+    (when open? (.send @socket (wire/turn-data-into-json-text (shapes/turn-message-into-json-data shapes-by-name message))))
     open?))
 
 (defn close-ws-line!

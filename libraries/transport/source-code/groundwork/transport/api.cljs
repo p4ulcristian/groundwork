@@ -2,10 +2,14 @@
   "The browser half of groundwork.transport: named messages over http, sse
    and ws. The server half is api.clj.
 
-     (transport/send-message! {:orders/of-shop {:shop/id 7}})        ; a promise of the answer
-     (transport/open-sse-line! {:bells/changed on-bell})              ; messages from the server
-     (def line (transport/open-ws-line! {:cursors/moved on-cursor}))
-     (transport/send-message-on-ws-line! line {:cursors/move {:x 10 :y 20}})"
+   The browser uses the same shapes as the server's handlers, by name, from
+   a .cljc file both sides read:
+
+     (def shapes-by-name {:orders/of-shop {:params-shape [:map [:shop/id :uuid]]
+                                           :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]}})
+
+     (transport/send-message! shapes-by-name {:orders/of-shop {:shop/id id}})   ; a promise of the shaped answer
+     (transport/open-sse-line! shapes-by-name {:bells/changed on-bell})"
   (:require
    [groundwork.transport.browser-code.http :as http]
    [groundwork.transport.browser-code.sse :as sse]
@@ -16,15 +20,16 @@
   {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"})
 
 (defn send-message!
-  "http: POSTs a named message; a promise of the answer, keyed by the same names."
-  ([message] (send-message! (:http default-addresses) message))
-  ([address message] (http/send-message! address message)))
+  "http: POSTs a named message, its data by :params-shape. A promise of the
+   answer keyed by the same names, each shaped by its :answer-shape."
+  ([shapes-by-name message] (send-message! (:http default-addresses) shapes-by-name message))
+  ([address shapes-by-name message] (http/send-message! address shapes-by-name message)))
 
 (defn open-sse-line!
-  "sse: opens the stream; each named message goes to its handler by name.
-   It reopens by itself after a break."
-  ([handlers] (open-sse-line! (:sse default-addresses) handlers))
-  ([address handlers] (sse/open-sse-line! address handlers)))
+  "sse: opens the stream; each named message, shaped by its :answer-shape,
+   goes to its handler by name. It reopens by itself after a break."
+  ([shapes-by-name handlers] (open-sse-line! (:sse default-addresses) shapes-by-name handlers))
+  ([address shapes-by-name handlers] (sse/open-sse-line! address shapes-by-name handlers)))
 
 (defn close-sse-line!
   "sse: closes the line; it doesn't reopen."
@@ -32,13 +37,15 @@
   (sse/close-sse-line! line))
 
 (defn open-ws-line!
-  "ws: opens the websocket; each named message, answers included, goes to
-   its handler by name. It reopens a second after a break."
-  ([handlers] (open-ws-line! (:ws default-addresses) handlers))
-  ([address handlers] (ws/open-ws-line! address handlers)))
+  "ws: opens the websocket; each named message, answers included, shaped by
+   its :answer-shape, goes to its handler by name. It reopens a second after
+   a break."
+  ([shapes-by-name handlers] (open-ws-line! (:ws default-addresses) shapes-by-name handlers))
+  ([address shapes-by-name handlers] (ws/open-ws-line! address shapes-by-name handlers)))
 
 (defn send-message-on-ws-line!
-  "ws: sends a named message on the line. Whether it was open."
+  "ws: sends a named message on the line, its data by :params-shape.
+   Whether it was open."
   [line message]
   (ws/send-message-on-ws-line! line message))
 

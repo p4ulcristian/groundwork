@@ -12,8 +12,17 @@
   {:name  :say-hello
    :enter #(steps/add-answer-to-context % {:hello (get-in % [:groundwork.transport/message-data :name])})})
 
+(def ^:private answer-shop-total
+  {:name  :answer-shop-total
+   :enter (fn [context]
+            (let [shop-id (get-in context [:groundwork.transport/message-data :shop/id])]
+              (steps/add-answer-to-context context {:shop/id shop-id :total (if (uuid? shop-id) 120.50M 0M)})))})
+
 (def ^:private handlers
   {:greetings/hello {:steps [say-hello]}
+   :shops/total     {:params-shape [:map [:shop/id :uuid]]
+                     :answer-shape [:map [:shop/id :uuid] [:total :decimal]]
+                     :steps        [answer-shop-total]}
    :greetings/fail  {:steps [{:name :fail :enter (fn [_] (throw (ex-info "it broke" {})))}]}})
 
 (defn- find-handler
@@ -46,6 +55,12 @@
       (testing "an unknown name: an error under it"
         (is (= [200 "{\"nobody/home\":{\"error\":\"No handler named :nobody/home\"}}"]
                (post-json port "{\"nobody/home\":{}}"))))
+      (testing "with shapes: params arrive as real types, the answer leaves as JSON by its shape"
+        (is (= [200 "{\"shops/total\":{\"shop/id\":\"1d000000-0000-4000-8000-000000000001\",\"total\":\"120.50\"}}"]
+               (post-json port "{\"shops/total\":{\"shop/id\":\"1d000000-0000-4000-8000-000000000001\"}}"))))
+      (testing "params that don't fit the shape: errors by key, no step runs"
+        (is (= [200 "{\"shops/total\":{\"errors\":{\"shop/id\":[\"should be a uuid\"]}}}"]
+               (post-json port "{\"shops/total\":{\"shop/id\":\"seven\"}}"))))
       (testing "not a JSON object: 400"
         (is (= 400 (first (post-json port "[1,2]"))))))))
 
