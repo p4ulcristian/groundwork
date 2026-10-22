@@ -14,6 +14,7 @@
            browser-build-settings-shape
            browser-wire-settings-shape
            my-actions-settings-shape
+           run-once-settings-shape
            settings-shape
            check-settings
            house-tables

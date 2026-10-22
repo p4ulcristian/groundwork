@@ -19,6 +19,7 @@
    [doorbell.api :as doorbell]
    [doorman.api :as doorman]
    [house.server.main.api :as main]
+   [house.server.main.run-once :as run-once]
    [jsonista.core :as json]
    [mailroom.api :as mailroom])
   (:import
@@ -61,6 +62,12 @@
 (def ^:private find-all-orders
   (database/make-query-from-sql-text "all orders, no WHERE" "SELECT order__id FROM orders ORDER BY order__id"))
 
+(def ^:private insert-order
+  (database/make-query-from-sql-text "a new order" "INSERT INTO orders (order__shop_id) VALUES (:order/shop-id) RETURNING order__id"))
+
+(def ^:private count-kept-keys
+  (database/make-query-from-sql-text "one-time keys kept" "SELECT count(*) AS n FROM house.run_once_keys WHERE run_once_key__key = :run-once-key/key"))
+
 (def ^:private find-untyped
   (database/make-query-from-sql-text "a param Postgres can't type" "SELECT :x IS NULL AS b"))
 
@@ -79,6 +86,20 @@
                 :steps  [{:name  :answer-all-orders
                           :enter #(mailroom/add-answer-to-context
                                    % (mapv :order/id (database/find-rows (:doorman/transaction %) find-all-orders {})))}]}
+   :orders/add {:action :orders/edit :params-shape [:map [:order/shop-id :uuid] [:test/wait-ms :int]] :answer-shape :uuid
+                :rate-limit nil :run-steps-in nil
+                :steps  [{:name  :add-order
+                          :enter (fn [{:mailroom/keys [message-data] :as context}]
+                                   (Thread/sleep (long (:test/wait-ms message-data)))
+                                   (mailroom/add-answer-to-context
+                                    context (:order/id (database/find-one-row (:doorman/transaction context) insert-order
+                                                                              (select-keys message-data [:order/shop-id])))))}]}
+   :orders/add-badly {:action :orders/edit :params-shape [:map [:order/shop-id :uuid]] :answer-shape :uuid
+                      :rate-limit nil :run-steps-in nil
+                      :steps  [{:name  :add-order-and-answer-a-number
+                                :enter (fn [{:mailroom/keys [message-data] :as context}]
+                                         (database/find-one-row (:doorman/transaction context) insert-order message-data)
+                                         (mailroom/add-answer-to-context context 42))}]}
    :orders/broken {:action :orders/see :params-shape [:map] :answer-shape :int :rate-limit nil :run-steps-in nil
                    :steps  [{:name  :say-and-ask-untyped
                              :enter (fn [{:mailroom/keys [log] :as context}]
@@ -135,6 +156,9 @@
    :sessions          {:cookie-name "house_session" :session-days 1 :renew-after-minutes 60
                        :allowed-origin "http://app.test" :secure-cookie? false}
    :my-actions        {:rate-limit {:max 60 :per-ms 60000}}
+   :run-once          {:keep-keys-ms 1500
+                       :forget-keys  {:cron "0 * * * *" :timeout-ms 10000 :attempts 1}
+                       :retry-writes {:times 1 :wait-ms 1000}}
    :background-jobs   {:workers 1 :poll-ms 1000
                        :retry-first-wait-ms 30000 :retry-wait-factor 2 :retry-max-wait-ms 3600000
                        :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000 :stop-wait-ms 5000}
@@ -172,6 +196,19 @@
                                      (.build)))
                         (HttpResponse$BodyHandlers/ofString))]
     [(.statusCode response) (.body response)]))
+
+(defn- send-write
+  "A POST of a write with its one-time key in the idempotency-key header:
+   [status the answer's named data, parsed]."
+  [server-port cookie once-key body]
+  (let [response (.send (HttpClient/newHttpClient)
+                        (cond-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/house/http")))
+                          true     (.header "origin" "http://app.test")
+                          true     (.header "cookie" cookie)
+                          once-key (.header "idempotency-key" (str once-key))
+                          true     (-> (.POST (HttpRequest$BodyPublishers/ofString body)) (.build)))
+                        (HttpResponse$BodyHandlers/ofString))]
+    [(.statusCode response) (dissoc (json/read-value (.body response)) "mailroom/notes")]))
 
 (defn- open-sse [server-port cookie]
   (io/reader (.body (.send (HttpClient/newHttpClient)
@@ -221,6 +258,15 @@
             :browser-wire ["missing required key"]}
            problems)
         "wire's settings, the JVM's and the browser's, have no defaults: house makes the one wire from them"))
+  (let [problems (try (main/check-settings (-> (make-settings "x")
+                                               (update :run-once dissoc :keep-keys-ms)
+                                               (update-in [:run-once :forget-keys] dissoc :cron)))
+                      (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
+    (is (= {:run-once {:keep-keys-ms ["missing required key"] :forget-keys {:cron ["missing required key"]}}} problems)
+        "how long a one-time key is kept, and when the old ones are forgotten, are written out"))
+  (is (thrown? clojure.lang.ExceptionInfo
+               (main/check-settings (assoc-in (make-settings "x") [:run-once :retry-writes] {:times 3 :wait-ms 1000})))
+      "a write's retries end before its key is forgotten")
   (let [problems (try (main/check-settings (update (make-settings "x") :my-actions dissoc :rate-limit))
                       (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
     (is (= {:my-actions {:rate-limit ["missing required key"]}} problems)
@@ -245,7 +291,7 @@
     (println "house.server.main.api-test: skipped, HOUSE_SQL_TEST_PORT is not set")
     (let [owner-pool (database/start-pool! (make-database-settings owner))]
       (try
-        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE")
+        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE; DROP SCHEMA IF EXISTS house CASCADE")
         (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'house_app') THEN CREATE ROLE house_app LOGIN; END IF; END $$")
         (testing "an app's handler named :doorman/my-actions is refused: it is house's"
           (is (= :house.server.main/handler-name-taken
@@ -253,7 +299,7 @@
                                            (assoc-in [:settings :migrate-at-start?] true)
                                            (assoc-in [:handlers :doorman/my-actions] (:orders/count handlers))))
                       (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))))
-        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE")
+        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE; DROP SCHEMA IF EXISTS house CASCADE")
         (testing "an owner role, or a database not migrated, is refused"
           (is (thrown-with-msg? clojure.lang.ExceptionInfo #"owns tables or passes the gates"
                                 (main/start-app! (make-app owner)))))
@@ -282,6 +328,8 @@
                     "the question store's settings")
                 (is (str/includes? html "\"wire\":{\"most-shapes-kept\":1000,\"most-keys-kept\":10000}")
                     "the browser's wire settings, from :browser-wire")
+                (is (str/includes? html "\"retry-writes\":{\"times\":1,\"wait-ms\":1000}")
+                    "how a write that got no answer is retried, from :run-once")
                 (is (str/includes? html "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"))
                 (is (str/includes? html "\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}"))
                 (is (str/includes? html "\"sse\":\"/house/sse\""))
@@ -387,6 +435,66 @@
                 ;; not closed here: a read that timed out still holds them;
                 ;; stopping the server ends both streams
                 ))
+            (testing "every write runs once, by its one-time key"
+              (let [add-order    #(str "{\"orders/add\":{\"order/shop-id\":\"" %1 "\",\"test/wait-ms\":" %2 "}}")
+                    count-orders #(:n (database/find-one-row owner-pool (database/make-query-from-sql-text "orders" "SELECT count(*) AS n FROM orders") {}))
+                    kept-keys    #(:n (database/find-one-row owner-pool count-kept-keys {:run-once-key/key %}))
+                    key-1        (random-uuid)
+                    before       (count-orders)
+                    [status-1 first-answer] (send-write server-port anna-cookie key-1 (add-order shop-7 0))]
+                (is (= 200 status-1))
+                (is (uuid? (parse-uuid (str (get first-answer "orders/add")))) "a new order's id")
+                (testing "a repeat with the same key saves nothing and answers the same"
+                  (is (= [200 first-answer] (send-write server-port anna-cookie key-1 (add-order shop-7 0))))
+                  (is (= (inc before) (count-orders))))
+                (testing "a new key is a new write"
+                  (is (not= first-answer (second (send-write server-port anna-cookie (random-uuid) (add-order shop-7 0)))))
+                  (is (= (+ 2 before) (count-orders))))
+                (testing "the same key from someone else is refused, and runs nothing"
+                  (is (= [200 {"orders/add" {"error" "This one-time key was used by someone else."}}]
+                         (send-write server-port bob-cookie key-1 (add-order shop-9 0))))
+                  (is (= (+ 2 before) (count-orders))))
+                (testing "a repeat while the first still runs waits for it, then answers its answer"
+                  (let [key-2      (random-uuid)
+                        first-send (future (send-write server-port anna-cookie key-2 (add-order shop-7 700)))
+                        _          (Thread/sleep 200)
+                        repeat     (future (send-write server-port anna-cookie key-2 (add-order shop-7 0)))]
+                    (is (= 200 (first @first-send)))
+                    (is (= @first-send @repeat))
+                    (is (= (+ 3 before) (count-orders)) "one order, not two")))
+                (testing "a key that isn't a UUID is refused"
+                  (is (= [200 {"orders/add" {"error" "The one-time key must be a UUID."}}]
+                         (send-write server-port anna-cookie "seven" (add-order shop-7 0))))
+                  (is (= (+ 3 before) (count-orders))))
+                (testing "a write without a key runs every time"
+                  (send-write server-port anna-cookie nil (add-order shop-7 0))
+                  (send-write server-port anna-cookie nil (add-order shop-7 0))
+                  (is (= (+ 5 before) (count-orders))))
+                (testing "a write whose answer doesn't fit its shape saves nothing"
+                  (let [key-3 (random-uuid)]
+                    (is (= [200 {"orders/add-badly" {"error" "Something went wrong."}}]
+                           (send-write server-port anna-cookie key-3
+                                       (str "{\"orders/add-badly\":{\"order/shop-id\":\"" shop-7 "\"}}"))))
+                    (is (= (+ 5 before) (count-orders)))
+                    (is (zero? (kept-keys key-3)) "and its key is not kept: a repeat runs again")))
+                (testing "a read isn't keyed"
+                  (let [key-4 (random-uuid)]
+                    (is (= 200 (first (send-write server-port anna-cookie key-4 "{\"orders/all\":{}}"))))
+                    (is (= 200 (first (send-write server-port anna-cookie key-4 "{\"orders/all\":{}}"))))
+                    (is (zero? (kept-keys key-4)))))
+                (testing "a key is forgotten after :keep-keys-ms: a repeat then runs again"
+                  (Thread/sleep 1600)
+                  (let [[_ again] (send-write server-port anna-cookie key-1 (add-order shop-7 0))]
+                    (is (not= first-answer again))
+                    (is (= (+ 6 before) (count-orders)))))
+                (testing "house's background job deletes the forgotten keys"
+                  (Thread/sleep 1600)
+                  (is (= 1 (kept-keys key-1)))
+                  (database/run-in-transaction! owner-pool {:read-only? false}
+                                                (fn [transaction]
+                                                  ((:run (run-once/make-forget-keys-kind (get-in running [:settings :run-once])))
+                                                   {:transaction transaction} {})))
+                  (is (zero? (kept-keys key-1))))))
             (testing "one message's lines, mailroom's, cellar's and the app's own, carry its request id and the person"
               (reset! lines [])
               (is (= [200 "{\"orders/broken\":{\"error\":\"Something went wrong.\"}}"]

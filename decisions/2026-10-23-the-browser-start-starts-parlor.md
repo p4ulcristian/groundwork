@@ -1,3 +1,5 @@
+> **Changed in part** by [Every write runs once, by its one-time key](2026-10-23-every-write-runs-once-by-its-one-time-key.md) (2026-10-23): parlor's start takes `:send-write!` (the key in the `idempotency-key` header) and `:retry-writes` (from the page) in place of `:send-message!`.
+
 # The browser start starts parlor; the server answers "what may I do?"
 
 > Changes in part [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md) and [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md): doorman's access tables tell now; the sessions and backroom's tables stay silent. Builds on [re-frame and Reagent in the browser](2026-10-12-re-frame-and-reagent-in-the-browser.md), parlor's [parlor is its own library](https://github.com/p4ulcristian/parlor/blob/main/decisions/2026-10-22-parlor-is-its-own-library.md) and doorman's ["What may I do?" is a handler for the browser](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-23-what-may-i-do-is-a-handler-for-the-browser.md).

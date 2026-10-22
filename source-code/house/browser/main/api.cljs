@@ -33,7 +33,9 @@
    :sse-reconnect-after-ms when the server answered with an error, and
    every watched question asked again after any break); then starts
    parlor, re-frame over the store (dispatch-sync [:parlor/start …]), with
-   the store, the send function, the page's pages, the app's
+   the store, the write's send function (the one-time key parlor makes for
+   each write in the idempotency-key header, house.server.main.run-once on
+   the server), the page's :retry-writes, the page's pages, the app's
    :questions-of-pages, :on-answer-failed and :on-move, and
    [:doorman/my-actions {}], the server's handler of doorman's, as its
    :actions-question. parlor follows the address bar. Nothing can ask
@@ -68,13 +70,19 @@
    :doorman/my-actions  {:params-shape [:map {:closed true}]
                          :answer-shape parlor/actions-answer-shape}})
 
+(def ^:private write-key-header
+  "The header a write's one-time key travels in; the server's
+   house.server.main.run-once reads it."
+  "idempotency-key")
+
 (def ^:private actions-question
   "parlor's :actions-question: the server's :doorman/my-actions."
   [:doorman/my-actions {}])
 
 (defn read-settings-from-page
   "What the server put in the page: {:version :addresses
-   :sse-reconnect-after-ms :ws-reopen-after-ms :doorbell :wire :pages}.
+   :sse-reconnect-after-ms :ws-reopen-after-ms :doorbell :wire
+   :retry-writes :pages}.
    Read by the browser's JSON.parse, keys as keywords with their namespace
    (\"orders/page\" is :orders/page): the wire is made from what this
    reads, so there is none yet."
@@ -153,7 +161,10 @@
         {:keys [addresses pages sse-reconnect-after-ms] store-settings :doorbell :as settings} (read-settings-from-page)
         wire           (wire/make-wire-from-settings (assoc (:wire settings) :exact-decimals exact-decimals))
         shapes-by-name (merge shapes-by-name doorbell/message-shapes-by-name house-shapes-by-name)
-        send!          #(mailroom/send-message! (:http addresses) shapes-by-name % {:wire wire})
+        send!          #(mailroom/send-message! (:http addresses) shapes-by-name % {:wire wire :headers {}})
+        send-write!    (fn [message once-key]
+                         (mailroom/send-message! (:http addresses) shapes-by-name message
+                                                 {:wire wire :headers {write-key-header once-key}}))
         _              (send-errors-to-server! send!)
         store          (doorbell/make-question-store send! store-settings)
         sse-line       (mailroom/open-sse-line! (:sse addresses) shapes-by-name
@@ -164,7 +175,8 @@
                                                   :on-open            (fn [again?] (when again? (doorbell/hear-missed-changes! store)))
                                                   :reconnect-after-ms sse-reconnect-after-ms})]
     (rf/dispatch-sync [:parlor/start {:store              store
-                                      :send-message!      send!
+                                      :send-write!        send-write!
+                                      :retry-writes       (:retry-writes settings)
                                       :pages              pages
                                       :questions-of-pages questions-of-pages
                                       :actions-question   actions-question

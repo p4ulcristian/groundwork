@@ -29,7 +29,10 @@
    the app's, migrates in development (:migrate-at-start?
    true) or else refuses a database that isn't current or a role that could
    pass the gates, then starts the pool, the handlers (doorman's check,
-   house's :doorman/my-actions, then doorbell's notes), doorbell's listener, the background job workers, in development the browser
+   house's :doorman/my-actions, then doorbell's notes; every write keyed
+   to run once, house.server.main.run-once), doorbell's listener, the
+   background job workers (house's own that forgets old one-time keys
+   among them), in development the browser
    build's watcher (:browser-build {:watch options}), and the server (mailroom's three
    addresses, from :server :addresses, every page answered by the page
    shell, files from :page :files; no ws hooks).
@@ -65,6 +68,7 @@
    [house.server.main.health :as health]
    [logbook.api :as logbook]
    [house.server.main.page :as page]
+   [house.server.main.run-once :as run-once]
    [mailroom.api :as mailroom]
    [malli.core :as malli]
    [malli.error :as malli-error]
@@ -198,6 +202,36 @@
                          [:max [:int {:min 1}]]
                          [:per-ms [:int {:min 1}]]]]]])
 
+(defn- do-retries-end-before-keys-are-forgotten?
+  "Asked only of numbers: a missing one is the map's problem, named there."
+  [{:keys [keep-keys-ms] {:keys [times wait-ms]} :retry-writes}]
+  (or (not (every? int? [keep-keys-ms times wait-ms]))
+      (< (* times wait-ms) keep-keys-ms)))
+
+(def run-once-settings-shape
+  "The :run-once part of the settings, every key required: every write
+   runs once, by its one-time key (house.server.main.run-once).
+   :keep-keys-ms: how long a key is kept; a repeat after it runs again
+   (a day, 86400000).
+   :forget-keys: house's background job that deletes the keys kept longer:
+   :cron, when it runs (UTC, backroom's cron line, \"*/15 * * * *\");
+   :timeout-ms and :attempts, backroom's for its kind.
+   :retry-writes: the browser's, which the page carries to parlor: a write
+   that got no answer is sent again with the same key, up to :times more,
+   :wait-ms apart; the retries must end before the key is forgotten."
+  [:and
+   [:map {:closed true}
+    [:keep-keys-ms [:int {:min 1}]]
+    [:forget-keys [:map {:closed true}
+                   [:cron :string]
+                   [:timeout-ms [:int {:min 1}]]
+                   [:attempts [:int {:min 1}]]]]
+    [:retry-writes [:map {:closed true}
+                    [:times [:int {:min 0}]]
+                    [:wait-ms [:int {:min 0}]]]]]
+   [:fn {:error/message "the retries end before the key is forgotten: :retry-writes :times × :wait-ms below :keep-keys-ms"}
+    do-retries-end-before-keys-are-forgotten?]])
+
 (def settings-shape
   "The whole settings, every key required; each library brings its part.
    :wire is wire's settings on the JVM (wire.api/settings-shape), which
@@ -205,7 +239,8 @@
    :logbook is logbook's settings (logbook.api/settings-shape), which
    house makes the app's one logbook from; :errors where its kept errors
    are pulled, and how often a browser may send one; :my-actions how often
-   a browser may ask what its person may do."
+   a browser may ask what its person may do; :run-once how long a write's
+   one-time key is kept, and how often a browser retries a write."
   [:map {:closed true}
    [:version :string]
    [:wire wire/settings-shape]
@@ -219,6 +254,7 @@
    [:migration migration-settings-shape]
    [:sessions doorman/settings-shape]
    [:my-actions my-actions-settings-shape]
+   [:run-once run-once-settings-shape]
    [:background-jobs backroom/settings-shape]
    [:doorbell doorbell-settings-shape]
    [:page page-settings-shape]
@@ -236,12 +272,14 @@
   settings)
 
 (def house-tables
-  "doorman's tables and backroom's, each in their own folder, put with the
-   app's. Neither knows of doorbell; their doorbells are said here: the
-   sessions and the background jobs silent; doorman's access tables tell,
-   so a screen's :doorman/my-actions is asked again when a membership or a
-   role changes."
-  (vec (concat (map #(assoc % :doorbell [:silent "no screen shows sessions"]) [doorman/sessions-table])
+  "doorman's tables and backroom's, each in their own folder, and house's
+   own one-time keys (house.run_once_keys), put with the app's. None knows
+   of doorbell; their doorbells are said here: the sessions, the
+   background jobs and the keys silent; doorman's access tables tell, so a
+   screen's :doorman/my-actions is asked again when a membership or a role
+   changes."
+  (vec (concat [(assoc run-once/run-once-keys-table :doorbell [:silent "no screen shows one-time keys"])]
+               (map #(assoc % :doorbell [:silent "no screen shows sessions"]) [doorman/sessions-table])
                (map #(assoc % :doorbell :tell) doorman/access-tables)
                (map #(assoc % :doorbell [:silent "no screen shows background jobs"]) backroom/background-jobs-tables))))
 
@@ -305,8 +343,9 @@
                                            :find-session-step find-session-step
                                            :rate-limit        (get-in settings [:my-actions :rate-limit])})))
 
-(defn- make-ready-handlers [pool {:keys [handlers tables scope-kinds] :as app} find-session-step]
+(defn- make-ready-handlers [pool {:keys [handlers tables scope-kinds settings] :as app} find-session-step]
   (-> handlers
+      (run-once/put-run-once-into-handlers scope-kinds (get-in settings [:run-once :keep-keys-ms]))
       (doorman/put-access-into-handlers {:pool pool :tables tables :scope-kinds scope-kinds
                                          :find-session-step find-session-step})
       (add-my-actions-handler pool app find-session-step)
@@ -402,8 +441,10 @@
                                              #(backroom/start-workers! pool (assoc (:background-jobs settings)
                                                                                    :wire wire
                                                                                    :log log
-                                                                                   :kinds background-job-kinds
-                                                                                   :schedules schedules))
+                                                                                   :kinds (conj (vec background-job-kinds)
+                                                                                                (run-once/make-forget-keys-kind (:run-once settings)))
+                                                                                   :schedules (conj (vec schedules)
+                                                                                                    (run-once/make-forget-keys-schedule (:run-once settings)))))
                                              backroom/stop-workers!)
               watching          (when (is-watching? settings)
                                   (start-part! stoppers #(start-watching-browser-build! app log) stop-watching-browser-build!))

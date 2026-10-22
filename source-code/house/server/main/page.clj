@@ -10,6 +10,7 @@
         \"ws-reopen-after-ms\":1000,
         \"doorbell\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000},
         \"wire\":{\"most-shapes-kept\":1000,\"most-keys-kept\":10000},
+        \"retry-writes\":{\"times\":2,\"wait-ms\":1000},
         \"pages\":{\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}}}
      </script>
 
@@ -66,10 +67,12 @@
   "What the browser needs to start: the version, the three addresses and
    the sse and ws reopen delays (from the :server settings), the question
    store's settings (the :doorbell settings' :store), the browser's wire
-   settings (:browser-wire), the pages."
-  [{:keys [version doorbell browser-wire] {:keys [addresses sse-reconnect-after-ms ws-reopen-after-ms]} :server} pages]
+   settings (:browser-wire), how a write that got no answer is retried
+   (the :run-once settings' :retry-writes), the pages."
+  [{:keys [version doorbell browser-wire run-once] {:keys [addresses sse-reconnect-after-ms ws-reopen-after-ms]} :server} pages]
   {:version version :addresses addresses :sse-reconnect-after-ms sse-reconnect-after-ms
-   :ws-reopen-after-ms ws-reopen-after-ms :doorbell (:store doorbell) :wire browser-wire :pages pages})
+   :ws-reopen-after-ms ws-reopen-after-ms :doorbell (:store doorbell) :wire browser-wire
+   :retry-writes (:retry-writes run-once) :pages pages})
 
 (defn make-page-html [wire {{:keys [title language viewport]} :page} stylesheets scripts browser-settings]
   (str "<!doctype html>\n"

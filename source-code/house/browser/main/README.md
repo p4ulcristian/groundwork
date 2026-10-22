@@ -8,7 +8,8 @@ passes it to mailroom and returns it (`:wire`), makes the question store (doorbe
 settings), opens the sse line (doorbell's messages, the app's own, and the version: a page older than
 the server reloads, once per version; reopened after the sse delay when the
 server answered with an error), then starts parlor (`[:parlor/start …]`, with
-the store, the send function, the pages, the app's `:questions-of-pages`,
+the store, the write's send function (parlor's one-time key in the
+`idempotency-key` header), the page's `:retry-writes`, the pages, the app's `:questions-of-pages`,
 `:on-answer-failed` and `:on-move`, and `[:doorman/my-actions {}]` as its
 `:actions-question`), which follows the address bar. The app draws its root
 with parlor's `mount-root!` into the shell's `#app`. Once for the

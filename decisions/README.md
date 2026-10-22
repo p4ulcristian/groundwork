@@ -142,7 +142,8 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 
 ### Endpoints, parquery and live updates
 
-- [What every endpoint declares](2026-10-12-what-every-endpoint-declares.md)
+- [What every endpoint declares](2026-10-12-what-every-endpoint-declares.md), its run-once carried over by [Every write runs once, by its one-time key](2026-10-23-every-write-runs-once-by-its-one-time-key.md)
+- [Every write runs once, by its one-time key](2026-10-23-every-write-runs-once-by-its-one-time-key.md)
 - [Every endpoint declares its answer](2026-10-12-every-endpoint-declares-its-answer.md)
 - [Reads and writes share one path](2026-10-12-reads-and-writes-share-one-path.md)
 - [parquery is the transport](2026-10-12-parquery-is-the-transport.md), changed in part by [Groundwork ships these parts](2026-10-18-groundwork-ships-these-parts.md)
@@ -163,7 +164,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [A build can have several modules](2026-10-12-a-build-can-have-several-modules.md)
 - [Nothing asks before the start](2026-10-13-nothing-asks-before-the-start.md), changed in part by [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md)
 - [Routing is Groundwork's, and a route is a record](2026-10-14-routing-is-groundworks-and-a-route-is-a-record.md)
-- [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md)
+- [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md), changed in part by [Every write runs once, by its one-time key](2026-10-23-every-write-runs-once-by-its-one-time-key.md)
 
 ### Styles
 

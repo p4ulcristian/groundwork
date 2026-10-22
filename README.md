@@ -56,6 +56,11 @@ browser start's `:questions-of-pages`), writes that ask again what they
 touched, and "can I?" from doorman's `:doorman/my-actions`, a handler house
 adds (its rate limit the `:my-actions` part). house's browser start starts it;
 the app draws its root with parlor's `mount-root!` into the shell's `#app`.
+Every write runs once: parlor sends each with a one-time key (a random
+UUID, the same on each retry of that send, in the `idempotency-key`
+header), and house claims it in the write's own transaction; a repeat gets
+the first answer and saves nothing (the `:run-once` settings, [the
+decision](decisions/2026-10-23-every-write-runs-once-by-its-one-time-key.md)).
 And what the app says, on the server:
 [logbook](https://github.com/p4ulcristian/logbook), one function
 `(log level event data)`; house makes the app's one logbook from the

@@ -22,7 +22,7 @@ session, else address; sse hooks for doorbell, the ws hooks nil; files from
 shell answers every page address: the app's scripts and styles, and the
 browser's settings (version, addresses, sse and ws reopen delays, the
 question store's settings, `:doorbell :store`, the browser's wire settings,
-`:browser-wire`, pages) as
+`:browser-wire`, the write retries, `:run-once :retry-writes`, pages) as
 JSON in the page; its viewport, referrer policy, frame options and content
 security policy are `:page` settings. Every value that sets behaviour is a
 setting; what stays fixed, and why:
@@ -66,6 +66,24 @@ role changed asks it again:
 :my-actions {:rate-limit {:max 60 :per-ms 60000}}   ; or nil for none
 ```
 
+Every write runs once (`house.server.main.run-once`): an app handler whose
+action may write (doorman's `does-action-only-read?` says no) has its steps
+wrapped in one step, after doorman's check, in its transaction, which
+claims the request's one-time key (the `idempotency-key` header, a UUID)
+for the message's name in `house.run_once_keys`. A repeat by the same
+person gets the first answer and saves nothing; one while the first runs
+waits for it; someone else's is refused. Keys older than `:keep-keys-ms`
+count as forgotten, and house's background job `:house/forget-old-once-keys`
+deletes them on its cron line. A write's answer must fit its shape or
+nothing is saved. A write without a key runs as it is:
+[the decision](../../../../decisions/2026-10-23-every-write-runs-once-by-its-one-time-key.md).
+
+```clojure
+:run-once {:keep-keys-ms 86400000
+           :forget-keys  {:cron "*/15 * * * *" :timeout-ms 60000 :attempts 3}
+           :retry-writes {:times 2 :wait-ms 1000}}   ; the browser's, in the page; ends before a key is forgotten
+```
+
 ```clojure
 :logbook         {:lowest-level :info :format :json                      ; logbook's; development :debug, :readable
                   :errors-kept 1000 :write-to :stdout}
@@ -89,7 +107,7 @@ role changed asks it again:
 
 API: `house.server.main.api` (`settings-shape`, `page-settings-shape`,
 `health-settings-shape`, `migration-settings-shape`, `doorbell-settings-shape`,
-`my-actions-settings-shape`,
+`my-actions-settings-shape`, `run-once-settings-shape`,
 `browser-build-settings-shape`, `browser-wire-settings-shape`,
 `check-settings`, `house-tables`, `make-ready-tables`, `migrate-app!`,
 `start-app!`, `stop-app!`). Decisions:
