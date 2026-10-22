@@ -16,7 +16,7 @@ else.
 | steps | `groundwork.steps.api` | work as a list of steps over one map, until one adds an answer |
 | web | `groundwork.web.api` | the server and its routes; a route's work is steps |
 | sql | `groundwork.sql.api` | Postgres through a pool; every query a `.sql` file |
-| background-jobs | `groundwork.background-jobs.api` | a queue, workers and schedules in Postgres |
+| background-chores | `groundwork.background-chores.api` | a queue, workers and schedules in Postgres |
 | main | `groundwork.main.api` | puts the libraries together; lists every one it uses |
 
 ```sh

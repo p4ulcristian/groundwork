@@ -26,7 +26,7 @@ Each library keeps its own decisions, with its own index:
 - [groundwork.steps](../libraries/steps/decisions/README.md): work as a list of steps over one context
 - [groundwork.web](../libraries/web/decisions/README.md): the server, its routes, a route's work as steps
 - [groundwork.sql](../libraries/sql/decisions/README.md): Postgres through a pool; every query a `.sql` file
-- [groundwork.background-jobs](../libraries/background-jobs/decisions/README.md): a queue, workers and schedules in Postgres
+- [groundwork.background-chores](../libraries/background-chores/decisions/README.md): a queue, workers and schedules in Postgres
 
 ### What Groundwork is
 
@@ -48,8 +48,9 @@ Each library keeps its own decisions, with its own index:
 - [A library is a folder with its own deps.edn](2026-10-22-a-library-is-a-folder-with-its-own-deps.md)
 - [Every library has an api, and its parts are server-code, browser-code or shared-code](2026-10-22-server-code-browser-code-shared-code.md)
 - [Each library keeps its own decisions](2026-10-22-each-library-keeps-its-own-decisions.md), changed in part by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md)
-- [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md), changed in part by [The jobs library is named groundwork.background-jobs](2026-10-22-the-jobs-library-is-named-background-jobs.md)
-- [The jobs library is named groundwork.background-jobs](2026-10-22-the-jobs-library-is-named-background-jobs.md)
+- [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md), changed in part by [The background work is called chores](2026-10-22-the-background-work-is-called-chores.md)
+- [The jobs library is named groundwork.background-jobs](2026-10-22-the-jobs-library-is-named-background-jobs.md), replaced by [The background work is called chores](2026-10-22-the-background-work-is-called-chores.md)
+- [The background work is called chores](2026-10-22-the-background-work-is-called-chores.md)
 - [Nothing goes in that the owner does not understand](2026-10-22-nothing-goes-in-that-the-owner-does-not-understand.md)
 - [Each library brings its own settings](2026-10-22-each-library-brings-its-own-settings.md)
 - [Groundwork ships these parts](2026-10-18-groundwork-ships-these-parts.md)

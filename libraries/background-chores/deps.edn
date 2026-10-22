@@ -1,4 +1,4 @@
-;; groundwork.background-jobs: a queue, workers and schedules in Postgres;
+;; groundwork.background-chores: a queue, workers and schedules in Postgres;
 ;; uses groundwork.sql and groundwork.wire.
 ;; Its tests, here, see nothing else:   clojure -X:test
 ;; The tests that need Postgres run when GROUNDWORK_SQL_TEST_PORT is set.

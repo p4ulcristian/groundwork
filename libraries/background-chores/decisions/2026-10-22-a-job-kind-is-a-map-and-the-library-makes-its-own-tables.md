@@ -1,5 +1,7 @@
 # A job kind is a map, and the library makes its own tables
 
+> **Changed in part** by [The background work is called chores](../../../decisions/2026-10-22-the-background-work-is-called-chores.md) (2026-10-22): job is chore everywhere (`groundwork.chores`, `:chore/…`, `add-chore-to-queue!`); the tables' names differ from the old Groundwork's.
+
 > Builds on [A job can give up for good](../../../decisions/2026-10-12-a-job-can-give-up-for-good.md) and [The jobs library is named groundwork.background-jobs](../../../decisions/2026-10-22-the-jobs-library-is-named-background-jobs.md).
 
 **Decision:**

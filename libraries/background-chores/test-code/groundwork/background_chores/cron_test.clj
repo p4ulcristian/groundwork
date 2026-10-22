@@ -1,7 +1,7 @@
-(ns groundwork.background-jobs.cron-test
+(ns groundwork.background-chores.cron-test
   (:require
    [clojure.test :refer [deftest is]]
-   [groundwork.background-jobs.server-code.cron :as cron])
+   [groundwork.background-chores.server-code.cron :as cron])
   (:import
    (java.time Instant)))
 
