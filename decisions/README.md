@@ -20,15 +20,15 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 ### The libraries
 
-Each library keeps its own decisions, with its own index:
+Each library keeps its own decisions, in decisions/<side>/<library>/, with its own index:
 
-- [server-code/wire](../server-code/wire/decisions/README.md): how data keeps its types (and browser-code/wire)
-- [server-code/steps](../server-code/steps/decisions/README.md): how work is written
-- [server-code/database](../server-code/database/decisions/README.md): queries, and tables as maps
-- [server-code/transport](../server-code/transport/decisions/README.md): http, sse, ws, the routes (and browser-code/transport)
-- [server-code/sessions](../server-code/sessions/decisions/README.md): who is asking
-- [server-code/access](../server-code/access/decisions/README.md): what they may do
-- [server-code/background-chores](../server-code/background-chores/decisions/README.md): what runs later
+- [server/wire](server/wire/README.md): how data keeps its types (both sides)
+- [server/steps](server/steps/README.md): how work is written
+- [server/database](server/database/README.md): queries, and tables as maps
+- [server/transport](server/transport/README.md): http, sse, ws, the routes (both sides; [browser/transport](browser/transport/README.md))
+- [server/sessions](server/sessions/README.md): who is asking
+- [server/access](server/access/README.md): what they may do
+- [server/background-chores](server/background-chores/README.md): what runs later
 
 ### What Groundwork is
 
@@ -38,13 +38,14 @@ Each library keeps its own decisions, with its own index:
 - [The ground-* libraries live in one repo](2026-10-22-the-ground-libraries-live-in-one-repo.md), changed in part by [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)
 - [Groundwork is the default composition](2026-10-22-groundwork-is-the-default-composition.md)
 - [Ring at the edge, steps inside](2026-10-22-ring-at-the-edge-steps-inside.md)
-- [Work is a vector of steps over one map](2026-10-22-work-is-a-vector-of-steps-over-one-map.md), replaced by [Steps are a list over one context](../libraries/steps/decisions/2026-10-22-steps-are-a-list-over-one-context.md)
+- [Work is a vector of steps over one map](2026-10-22-work-is-a-vector-of-steps-over-one-map.md), replaced by [Steps are a list over one context](server/steps/2026-10-22-steps-are-a-list-over-one-context.md)
 - [Libraries pass values](2026-10-22-libraries-pass-values.md), replaced by [Libraries stand in layers](2026-10-22-libraries-stand-in-layers.md)
 - [Libraries stand in layers](2026-10-22-libraries-stand-in-layers.md)
 - [No Polylith tool](2026-10-22-no-polylith-tool.md)
 - [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md), changed in part by [A library says where it runs](2026-10-22-a-library-says-where-it-runs.md)
 - [A library says where it runs; sessions and access stay apart](2026-10-22-a-library-says-where-it-runs.md), changed in part by [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md)
-- [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md)
+- [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), changed in part by [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md)
+- [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
 - [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md), changed in part by [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md) and [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)
 - [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md), changed in part by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md) and [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md)
@@ -52,7 +53,7 @@ Each library keeps its own decisions, with its own index:
 - [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md), replaced by [The api sits at the library's root](2026-10-22-the-api-sits-at-the-librarys-root.md)
 - [The api sits at the library's root](2026-10-22-the-api-sits-at-the-librarys-root.md)
 - [Libraries are folders in one tree, their edges declared](2026-10-22-libraries-are-folders-in-one-tree.md), replaced by [A library is a folder with its own deps.edn](2026-10-22-a-library-is-a-folder-with-its-own-deps.md)
-- [A library is a folder with its own deps.edn](2026-10-22-a-library-is-a-folder-with-its-own-deps.md)
+- [A library is a folder with its own deps.edn](2026-10-22-a-library-is-a-folder-with-its-own-deps.md), replaced by [One tree](2026-10-22-one-tree-libraries-edn-checks-the-edges.md)
 - [Every library has an api, and its parts are server-code, browser-code or shared-code](2026-10-22-server-code-browser-code-shared-code.md)
 - [Each library keeps its own decisions](2026-10-22-each-library-keeps-its-own-decisions.md), changed in part by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md)
 - [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md), changed in part by [The background work is called chores](2026-10-22-the-background-work-is-called-chores.md) and [Three ways between browser and server](2026-10-22-three-ways-between-browser-and-server.md)
@@ -84,7 +85,7 @@ Each library keeps its own decisions, with its own index:
 - [Queries have a time limit](2026-10-12-queries-have-a-time-limit.md)
 - [Slow work gets time through its transaction](2026-10-12-slow-work-gets-time-through-its-transaction.md)
 - [The transaction hook runs only in transactions](2026-10-12-the-transaction-hook-runs-only-in-transactions.md)
-- [SQL lives only in files](2026-10-12-sql-lives-only-in-files.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md) and [A query is made by a function from its .sql file](../libraries/sql/decisions/2026-10-22-a-query-is-made-by-a-function-from-its-sql-file.md)
+- [SQL lives only in files](2026-10-12-sql-lives-only-in-files.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md) and [A query is made by a function from its .sql file](server/sql/2026-10-22-a-query-is-made-by-a-function-from-its-sql-file.md)
 - [SQL files are plain SQL](2026-10-12-sql-files-are-plain-sql.md)
 - [A param is named by what it is](2026-10-12-a-param-is-named-by-what-it-is.md)
 - [A list param takes the type Postgres expects](2026-10-12-a-list-param-takes-the-type-postgres-expects.md)

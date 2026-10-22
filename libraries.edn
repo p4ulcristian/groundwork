@@ -1,0 +1,15 @@
+;; Groundwork's libraries, by side, and which others each may use.
+;; test-code/groundwork/libraries_test.clj checks every namespace against it:
+;; a library requires only the libraries it lists, and only their api;
+;; nobody uses another around a circle.
+{:server  {:wire              #{}
+           :steps             #{}
+           :database          #{}
+           :transport         #{:steps :wire}
+           :sessions          #{:database :steps}
+           :access            #{:database :steps :wire :transport}
+           :background-chores #{:database :wire}
+           :main              #{:wire :steps :database :transport :sessions :access :background-chores}}
+ :browser {:wire      #{}
+           :transport #{:wire}
+           :main      #{:wire :transport}}}

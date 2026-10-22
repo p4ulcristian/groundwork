@@ -1,7 +1,0 @@
-;; groundwork.browser.main: the browser's one start; lists every browser library.
-;; ClojureScript only: built by shadow-cljs with the app.
-{:paths ["source-code"]
-
- :deps
- {io.github.p4ulcristian/groundwork-browser-wire      {:local/root "../wire"}
-  io.github.p4ulcristian/groundwork-browser-transport {:local/root "../transport"}}}

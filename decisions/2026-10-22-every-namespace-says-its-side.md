@@ -1,5 +1,7 @@
 # Every namespace says its side
 
+> **Changed in part** by [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md) (2026-10-22): no server-code/ or browser-code/ folders and no deps.edn per library; the side is source-code/groundwork/<side>/.
+
 > Changes in part [A library says where it runs](2026-10-22-a-library-says-where-it-runs.md) and [Every library has an api, and its parts are server-code, browser-code or shared-code](2026-10-22-server-code-browser-code-shared-code.md).
 
 **Decision:**
