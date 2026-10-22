@@ -8,7 +8,8 @@ in `source-code/groundwork/<name>/` (its api `groundwork.<name>.api`, its
 parts in `server_code/`, `browser_code/`), its tests in `test-code/`, its
 decisions in `decisions/`. A library that uses another lists it in its own
 `deps.edn`, so testing a library inside its folder proves it needs nothing
-else.
+else. A library uses only libraries in a lower layer (no circles); main's
+layers test checks it.
 
 | library | api | what it is |
 |---|---|---|
