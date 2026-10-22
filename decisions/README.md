@@ -20,11 +20,13 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 ### What Groundwork is
 
-- [Groundwork is an opinionated framework](2026-10-12-groundwork-is-an-opinionated-framework.md)
-- [Declared, through one door](2026-10-14-declared-through-one-door.md)
+- [Groundwork is an opinionated framework](2026-10-12-groundwork-is-an-opinionated-framework.md), changed in part by [Groundwork is the default composition](2026-10-22-groundwork-is-the-default-composition.md)
+- [Declared, through one door](2026-10-14-declared-through-one-door.md), changed in part by [Groundwork is the default composition](2026-10-22-groundwork-is-the-default-composition.md)
 - [Everything is declared, the Clojure way](2026-10-22-everything-is-declared-the-clojure-way.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)
 - [The ground-* libraries live in one repo](2026-10-22-the-ground-libraries-live-in-one-repo.md)
-- [A Groundwork app uses the libraries through Groundwork](2026-10-22-a-groundwork-app-uses-the-libraries-through-groundwork.md)
+- [Groundwork is the default composition](2026-10-22-groundwork-is-the-default-composition.md)
+- [Ring at the edge, steps inside](2026-10-22-ring-at-the-edge-steps-inside.md)
+- [Libraries pass values](2026-10-22-libraries-pass-values.md)
 - [Each library keeps its own decisions](2026-10-22-each-library-keeps-its-own-decisions.md)
 - [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md)
 - [Nothing goes in that the owner does not understand](2026-10-22-nothing-goes-in-that-the-owner-does-not-understand.md)
