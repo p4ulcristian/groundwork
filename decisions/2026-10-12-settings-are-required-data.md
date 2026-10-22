@@ -1,5 +1,7 @@
 # Settings are required data
 
+> **Changed in part** by [Each library brings its own settings](2026-10-22-each-library-brings-its-own-settings.md) (2026-10-22): each library owns its part's schema; groundwork collects them.
+
 **Decision:** `pg/start` has no defaults. Every setting (`:host :port :database :user :password :pool-size :statement-timeout-ms`) must be in the map; a missing one throws at start, naming each one missing. `nil` and `:none` are choices, written out. The hooks stay optional: leaving one out adds nothing.
 
 **Why:** the app's config tells the whole story; nothing important lives inside the library. Forgetting a safety setting is impossible, because start refuses. Config stays plain data that can be compared between environments.

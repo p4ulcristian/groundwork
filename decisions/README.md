@@ -23,6 +23,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 - [Groundwork is an opinionated framework](2026-10-12-groundwork-is-an-opinionated-framework.md)
 - [Declared, through one door](2026-10-14-declared-through-one-door.md)
 - [Nothing goes in that the owner does not understand](2026-10-22-nothing-goes-in-that-the-owner-does-not-understand.md)
+- [Each library brings its own settings](2026-10-22-each-library-brings-its-own-settings.md)
 - [Groundwork ships these parts](2026-10-18-groundwork-ships-these-parts.md)
 - [Groundwork ships no team endpoints and no eval bridge](2026-10-18-groundwork-ships-no-team-endpoints-and-no-eval-bridge.md)
 - [Groundwork is no longer frozen](2026-10-17-groundwork-is-no-longer-frozen.md)
@@ -32,7 +33,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 ### Settings and wiring
 
-- [Settings are required data](2026-10-12-settings-are-required-data.md)
+- [Settings are required data](2026-10-12-settings-are-required-data.md), changed in part by [Each library brings its own settings](2026-10-22-each-library-brings-its-own-settings.md)
 - [Integrant wires the parts](2026-10-12-integrant-wires-the-parts.md), changed in part by [Groundwork is an opinionated framework](2026-10-12-groundwork-is-an-opinionated-framework.md)
 - [The library does not need sops](2026-10-12-the-library-does-not-need-sops.md)
 
