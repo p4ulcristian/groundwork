@@ -7,12 +7,12 @@
 
    A table that says nothing, or :by-access without :access, stops the
    start, every problem at once: no table is quiet by accident. A table that
-   tells gets :on-change, the triggers groundwork.server.database makes,
+   tells gets :on-change, the triggers cellar makes,
    calling groundwork.tell_sync with its id column and the columns its
    readers name."
   (:require
    [clojure.string :as str]
-   [groundwork.server.database.api :as database]))
+   [cellar.api :as database]))
 
 (defn- find-problem-of-table [{:keys [table sync access]}]
   (cond

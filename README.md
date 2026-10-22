@@ -10,7 +10,6 @@ its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 | library | namespace | the question it answers |
 |---|---|---|
 | server/steps | `groundwork.server.steps` | how is work written? |
-| server/database | `groundwork.server.database` | how do I talk to Postgres, and shape its tables? |
 | server/transport | `groundwork.server.transport` | how does the server answer the browser? (http, sse, ws, routes) |
 | server/sessions | `groundwork.server.sessions` | who is asking? |
 | server/access | `groundwork.server.access` | what may they do? |
@@ -28,14 +27,16 @@ Which library may use which is `libraries.edn`, checked by a test.
 
 How data keeps its types (ids, exact decimals, days, moments) is
 [wire](https://github.com/p4ulcristian/wire), a library of its own that Groundwork
-takes from git; its decisions live there.
+takes from git; its decisions live there. So is talking to Postgres and shaping
+its tables: [cellar](https://github.com/p4ulcristian/cellar), every query a
+`.sql` file, tables as maps.
 
 Still to come: the smaller list (visitor sessions, access extras, rate limits, clean-ups).
 
 ```sh
 clojure -X:test                                                    # every test; Postgres ones need
                                                                    # GROUNDWORK_SQL_TEST_PORT and _USER (Postgres 16+)
-clojure -X:test :dirs '["test-code/groundwork/server/database"]'   # one library
+clojure -X:test :dirs '["test-code/groundwork/server/sessions"]'   # one library
 clj -A:test                                                        # one REPL, every library
 ```
 

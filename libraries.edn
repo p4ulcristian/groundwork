@@ -3,17 +3,18 @@
 ;; a library requires only the libraries it lists, and only their api;
 ;; nobody uses another around a circle. wire is a library of its own
 ;; (github.com/p4ulcristian/wire): any library may use it, through wire.api only.
+;; So is cellar, Postgres (github.com/p4ulcristian/cellar): any server library
+;; may use it, through cellar.api only.
 {:server  {:steps           #{}
-           :database        #{}
            :transport       #{:steps}
-           :sessions        #{:database :steps}
-           :access          #{:database :steps :transport}
-           :background-jobs #{:database}
-           :sync            #{:database :transport :access :steps}
+           :sessions        #{:steps}
+           :access          #{:steps :transport}
+           :background-jobs #{}
+           :sync            #{:transport :access :steps}
            ;; main loads browser-build only when it watches (requiring-resolve):
            ;; production has no shadow-cljs
            :browser-build   #{}
-           :main            #{:steps :database :transport :sessions :access :background-jobs :sync :browser-build}}
+           :main            #{:steps :transport :sessions :access :background-jobs :sync :browser-build}}
  :browser {:transport #{}
            :sync      #{}
            :styles    #{}

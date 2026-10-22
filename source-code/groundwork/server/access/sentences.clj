@@ -19,7 +19,7 @@
    back to uuid[], or ANY would read it as a subquery of arrays."
   (:require
    [clojure.string :as str]
-   [groundwork.server.database.api :as database]))
+   [cellar.api :as database]))
 
 (defn- quote-text [s] (str "'" (str/replace (str s) "'" "''") "'"))
 

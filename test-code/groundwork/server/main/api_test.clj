@@ -9,7 +9,7 @@
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
    [groundwork.server.access.api :as access]
-   [groundwork.server.database.api :as database]
+   [cellar.api :as database]
    [groundwork.server.main.api :as main]
    [groundwork.server.sessions.api :as sessions]
    [groundwork.server.steps.api :as steps])
@@ -129,7 +129,7 @@
     (println "groundwork.server.main.api-test: skipped, GROUNDWORK_SQL_TEST_PORT is not set")
     (let [owner-pool (database/start-pool! (make-database-settings owner))]
       (try
-        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork CASCADE")
+        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS cellar CASCADE")
         (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gw_app') THEN CREATE ROLE gw_app LOGIN; END IF; END $$")
         (testing "an owner role, or a database not migrated, is refused"
           (is (thrown-with-msg? clojure.lang.ExceptionInfo #"owns tables or passes the gates"
@@ -183,10 +183,11 @@
               (is (= [200 "{\"orders/all\":[],\"groundwork/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}"]
                      (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/all\":{}}"))))
             (testing "a rate limit: two a minute per session, a third is refused; another session has its own"
-              (is (= [[200 "{\"orders/count\":0}"] [200 "{\"orders/count\":0}"]
-                      [200 "{\"orders/count\":{\"error\":\"Too many requests.\"}}"]]
-                     (repeatedly 3 #(send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/count\":{}}"))))
-              (is (= [200 "{\"orders/count\":0}"] (send-request server-port "POST" "/groundwork/http" bob-cookie "{\"orders/count\":{}}"))))
+              (let [counted "{\"orders/count\":0,\"groundwork/notes\":{\"orders/count\":{\"tables\":[]}}}"]
+                (is (= [[200 counted] [200 counted]
+                        [200 "{\"orders/count\":{\"error\":\"Too many requests.\"}}"]]
+                       (repeatedly 3 #(send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/count\":{}}"))))
+                (is (= [200 counted] (send-request server-port "POST" "/groundwork/http" bob-cookie "{\"orders/count\":{}}")))))
             (testing "sync: each line hears the version first, then the changes its person may read"
               (let [anna-line (open-sse server-port anna-cookie)
                     bob-line  (open-sse server-port bob-cookie)]

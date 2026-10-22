@@ -7,7 +7,7 @@ Each word in a Groundwork name means one thing, everywhere. See
 |---|---|
 | shape | how data looks, written as malli data: `[:map [:order/id :uuid]]` |
 | schema | a shape made into a malli schema object, ready to check with |
-| shaped data | data whose every value is what its shape names: a UUID, a BigDecimal, a LocalDate, not their text ([why this name](libraries/wire/decisions/2026-10-22-shaped-data-is-data-that-fits-its-shape.md)) |
+| shaped data | data whose every value is what its shape names: a UUID, a BigDecimal, a LocalDate, not their text ([why this name](https://github.com/p4ulcristian/wire/blob/main/decisions/2026-10-22-shaped-data-is-data-that-fits-its-shape.md)) |
 | json data | JSON already read into maps and lists: ids, decimals and dates are still text |
 | json text | JSON as one string |
 | data | maps, lists, text, numbers: no claim about types |
@@ -20,3 +20,4 @@ Each word in a Groundwork name means one thing, everywhere. See
 | sse | the server stream (Server-Sent Events): one answer per tab that stays open; carries bells, never data |
 | ws | a websocket: both sides talk fast, for features that need it |
 | sync | keeping what screens show in step with the database: a changed row is told to the screens that may show it, and they ask again (not "bells") |
+| table map | a table declared as a Clojure map (`{:table :orders :columns [...]}`); [cellar](https://github.com/p4ulcristian/cellar) brings Postgres to what the maps say |

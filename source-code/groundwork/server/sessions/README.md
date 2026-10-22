@@ -5,7 +5,7 @@ only random bytes, and the table only their fingerprint. The app's own login
 proves who someone is and calls `sign-in!`; signing out deletes rows, so
 access ends at once on every server.
 
-Needs groundwork.server.database and groundwork.server.steps. API: `groundwork.server.sessions.api`
+Needs cellar and groundwork.server.steps. API: `groundwork.server.sessions.api`
 (`sessions-table`, `sign-in!`, `sign-out!`, `sign-out-everywhere!`,
 `delete-ended-sessions!`, `make-find-session-step`). Decisions:
 [`decisions/`](decisions/README.md).

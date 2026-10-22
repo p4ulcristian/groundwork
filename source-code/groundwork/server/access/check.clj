@@ -20,7 +20,7 @@
    by a sentence; the gates decide which rows."
   (:require
    [clojure.string :as str]
-   [groundwork.server.database.api :as database]
+   [cellar.api :as database]
    [groundwork.server.steps.api :as steps]
    [jsonista.core :as json]))
 

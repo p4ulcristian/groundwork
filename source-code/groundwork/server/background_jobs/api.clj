@@ -20,7 +20,7 @@
                                              :poll-ms   1000})
 
    A background job is a row in groundwork.background_jobs; its tables are maps
-   (background-jobs-tables) the app passes to groundwork.server.database with its own. Every :poll-ms the workers look for
+   (background-jobs-tables) the app passes to cellar with its own. Every :poll-ms the workers look for
    due background jobs; each free worker claims one (FOR UPDATE SKIP LOCKED, so no two
    servers run the same one) and runs its kind's :run in one transaction,
    within :timeout-ms. A background job that throws or runs out of time runs again
@@ -36,7 +36,7 @@
   (:require
    [clojure.string :as str]
    [groundwork.server.background-jobs.cron :as cron]
-   [groundwork.server.database.api :as database]
+   [cellar.api :as database]
    [wire.api :as wire])
   (:import
    (java.lang System$Logger System$Logger$Level)
@@ -67,7 +67,7 @@
   (subs (str kind-name) 1))
 
 ;; -----------------------------------------------------------------------------
-;; Tables, as maps for groundwork.server.database
+;; Tables, as maps for cellar
 
 (def settings-shape
   "The :background-jobs part of the settings, every key required."
@@ -102,7 +102,7 @@
              [:background-job-schedule/next-at :time/instant]]})
 
 (def background-jobs-tables
-  "Both tables, to pass to groundwork.server.database with the app's own."
+  "Both tables, to pass to cellar with the app's own."
   [background-jobs-table background-job-schedules-table])
 
 ;; -----------------------------------------------------------------------------

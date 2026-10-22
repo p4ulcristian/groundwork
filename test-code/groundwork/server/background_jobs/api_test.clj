@@ -5,7 +5,7 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [groundwork.server.background-jobs.api :as background-jobs]
-   [groundwork.server.database.api :as database]))
+   [cellar.api :as database]))
 
 (def ^:private port (some-> (System/getenv "GROUNDWORK_SQL_TEST_PORT") parse-long))
 
@@ -41,7 +41,7 @@
                                  :user (System/getenv "GROUNDWORK_SQL_TEST_USER") :password nil
                                  :tls :off :pool-size 4 :statement-timeout-ms 5000 :time-zone "UTC"})]
       (try
-        (with-out-str (run-sql! pool "DROP SCHEMA IF EXISTS groundwork CASCADE")
+        (with-out-str (run-sql! pool "DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS cellar CASCADE")
                       @(:slow-part (database/migrate! pool background-jobs/background-jobs-tables [])))
         (let [workers (background-jobs/start-workers! pool {:kinds [say-hello give-up] :schedules []
                                                             :workers 2 :poll-ms 100})]

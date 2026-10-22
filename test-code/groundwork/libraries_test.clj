@@ -23,7 +23,7 @@
     (if (sequential? spec) (first spec) spec)))
 
 (defn- find-library-of
-  "groundwork.server.database.tables.plan -> [:server :database], or nil
+  "groundwork.server.access.sentences -> [:server :access], or nil
    for a namespace that isn't Groundwork's."
   [ns-symbol]
   (let [[top side library] (str/split (str ns-symbol) #"\.")]
@@ -42,6 +42,9 @@
      (for [required (list-required-namespaces ns-form)
            :when    (and (str/starts-with? (str required) "wire.") (not= 'wire.api required))]
        (str (second ns-form) " requires " required ": only wire's api, wire.api"))
+     (for [required (list-required-namespaces ns-form)
+           :when    (and (str/starts-with? (str required) "cellar.") (not= 'cellar.api required))]
+       (str (second ns-form) " requires " required ": only cellar's api, cellar.api"))
      (for [required (list-required-namespaces ns-form)
            :let     [[required-side required-library] (find-library-of required)]
            :when    (and required-library (not= [side library] [required-side required-library]))

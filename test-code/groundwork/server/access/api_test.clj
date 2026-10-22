@@ -4,7 +4,7 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [groundwork.server.access.api :as access]
-   [groundwork.server.database.api :as database]))
+   [cellar.api :as database]))
 
 (def ^:private port (some-> (System/getenv "GROUNDWORK_SQL_TEST_PORT") parse-long))
 
@@ -35,7 +35,7 @@
                                  :user (System/getenv "GROUNDWORK_SQL_TEST_USER") :password nil
                                  :tls :off :pool-size 2 :statement-timeout-ms 5000 :time-zone "UTC"})]
       (try
-        (database/run-statement! pool (database/make-query-from-sql-text "test" "DROP SCHEMA IF EXISTS groundwork CASCADE") {})
+        (database/run-statement! pool (database/make-query-from-sql-text "test" "DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS cellar CASCADE") {})
         (with-out-str @(:slow-part (database/migrate! pool access/access-tables [])))
         (database/run-in-transaction! pool
           (fn [transaction]

@@ -5,7 +5,7 @@
    [clojure.test :refer [deftest is testing]]
    [groundwork.server.sessions.api :as sessions]
    [groundwork.server.sessions.cookie :as cookie]
-   [groundwork.server.database.api :as database]
+   [cellar.api :as database]
    [groundwork.server.steps.api :as steps]))
 
 (def ^:private port (some-> (System/getenv "GROUNDWORK_SQL_TEST_PORT") parse-long))
@@ -38,7 +38,7 @@
                                  :tls :off :pool-size 2 :statement-timeout-ms 5000 :time-zone "UTC"})
           step (sessions/make-find-session-step pool settings)]
       (try
-        (database/run-statement! pool (database/make-query-from-sql-text "test" "DROP SCHEMA IF EXISTS groundwork CASCADE") {})
+        (database/run-statement! pool (database/make-query-from-sql-text "test" "DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS cellar CASCADE") {})
         (with-out-str @(:slow-part (database/migrate! pool [sessions/sessions-table] [])))
         (let [{:keys [set-cookie]} (sessions/sign-in! pool anna settings)]
           (testing "a signed-in request: the person is in the context"

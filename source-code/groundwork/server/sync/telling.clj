@@ -14,7 +14,7 @@
    left out when they weren't sent."
   (:require
    [groundwork.server.access.api :as access]
-   [groundwork.server.database.api :as database]
+   [cellar.api :as database]
    [jsonista.core :as json]))
 
 (defn- turn-key-into-text [k] (subs (str k) 1))

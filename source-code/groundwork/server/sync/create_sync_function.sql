@@ -18,9 +18,9 @@ DECLARE
   i        int;
 BEGIN
   rows_sql := CASE TG_OP
-                WHEN 'INSERT' THEN 'SELECT * FROM groundwork_new_rows'
-                WHEN 'DELETE' THEN 'SELECT * FROM groundwork_old_rows'
-                ELSE 'SELECT * FROM groundwork_new_rows UNION ALL SELECT * FROM groundwork_old_rows'
+                WHEN 'INSERT' THEN 'SELECT * FROM cellar_new_rows'
+                WHEN 'DELETE' THEN 'SELECT * FROM cellar_old_rows'
+                ELSE 'SELECT * FROM cellar_new_rows UNION ALL SELECT * FROM cellar_old_rows'
               END;
   EXECUTE format('SELECT count(*) FROM (%s) changed', rows_sql) INTO changed;
   IF changed = 0 THEN

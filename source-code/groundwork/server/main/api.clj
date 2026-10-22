@@ -6,7 +6,7 @@
        {:settings             settings              ; checked against settings-shape
         :browser-entry        'app.browser.main/start!  ; the function the page runs
         :tables               [shops orders]        ; table maps, with :access and :sync
-        :changes              []                    ; groundwork.server.database's changes
+        :changes              []                    ; cellar's changes
         :scope-kinds          scope-kinds           ; groundwork.server.access
         :handlers             handlers              ; transport's table, each with :action and shapes
         :pages                {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}}
@@ -34,7 +34,7 @@
    [clojure.string :as str]
    [groundwork.server.access.api :as access]
    [groundwork.server.background-jobs.api :as background-jobs]
-   [groundwork.server.database.api :as database]
+   [cellar.api :as database]
    [groundwork.server.main.page :as page]
    [groundwork.server.sessions.api :as sessions]
    [groundwork.server.steps.api]

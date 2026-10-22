@@ -5,7 +5,7 @@ workers (they claim due background jobs, run them, retry a failure, and let a ba
 up for good), and schedules (cron lines in UTC that queue a background job at their
 times).
 
-Needs groundwork.server.database and wire. API: `groundwork.server.background-jobs.api`
+Needs cellar and wire. API: `groundwork.server.background-jobs.api`
 (`background-jobs-tables`, `add-background-job-to-queue!`, `make-give-up-exception`,
 `start-workers!`, `stop-workers!`, `list-queued-background-jobs`, `list-dead-background-jobs`,
 `run-background-job-again-now!`). Its queries are in `sql_files/`; cron lines in
@@ -34,5 +34,5 @@ Needs groundwork.server.database and wire. API: `groundwork.server.background-jo
 clojure -X:test     # in this folder; the Postgres tests are skipped without a database
 ```
 
-With a throwaway Postgres, as in [groundwork.server.database's README](../sql/README.md).
+With a throwaway Postgres, as in [cellar's README](https://github.com/p4ulcristian/cellar#tests).
 A background job that gives up logs its warning during the tests; that is expected.

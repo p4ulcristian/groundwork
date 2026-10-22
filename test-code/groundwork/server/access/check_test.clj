@@ -6,7 +6,7 @@
    [clojure.test :refer [deftest is testing]]
    [groundwork.server.access.api :as access]
    [groundwork.server.sessions.api :as sessions]
-   [groundwork.server.database.api :as database]
+   [cellar.api :as database]
    [groundwork.server.steps.api :as steps]
    [groundwork.server.transport.api :as transport-server])
   (:import
@@ -66,7 +66,7 @@
                 (HttpResponse$BodyHandlers/ofString))))
 
 (defn- make-database! [pool]
-  (run-sql! pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork CASCADE")
+  (run-sql! pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS cellar CASCADE")
   (with-out-str @(:slow-part (database/migrate! pool (into [shops orders sessions/sessions-table] access/access-tables) [])))
   (access/install-access-functions! pool)
   (run-sql! pool (str "INSERT INTO shops VALUES ('" shop-7 "'), ('" shop-9 "')"))

@@ -10,7 +10,7 @@
    is left out: those it names may read some of the rows, never more."
   (:require
    [groundwork.server.access.sentences :as sentences]
-   [groundwork.server.database.api :as database]))
+   [cellar.api :as database]))
 
 (defn- find-reading-actions [{:keys [allow]} actions-do]
   (set (filter #(contains? (get actions-do %) :read) (if (set? allow) allow #{allow}))))

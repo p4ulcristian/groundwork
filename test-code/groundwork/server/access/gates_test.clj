@@ -8,7 +8,7 @@
    [clojure.test :refer [deftest is testing]]
    [groundwork.server.access.api :as access]
    [groundwork.server.sessions.api :as sessions]
-   [groundwork.server.database.api :as database]
+   [cellar.api :as database]
    [groundwork.server.steps.api :as steps]
    [groundwork.server.transport.api :as transport-server])
   (:import
@@ -63,7 +63,7 @@
 (defn- run-sql! [pool text] (database/run-statement! pool (database/make-query-from-sql-text "test" text) {}))
 
 (defn- make-database! [owner-pool]
-  (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork CASCADE")
+  (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS cellar CASCADE")
   (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gw_app') THEN CREATE ROLE gw_app LOGIN; END IF; END $$")
   (let [tables (into (access/put-gates-on-tables [shops orders] scope-kinds) (conj access/access-tables sessions/sessions-table))]
     (access/install-access-functions! owner-pool)        ; before the gates: their policies call these

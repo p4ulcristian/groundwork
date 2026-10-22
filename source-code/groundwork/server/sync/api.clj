@@ -25,7 +25,7 @@
      ;; transport's :on-sse-open #(sync/add-sse-line! sync %), :on-sse-close #(sync/remove-sse-line! sync %)"
   (:require
    [groundwork.server.access.api :as access]
-   [groundwork.server.database.api :as database]
+   [cellar.api :as database]
    [groundwork.server.steps.api :as steps]
    [groundwork.server.sync.tables :as tables]
    [groundwork.server.sync.telling :as telling]
@@ -49,7 +49,7 @@
 
 (defn put-sync-on-tables
   "The table maps, checked (check-sync-of-tables), each that tells given
-   :on-change: the triggers groundwork.server.database makes.
+   :on-change: the triggers cellar makes.
 
      (database/migrate! owner-pool (sync/put-sync-on-tables tables scope-kinds) changes)"
   [tables scope-kinds]

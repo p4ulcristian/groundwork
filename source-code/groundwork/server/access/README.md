@@ -7,7 +7,7 @@ of every handler; the gates (Postgres's row rules) from the same
 conditions; and the leak test. Who is asking comes from
 [groundwork.server.sessions](../sessions/README.md).
 
-Needs groundwork.server.database, steps, and transport-server (for the leak
+Needs cellar, steps, and transport-server (for the leak
 test); it writes groundwork.asking's JSON itself, with jsonista. API: `groundwork.server.access.api` (`access-tables`, `check-scope-kinds`,
 `add-scope!`, `add-role!`, `add-membership!`, `remove-membership!`,
 `list-actions-of-person`, `make-sql-conditions`, `install-access-functions!`,

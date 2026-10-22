@@ -4,7 +4,7 @@
    SQL conditions (make-sql-conditions). Piece 3: the check, put in front
    of every handler's steps (put-access-into-handlers). Piece 4: the gates,
    Postgres's row rules made from the same conditions (put-gates-on-tables,
-   for groundwork.server.database). Piece 5: the leak test (find-leaks).
+   for cellar). Piece 5: the leak test (find-leaks).
 
    The app says, in its code, its kinds of scope (a shop), their actions and
    the roles a new scope starts with (check-scope-kinds). Groundwork keeps,
@@ -17,7 +17,7 @@
      (access/list-actions-of-person transaction scope-kinds anna-id)
      ;=> {[:shop #uuid \"…\"] #{:orders/see :orders/edit}}
 
-   Its tables are maps (access-tables) the app passes to groundwork.server.database."
+   Its tables are maps (access-tables) the app passes to cellar."
   (:require
    [clojure.string]
    [groundwork.server.access.check :as check]
@@ -25,7 +25,7 @@
    [groundwork.server.access.leaks :as leaks]
    [groundwork.server.access.readers :as readers]
    [groundwork.server.access.scope-kinds :as scope-kinds]
-   [groundwork.server.database.api :as database]))
+   [cellar.api :as database]))
 
 (def access-tables
   "The scopes, their roles and actions, and the memberships, in Groundwork's folder."
@@ -200,7 +200,7 @@
 
 (defn put-gates-on-tables
   "The table maps, each with sentences given :gates (its :operations
-   conditions) for groundwork.server.database to make Postgres's row rules from. A
+   conditions) for cellar to make Postgres's row rules from. A
    table that names a scope (references a scope kind's table) must have
    :access, or :access :public on purpose; otherwise this throws.
 

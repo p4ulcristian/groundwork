@@ -10,11 +10,11 @@
      {:orders/of-shop {:steps [find-session check-access find-orders add-answer]}}
 
    Settings: {:session-days 30 :allowed-origin \"https://ironrainbow.com\" :secure-cookie? true}.
-   Its table is a map (sessions-table) the app passes to groundwork.server.database."
+   Its table is a map (sessions-table) the app passes to cellar."
   (:require
    [groundwork.server.sessions.cookie :as cookie]
    [groundwork.server.sessions.origin :as origin]
-   [groundwork.server.database.api :as database]
+   [cellar.api :as database]
    [groundwork.server.steps.api :as steps])
   (:import
    (java.time Duration Instant OffsetDateTime ZoneOffset)))
