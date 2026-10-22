@@ -1,10 +1,10 @@
-(ns groundwork.endpoints.wire-test
+(ns ground.wire-test
   "The wire format, the same on both sides: values keep their types; an id
    is a UUID on the server and text in the browser."
   (:require
    [clojure.test :refer [deftest is testing]]
-   #?(:cljs [groundwork.endpoints.decimal :as decimal])
-   [groundwork.endpoints.wire :as wire])
+   #?(:cljs [ground.wire.decimal :as decimal])
+   [ground.wire :as wire])
   #?(:cljs (:import (goog.date Date UtcDateTime))))
 
 (def shape

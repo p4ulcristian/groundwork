@@ -2,6 +2,8 @@
 
  :deps
  {org.clojure/clojure               {:mvn/version "1.12.6"}
+  ;; the libraries Groundwork is cut into (libs/), one by one
+  io.github.p4ulcristian/ground-wire {:local/root "libs/ground-wire"}
   com.github.seancorfield/next.jdbc {:mvn/version "1.4.70"}
   org.postgresql/postgresql         {:mvn/version "42.7.14"}
   com.zaxxer/HikariCP               {:mvn/version "7.1.0"}
@@ -22,7 +24,7 @@
 
  :aliases
  {;; npm install && npx shadow-cljs compile test   (the browser half's tests, on node)
-  :cljs {:extra-paths ["test"]
+  :cljs {:extra-paths ["test" "libs/ground-wire/test"]
          :extra-deps  {thheller/shadow-cljs {:mvn/version "3.5.7"}}}
 
   ;; clojure -X:test   (local database groundwork_test, see test/groundwork/postgres_test.clj)

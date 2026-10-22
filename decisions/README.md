@@ -18,6 +18,13 @@ Nothing else in an old file is rewritten. A newer file may say at its top what i
 
 The decisions in force: every file not replaced. A file changed in part names what changed it.
 
+### The libraries
+
+Each library keeps its own decisions, with its own index:
+
+- [ground-steps](../libs/ground-steps/decisions/README.md): work as a vector of steps
+- [ground-wire](../libs/ground-wire/decisions/README.md): what travels between browser and server
+
 ### What Groundwork is
 
 - [Groundwork is an opinionated framework](2026-10-12-groundwork-is-an-opinionated-framework.md), changed in part by [Groundwork is the default composition](2026-10-22-groundwork-is-the-default-composition.md)
@@ -104,9 +111,6 @@ The decisions in force: every file not replaced. A file changed in part names wh
 - [parquery is one address](2026-10-12-parquery-is-one-address.md)
 - [Asks travel together and run apart](2026-10-12-asks-travel-together-and-run-apart.md)
 - [Each ask fails alone](2026-10-12-each-ask-fails-alone.md)
-- [JSON and malli on the wire](2026-10-12-json-and-malli-on-the-wire.md), changed in part by [Dates and decimals keep their types in the browser](2026-10-12-dates-and-decimals-keep-their-types-in-the-browser.md) and [An id is text in the browser](2026-10-14-an-id-is-text-in-the-browser.md)
-- [Dates and decimals keep their types in the browser](2026-10-12-dates-and-decimals-keep-their-types-in-the-browser.md)
-- [An id is text in the browser](2026-10-14-an-id-is-text-in-the-browser.md)
 - [Postgres rings the bell](2026-10-12-postgres-rings-the-bell.md)
 - [Who is rung comes from who may see](2026-10-13-who-is-rung-comes-from-who-may-see.md), changed in part by [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md)
 - [Asking again, and bells that miss nothing](2026-10-14-asking-again-and-bells-that-miss-nothing.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md)
