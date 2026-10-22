@@ -1,9 +1,10 @@
 (ns groundwork.wire.api
-  "How a value travels as text and comes back as what it was, the same rules
-   on the JVM and in the browser. The api of groundwork.wire.
+  "How shaped data travels as text and comes back as what it was, the same
+   rules on the JVM and in the browser. The api of groundwork.wire.
 
-   JSON knows text, numbers, true/false, lists and maps. A value's shape
-   (malli) says what each part is, and gives the types back on the way in.
+   Shaped data: data whose every value is what its shape (malli) names.
+   JSON knows text, numbers, true/false, lists and maps, so on the way out
+   the shape turns the rest into text, and on the way in turns it back.
    Keys like :post/title travel as \"post/title\". A date, a decimal and a
    number too big for JavaScript travel as text and come back as what they
    are: on the JVM java.time, BigDecimal and real UUIDs; in the browser an
@@ -59,31 +60,30 @@
   [shape]
   (m/schema shape {:registry registry}))
 
-(defn turn-json-data-into-value-or-errors
-  "JSON data turned into a value, given its shape: {:value …} when it fits,
-   or {:errors …} (readable, by key) when it doesn't."
+(defn turn-json-data-into-shaped-data-or-errors
+  "JSON data turned into shaped data: {:shaped-data …} when it fits the
+   shape, or {:errors …} (readable, by key) when it doesn't."
   [shape json-data]
-  (let [schema (make-schema-from-shape shape)
-        value  (m/decode schema json-data transformer)]
-    (if (m/validate schema value)
-      {:value value}
-      {:errors (me/humanize (m/explain schema value))})))
+  (let [schema      (make-schema-from-shape shape)
+        shaped-data (m/decode schema json-data transformer)]
+    (if (m/validate schema shaped-data)
+      {:shaped-data shaped-data}
+      {:errors (me/humanize (m/explain schema shaped-data))})))
 
-(defn turn-value-into-json-data
-  "A value turned into JSON data, given its shape: ids, decimals and dates
-   become text."
-  [shape value]
-  (m/encode (make-schema-from-shape shape) value transformer))
+(defn turn-shaped-data-into-json-data
+  "Shaped data turned into JSON data: ids, decimals and dates become text."
+  [shape shaped-data]
+  (m/encode (make-schema-from-shape shape) shaped-data transformer))
 
-(defn does-value-fit-shape?
-  "Whether a value fits its shape."
-  [shape value]
-  (m/validate (make-schema-from-shape shape) value))
+(defn does-data-fit-shape?
+  "Whether data fits a shape."
+  [shape data]
+  (m/validate (make-schema-from-shape shape) data))
 
-(defn find-errors-in-value-for-shape
-  "Why a value doesn't fit its shape, readable, by key; nil when it fits."
-  [shape value]
-  (me/humanize (m/explain (make-schema-from-shape shape) value)))
+(defn find-errors-in-data-for-shape
+  "Why data doesn't fit a shape, readable, by key; nil when it fits."
+  [shape data]
+  (me/humanize (m/explain (make-schema-from-shape shape) data)))
 
 (defn turn-data-into-json-text
   "Data as JSON text; keyword keys keep their namespace: \"post/title\"."

@@ -1,5 +1,7 @@
 # A name is a sentence that starts with a verb
 
+> **Changed in part** by [Shaped data is data that fits its shape](../libraries/wire/decisions/2026-10-22-shaped-data-is-data-that-fits-its-shape.md) (2026-10-22): wire says "shaped data" and "data", not "value" (`find-errors-in-data-for-shape`; arguments `shape`, `shaped-data`, `json-text`).
+
 > Adds to [Names are made consistent once](2026-10-18-names-are-made-consistent-once.md).
 
 **Decision:** a function's name is the sentence of what it does, written out with dashes, without small words (a, the). It starts with one verb from this list:

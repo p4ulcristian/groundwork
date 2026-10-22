@@ -7,10 +7,10 @@
 
 (deftest the-api-names
   (is (= '#{make-schema-from-shape
-           turn-json-data-into-value-or-errors
-           turn-value-into-json-data
-           does-value-fit-shape?
-           find-errors-in-value-for-shape
+           turn-json-data-into-shaped-data-or-errors
+           turn-shaped-data-into-json-data
+           does-data-fit-shape?
+           find-errors-in-data-for-shape
            turn-data-into-json-text
            turn-json-text-into-data}
          (set (keys (ns-publics 'groundwork.wire.api))))))
