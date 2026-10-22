@@ -1,5 +1,7 @@
 # The first cut is thirteen libraries
 
+> **Changed in part** by [Three ways between browser and server](2026-10-22-three-ways-between-browser-and-server.md) (2026-10-22): bells reach the browser over a server stream (SSE), not a websocket.
+
 > **Changed in part** by [The background work is called chores](2026-10-22-the-background-work-is-called-chores.md) (2026-10-22): `ground-jobs` is `groundwork.background-chores`.
 
 > **Changed in part** by [The jobs library is named groundwork.background-jobs](2026-10-22-the-jobs-library-is-named-background-jobs.md) (2026-10-22): `ground-jobs` is `groundwork.background-jobs`.
