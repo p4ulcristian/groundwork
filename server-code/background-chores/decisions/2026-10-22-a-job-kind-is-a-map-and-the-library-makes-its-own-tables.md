@@ -17,7 +17,7 @@
 
 **The price:** a job waits up to `:poll-ms` before it runs. `create-tables!` can make the tables but not change them: a change to their shape waits for groundwork.schema, where these tables become table maps.
 
-**Not in yet:** LISTEN/NOTIFY for an instant start; a job running in a scope behind the wall (needs groundwork.access); an off switch for previews; the settings' schema.
+**Not in yet:** LISTEN/NOTIFY for an instant start; a job running in a scope behind the wall (needs groundwork.server.access); an off switch for previews; the settings' schema.
 
 **Instead of:**
 - kinds gathered into one registry from the settings, enqueued by name (the old way): a name is shorter to pass, but the kind is looked up instead of handed

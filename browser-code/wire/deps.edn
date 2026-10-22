@@ -1,0 +1,6 @@
+;; groundwork.browser.wire: shaped data <-> JSON text in the browser.
+;; ClojureScript only: built by shadow-cljs (big.js from npm for exact decimals).
+{:paths ["source-code"]
+
+ :deps
+ {metosin/malli {:mvn/version "0.20.3"}}}

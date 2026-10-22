@@ -1,13 +1,13 @@
 ;; groundwork.sessions: who is asking; a session in Postgres, a cookie in the browser.
-;; Uses groundwork.database and groundwork.steps.
+;; Uses groundwork.server.database and groundwork.server.steps.
 ;; Its tests, here, see nothing else:   clojure -X:test
 ;; The tests that need Postgres run when GROUNDWORK_SQL_TEST_PORT is set.
 {:paths ["source-code"]
 
  :deps
  {org.clojure/clojure                        {:mvn/version "1.12.6"}
-  io.github.p4ulcristian/groundwork-database {:local/root "../database"}
-  io.github.p4ulcristian/groundwork-steps    {:local/root "../steps"}}
+  io.github.p4ulcristian/groundwork-server-database {:local/root "../database"}
+  io.github.p4ulcristian/groundwork-server-steps    {:local/root "../steps"}}
 
  :aliases
  {:test {:extra-paths ["test-code"]

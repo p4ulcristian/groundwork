@@ -1,4 +1,4 @@
-# groundwork.database
+# groundwork.server.database
 
 Talking to Postgres, and shaping its tables.
 
@@ -11,13 +11,13 @@ Talking to Postgres, and shaping its tables.
   data stops with a message and runs nothing; changes (a rename, a drop, a
   backfill) are data, run once. A map's `:gates` become row-level security.
 
-Needs next.jdbc, PgJDBC, HikariCP and jsonista. API: `groundwork.database.api`.
+Needs next.jdbc, PgJDBC, HikariCP and jsonista. API: `groundwork.server.database.api`.
 The parts: `server_code/queries/` (postgres, params, names, rows) and
 `server_code/tables/` (catalog, desired, plan, gates, names, types); the
 tables' own queries in `sql_files/`. Decisions: [`decisions/`](decisions/README.md).
 
 ```clojure
-(require '[groundwork.database.api :as database])
+(require '[groundwork.server.database.api :as database])
 
 (def pool (database/start-pool! {:host "localhost" :port 5432 :database "app" :user "app" :password nil
                                  :tls :off :pool-size 10 :statement-timeout-ms 30000 :time-zone "UTC"}))

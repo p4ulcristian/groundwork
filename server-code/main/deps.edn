@@ -1,0 +1,13 @@
+;; groundwork.server.main: the server's one start; lists every server library.
+;; Its tests (layers, contracts) read the whole repo: run them from the root.
+{:paths ["source-code"]
+
+ :deps
+ {org.clojure/clojure {:mvn/version "1.12.6"}
+  io.github.p4ulcristian/groundwork-server-wire              {:local/root "../wire"}
+  io.github.p4ulcristian/groundwork-server-steps             {:local/root "../steps"}
+  io.github.p4ulcristian/groundwork-server-database          {:local/root "../database"}
+  io.github.p4ulcristian/groundwork-server-transport         {:local/root "../transport"}
+  io.github.p4ulcristian/groundwork-server-sessions          {:local/root "../sessions"}
+  io.github.p4ulcristian/groundwork-server-access            {:local/root "../access"}
+  io.github.p4ulcristian/groundwork-server-background-chores {:local/root "../background-chores"}}}

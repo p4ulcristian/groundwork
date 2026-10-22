@@ -1,5 +1,7 @@
 # A library says where it runs; sessions and access stay apart
 
+> **Changed in part** by [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md) (2026-10-22): the side is a root folder and a namespace segment (`groundwork.server.transport`), not a `-server` suffix; wire and main are split too.
+
 > Changes in part [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md): transport is two libraries, one per side, and auth is sessions and access again.
 
 **Decision:**

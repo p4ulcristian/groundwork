@@ -1,15 +1,15 @@
-# groundwork.steps
+# groundwork.server.steps
 
 Work done as a list of steps over one map, the context. A step is
 `{:name a-keyword :enter (fn [context] context)}`; the steps run in order
 until one adds an answer.
 
-Needs only Clojure. API: `groundwork.steps.api` (`run-steps-until-answered`,
+Needs only Clojure. API: `groundwork.server.steps.api` (`run-steps-until-answered`,
 `add-answer-to-context`, `does-context-have-answer?`). Decisions:
 [`decisions/`](decisions/README.md).
 
 ```clojure
-(require '[groundwork.steps.api :as steps])
+(require '[groundwork.server.steps.api :as steps])
 
 (def add-ask-to-context
   {:name  :add-ask-to-context
@@ -20,7 +20,7 @@ Needs only Clojure. API: `groundwork.steps.api` (`run-steps-until-answered`,
    :enter (fn [context] (steps/add-answer-to-context context {:shop (:ask context)}))})
 
 (steps/run-steps-until-answered [add-ask-to-context add-answer] {})
-;=> {:ask #:shop{:id 7}, :groundwork.steps/answer {:shop #:shop{:id 7}}}
+;=> {:ask #:shop{:id 7}, :groundwork.server.steps/answer {:shop #:shop{:id 7}}}
 ```
 
 ## Tests

@@ -1,0 +1,15 @@
+;; groundwork.server.wire: shaped data <-> JSON text on the JVM; only what it needs.
+;; Its tests, here, see nothing else:   clojure -X:test
+{:paths ["source-code"]
+
+ :deps
+ {org.clojure/clojure {:mvn/version "1.12.6"}
+  metosin/malli       {:mvn/version "0.20.3"}
+  metosin/jsonista    {:mvn/version "1.0.2"}}
+
+ :aliases
+ {:test {:extra-paths ["test-code"]
+         :extra-deps  {io.github.cognitect-labs/test-runner
+                       {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
+         :exec-fn     cognitect.test-runner.api/test
+         :exec-args   {:dirs ["test-code"]}}}}
