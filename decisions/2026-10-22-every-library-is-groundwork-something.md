@@ -1,5 +1,7 @@
 # Every library is groundwork.<name>, and the main one is groundwork.main
 
+> **Changed in part** by [A library is a folder with its own deps.edn](2026-10-22-a-library-is-a-folder-with-its-own-deps.md) (2026-10-22): libraries/<name>/ with its own deps.edn, source-code, test-code, decisions.
+
 > **Changed in part** by [Libraries are folders in one tree, their edges declared](2026-10-22-libraries-are-folders-in-one-tree.md) (2026-10-22): one source tree, libraries as folders in source-code/groundwork/, edges in libraries.edn.
 
 > **Changed in part** by [The door is a door file, in its language's folder](2026-10-22-the-door-is-a-door-file.md) (2026-10-22): every language is a folder; the door is its `door` file.

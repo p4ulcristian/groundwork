@@ -22,7 +22,7 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 Each library keeps its own decisions, with its own index:
 
-- [groundwork.wire](wire/README.md): what travels between browser and server
+- [groundwork.wire](../libraries/wire/decisions/README.md): what travels between browser and server
 
 ### What Groundwork is
 
@@ -40,7 +40,8 @@ Each library keeps its own decisions, with its own index:
 - [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md), changed in part by [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md)
 - [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md), replaced by [The api sits at the library's root](2026-10-22-the-api-sits-at-the-librarys-root.md)
 - [The api sits at the library's root](2026-10-22-the-api-sits-at-the-librarys-root.md)
-- [Libraries are folders in one tree, their edges declared](2026-10-22-libraries-are-folders-in-one-tree.md)
+- [Libraries are folders in one tree, their edges declared](2026-10-22-libraries-are-folders-in-one-tree.md), replaced by [A library is a folder with its own deps.edn](2026-10-22-a-library-is-a-folder-with-its-own-deps.md)
+- [A library is a folder with its own deps.edn](2026-10-22-a-library-is-a-folder-with-its-own-deps.md)
 - [Every library has an api, and its parts are server-code, browser-code or shared-code](2026-10-22-server-code-browser-code-shared-code.md)
 - [Each library keeps its own decisions](2026-10-22-each-library-keeps-its-own-decisions.md), changed in part by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md)
 - [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md)

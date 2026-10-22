@@ -3,16 +3,23 @@
 An opinionated Clojure framework for web apps on Postgres, rebuilt from the
 bottom as libraries. The spec is [`decisions/`](decisions/README.md).
 
-Each library is a folder in `source-code/groundwork/<name>/`; its api is
-`groundwork.<name>.api`, its parts sit in language folders beside it.
-[`libraries.edn`](libraries.edn) says which library may use which, and a
-test checks every require against it.
+Each library lives in `libraries/<name>/` with its own `deps.edn`, its code
+in `source-code/groundwork/<name>/` (its api `groundwork.<name>.api`, its
+parts in `server_code/`, `browser_code/`), its tests in `test-code/`, its
+decisions in `decisions/`. A library that uses another lists it in its own
+`deps.edn`, so testing a library inside its folder proves it needs nothing
+else.
 
 | library | api | what it is |
 |---|---|---|
 | wire | `groundwork.wire.api` | how a value travels as text and comes back as what it was |
-| main | `groundwork.main.api` | puts the libraries together; grows as they are added |
+| main | `groundwork.main.api` | puts the libraries together; lists every one it uses |
 
 ```sh
-clojure -X:test     # every library's tests, and the edges between them
+clojure -X:test                          # every library's tests, from here
+(cd libraries/wire && clojure -X:test)   # one library alone
+clojure -M:dev                           # every library, one REPL
 ```
+
+An app takes all of Groundwork from git; a project that wants one library
+takes it with `:deps/root "libraries/wire"`.

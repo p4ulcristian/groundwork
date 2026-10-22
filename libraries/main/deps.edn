@@ -1,0 +1,6 @@
+;; groundwork.main: puts the libraries together, so it lists every one it uses.
+{:paths ["source-code"]
+
+ :deps
+ {org.clojure/clojure {:mvn/version "1.12.6"}
+  io.github.p4ulcristian/groundwork-wire {:local/root "../wire"}}}

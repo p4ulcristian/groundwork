@@ -1,20 +1,21 @@
-{;; Groundwork: one source tree; each library is a folder in
- ;; source-code/groundwork/ (libraries.edn says which may use which).
- :paths ["source-code"]
-
- :deps
- {org.clojure/clojure {:mvn/version "1.12.6"}
-  ;; groundwork.wire
-  metosin/malli       {:mvn/version "0.20.3"}
-  metosin/jsonista    {:mvn/version "1.0.2"}}
+;; Groundwork: its libraries live in libraries/<name>/, each with its own deps.edn.
+;; Depending on this repo is depending on groundwork.main, which brings the rest.
+;; One library alone, from git: {:git/url … :git/sha … :deps/root "libraries/wire"}
+{:deps
+ {io.github.p4ulcristian/groundwork-main {:local/root "libraries/main"}}
 
  :aliases
- {;; npm install && npx shadow-cljs compile test   (the browser half's tests, on node)
-  :cljs {:extra-paths ["test"]
-         :extra-deps  {thheller/shadow-cljs {:mvn/version "3.5.7"}}}
+ {;; the workbench: every library at once, one REPL
+  :dev  {:extra-deps {io.github.p4ulcristian/groundwork-wire {:local/root "libraries/wire"}
+                      io.github.p4ulcristian/groundwork-main {:local/root "libraries/main"}}}
 
-  ;; clojure -X:test
-  :test {:extra-paths ["test"]
+  ;; every library's tests together:   clojure -X:test
+  :test {:extra-paths ["libraries/wire/test-code"]
          :extra-deps  {io.github.cognitect-labs/test-runner
                        {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
-         :exec-fn     cognitect.test-runner.api/test}}}
+         :exec-fn     cognitect.test-runner.api/test
+         :exec-args   {:dirs ["libraries/wire/test-code"]}}
+
+  ;; the browser half's tests:   npx shadow-cljs compile test
+  :cljs {:extra-paths ["libraries/wire/test-code"]
+         :extra-deps  {thheller/shadow-cljs {:mvn/version "3.5.7"}}}}}

@@ -1,8 +1,0 @@
-;; Groundwork's libraries: each is a folder in source-code/groundwork/<name>/,
-;; its api is groundwork.<name>.api. :uses lists the libraries it may require;
-;; test/groundwork/libraries_test.clj checks every require against this.
-;;
-;; The namespaces of today's Groundwork that aren't a library yet
-;; (groundwork.core, groundwork.web, …) belong to main until they are cut out.
-{wire {:uses []}
- main {:uses :all}}
