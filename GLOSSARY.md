@@ -14,4 +14,5 @@ Each word in a Groundwork name means one thing, everywhere. See
 | errors | a map from each key that doesn't fit to readable messages: `{:order/id ["should be a uuid"]}` |
 | context | the one map that steps pass along |
 | step | `{:name a-keyword :enter (fn [context] context)}` |
+| job | one piece of work saved in Postgres to run outside a request, by a worker |
 | answer | what the work returns; once the context has one, no more steps run |

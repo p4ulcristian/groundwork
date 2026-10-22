@@ -1,5 +1,7 @@
 # The first cut is thirteen libraries
 
+> **Changed in part** by [The jobs library is named groundwork.background-jobs](2026-10-22-the-jobs-library-is-named-background-jobs.md) (2026-10-22): `ground-jobs` is `groundwork.background-jobs`.
+
 > Answers which parts become which library, left open by [The ground-* libraries live in one repo](2026-10-22-the-ground-libraries-live-in-one-repo.md). A first version: it will change as the libraries are used.
 
 **Decision:** Groundwork is cut into these libraries, one idea each:
