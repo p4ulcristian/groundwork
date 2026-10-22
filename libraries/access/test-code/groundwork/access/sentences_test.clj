@@ -22,8 +22,8 @@
              {:allow :orders/see :to [:me :order/customer-id]}
              {:allow :orders/place :to :signed-in :when [:= :order/status "placed"]}]})
 
-(def ^:private member-sees "order__shop_id = ANY ((SELECT groundwork.find_scopes_holding('shop', 'orders/see')))")
-(def ^:private member-edits "order__shop_id = ANY ((SELECT groundwork.find_scopes_holding('shop', 'orders/edit')))")
+(def ^:private member-sees "order__shop_id = ANY ((SELECT groundwork.find_scopes_holding('shop', 'orders/see'))::uuid[])")
+(def ^:private member-edits "order__shop_id = ANY ((SELECT groundwork.find_scopes_holding('shop', 'orders/edit'))::uuid[])")
 
 (deftest each-action-gets-one-condition
   (let [conditions (access/make-sql-conditions [shops orders] scope-kinds)]

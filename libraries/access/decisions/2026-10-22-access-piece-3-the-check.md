@@ -1,0 +1,16 @@
+# access, piece 3: the check, put in front of every handler
+
+> Builds on [Groundwork ships permissions](../../../decisions/2026-10-12-groundwork-ships-permissions.md), [What every endpoint declares](../../../decisions/2026-10-12-what-every-endpoint-declares.md) and [Ring at the edge, steps inside](../../../decisions/2026-10-22-ring-at-the-edge-steps-inside.md).
+
+**Decision:**
+
+- **Every handler declares** its `:action`, `:params-shape` and `:answer-shape`, and, when the message names one row, its `:record` (`[:orders :order/id]`: the table, and the param holding the row's id). `put-access-into-handlers` refuses, with every problem at once, a handler missing one, or a `:record` whose table has no sentence allowing the action.
+- **The app doesn't write the check.** Each handler gets it in front of its steps, and a `:run-steps-in` that, for each message: finds the session; opens one transaction; tells Postgres who is asking (`groundwork.asking`: the person, and the scopes holding each action, from `list-actions-of-person`); runs the steps with `:groundwork.access/transaction` in the context.
+- **The check:** with a `:record`, one query asks whether the row exists and the action's condition (piece 2) holds for it; if not, the answer is "Not found.", the same for a row of another shop, a row that doesn't exist and nobody signed in, and no step of the handler runs.
+- `install-access-functions!` installs the two functions the conditions read (`groundwork.find_asking_person()`, `groundwork.find_scopes_holding(kind, action)`).
+
+**Why:** a check an app must remember to write is the leak Iron Rainbow had; here a handler can't run without one, and the check and the gates (piece 4) read the same conditions and the same setting.
+
+**The price:** a handler without `:record` (a list, a new row) isn't checked here; the gates (piece 4) filter lists and refuse a new row that breaks the rule. "Not allowed" for a row the person may see but not change isn't told apart from "Not found." yet. Reads don't run read-only yet. The handler's steps must use the transaction, not the pool; nothing stops them yet.
+
+**Instead of:** a check step the app adds to each handler: one forgotten handler is a leak.

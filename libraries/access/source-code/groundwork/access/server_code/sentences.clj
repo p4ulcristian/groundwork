@@ -15,7 +15,8 @@
    Who is asking is read from two SQL functions the gates install (piece 4):
    groundwork.find_scopes_holding(kind, action) and
    groundwork.find_asking_person(). Each is wrapped in (SELECT …), so
-   Postgres asks once per query, not once per row."
+   Postgres asks once per query, not once per row; the array one is cast
+   back to uuid[], or ANY would read it as a subquery of arrays."
   (:require
    [clojure.string :as str]
    [groundwork.schema.api :as schema]))
@@ -48,7 +49,7 @@
     (let [kind (find-scope-kind-of-column table (second to) tables-by-key scope-kinds)]
       (str (schema/turn-key-into-column-name (second to))
            " = ANY ((SELECT groundwork.find_scopes_holding(" (quote-text (name kind)) ", "
-           (quote-text (subs (str action) 1)) ")))"))
+           (quote-text (subs (str action) 1)) "))::uuid[])"))
     (= :me (first to))
     (str (schema/turn-key-into-column-name (second to)) " = (SELECT groundwork.find_asking_person())")
     :else (throw (ex-info (str "Not a :to Groundwork knows: " (pr-str to)) {:type :groundwork.access/bad-to :to to}))))

@@ -50,7 +50,7 @@
   (with-server (find-handler (transport/make-routes-for-messages handlers {}) 0 :post)
     (fn [port]
       (testing "each name answered under its name; one failing doesn't stop the other"
-        (is (= [200 "{\"greetings/hello\":{\"hello\":\"Anna\"},\"greetings/fail\":{\"error\":\"it broke\"}}"]
+        (is (= [200 "{\"greetings/hello\":{\"hello\":\"Anna\"},\"greetings/fail\":{\"error\":\"Something went wrong.\"}}"]
                (post-json port "{\"greetings/hello\":{\"name\":\"Anna\"},\"greetings/fail\":{}}"))))
       (testing "an unknown name: an error under it"
         (is (= [200 "{\"nobody/home\":{\"error\":\"No handler named :nobody/home\"}}"]

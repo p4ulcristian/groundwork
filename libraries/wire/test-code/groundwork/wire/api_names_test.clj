@@ -12,5 +12,6 @@
            does-data-fit-shape?
            find-errors-in-data-for-shape
            turn-data-into-json-text
-           turn-json-text-into-data}
+           turn-json-text-into-data
+           turn-shape-into-closed-shape}
          (set (keys (ns-publics 'groundwork.wire.api))))))

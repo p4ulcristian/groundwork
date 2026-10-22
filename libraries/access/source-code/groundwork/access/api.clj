@@ -1,7 +1,8 @@
 (ns groundwork.access.api
   "Who may see and do what. The api of groundwork.access. Piece 1: who
    belongs where. Piece 2: the :access sentences on table maps, turned into
-   SQL conditions (make-sql-conditions).
+   SQL conditions (make-sql-conditions). Piece 3: the check, put in front
+   of every handler's steps (put-access-into-handlers).
 
    The app says, in its code, its kinds of scope (a shop), their actions and
    the roles a new scope starts with (check-scope-kinds). Groundwork keeps,
@@ -17,6 +18,7 @@
    Its tables are maps (access-tables) the app passes to groundwork.schema."
   (:require
    [clojure.string]
+   [groundwork.access.server-code.check :as check]
    [groundwork.access.server-code.conditions :as conditions]
    [groundwork.access.server-code.scope-kinds :as scope-kinds]
    [groundwork.sql.api :as sql]))
@@ -130,3 +132,32 @@
    The check uses an action's condition; the gates use an operation's."
   [tables scope-kinds]
   (conditions/make-sql-conditions tables scope-kinds))
+
+(def ^:private create-access-functions (make-query "create_access_functions.sql"))
+
+(defn install-access-functions!
+  "Installs, or replaces, the two SQL functions the check and the gates read
+   who is asking from: groundwork.find_asking_person() and
+   groundwork.find_scopes_holding(kind, action)."
+  [pool]
+  (sql/run-statement! pool create-access-functions {}))
+
+(defn put-access-into-handlers
+  "Every handler (transport's table) checked for :action, :params-shape and
+   :answer-shape, and for a sentence allowing its action on its :record;
+   then each gets the check in front of its steps and runs them in one
+   transaction that tells Postgres who is asking. A message found on no
+   session, or naming a record its person may not reach, is answered
+   \"Not found.\" before the handler's own steps.
+
+     (access/put-access-into-handlers handlers {:pool pool :tables tables :scope-kinds scope-kinds
+                                                :find-session-step (sessions/make-find-session-step pool settings)})
+
+   The handler's steps reach the database through
+   :groundwork.access/transaction in their context."
+  [handlers {:keys [tables scope-kinds] :as setup}]
+  (check/put-access-into-handlers
+   handlers
+   (assoc setup
+          :conditions   (conditions/make-sql-conditions tables scope-kinds)
+          :list-actions #(list-actions-of-person %1 scope-kinds %2))))

@@ -19,6 +19,7 @@
    [malli.error :as me]
    [malli.registry :as mr]
    [malli.transform :as mt]
+   [malli.util :as mu]
    #?(:clj  [groundwork.wire.server-code.json :as json]
       :cljs [groundwork.wire.browser-code.json :as json])
    #?(:clj  [groundwork.wire.server-code.time :as time]
@@ -94,3 +95,9 @@
   "JSON text as data; keys become keywords, \"post/title\" → :post/title."
   [json-text]
   (json/read-json json-text))
+
+(defn turn-shape-into-closed-shape
+  "The same shape with every map closed: a key it doesn't name makes data
+   not fit. For answers, so an extra column can't leave the server."
+  [shape]
+  (mu/closed-schema (make-schema-from-shape shape)))
