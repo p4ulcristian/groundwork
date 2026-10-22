@@ -1,5 +1,7 @@
 # Nine libraries, by the questions an app asks
 
+> **Changed in part** by [A library says where it runs](2026-10-22-a-library-says-where-it-runs.md) (2026-10-22): transport is transport-server and transport-browser; auth is sessions and access again.
+
 > Changes in part [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md), [web becomes transport and routes](2026-10-22-transport-and-routes.md) and [The first cut is thirteen libraries](2026-10-22-the-first-cut-is-thirteen-libraries.md): three pairs become one library each.
 
 **Decision:** Groundwork's libraries answer the questions an app asks, one each:

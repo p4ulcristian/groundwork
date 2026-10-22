@@ -1,0 +1,8 @@
+;; groundwork.transport-browser: the browser's side of http, sse, ws, and the pages in the
+;; address bar (reitit-frontend); uses groundwork.wire. ClojureScript only: built by
+;; shadow-cljs with the app; nothing to run on the JVM.
+{:paths ["source-code"]
+
+ :deps
+ {metosin/reitit-frontend                {:mvn/version "0.11.0"}
+  io.github.p4ulcristian/groundwork-wire {:local/root "../wire"}}}

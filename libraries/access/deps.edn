@@ -1,0 +1,24 @@
+;; groundwork.access: who may see and do what;
+;; uses groundwork.database, steps, wire and transport-server (for the leak test).
+;; Its tests, here, see nothing else:   clojure -X:test
+;; The tests that need Postgres run when GROUNDWORK_SQL_TEST_PORT is set.
+{:paths ["source-code"]
+
+ :deps
+ {org.clojure/clojure                   {:mvn/version "1.12.6"}
+  io.github.p4ulcristian/groundwork-database {:local/root "../database"}
+  io.github.p4ulcristian/groundwork-steps  {:local/root "../steps"}
+  io.github.p4ulcristian/groundwork-wire   {:local/root "../wire"}
+  ;; the leak test asks each handler; its params come from malli's generator
+  io.github.p4ulcristian/groundwork-transport-server {:local/root "../transport-server"}
+  org.clojure/test.check {:mvn/version "1.1.1"}}
+
+ :aliases
+ {:test {:extra-paths ["test-code"]
+         :extra-deps  {io.github.cognitect-labs/test-runner
+                       {:git/tag "v0.5.1" :git/sha "dfb30dd"}
+                       org.slf4j/slf4j-nop {:mvn/version "2.0.17"}
+                       ;; the check is tested end to end, with a session
+                       io.github.p4ulcristian/groundwork-sessions {:local/root "../sessions"}}
+         :exec-fn     cognitect.test-runner.api/test
+         :exec-args   {:dirs ["test-code"]}}}}

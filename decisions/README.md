@@ -22,11 +22,12 @@ The decisions in force: every file not replaced. A file changed in part names wh
 
 Each library keeps its own decisions, with its own index:
 
-- [groundwork.wire](../libraries/wire/decisions/README.md): how data keeps its types
+- [groundwork.wire](../libraries/wire/decisions/README.md): how data keeps its types (both sides)
 - [groundwork.steps](../libraries/steps/decisions/README.md): how work is written
 - [groundwork.database](../libraries/database/decisions/README.md): queries, and tables as maps
-- [groundwork.transport](../libraries/transport/decisions/README.md): http, sse, ws, and the routes
-- [groundwork.auth](../libraries/auth/decisions/README.md): sessions and access
+- [groundwork.transport-server](../libraries/transport-server/decisions/README.md) and [groundwork.transport-browser](../libraries/transport-browser/decisions/README.md): http, sse, ws, and the routes
+- [groundwork.sessions](../libraries/sessions/decisions/README.md): who is asking
+- [groundwork.access](../libraries/access/decisions/README.md): what they may do
 - [groundwork.background-chores](../libraries/background-chores/decisions/README.md): what runs later
 
 ### What Groundwork is
@@ -41,7 +42,8 @@ Each library keeps its own decisions, with its own index:
 - [Libraries pass values](2026-10-22-libraries-pass-values.md), replaced by [Libraries stand in layers](2026-10-22-libraries-stand-in-layers.md)
 - [Libraries stand in layers](2026-10-22-libraries-stand-in-layers.md)
 - [No Polylith tool](2026-10-22-no-polylith-tool.md)
-- [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md)
+- [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md), changed in part by [A library says where it runs](2026-10-22-a-library-says-where-it-runs.md)
+- [A library says where it runs; sessions and access stay apart](2026-10-22-a-library-says-where-it-runs.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
 - [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md), changed in part by [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md) and [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)
 - [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md), changed in part by [Every library is groundwork.<name>, and the main one is groundwork.main](2026-10-22-every-library-is-groundwork-something.md) and [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md)
