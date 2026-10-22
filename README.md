@@ -29,10 +29,9 @@ How data keeps its types (ids, exact decimals, days, moments) is
 [wire](https://github.com/p4ulcristian/wire), a library of its own that Groundwork
 takes from git; its decisions live there. So is talking to Postgres and shaping
 its tables: [cellar](https://github.com/p4ulcristian/cellar), every query a
-`.sql` file, tables as maps. Both sit in `libraries/` as git submodules at the
-tags `deps.edn` names (`git clone --recurse-submodules`, or
-`git submodule update --init`); `clojure -X:local-libraries:test` runs
-Groundwork on those folders instead of the tags.
+`.sql` file, tables as maps.
+Every Groundwork repository carries the GitHub topic `groundwork`:
+`user:p4ulcristian topic:groundwork` lists them all.
 
 Still to come: the smaller list (visitor sessions, access extras, rate limits, clean-ups).
 

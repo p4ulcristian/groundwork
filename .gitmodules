@@ -1,6 +1,0 @@
-[submodule "libraries/wire"]
-	path = libraries/wire
-	url = git@github.com:p4ulcristian/wire.git
-[submodule "libraries/cellar"]
-	path = libraries/cellar
-	url = git@github.com:p4ulcristian/cellar.git
