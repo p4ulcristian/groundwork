@@ -72,7 +72,7 @@
    :indexes  []
    :references []
    :triggers  []
-   :access   [{:allow #{:orders/see :orders/edit} :to [:member :order/shop-id]}]
+   :access   [{:allow #{:orders/see :orders/edit} :only :all-of-the-action :to [:member :order/shop-id]}]
    :doorbell :tell})
 
 (def ^:private shop-emails
@@ -85,8 +85,8 @@
    :indexes  [[:shop-email/shop-id]]
    :references []
    :triggers  []
-   :access   [{:allow :shop-emails/see :to [:member :shop-email/shop-id]}
-              {:allow :shop-emails/mark-bounced :to [:system :postbox]}]
+   :access   [{:allow :shop-emails/see :only :all-of-the-action :to [:member :shop-email/shop-id]}
+              {:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :postbox]}]
    :doorbell :tell})
 
 (def ^:private mark-bounced
@@ -120,14 +120,14 @@
   (filterv #(= event (get % "event")) @lines))
 
 (def ^:private handlers
-  {:orders/count {:action :orders/see :params-shape [:map] :answer-shape :int :rate-limit {:max 2 :per-ms 60000}
+  {:orders/count {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :rate-limit {:max 2 :per-ms 60000}
                   :run-steps-in nil
                   :steps  [{:name :answer-count :enter #(bridge/add-answer-to-context % 0)}]}
-   :orders/all {:action :orders/see :params-shape [:map] :answer-shape [:vector :uuid] :rate-limit nil :run-steps-in nil
+   :orders/all {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape [:vector :uuid] :rate-limit nil :run-steps-in nil
                 :steps  [{:name  :answer-all-orders
                           :enter #(bridge/add-answer-to-context
                                    % (mapv :order/id (database/find-rows (:doorman/transaction %) find-all-orders {})))}]}
-   :orders/add {:action :orders/edit :params-shape [:map [:order/shop-id :uuid] [:test/wait-ms :int]] :answer-shape :uuid
+   :orders/add {:action :orders/edit :scope [:shop :order/shop-id] :params-shape [:map [:order/shop-id :uuid] [:test/wait-ms :int]] :answer-shape :uuid
                 :rate-limit nil :run-steps-in nil
                 :steps  [{:name  :add-order
                           :enter (fn [{:bridge/keys [message-data] :as context}]
@@ -135,13 +135,13 @@
                                    (bridge/add-answer-to-context
                                     context (:order/id (database/find-one-row (:doorman/transaction context) insert-order
                                                                               (select-keys message-data [:order/shop-id])))))}]}
-   :orders/add-badly {:action :orders/edit :params-shape [:map [:order/shop-id :uuid]] :answer-shape :uuid
+   :orders/add-badly {:action :orders/edit :scope [:shop :order/shop-id] :params-shape [:map [:order/shop-id :uuid]] :answer-shape :uuid
                       :rate-limit nil :run-steps-in nil
                       :steps  [{:name  :add-order-and-answer-a-number
                                 :enter (fn [{:bridge/keys [message-data] :as context}]
                                          (database/find-one-row (:doorman/transaction context) insert-order message-data)
                                          (bridge/add-answer-to-context context 42))}]}
-   :orders/broken {:action :orders/see :params-shape [:map] :answer-shape :int :rate-limit nil :run-steps-in nil
+   :orders/broken {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :rate-limit nil :run-steps-in nil
                    :steps  [{:name  :say-and-ask-untyped
                              :enter (fn [{:bridge/keys [log] :as context}]
                                       (log :info :test/about-to-break {})
@@ -213,7 +213,8 @@
    :migration         {:instant-part {:statement-timeout-ms 10000 :lock-timeout-ms 5000}
                        :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
    :sessions          {:cookie-name "groundwork_session" :session-days 1 :visitor-session-days 1 :renew-after-minutes 60
-                       :allowed-origin "http://app.test" :secure-cookie? false}
+                       :allowed-origin "http://app.test" :secure-cookie? false
+                       :token-lead "app_" :token-shown-characters 10 :token-longest-days 30}
    :my-actions        {:rate-limit {:max 60 :per-ms 60000}}
    :run-once          {:keep-keys-ms 1500
                        :forget-keys  {:cron "0 * * * *" :timeout-ms 10000 :attempts 1}
@@ -253,7 +254,8 @@
 
 (def ^:private app-routes
   "The app's own routes: a page-like read as the asker, a sign-in, a
-   webhook that reads its raw body."
+   call of another protocol answered as the request's asker (its cookie or
+   its token), a webhook that reads its raw body."
   {:app/orders  {:address "/app/orders" :method :get :kind :browser :rate-limit nil
                  :handler (fn [_request {:keys [asker run-as-asker!]}]
                             {:status 200 :headers {"content-type" "text/plain"}
@@ -262,15 +264,11 @@
    :app/sign-in {:address "/app/sign-in" :method :post :kind :browser :rate-limit nil
                  :handler (fn [_request {:keys [sign-in!]}]
                             {:status 200 :headers {"set-cookie" (:set-cookie (sign-in! anna #{}))} :body "signed in"})}
-   :app/token   {:address "/app/token" :method :post :kind :server-to-server :rate-limit nil
+   :app/call    {:address "/app/call" :method :post :kind :browser :rate-limit nil
                  :handler (fn [request {:keys [answer-as]}]
-                            (if-let [person-id ({"Bearer anna-token" anna "Bearer bob-token" bob} (get-in request [:headers "authorization"]))]
-                              {:status 200 :headers {"content-type" "application/json"}
-                               :body (json/write-value-as-string
-                                      (answer-as (update-keys (json/read-value (slurp (:body request))) keyword)
-                                                 {:person-id person-id :visitor-id nil :session-flags #{}}
-                                                 {:rate-limit-key (str "token:" person-id)}))}
-                              {:status 401 :headers {} :body "no such token"}))}
+                            {:status 200 :headers {"content-type" "application/json"}
+                             :body (json/write-value-as-string
+                                    (answer-as (update-keys (json/read-value (slurp (:body request))) keyword) request))})}
    :app/hook    {:address "/app/hook" :method :post :kind :server-to-server :rate-limit {:max 2 :per-ms 60000}
                  :handler (fn [request _tools]
                             {:status 200 :headers {"content-type" "text/plain"} :body (str "got " (slurp (:body request)))})}})
@@ -336,6 +334,16 @@
                                      (.build)))
                         (HttpResponse$BodyHandlers/ofString))]
     [(.statusCode response) (.body response) (.orElse (.firstValue (.headers response) "set-cookie") nil)]))
+
+(defn- send-plain-with-token
+  "A GET with Authorization: Bearer token, no origin, no cookie: [status body]."
+  [server-port path token]
+  (let [response (.send (HttpClient/newHttpClient)
+                        (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port path)))
+                            (.header "authorization" (str "Bearer " token))
+                            (.build))
+                        (HttpResponse$BodyHandlers/ofString))]
+    [(.statusCode response) (.body response)]))
 
 (defn- send-write
   "A POST of a write with its one-time key in the idempotency-key header:
@@ -588,24 +596,37 @@
                 (is (= [200 "got {\"type\":\"charge\"}"] (take 2 (send-plain server-port "POST" "/app/hook" nil nil "{\"type\":\"charge\"}"))))
                 (is (= 200 (first (send-plain server-port "POST" "/app/hook" nil nil "x"))))
                 (is (= 429 (first (send-plain server-port "POST" "/app/hook" nil nil "x"))) "the third in a minute"))
-              (testing "a token's call, answered as its person through every check"
-                (let [call (fn [token body]
-                             (let [response (.send (HttpClient/newHttpClient)
-                                                   (cond-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/app/token")))
-                                                     token (.header "authorization" (str "Bearer " token))
-                                                     true  (-> (.POST (HttpRequest$BodyPublishers/ofString body)) (.build)))
-                                                   (HttpResponse$BodyHandlers/ofString))]
-                               [(.statusCode response) (.body response)]))
-                      orders-of #(get (json/read-value (second (call % "{\"orders/all\":{}}"))) "orders/all")]
-                  (is (= 1 (count (orders-of "anna-token"))) "Anna: shop 7's order")
-                  (is (= 1 (count (orders-of "bob-token"))) "Bob: shop 9's")
-                  (is (not= (orders-of "anna-token") (orders-of "bob-token")))
-                  (is (= 401 (first (call "nobody-token" "{}"))))
+              (testing "a token's call: doorman finds its person, on a :browser route and on the messages' route"
+                (let [make-token (fn [cookie]
+                                   (:text (doorman/make-token! (:pool running) {:request-method :post :headers {"origin" "http://app.test" "cookie" cookie}}
+                                                               {:settings (get-in running [:settings :sessions]) :name "a script"
+                                                                :ends-at  (.plus (java.time.Instant/now) (java.time.Duration/ofDays 1))})))
+                      anna-token (make-token anna-cookie)
+                      bob-token  (make-token bob-cookie)
+                      call       (fn [path token cookie body]
+                                   (let [response (.send (HttpClient/newHttpClient)
+                                                         (cond-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port path)))
+                                                           token  (.header "authorization" (str "Bearer " token))
+                                                           cookie (.header "cookie" cookie)
+                                                           true   (-> (.POST (HttpRequest$BodyPublishers/ofString body)) (.build)))
+                                                         (HttpResponse$BodyHandlers/ofString))]
+                                     [(.statusCode response) (.body response)]))
+                      orders-of  #(get (json/read-value (second (call "/app/call" % nil "{\"orders/all\":{}}"))) "orders/all")]
+                  (is (= 1 (count (orders-of anna-token))) "Anna: shop 7's order, with no Origin: a token is no browser's")
+                  (is (= 1 (count (orders-of bob-token))) "Bob: shop 9's")
+                  (is (not= (orders-of anna-token) (orders-of bob-token)))
+                  (is (= {"error" "Not found."} (orders-of "app_not-a-token")) "a wrong token is nobody, who holds :orders/see nowhere")
+                  (is (= 1 (count (get (json/read-value (second (call "/groundwork/http" anna-token nil "{\"orders/all\":{}}"))) "orders/all")))
+                      "the messages' own route takes a token too")
+                  (is (= [403 "A request carries a session's cookie or a token, not both."]
+                         (call "/app/call" anna-token bob-cookie "{\"orders/all\":{}}")))
+                  (is (= [200 (str anna " 1")] (take 2 (send-plain-with-token server-port "/app/orders" anna-token)))
+                      "a :browser route's asker, and its run-as-asker!, by the token")
                   (let [[first-answer second-answer third-answer]
-                        (repeatedly 3 #(get (json/read-value (second (call "anna-token" "{\"orders/count\":{}}"))) "orders/count"))]
+                        (repeatedly 3 #(get (json/read-value (second (call "/app/call" anna-token nil "{\"orders/count\":{}}"))) "orders/count"))]
                     (is (every? int? [first-answer second-answer]))
                     (is (= {"error" "Too many requests."} third-answer) "the handler's rate limit, {:max 2}, counted per token"))
-                  (is (int? (get (json/read-value (second (call "bob-token" "{\"orders/count\":{}}"))) "orders/count"))
+                  (is (int? (get (json/read-value (second (call "/app/call" bob-token nil "{\"orders/count\":{}}"))) "orders/count"))
                       "another token has its own")))
               (run-sql! owner-pool "DELETE FROM orders"))
             (testing "each language's catalog, where the browser fetches it, as the server reads it"

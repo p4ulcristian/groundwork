@@ -35,7 +35,7 @@
    :indexes  [[:order/shop-id :order/created-at]]
    :references []
    :triggers  []
-   :access   [{:allow #{:orders/see :orders/add} :to [:member :order/shop-id]}]
+   :access   [{:allow #{:orders/see :orders/add} :only :all-of-the-action :to [:member :order/shop-id]}]
    :doorbell :tell})
 
 (def ^:private find-orders-of-shop
@@ -51,6 +51,7 @@
 (def handlers
   {:orders/of-shop (merge (:orders/of-shop shapes/shapes-by-name)
                           {:action       :orders/see
+                           :scope        [:shop :shop/id]          ; the shop the param names
                            :rate-limit   nil
                            :run-steps-in nil
                            :steps        [{:name  :sample/find-orders-of-shop
@@ -60,6 +61,7 @@
                                                                                  (select-keys message-data [:shop/id]))))}]})
    :orders/add     (merge (:orders/add shapes/shapes-by-name)
                           {:action       :orders/add
+                           :scope        [:shop :order/shop-id]
                            :rate-limit   nil
                            :run-steps-in nil
                            :steps        [{:name  :sample/add-order

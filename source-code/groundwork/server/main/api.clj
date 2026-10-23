@@ -11,7 +11,7 @@
         :tables               [shops orders]        ; table maps, with :access and :doorbell
         :changes              []                    ; cellar's changes
         :scope-kinds          scope-kinds           ; doorman's
-        :handlers             handlers              ; bridge's table, each with :action and shapes
+        :handlers             handlers              ; bridge's table, each with :action, where it acts (:record or :scope) and shapes
         :pages                {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}
                                :admin/page  {:address \"/admin\" :title \"Admin\" :module \"admin\"}}   ; loaded on the way in
         :background-job-kinds [send-invoice-email]
@@ -117,7 +117,7 @@
    :webhooks paths, handing events to the app's :on-delivery-event (by
    tag) and :on-inbound-email (by mailbox), each run as doorman's system
    actor :postbox, which the app's sentences give what it may do:
-   {:allow :shop-emails/mark-bounced :to [:system :postbox]}."
+   {:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :postbox]}."
   (:require
    [clojure.string :as str]
    [attic.api :as attic]
@@ -420,12 +420,13 @@
   "doorman's tables, backroom's, attic's and postbox's, each in their own
    folder, and groundwork's own one-time keys (groundwork.run_once_keys), put with
    the app's. None knows of doorbell; their doorbells are said here: the
-   sessions, the background jobs, the files, the emails and the keys
-   silent; doorman's access tables tell, so a screen's
+   sessions, the tokens, the background jobs, the files, the emails and
+   the keys silent; doorman's access tables tell, so a screen's
    :doorman/my-actions is asked again when a membership or a role
    changes."
   (vec (concat [(assoc run-once/run-once-keys-table :doorbell [:silent "no screen shows one-time keys"])]
                (map #(assoc % :doorbell [:silent "no screen shows sessions"]) [doorman/sessions-table])
+               (map #(assoc % :doorbell [:silent "doorman's list-tokens reads it off a message's transaction: no screen's notes name it"]) [doorman/tokens-table])
                (map #(assoc % :doorbell :tell) doorman/access-tables)
                (map #(assoc % :doorbell [:silent "no screen shows background jobs"]) backroom/background-jobs-tables)
                [(assoc attic/files-table :doorbell [:silent "a screen shows the app's rows that name a file, not attic's"])
@@ -540,7 +541,7 @@
 (def ^:private postbox-system-actor
   "The system actor postbox's webhook functions run as (doorman's
    run-as-system!): the app's sentences give it what they may do,
-   {:allow :shop-emails/mark-bounced :to [:system :postbox]}."
+   {:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :postbox]}."
   :postbox)
 
 (defn- make-routes [{:keys [settings pages may-upload? on-delivery-event on-inbound-email routes tables scope-kinds]}
@@ -659,7 +660,7 @@
 (defn- make-study-tools
   "groundwork's tools for the REPL (groundwork.server.main.tools), from the running
    app's parts."
-  [{:keys [handlers tables scope-kinds settings] :as app} wire log pool]
+  [{:keys [handlers tables scope-kinds] :as app} wire log pool]
   (tools/make-tools {:make-ready-handlers #(make-ready-handlers pool app %)
                      :wire                wire
                      :log                 log
@@ -667,7 +668,6 @@
                      :handlers            handlers
                      :tables              tables
                      :scope-kinds         scope-kinds
-                     :allowed-origin      (get-in settings [:sessions :allowed-origin])
                      :settings-shape      settings-shape
                      :docs-of-parts       docs-of-parts}))
 
@@ -745,10 +745,10 @@
               handlers          (-> (make-ready-handlers pool app find-session-step)
                                     (errors/add-browser-error-handler find-session-step
                                                                       (get-in settings [:errors :browser-rate-limit])))
-              answer-as         (answer-as/make-answer-as {:make-ready-handlers    #(make-ready-handlers pool app %)
+              answer-as         (answer-as/make-answer-as {:handlers               handlers
                                                            :wire                   wire
                                                            :log                    log
-                                                           :allowed-origin         (get-in settings [:sessions :allowed-origin])
+                                                           :find-rate-limit-key    (make-rate-limit-key-finder settings)
                                                            :buckets-before-cleanup (get-in settings [:server :rate-limit-buckets-before-cleanup])})
               page-handler      (page/make-page-handler {:wire              wire
                                                          :settings          settings

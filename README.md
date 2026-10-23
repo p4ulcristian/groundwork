@@ -40,9 +40,11 @@ And how the browser and the server talk, on both sides:
 sse and ws answered by a handler's steps, and the routes; its addresses and
 ping are in the `:server` settings, with no defaults.
 And who is asking and what they may do, at one door:
-[doorman](https://github.com/p4ulcristian/doorman), sessions in Postgres and
-access (scopes, roles, memberships, the check in front of every handler, the
-gates, the leak test); its settings are the `:sessions` part, with no defaults.
+[doorman](https://github.com/p4ulcristian/doorman), sessions in Postgres, a
+person's own tokens for scripts (a call by `Authorization: Bearer` is that
+person's) and access (scopes, roles, memberships, the check in front of
+every handler, which says where it acts, the gates, the leak test); its
+settings are the `:sessions` part, with no defaults.
 And how screens stay current, on both sides:
 [doorbell](https://github.com/p4ulcristian/doorbell), a change to a table rings
 every open screen with only the table's name, and the screens that read it ask
@@ -116,7 +118,7 @@ bounces to the app's `:on-delivery-event` by the email's tag and inbound
 email to its `:on-inbound-email` by mailbox
 ([the decision](decisions/2026-10-23-main-makes-one-attic-and-one-postbox.md)),
 each run as doorman's system actor `:postbox`, which the app's sentences
-give what it may do, `{:allow :shop-emails/mark-bounced :to [:system :postbox]}`,
+give what it may do, `{:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :postbox]}`,
 and nothing else ([the decision](decisions/2026-10-23-postboxs-webhook-functions-run-as-doormans-system-actor-postbox.md)).
 And its settings and their secrets:
 [safe](https://github.com/p4ulcristian/safe), one EDN file per environment,

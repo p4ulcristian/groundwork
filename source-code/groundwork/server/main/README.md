@@ -140,7 +140,8 @@ nothing is saved. A write without a key runs as it is:
 :server          {…                                                      ; bridge's settings, every key
                   :metric-buckets {:answer-seconds [0.005 0.01 0.025 0.05 0.1 0.25 0.5 1 2.5 5 10]}}
 :sessions        {:cookie-name "app_session" :session-days 30 :visitor-session-days 7   ; doorman's
-                  :renew-after-minutes 60 :allowed-origin "https://shop.example" :secure-cookie? true}
+                  :renew-after-minutes 60 :allowed-origin "https://shop.example" :secure-cookie? true
+                  :token-lead "shop_" :token-shown-characters 11 :token-longest-days 365}
 :doorbell        {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                   :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                               :reconnect-after-ms 1000 :stop-wait-ms 2000}}
@@ -183,7 +184,10 @@ answered 429 and make nothing (bridge's `make-rate-limited-ring-handler`):
 The REPL, study's, by the `:study` settings, started last and stopped
 first, groundwork's tools in `study.tools`: `(ask-as-person message asker)`,
 `(why-refused asker handler-name params)`, `(explain-setting path)`, the
-asker `{:person-id :visitor-id :session-flags}`:
+asker `{:person-id :visitor-id :session-flags}`; only the REPL names a
+person (`ask-as-person` makes the handlers ready with doorman.repl's step
+in its session step's place, and answers by `answer-as`'s own path, with
+no request):
 [the decision](../../../../decisions/2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md).
 
 ```clojure
@@ -198,7 +202,7 @@ held by the running app as `:attic` and `:postbox`; `attic.files` and
 `postbox.emails` migrated with groundwork's tables; postbox's background job
 kind on the workers. The upload route (`groundwork.server.main.files`) is
 attic's handler at `:attic :upload :path`, asking doorman's session step
-(the Origin), then the app map's `:may-upload?` `(fn [asker])`, before the
+(the Origin, or a token), then the app map's `:may-upload?` `(fn [asker])`, before the
 body is read; `:max-file-bytes` must be below `:server :max-body-bytes`.
 The provider's webhooks are postbox's, at `:postbox :webhooks`' paths,
 outside sessions, handing bounces to the app map's `:on-delivery-event`
@@ -277,23 +281,26 @@ language step
                                                             "set-cookie" (:set-cookie (sign-in! person-id #{}))}})}}
 ```
 
-A `:browser` route runs doorman's session step first (a request that isn't
-a GET must come from the app's own pages, else 403) and gets the asker,
-`run-as-asker!` (a transaction as them, held by the gates), `sign-in!` and
-`sign-out!`; a `:server-to-server` route reads no session and proves its
-caller itself. Both get `answer-as`: a message answered as an asker the
-route names (a token's person), through every check a browser's message
-gets and each handler's rate limit, counted per the route's
-`:rate-limit-key`
-([the decision](../../../../decisions/2026-10-23-a-token-call-is-answered-as-its-person-from-the-apps-route.md)):
+A `:browser` route is a person's, from their browser (the session's
+cookie) or a script (a token doorman made for them, `Authorization:
+Bearer`). It runs doorman's session step first, which finds who asks: by a
+cookie a request that isn't a GET must come from the app's own pages, a
+request with both a cookie and a token is refused, else 403. The handler
+gets what doorman found (`asker`), `run-as-asker!` (a transaction as the
+request's asker, held by the gates), `answer-as` (a message answered as
+the request's asker, through every check a browser's message gets and each
+handler's rate limit, counted per token or cookie), `sign-in!` and
+`sign-out!`. A `:server-to-server` route reads no session and no token and
+proves its caller itself; it has no asker. No code names a person: a token
+call goes where a browser's does, the messages' own route or a `:browser`
+route
+([the decision](../../../../decisions/2026-10-23-a-token-call-arrives-where-a-browsers-does.md)):
 
 ```clojure
+;; MCP's JSON-RPC, turned into a message and answered as the token's person
 (fn [request {:keys [answer-as]}]
-  (if-let [person-id (person-for-token pool (bearer-token request))]
-    {:status 200 :body (json-text (answer-as {:orders/of-shop {"shop/id" "…"}}   ; JSON data, as the browser sends it
-                                             {:person-id person-id :visitor-id nil :session-flags #{}}
-                                             {:rate-limit-key (str "token:" person-id)}))}
-    {:status 401}))
+  {:status 200 :body (json-text (answer-as {:orders/of-shop {"shop/id" "…"}}   ; JSON data, as the browser sends it
+                                           request))})
 ``` An address groundwork serves, or two routes at one address
 and method, refuse the start.
 

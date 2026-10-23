@@ -2,11 +2,11 @@
   "The upload route: attic's upload handler (make-upload-handler) at the
    :attic :upload settings' :path, a POST, multipart, one part per file.
    Who may upload is asked before the body is read, as a message's asker
-   is found: doorman's session step (the request's Origin must be the
-   :sessions settings' :allowed-origin, else 403), then the app's own
-   :may-upload?, (fn [asker] true-or-false), the asker {:person-id
-   :visitor-id :session-flags} of the request's session (nils and #{}
-   without one):
+   is found: doorman's session step (by the session's cookie, the
+   request's Origin must be the :sessions settings' :allowed-origin, else
+   403; or by a token doorman made), then the app's own :may-upload?, (fn
+   [asker] true-or-false), the asker {:person-id :visitor-id
+   :session-flags} doorman found (nils and #{} for nobody):
 
      POST /groundwork/files
      Origin: https://shop.example
@@ -17,7 +17,8 @@
    app keeps a file's key in its own rows by a message, as any write."
   (:require
    [attic.api :as attic]
-   [bridge.api :as bridge]))
+   [bridge.api :as bridge]
+   [groundwork.server.main.asker :as asker]))
 
 (defn- make-may-upload
   "attic's :may-upload?: doorman's session step on the request, then the
@@ -26,9 +27,7 @@
   (fn [request]
     (let [context ((:enter find-session-step) {:bridge/request request :bridge/log log})]
       (and (not (bridge/does-context-have-answer? context))
-           (boolean (app-may-upload? {:person-id     (:doorman/person-id context)
-                                      :visitor-id    (:doorman/visitor-id context)
-                                      :session-flags (:doorman/session-flags context)}))))))
+           (boolean (app-may-upload? (asker/read-asker context)))))))
 
 (defn make-upload-routes
   "The upload route, at the :attic :upload settings' :path, as reitit data."

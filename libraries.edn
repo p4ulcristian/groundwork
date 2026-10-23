@@ -15,7 +15,8 @@
 ;; any library on either side may use it, through bridge.api only. So is
 ;; doorman, who is asking and what they may do, sessions and access
 ;; (github.com/p4ulcristian/doorman): any server library may use it, through
-;; doorman.api only; a browser library too, for the shape of "what may I
+;; doorman.api only (and main's REPL tools doorman.repl, asking as a named
+;; person, which no app code does); a browser library too, for the shape of "what may I
 ;; do?"'s answer, which doorman.api's browser half holds. So is doorbell, a change to a table rings every open
 ;; screen, which asks again (github.com/p4ulcristian/doorbell): any library on
 ;; either side may use it, through doorbell.api only. So is logbook, the app's

@@ -61,8 +61,10 @@
            :when    (and (str/starts-with? (str required) "bridge.") (not= 'bridge.api required))]
        (str (second ns-form) " requires " required ": only bridge's api, bridge.api"))
      (for [required (list-required-namespaces ns-form)
-           :when    (and (str/starts-with? (str required) "doorman.") (not= 'doorman.api required))]
-       (str (second ns-form) " requires " required ": only doorman's api, doorman.api"))
+           :when    (and (str/starts-with? (str required) "doorman.") (not= 'doorman.api required)
+                         ;; asking as a named person: the REPL's tools only, never the app's code
+                         (not (and (= 'doorman.repl required) (= 'groundwork.server.main.tools (second ns-form)))))]
+       (str (second ns-form) " requires " required ": only doorman's api, doorman.api (doorman.repl: only the REPL's tools)"))
      (for [required (list-required-namespaces ns-form)
            :when    (and (str/starts-with? (str required) "doorbell.") (not= 'doorbell.api required))]
        (str (second ns-form) " requires " required ": only doorbell's api, doorbell.api"))

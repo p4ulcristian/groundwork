@@ -45,14 +45,15 @@
          [:button#add {:type "submit"} @(rf/subscribe [:parlor/text :orders/add])]]))))
 
 (defn- orders-page [shop-id]
-  (let [{:keys [status data]} @(rf/subscribe [:parlor/answer [:orders/of-shop {:shop/id shop-id}]])
+  (let [{:keys [status data error]} @(rf/subscribe [:parlor/answer [:orders/of-shop {:shop/id shop-id}]])
         actions               @(rf/subscribe [:parlor/answer [:doorman/my-actions {}]])
         can-add?              @(rf/subscribe [:parlor/can-i? :orders/add [:shop shop-id]])
         last-add              @(rf/subscribe [::last-add])]
     [:main.sample {:data-actions (name (:status actions :none))}
      [:h1#title @(rf/subscribe [:parlor/text :orders/title])]
-     (if (#{:ready :refresh-error} status)
-       (into [:ul#orders] (for [{:order/keys [id note]} data] ^{:key (str id)} [:li.order {:data-id (str id)} note]))
+     (case status
+       (:ready :refresh-error) (into [:ul#orders] (for [{:order/keys [id note]} data] ^{:key (str id)} [:li.order {:data-id (str id)} note]))
+       :error                  [:p#refused (:error error)]   ; another's shop: "Not found."
        [:p#loading (name (or status :none))])
      (when can-add? [add-form shop-id])
      [:p#last-add (when last-add (str (name (:status last-add)) " " (some-> last-add :data :order/id str)))]

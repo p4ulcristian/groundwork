@@ -43,9 +43,10 @@
    or nil for a GET no route and no file answers (the not-found page).
    nonce is the request's, nil unless the :content-security-policy says
    :nonce? true; the shell puts it on its own scripts, the app on the
-   scripts in its head-html. asker is the request's session's, and
-   run-as-asker! a transaction as them, held by the gates, for a body that
-   reads rows. The app escapes what it puts in head-html and body-html.
+   scripts in its head-html. asker is who doorman finds asking (the
+   session's cookie, or a token), and run-as-asker! a transaction as the
+   request's asker, held by the gates, for a body that reads rows
+   (doorman's run-as-asker-of-request!). The app escapes what it puts in head-html and body-html.
 
    Fixed, not settings: the shell is never cached (no-store), so a new
    version's scripts are what the next load gets; nosniff, since every
@@ -56,7 +57,7 @@
   (:require
    [clojure.edn :as edn]
    [dictionary.api :as dictionary]
-   [doorman.api :as doorman]
+   [groundwork.server.main.asker :as asker]
    [bridge.api :as bridge]
    [clojure.java.io :as io]
    [clojure.string :as str]
@@ -218,15 +219,11 @@
         (let [page     (find-page-of-request pages request)
               nonce    (when nonce? (make-nonce random))
               context  ((:enter find-session-step) {:bridge/request request :bridge/log log})
-              asker    {:person-id     (:doorman/person-id context)
-                        :visitor-id    (:doorman/visitor-id context)
-                        :session-flags (:doorman/session-flags context)}
               rendered (check-rendered-page (:name page)
                                             (render-page request page
                                                          {:nonce         nonce
-                                                          :asker         asker
-                                                          :run-as-asker! (fn [{:keys [read-only?]} f]
-                                                                           (doorman/run-as-asker! pool asker {:read-only? read-only? :scope-kinds scope-kinds} f))}))]
+                                                          :asker         (asker/read-asker context)
+                                                          :run-as-asker! (asker/make-run-as-asker pool request settings scope-kinds)}))]
           {:status  (:status rendered)
            :headers (make-headers settings nonce)
            :body    (make-page-html wire settings stylesheets scripts (assoc browser-settings :language language)

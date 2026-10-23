@@ -92,7 +92,8 @@
    :migration         {:instant-part {:statement-timeout-ms 10000 :lock-timeout-ms 5000}
                        :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
    :sessions          {:cookie-name "e2e_session" :session-days 1 :visitor-session-days 1 :renew-after-minutes 60
-                       :allowed-origin (str "http://127.0.0.1:" server-port) :secure-cookie? false}
+                       :allowed-origin (str "http://127.0.0.1:" server-port) :secure-cookie? false
+                       :token-lead "e2e_" :token-shown-characters 10 :token-longest-days 30}
    :visitors          {:path "/groundwork/visitor" :rate-limit {:max 10 :per-ms 60000}}
    :my-actions        {:rate-limit nil}
    :run-once          {:keep-keys-ms 600000
@@ -302,8 +303,9 @@
               (testing "4. can-i? shows the add button to Anna in her shop only"
                 (is (true? (cdp/evaluate connection anna-1 "document.querySelector('#add') !== null")))
                 (cdp/go-to! connection anna-2 (str origin "/shops/" bobs-shop "/orders"))
-                (is (= "ready" (cdp/wait-for connection anna-2 "document.querySelector('main')?.dataset.actions === 'ready' && document.querySelector('#orders') ? 'ready' : null" 10000)))
-                (is (= [] (list-notes connection anna-2)) "Bob's shop's orders: none for Anna")
+                (is (= "Not found." (cdp/wait-for connection anna-2 "document.querySelector('main')?.dataset.actions === 'ready' && document.querySelector('#refused')?.textContent || null" 10000))
+                    "Bob's shop's orders: the handler acts in the shop it names, which Anna isn't in")
+                (is (= [] (list-notes connection anna-2)))
                 (is (false? (cdp/evaluate connection anna-2 "document.querySelector('#add') !== null")) "and no add button"))
               (testing "5. a write whose answer is lost is sent again with the same one-time key: one row, the same answer"
                 (cdp/send! connection (:session-id anna-1) "Fetch.enable" {:patterns [{:urlPattern "*/groundwork/http" :requestStage "Response"}]})

@@ -10,28 +10,33 @@
       :flex/authorize {:address \"/flex/authorize\" :method :get :kind :browser
                        :rate-limit nil :handler flex-authorize}}
 
-   :browser: a person's browser calls it. doorman's session step runs
-   first: a request that changes something (not a GET) must come from the
-   app's own pages (its Origin), else 403; the handler gets the asker of
-   the request's session. :server-to-server: another server calls it; no
-   session is read, and the handler proves the caller itself (a
-   signature, a token).
+   :browser: a person calls it, from their browser (the session's cookie)
+   or a script (a token doorman made for them, Authorization: Bearer).
+   doorman's session step runs first and finds who asks: a request that
+   changes something by a cookie (or by nothing) must come from the app's
+   own pages (its Origin), a request with both a cookie and a token is
+   refused, else 403; the handler gets the asker. :server-to-server:
+   another server calls it; no session or token is read, and the handler
+   proves the caller itself (a signature, a provider's secret).
 
    A handler is (fn [request tools]) and answers a Ring response. Its
    request's body is not read (a webhook checks its signature over the
    raw bytes). tools, for :browser:
 
-     {:asker          {:person-id … :visitor-id … :session-flags #{…}}
+     {:asker          {:person-id … :visitor-id … :session-flags #{…}}   ; what doorman found, to read
       :log            the app's log, saying who asked
-      :run-as-asker!  (fn [{:keys [read-only?]} f]) f in a transaction as the asker, held by the gates
+      :run-as-asker!  (fn [{:keys [read-only?]} f]) f in a transaction as the request's asker,
+                      held by the gates (doorman's run-as-asker-of-request!)
       :run-as-system! (fn [system-name {:keys [read-only?]} f]) doorman's
-      :answer-as      (fn [message asker {:keys [rate-limit-key]}]) a message answered as
-                      another asker (groundwork.server.main.answer-as)
-      :sign-in!       (fn [person-id session-flags]) {:set-cookie …} for the answer
+      :answer-as      (fn [message request]) a message answered as the request's asker, through
+                      every check (groundwork.server.main.answer-as): a route that speaks
+                      another protocol (MCP's JSON-RPC) turns a call into a message
+      :sign-in!       (fn [person-id session-flags]) {:set-cookie …} for the answer, once the
+                      app's own login has proven the person
       :sign-out!      (fn []) {:set-cookie …}}
 
-   for :server-to-server, {:log :run-as-system! :answer-as}: a token's
-   route checks the token and answers as its person.
+   for :server-to-server, {:log :run-as-system!}: no asker, so nothing
+   runs as one.
 
    :rate-limit, {:max :per-ms} or nil for none: one bucket per asker (a
    :browser route's by its session, else its address; a
@@ -40,6 +45,7 @@
   (:require
    [bridge.api :as bridge]
    [doorman.api :as doorman]
+   [groundwork.server.main.asker :as asker]
    [malli.core :as malli]
    [malli.error :as malli-error]))
 
@@ -77,19 +83,18 @@
                     {:type :groundwork.server.main/bad-routes :errors {:shared shared}})))
   routes)
 
-(def ^:private not-from-the-app
-  {:status 403 :headers {"content-type" "text/plain" "cache-control" "no-store"}
-   :body   "This request didn't come from the app's own pages."})
+(defn- turn-refusal-into-response
+  "doorman's step's refusal (another site's request, a cookie and a token
+   at once), as a 403."
+  [{:keys [error]}]
+  {:status 403 :headers {"content-type" "text/plain" "cache-control" "no-store"} :body error})
 
 (defn- make-browser-tools
   [request context {:keys [pool scope-kinds tables settings answer-as]}]
-  (let [asker {:person-id     (:doorman/person-id context)
-               :visitor-id    (:doorman/visitor-id context)
-               :session-flags (:doorman/session-flags context)}]
+  (let [asker (asker/read-asker context)]
     {:asker          asker
      :log            (:bridge/log context)
-     :run-as-asker!  (fn [{:keys [read-only?]} f]
-                       (doorman/run-as-asker! pool asker {:read-only? read-only? :scope-kinds scope-kinds} f))
+     :run-as-asker!  (asker/make-run-as-asker pool request settings scope-kinds)
      :run-as-system! (fn [system-name options f] (doorman/run-as-system! pool system-name options f))
      :answer-as      answer-as
      :sign-in!       (fn [person-id session-flags]
@@ -102,14 +107,13 @@
   (fn [request]
     (let [context ((:enter find-session-step) {:bridge/request request :bridge/log log})]
       (if (bridge/does-context-have-answer? context)
-        not-from-the-app
+        (turn-refusal-into-response (:bridge/answer context))
         (handler request (make-browser-tools request context parts))))))
 
-(defn- make-server-to-server-handler [handler {:keys [log pool answer-as]}]
+(defn- make-server-to-server-handler [handler {:keys [log pool]}]
   (fn [request]
     (handler request {:log            log
-                      :run-as-system! (fn [system-name options f] (doorman/run-as-system! pool system-name options f))
-                      :answer-as      answer-as})))
+                      :run-as-system! (fn [system-name options f] (doorman/run-as-system! pool system-name options f))})))
 
 (defn- add-rate-limit [ring-handler rate-limit find-rate-limit-key {:keys [settings]}]
   (if rate-limit

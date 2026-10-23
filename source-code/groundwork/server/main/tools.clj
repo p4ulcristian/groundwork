@@ -15,18 +15,20 @@
      (study.tools/explain-setting [:server :ping-every-ms])
      ;=> {:path [:server :ping-every-ms] :shape :int :doc \"The settings, every key required …\"}"
   (:require
-   [logbook.api :as logbook]
-   [bridge.api :as bridge]
+   [groundwork.server.main.answer-as :as answer-as]
    [malli.core :as malli]
    [malli.error :as malli-error]
    [malli.util :as malli-util]
    [doorman.api :as doorman]
+   [doorman.repl :as doorman-repl]
    [wire.api :as wire]))
 
 (def asker-shape
   "Who a tool asks as, every key required, as doorman's explain-refusal
-   takes it: the person (nil for nobody signed in), the visitor (nil
-   unless a visitor's session) and the session's flags (#{} for none)."
+   and doorman.repl's step take it: the person (nil for nobody signed in),
+   the visitor (nil unless a visitor's session) and the session's flags
+   (#{} for none). Only the REPL names a person: the app's code finds the
+   asker in a request."
   [:map {:closed true}
    [:person-id [:maybe :uuid]]
    [:visitor-id [:maybe :uuid]]
@@ -38,20 +40,6 @@
       (throw (ex-info (str "The asker has problems: " (pr-str errors))
                       {:type :groundwork.server.main/bad-asker :errors errors}))))
   asker)
-
-(defn- make-stand-in-session-step
-  "In place of doorman's find-session step: the asker given, not a
-   cookie's, in the context as doorman's step puts it, and in the
-   message's log."
-  [{:keys [person-id visitor-id session-flags]}]
-  {:name  :groundwork/stand-in-session
-   :enter (fn [context]
-            (-> context
-                (assoc :doorman/person-id person-id
-                       :doorman/visitor-id visitor-id
-                       :doorman/session-flags session-flags)
-                (update :bridge/log logbook/with-context
-                        (cond-> {} person-id (assoc :person-id person-id) visitor-id (assoc :visitor-id visitor-id)))))})
 
 (defn- turn-params-into-json-data
   "Each named message's params as the browser sends them, JSON data, by
@@ -67,13 +55,17 @@
         message))
 
 (defn- make-ask-as-person
-  [{:keys [make-ready-handlers wire log handlers allowed-origin]}]
+  "answer-as's answer-message, on the handlers made ready with
+   doorman.repl's step asking as the asker in place of the session step,
+   no rate limits and no request: a REPL's message comes with none."
+  [{:keys [make-ready-handlers wire log handlers]}]
   (fn [message asker]
-    (let [ready (make-ready-handlers (make-stand-in-session-step (check-asker asker)))]
-      (bridge/answer-message ready :no-rate-limits
-                               {:request-method :post :uri "/" :headers {"origin" allowed-origin}}
-                               (turn-params-into-json-data wire handlers message)
-                               {:wire wire :log log}))))
+    (let [answer (answer-as/make-answer-message
+                  {:ready-handlers (make-ready-handlers (doorman-repl/make-step-asking-as (check-asker asker)))
+                   :limiter        :no-rate-limits
+                   :wire           wire
+                   :log            log})]
+      (answer (turn-params-into-json-data wire handlers message) nil))))
 
 (defn- make-why-refused
   [{:keys [pool handlers tables scope-kinds]}]
@@ -98,8 +90,7 @@
   "study's :tools, from the running app's parts: :make-ready-handlers (fn
    [find-session-step]) the app's handlers made ready with that step in
    place of doorman's; :wire, :log and :pool the app's; :handlers, :tables
-   and :scope-kinds the app's own, as it handed them in; :allowed-origin
-   the :sessions settings'; :settings-shape groundwork's; :docs-of-parts each
+   and :scope-kinds the app's own, as it handed them in; :settings-shape groundwork's; :docs-of-parts each
    top settings key's shape var, and :settings the whole one's."
   [parts]
   {:ask-as-person   {:doc      (str "(ask-as-person message asker): the message answered as the asker, through every check a "
