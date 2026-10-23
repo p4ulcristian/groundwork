@@ -12,15 +12,16 @@ set -euo pipefail
 family="$(cd "$(dirname "$0")/../.." && pwd)"
 coauthor="Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
-pin() { # pin LIB TAG SHA FILE
+pin() { # pin LIB TAG SHA FILE: a tag pin, or a bare sha pin (a branch's), becomes the new tag
   sed -i -E "s|(io\.github\.p4ulcristian/$1 +\{:git/tag \")[^\"]+(\" :git/sha \")[0-9a-f…]+\"|\1$2\2$3\"|g" "$4"
+  sed -i -E "s|(io\.github\.p4ulcristian/$1 +)\{:git/sha \"[0-9a-f]{40}\"\}|\1{:git/tag \"$2\" :git/sha \"$3\"}|g" "$4"
 }
 
 users_of() { # libraries (not the composer) whose deps.edn names LIB
   for d in "$family"/*/; do
     r=$(basename "$d")
     [ "$r" = groundwork ] || [ "$r" = "$1" ] && continue
-    grep -qE "p4ulcristian/$1 +\{:git/tag" "$d/deps.edn" 2>/dev/null && echo "$r"
+    grep -qE "p4ulcristian/$1 +\{:git/(tag|sha)" "$d/deps.edn" 2>/dev/null && echo "$r"
   done
 }
 
@@ -63,7 +64,7 @@ while [ ${#queue[@]} -gt 0 ]; do
   # a library waits until everything it uses that is still queued is released
   wait=0
   for q in "${queue[@]}"; do
-    grep -qE "p4ulcristian/$q +\{:git/tag" "$family/$lib/deps.edn" 2>/dev/null && wait=1
+    grep -qE "p4ulcristian/$q +\{:git/(tag|sha)" "$family/$lib/deps.edn" 2>/dev/null && wait=1
   done
   if [ $wait = 1 ]; then queue+=("$lib"); continue; fi
   take "$family/$lib" || true
