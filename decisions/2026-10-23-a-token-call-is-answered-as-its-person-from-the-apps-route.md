@@ -13,7 +13,7 @@
   {:status 401})
 ```
 
-The app checks the token (a WorkOS JWT, a Labs token) and names the person; groundwork answers as that person. It is today's REPL tool `ask-as-person` (`study.tools`), made public, rate-limited, on handlers built once.
+The app checks the token (a WorkOS JWT, a Labs token) and names the person; groundwork answers as that person. It is today's REPL tool `ask-as-person` (`groundwork.server.main.tools`), made public, rate-limited, on handlers built once.
 
 **Why:** a token call gets exactly the browser's checks, so what a person may do is the same however they ask. Checking a token stays the app's, as doorman ships no logins.
 
