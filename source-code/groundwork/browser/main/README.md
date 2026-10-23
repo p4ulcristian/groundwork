@@ -10,16 +10,21 @@ the server reloads, once per version; reopened after the sse delay when the
 server answered with an error), then starts parlor (`[:parlor/start …]`, with
 the store, the write's send function (parlor's one-time key in the
 `idempotency-key` header), the page's `:retry-writes`, the pages, the app's `:questions-of-pages`,
-`:on-answer-failed`, `:on-move`, `:query-shapes-of-pages` and `:placeholder`, the page's
+`:on-answer-failed`, `:on-signed-out` (with `:doorman/signed-out` as parlor's
+`:signed-out-reason`, both nil when the app's is), `:on-move`, `:query-shapes-of-pages` and `:placeholder`, the page's
 languages and language, browser-build's `load-module!` with each module's stylesheets, and `[:doorman/my-actions {}]` as its
 `:actions-question`), which follows the address bar. The app draws its root
 with parlor's `mount-root!` into the shell's `#app`. Once for the
 page, it sends every uncaught error and unhandled rejection to the server,
 `{:groundwork/browser-error {:message … :stack … :url …}}`, where it is logged at
 `:error` with the server's errors. The app's
-shapes have both shapes for each of its names; groundwork's own are added
+shapes have the three for each of its names, `:params-shape`,
+`:answer-shape` and `:refusals` (its handler's own reasons, `{}` for
+none); doorman's reasons (doorman's `put-refusals-into-shapes`) and
+groundwork's run-once ones are added to each, and groundwork's own names
 (`:doorman/my-actions`'s answer shape is doorman's, which parlor's "can I?"
-checks the answer by, with the app's wire). The app's `package.json` lists
+checks the answer by, with the app's wire). A view shows a refusal by
+its reason, `(parlor/tr (:bridge/refused error) (:bridge/data error))`. The app's `package.json` lists
 big.js, react, react-dom and process as `dependencies`: browser-build's release
 stops on one installed only for development. ClojureScript only. API:
 `groundwork.browser.main.api` (`read-settings-from-page`, `start-app!`,
@@ -33,6 +38,7 @@ of the visitor's id).
                            :questions-of-pages {:orders/page (fn [{:keys [path-params]}]
                                                                [[:orders/of-shop {:shop/id (parse-uuid (:shop-id path-params))}]])}
                            :on-answer-failed   nil              ; or an event
+                           :on-signed-out      [:app/to-login]  ; or nil: once, with the page to return to
                            :on-move            nil              ; or an event
                            :query-shapes-of-pages {:orders/page nil}   ; every page's: a malli map reads its query, nil text
                            :placeholder        nil              ; or (fn [page status]) while a page's :module loads

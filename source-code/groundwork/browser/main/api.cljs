@@ -11,6 +11,7 @@
                                                                     [[:orders/of-shop {:shop/id (parse-uuid (:shop-id path-params))}]])
                                                      :about/page  (fn [_] [])}
                                 :on-answer-failed   [:shop/answer-failed]  ; or nil: parlor's event for a failed answer
+                                :on-signed-out      [:shop/to-login]       ; or nil: parlor's, once, with the page to return to
                                 :on-move            nil                    ; or an event, given {:from page :to page}
                                 :query-shapes-of-pages {:orders/page nil   ; every page's, parlor's: a malli map, or nil for text
                                                         :about/page  nil}
@@ -22,7 +23,8 @@
      ;; screens read parlor's subscriptions and dispatch its events
      @(rf/subscribe [:parlor/answer [:orders/of-shop {:shop/id shop-id}]])
      @(rf/subscribe [:parlor/can-i? :orders/move [:shop shop-id]])   ; from :doorman/my-actions
-     (parlor/tr :orders.cart/add {:count 3})   ; a text in the page's language
+     (parlor/tr :orders.cart/add {:count 3})   ; a text in the page's language, in a view
+     (parlor/tr (:bridge/refused error) (:bridge/data error))   ; a refusal's text: its reason is the key
 
      ;; a ws line, when the app wants one: the address and the delay from the page, the app's wire
      (let [{:keys [addresses ws-reopen-after-ms]} (:settings app)]
@@ -45,11 +47,19 @@
    the server), the page's :retry-writes, the page's pages, the app's
    :questions-of-pages, :on-answer-failed and :on-move, and
    [:doorman/my-actions {}], the server's handler of doorman's, as its
-   :actions-question. parlor follows the address bar. Nothing can ask
+   :actions-question, and the app's :on-signed-out with doorman's
+   :doorman/signed-out as its :signed-out-reason (nil for both when the
+   app has none). parlor follows the address bar. Nothing can ask
    before it: the store is made here. The app draws its root itself, with
    parlor's mount-root!, into the shell's #app. The app's shapes-by-name
-   has both shapes for each of its names; groundwork's own (:groundwork/version,
-   :groundwork/browser-error, :doorman/my-actions, doorbell's) are added here.
+   has the three shapes for each of its names (:params-shape,
+   :answer-shape, :refusals: its handler's own reasons, {} for none);
+   doorman's reasons are added to each here (doorman's
+   put-refusals-into-shapes), as doorman adds them to every handler on the
+   server, and groundwork's run-once reasons to each, since a write may
+   give them; groundwork's own names (:groundwork/version,
+   :groundwork/browser-error, :doorman/my-actions, doorbell's) are added
+   too.
 
    It also listens, once for the page, for the uncaught errors and the
    unhandled promise rejections, and sends each to the server as
@@ -74,15 +84,39 @@
    [wire.api :as wire]))
 
 (def ^:private groundwork-shapes-by-name
-  {:groundwork/version       {:params-shape nil :answer-shape :string}
+  {:groundwork/version       {:params-shape nil :answer-shape :string :refusals {}}
+   ;; refused only by doorman's find-session step, as on the server (groundwork.server.main.errors)
    :groundwork/browser-error {:params-shape [:map {:closed true}
-                                        [:message :string]
-                                        [:stack [:maybe :string]]
-                                        [:url :string]]
-                         :answer-shape :boolean}
-   ;; doorman's, on both sides (doorman.api's browser half)
-   :doorman/my-actions  {:params-shape [:map {:closed true}]
-                         :answer-shape doorman/my-actions-answer-shape}})
+                                             [:message :string]
+                                             [:stack [:maybe :string]]
+                                             [:url :string]]
+                              :answer-shape :boolean
+                              :refusals     (select-keys doorman/refusals [:doorman/not-allowed])}})
+
+(def ^:private my-actions-shapes-by-name
+  ;; doorman's, on both sides (doorman.api's browser half); its reasons are doorman's, put in below
+  {:doorman/my-actions {:params-shape [:map {:closed true}]
+                        :answer-shape doorman/my-actions-answer-shape
+                        :refusals     {}}})
+
+(def ^:private run-once-refusals
+  "groundwork's own reasons a write may be refused with, the server's
+   groundwork.server.main.run-once's: a one-time key that isn't a UUID, or
+   one another asker claimed first."
+  {:groundwork/once-key-not-a-uuid      nil
+   :groundwork/once-key-of-someone-else nil})
+
+(defn- make-shapes-by-name
+  "Every name's three shapes: the app's with groundwork's run-once
+   reasons (a write may give them; a name that only reads never does) and
+   :doorman/my-actions, each with doorman's reasons put in, then doorbell's
+   and groundwork's own."
+  [app-shapes-by-name]
+  (merge (doorman/put-refusals-into-shapes
+          (merge (update-vals app-shapes-by-name #(update % :refusals merge run-once-refusals))
+                 my-actions-shapes-by-name))
+         doorbell/message-shapes-by-name
+         groundwork-shapes-by-name))
 
 (def ^:private write-key-header
   "The header a write's one-time key travels in; the server's
@@ -122,13 +156,19 @@
    :placeholder: parlor's, a component (fn [page status]) drawn by
    parlor's show-page while a page's :module loads; nil when no page
    names one.
-   :shapes-by-name: the app's shapes, by message name (bridge's).
+   :shapes-by-name: the app's shapes, by message name (bridge's), each
+   with its three keys written out: :params-shape, :answer-shape and
+   :refusals, its handler's own reasons ({} for none; doorman's and
+   groundwork's are added here, never written).
    :sse-handlers: the app's own sse messages' handlers, by name.
    :questions-of-pages: parlor's, every page's declaration of the
    questions it needs while open, by page name, one for each of the
    page's pages and no other: (fn [page]) -> questions.
    :on-answer-failed: parlor's, an event given the question and the
    failed answer, or nil for none.
+   :on-signed-out: parlor's, an event dispatched once, the first time an
+   answer is refused :doorman/signed-out, given the page to return to
+   after signing in ({:page :params :query}), or nil for none.
    :on-move: parlor's, an event given {:from page :to page} after every
    move, or nil for none.
    :exact-decimals: the browser's wire setting the page can't carry, a
@@ -136,10 +176,14 @@
    keep a decimal as its text.
    parlor checks its three again, closer, at its start."
   [:map {:closed true}
-   [:shapes-by-name map?]
+   [:shapes-by-name [:map-of :keyword [:map {:closed true}
+                                       [:params-shape :any]
+                                       [:answer-shape :any]
+                                       [:refusals [:map-of :qualified-keyword :any]]]]]
    [:sse-handlers map?]
    [:questions-of-pages [:map-of :qualified-keyword fn?]]
    [:on-answer-failed [:maybe vector?]]
+   [:on-signed-out [:maybe vector?]]
    [:on-move [:maybe vector?]]
    [:query-shapes-of-pages [:map-of :qualified-keyword :any]]
    [:placeholder [:maybe fn?]]
@@ -178,14 +222,14 @@
    are checked first, every key required. Returns {:settings :wire :store
    :sse-line}, :wire the app's one wire in the browser."
   [options]
-  (let [{:keys [shapes-by-name sse-handlers questions-of-pages on-answer-failed on-move exact-decimals
+  (let [{:keys [shapes-by-name sse-handlers questions-of-pages on-answer-failed on-signed-out on-move exact-decimals
                 query-shapes-of-pages placeholder]}
         (check-start-options options)
         {:keys [addresses pages sse-reconnect-after-ms languages language module-stylesheets] store-settings :doorbell :as settings}
         (read-settings-from-page)
         module-stylesheets (update-keys module-stylesheets name)
         wire           (wire/make-wire-from-settings (assoc (:wire settings) :exact-decimals exact-decimals))
-        shapes-by-name (merge shapes-by-name doorbell/message-shapes-by-name groundwork-shapes-by-name)
+        shapes-by-name (make-shapes-by-name shapes-by-name)
         send!          #(bridge/send-message! (:http addresses) shapes-by-name % {:wire wire :headers {}})
         send-write!    (fn [message once-key]
                          (bridge/send-message! (:http addresses) shapes-by-name message
@@ -208,6 +252,8 @@
                                       :actions-answer-shape doorman/my-actions-answer-shape
                                       :wire               wire
                                       :on-answer-failed   on-answer-failed
+                                      :on-signed-out      on-signed-out
+                                      :signed-out-reason  (when on-signed-out :doorman/signed-out)
                                       :on-move            on-move
                                       :query-shapes-of-pages query-shapes-of-pages
                                       :languages          {:dictionary languages :language-of-page language}

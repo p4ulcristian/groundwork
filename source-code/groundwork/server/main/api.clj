@@ -14,7 +14,7 @@
         :handlers             handlers              ; bridge's table, each with :action, where it acts (:record or :scope) and shapes
         :pages                {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}
                                :admin/page  {:address \"/admin\" :title \"Admin\" :module \"admin\"}}   ; loaded on the way in
-        :background-job-kinds [send-invoice-email]
+        :background-job-kinds [send-invoice-email]  ; backroom's kinds, each naming its :system-actor
         :schedules            []
         :may-upload?          (fn [{:keys [person-id]}] (some? person-id))   ; who may upload files, the asker
         :on-delivery-event    {:orders/confirmation mark-address-bounced!} ; postbox's, by the email's tag
@@ -45,7 +45,9 @@
    groundwork's :doorman/my-actions, then doorbell's notes; every write keyed
    to run once, groundwork.server.main.run-once), doorbell's listener, the
    background job workers (groundwork's own that forgets old one-time keys
-   among them), in development the browser
+   among them; each job's one transaction is doorman's run-as-system! as
+   its kind's :system-actor, so it reaches what that actor's sentences
+   give it), in development the browser
    build's watcher (:browser-build {:watch options}, with the app's
    :browser-modules), and the server (bridge's three addresses, from
    :server :addresses, every page answered by the page shell in the
@@ -56,7 +58,10 @@
    handled with that language bound: (dictionary/tr key args) in a
    handler is in the request's language. Each
    language's catalog is read at the start (a missing one refuses it) and
-   served where the browser fetches it, /<catalogs-path>/<language>.json. A page
+   served where the browser fetches it, /<catalogs-path>/<language>.json.
+   Every reason a refusal may give (bridge's, doorman's, the run-once
+   ones, every handler's :refusals) needs its text in every catalog: one
+   missing refuses the start (dictionary's check-texts-of-reasons). A page
    may name a :module of :browser-modules, loaded on demand by the browser.
 
    In production the deploy runs migrate-app! first, as the role that owns
@@ -530,6 +535,16 @@
       (add-my-actions-handler pool app find-session-step)
       (doorbell/put-table-notes-into-handlers)))
 
+(defn- make-all-ready-handlers
+  "The handlers the server answers: the app's made ready, and
+   :groundwork/browser-error, with find-session-step. The REPL's
+   ask-as-person makes the same names with its own step, so every
+   answered message is counted under one table of names on the app's
+   meter (bridge declares its metrics by the names)."
+  [pool {:keys [settings] :as app} find-session-step]
+  (-> (make-ready-handlers pool app find-session-step)
+      (errors/add-browser-error-handler find-session-step (get-in settings [:errors :browser-rate-limit]))))
+
 (defn- make-rate-limit-key-finder
   "Askers told apart by their session (a hash of its cookie), else by
    their address, the proxy's header when the settings name one."
@@ -538,10 +553,28 @@
     (or (doorman/find-session-key-of-request request (:sessions settings))
         (bridge/find-client-address request (get-in settings [:server :client-address-header])))))
 
+(defn- check-texts-of-reasons!
+  "Every reason a refusal may give has its text in every catalog that
+   shows (dictionary's check-texts-of-reasons): bridge's own, doorman's,
+   groundwork's run-once ones, and every ready handler's :refusals (the
+   app's, with doorman's and groundwork's added); the start is refused,
+   :dictionary/missing-texts, with every missing one at once."
+  [texts ready-handlers]
+  (dictionary/check-texts-of-reasons texts (apply merge bridge/refusals doorman/refusals run-once/refusals
+                                                  (map :refusals (vals ready-handlers)))))
+
+(defn- run-as-system-actor!
+  "backroom's :run-in-transaction-as: a job's one transaction as its
+   kind's :system-actor, doorman's run-as-system!, read and write."
+  [pool system-actor f]
+  (doorman/run-as-system! pool system-actor {:read-only? false} f))
+
 (def ^:private postbox-system-actor
   "The system actor postbox's webhook functions run as (doorman's
    run-as-system!): the app's sentences give it what they may do,
-   {:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :postbox]}."
+   {:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :postbox]}.
+   postbox's sending job runs as it too (make-postbox's :system-actor): it
+   reaches postbox.emails, a table without sentences."
   :postbox)
 
 (defn- make-routes [{:keys [settings pages may-upload? on-delivery-event on-inbound-email routes tables scope-kinds]}
@@ -660,10 +693,12 @@
 (defn- make-study-tools
   "groundwork's tools for the REPL (groundwork.server.main.tools), from the running
    app's parts."
-  [{:keys [handlers tables scope-kinds] :as app} wire log pool]
-  (tools/make-tools {:make-ready-handlers #(make-ready-handlers pool app %)
+  [{:keys [handlers tables scope-kinds settings] :as app} wire log app-meter pool]
+  (tools/make-tools {:make-ready-handlers #(make-all-ready-handlers pool app %)
                      :wire                wire
                      :log                 log
+                     :meter               app-meter
+                     :metric-buckets      (get-in settings [:server :metric-buckets])
                      :pool                pool
                      :handlers            handlers
                      :tables              tables
@@ -740,14 +775,16 @@
               running-attic     (start-part! stoppers
                                              #(attic/make-attic (get-in settings [:attic :storage]) {:log log :meter app-meter})
                                              attic/stop-attic!)
-              running-postbox   (postbox/make-postbox (get-in settings [:postbox :sending]) {:log log :meter app-meter :wire wire})
+              running-postbox   (postbox/make-postbox (get-in settings [:postbox :sending])
+                                                      {:log log :meter app-meter :wire wire :system-actor postbox-system-actor})
               find-session-step (doorman/make-find-session-step pool (:sessions settings))
-              handlers          (-> (make-ready-handlers pool app find-session-step)
-                                    (errors/add-browser-error-handler find-session-step
-                                                                      (get-in settings [:errors :browser-rate-limit])))
+              handlers          (make-all-ready-handlers pool app find-session-step)
+              _                 (check-texts-of-reasons! texts handlers)
               answer-as         (answer-as/make-answer-as {:handlers               handlers
                                                            :wire                   wire
                                                            :log                    log
+                                                           :meter                  app-meter
+                                                           :metric-buckets         (get-in settings [:server :metric-buckets])
                                                            :find-rate-limit-key    (make-rate-limit-key-finder settings)
                                                            :buckets-before-cleanup (get-in settings [:server :rate-limit-buckets-before-cleanup])})
               page-handler      (page/make-page-handler {:wire              wire
@@ -768,6 +805,7 @@
                                                                                    :wire wire
                                                                                    :log log
                                                                                    :meter app-meter
+                                                                                   :run-in-transaction-as run-as-system-actor!
                                                                                    :kinds (conj (vec background-job-kinds)
                                                                                                 (run-once/make-forget-keys-kind (:run-once settings))
                                                                                                 (postbox/make-background-job-kind running-postbox))
@@ -797,7 +835,7 @@
           (health/mark-stage! running-health :started)
           (log :info :groundwork/started {:groundwork/version (:version settings) :groundwork/port (:port server)})
           (let [repl (study/start-repl-server! (:study settings)
-                                               {:log log :tools (make-study-tools app wire log pool)})]
+                                               {:log log :tools (make-study-tools app wire log app-meter pool)})]
             {:settings settings :wire wire :logbook running-logbook :log log :meter app-meter :texts texts :pool pool
              :attic running-attic :postbox running-postbox :handlers handlers :doorbell running-doorbell :workers workers :watching watching :health running-health
              :server server :study repl}))

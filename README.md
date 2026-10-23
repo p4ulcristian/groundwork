@@ -29,7 +29,10 @@ its tables: [cellar](https://github.com/p4ulcristian/cellar), every query a
 migration's time limits the `:migration` part, with no defaults. And what runs
 later, background jobs on Postgres:
 [backroom](https://github.com/p4ulcristian/backroom), a queue, workers and
-schedules; its settings are the `:background-jobs` part. And what the browser downloads and how the page looks:
+schedules; each job kind names its `:system-actor`, and its one
+transaction, the work and its done-mark, is doorman's `run-as-system!` as
+that actor, which reaches what its sentences give it; its settings are the
+`:background-jobs` part. And what the browser downloads and how the page looks:
 [browser-build](https://github.com/p4ulcristian/browser-build), the shadow-cljs build
 (watched in development, built once by the deploy) and the stylesheets a
 namespace names, bundled; taken only in the build aliases, never in production;
@@ -38,12 +41,20 @@ options the `:browser-release` alias's `:exec-args`.
 And how the browser and the server talk, on both sides:
 [bridge](https://github.com/p4ulcristian/bridge), named messages over http,
 sse and ws answered by a handler's steps, and the routes; its addresses and
-ping are in the `:server` settings, with no defaults.
+ping are in the `:server` settings, with no defaults. A refusal is a named
+reason with data, declared on its handler (`:refusals`, `{}` for none),
+never English on the wire; every reason, the libraries' own (bridge's,
+doorman's, groundwork's run-once ones) too, needs its text in every
+catalog, or the start is refused, and the browser draws it with
+`(parlor/tr reason data)`. Every answered message is counted on the app's
+meter, whichever door it came through (an app route's `answer-as`, the
+REPL's `ask-as-person`).
 And who is asking and what they may do, at one door:
 [doorman](https://github.com/p4ulcristian/doorman), sessions in Postgres, a
 person's own tokens for scripts (a call by `Authorization: Bearer` is that
-person's) and access (scopes, roles, memberships, the check in front of
-every handler, which says where it acts, the gates, the leak test); its
+person's) and access (scopes, roles by id, memberships holding a set of
+roles, the check in front of every handler, which says where it acts, the
+gates, the leak test); its
 settings are the `:sessions` part, with no defaults.
 And how screens stay current, on both sides:
 [doorbell](https://github.com/p4ulcristian/doorbell), a change to a table rings
@@ -78,7 +89,7 @@ prefix, the cookie, Accept-Language, the default) and loses the prefix
 before routing; the shell's `<html lang>` and alternate links follow it,
 and parlor keeps it on every move. Texts are ICU messages in a JSON
 catalog per language, read by the server at the start and served to the
-browser, where parlor's `tr` (`[:parlor/text key args]`) draws them. On
+browser, where parlor's `tr`, called only in views, draws them. On
 the server every request is handled with its language bound, so
 `(dictionary/tr key args)` in a handler's steps, a page's `render-page`
 or an app's own route is in the request's language; the running app's

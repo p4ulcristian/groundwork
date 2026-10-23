@@ -1,5 +1,7 @@
 > **Changed in part** by [The browser build's npm packages are real dependencies; doorman owns the shape of "what may I do?"](2026-10-23-the-builds-npm-packages-are-real-dependencies-and-doorman-owns-the-my-actions-shape.md) (2026-10-23): the answer's shape is doorman's only, handed to parlor as `:actions-answer-shape` with the wire.
 
+> **Changed in part** by [The composer takes named refusals](2026-10-23-the-composer-takes-named-refusals.md) (2026-10-23, built on tidy-up, not released): the start takes `:on-signed-out` and passes it with `:signed-out-reason :doorman/signed-out`; every name's shapes carry `:refusals`, doorman's and groundwork's reasons added.
+
 > **Changed in part** by [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md) (2026-10-23): the browser start takes `:query-shapes-of-pages` and `:placeholder`, and gives parlor the languages and showroom's `load-module!`.
 
 > **Changed in part** by [Every write runs once, by its one-time key](2026-10-23-every-write-runs-once-by-its-one-time-key.md) (2026-10-23): parlor's start takes `:send-write!` (the key in the `idempotency-key` header) and `:retry-writes` (from the page) in place of `:send-message!`.

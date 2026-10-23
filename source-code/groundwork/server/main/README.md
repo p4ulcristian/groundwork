@@ -12,7 +12,10 @@ that writes a line (the running app holds both, `:logbook` and `:log`;
 production, and starts the pool, the handlers (doorman's check, groundwork's
 `:doorman/my-actions`, then doorbell's notes),
 doorbell's listener (the `:doorbell :listening` settings), backroom's
-background job workers (`:background-jobs`), in development browser-build's
+background job workers (`:background-jobs`; each job's one transaction is
+doorman's `run-as-system!` as its kind's `:system-actor`, the app's kinds
+too, so an app writes a system actor, and its sentences on the tables it
+reaches, per kind of background work), in development browser-build's
 watcher of the browser build (`:browser-build {:watch options}`, checked by
 browser-build before anything starts), and bridge's server (its
 `:server` settings, bridge's, every key required; askers told apart by
@@ -51,9 +54,18 @@ on demand ([the decision](../../../../decisions/2026-10-23-routing-extras-each-w
 
 Each language's catalog (`<catalogs-path>/<language>.json` on the
 classpath) is read at the start, held by the running app as `:texts` for
-the server's own texts (`dictionary/make-text`, the language a value), and
-served where the browser fetches it, `/<catalogs-path>/<language>.json`
+the server's own texts outside a request (`(dictionary/with-language texts
+"de" (dictionary/tr key args))`; inside one the request's language is
+bound already), and served where the browser fetches it,
+`/<catalogs-path>/<language>.json`
 ([the decision](../../../../decisions/2026-10-23-house-reads-the-catalogs-at-the-start-and-serves-them.md)).
+Every reason a refusal may give has its text in every catalog, or the
+start is refused, `:dictionary/missing-texts`, naming each (dictionary's
+`check-texts-of-reasons`): bridge's own (`:bridge/too-many`,
+`:bridge/failed`, `:bridge/invalid`, `:bridge/no-answer`, `:bridge/unfit`),
+doorman's (`:doorman/signed-out`, `:doorman/not-found`,
+`:doorman/not-allowed`), groundwork's run-once ones and every handler's
+`:refusals`.
 
 ```clojure
 :languages {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}] :default "en" :cookie-name "lang"   ; dictionary's; :cookie-name nil for none
@@ -106,9 +118,13 @@ wrapped in one step, after doorman's check, in its transaction, which
 claims the request's one-time key (the `idempotency-key` header, a UUID)
 for the message's name in `groundwork.run_once_keys`. A repeat by the same
 person gets the first answer and saves nothing; one while the first runs
-waits for it; someone else's is refused. Keys older than `:keep-keys-ms`
+waits for it; someone else's is refused, `:groundwork/once-key-of-someone-else`,
+and a key that isn't a UUID's text `:groundwork/once-key-not-a-uuid`:
+groundwork's own reasons, added to every write's `:refusals` (a handler
+that declares one itself is refused). Keys older than `:keep-keys-ms`
 count as forgotten, and groundwork's background job `:groundwork/forget-old-once-keys`
-deletes them on its cron line. A write's answer must fit its shape or
+deletes them on its cron line, run as groundwork's system actor
+`:groundwork-once-keys`. A write's answer must fit its shape or
 nothing is saved. A write without a key runs as it is:
 [the decision](../../../../decisions/2026-10-23-every-write-runs-once-by-its-one-time-key.md).
 
@@ -285,7 +301,8 @@ A `:person` route is a person's, from their browser (the session's
 cookie) or a script (a token doorman made for them, `Authorization:
 Bearer`). It runs doorman's session step first, which finds who asks: by a
 cookie a request that isn't a GET must come from the app's own pages, a
-request with both a cookie and a token is refused, else 403. The handler
+request with both a cookie and a token is refused, else 403, its body the
+text of `:doorman/not-allowed` in the request's language. The handler
 gets what doorman found (`asker`), `run-as-asker!` (a transaction as the
 request's asker, held by the gates), `answer-as` (a message answered as
 the request's asker, through every check a browser's message gets and each

@@ -1,5 +1,9 @@
 # Every write runs once, by its one-time key
 
+> **Changed in part** by [The composer takes named refusals](2026-10-23-the-composer-takes-named-refusals.md) (2026-10-23, built on tidy-up, not released): the run-once refusals are named reasons, `:groundwork/once-key-not-a-uuid` and `:groundwork/once-key-of-someone-else`, and a write whose answer doesn't fit answers `:bridge/failed`.
+
+> **Changed in part** by [Every background job runs as its kind's system actor](2026-10-23-every-background-job-runs-as-its-kinds-system-actor.md) (2026-10-23, built on tidy-up, not released): the job that forgets old keys runs as `:groundwork-once-keys`.
+
 > The user's decision, 2026-10-23: as Groundwork v0.5.0 did ([What every endpoint declares](2026-10-12-what-every-endpoint-declares.md): "run-once is automatic for every write"). Takes mailroom v0.5.0 (a message may carry more headers), doorman v0.5.0 (`does-action-only-read?`) and parlor v0.4.0 (a write carries a one-time key, kept across its retries). Changes in part [The browser start starts parlor](2026-10-23-the-browser-start-starts-parlor.md): parlor's start gets `:send-write!` and `:retry-writes` in place of `:send-message!`.
 
 **Decision:**

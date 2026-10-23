@@ -1,5 +1,7 @@
 # postbox's webhook functions run as doorman's system actor :postbox
 
+> **Changed in part** by [Every background job runs as its kind's system actor](2026-10-23-every-background-job-runs-as-its-kinds-system-actor.md) (2026-10-23, built on tidy-up, not released): postbox's sending job runs as `:postbox` too.
+
 > 2026-10-23: the user asked for a deliberate, narrow system path, allowed exactly what is declared in the sentences, covered by the leak test, without BYPASSRLS or the owner role; this shape was decided while building it. Changes in part [main makes one attic and one postbox, and serves the upload route and the provider's webhooks](2026-10-23-main-makes-one-attic-and-one-postbox.md): the app's `:on-delivery-event` and `:on-inbound-email` ran on the app's role with nobody asking, so a bounce couldn't mark a shop's row behind the gates.
 
 **Decision:** groundwork hands postbox's webhooks `:run-in-transaction` as `#(doorman/run-as-system! pool :postbox {:read-only? false} %)`: every webhook function runs in a transaction in which doorman's system actor `:postbox` asks. The app's sentences say what it may do, by name:

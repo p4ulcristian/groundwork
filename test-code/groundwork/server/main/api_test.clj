@@ -120,15 +120,15 @@
   (filterv #(= event (get % "event")) @lines))
 
 (def ^:private handlers
-  {:orders/count {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :rate-limit {:max 2 :per-ms 60000}
+  {:orders/count {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :refusals {} :rate-limit {:max 2 :per-ms 60000}
                   :run-steps-in nil
                   :steps  [{:name :answer-count :enter #(bridge/add-answer-to-context % 0)}]}
-   :orders/all {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape [:vector :uuid] :rate-limit nil :run-steps-in nil
+   :orders/all {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape [:vector :uuid] :refusals {} :rate-limit nil :run-steps-in nil
                 :steps  [{:name  :answer-all-orders
                           :enter #(bridge/add-answer-to-context
                                    % (mapv :order/id (database/find-rows (:doorman/transaction %) find-all-orders {})))}]}
    :orders/add {:action :orders/edit :scope [:shop :order/shop-id] :params-shape [:map [:order/shop-id :uuid] [:test/wait-ms :int]] :answer-shape :uuid
-                :rate-limit nil :run-steps-in nil
+                :refusals {} :rate-limit nil :run-steps-in nil
                 :steps  [{:name  :add-order
                           :enter (fn [{:bridge/keys [message-data] :as context}]
                                    (Thread/sleep (long (:test/wait-ms message-data)))
@@ -136,12 +136,12 @@
                                     context (:order/id (database/find-one-row (:doorman/transaction context) insert-order
                                                                               (select-keys message-data [:order/shop-id])))))}]}
    :orders/add-badly {:action :orders/edit :scope [:shop :order/shop-id] :params-shape [:map [:order/shop-id :uuid]] :answer-shape :uuid
-                      :rate-limit nil :run-steps-in nil
+                      :refusals {} :rate-limit nil :run-steps-in nil
                       :steps  [{:name  :add-order-and-answer-a-number
                                 :enter (fn [{:bridge/keys [message-data] :as context}]
                                          (database/find-one-row (:doorman/transaction context) insert-order message-data)
                                          (bridge/add-answer-to-context context 42))}]}
-   :orders/broken {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :rate-limit nil :run-steps-in nil
+   :orders/broken {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :refusals {} :rate-limit nil :run-steps-in nil
                    :steps  [{:name  :say-and-ask-untyped
                              :enter (fn [{:bridge/keys [log] :as context}]
                                       (log :info :test/about-to-break {})
@@ -304,6 +304,26 @@
    :background-job-kinds [] :schedules []})
 
 (defn- run-sql! [pool text] (database/run-statement! pool (database/make-query-from-sql-text "test" text) {}))
+
+(defn- refusal-of
+  "A name's refusal as JSON data reads it, without its request id: the
+   reason as text, its data."
+  [reason data]
+  {"bridge/refused" (subs (str reason) 1) "bridge/data" data})
+
+(defn- without-request-ids
+  "An answer's JSON data, each name's request id taken out (a new one for
+   every message), its notes too."
+  [answer]
+  (update-vals (dissoc answer "bridge/notes") #(if (map? %) (dissoc % "bridge/request-id") %)))
+
+(defn- is-too-many?
+  "Whether a name's JSON answer is bridge's :bridge/too-many, with a wait
+   and a request id."
+  [answer]
+  (and (= "bridge/too-many" (get answer "bridge/refused"))
+       (pos-int? (get-in answer ["bridge/data" "retry-after-ms"]))
+       (string? (get answer "bridge/request-id"))))
 
 (defn- ask-health
   "A plain GET, no origin, no cookie: [status body cache-control]."
@@ -540,14 +560,26 @@
         (run-sql! owner-pool (str "INSERT INTO shop_emails (shop_email__address, shop_email__shop_id) VALUES ('anna@shop.test', '" shop-7 "')"))
         (database/run-in-transaction! owner-pool {:read-only? false}
                                       (fn [transaction]
-                                        (doorman/add-scope! transaction scope-kinds :shop shop-7 paul nil)
-                                        (doorman/add-scope! transaction scope-kinds :shop shop-9 bob nil)
-                                        (doorman/add-membership! transaction [:shop shop-7] anna "Staff")))
+                                        (let [roles-of-7 (doorman/add-scope! transaction scope-kinds :shop shop-7 paul nil)]
+                                          (doorman/add-scope! transaction scope-kinds :shop shop-9 bob nil)
+                                          ;; a member holds a set of roles, by their ids
+                                          (doorman/add-membership! transaction [:shop shop-7] anna #{(get roles-of-7 "Staff")}))))
         (testing "an app route at an address groundwork serves is refused at the start"
           (is (thrown? Exception
                        (main/start-app! (assoc-in (make-app "groundwork_app") [:routes :app/health]
                                                   {:address "/health/live" :method :get :kind :provider
                                                    :rate-limit nil :handler (fn [_ _] {:status 200})})))))
+        (testing "a reason with no text in every catalog refuses the start, named"
+          (is (= {:type :dictionary/missing-texts :missing #{:orders/too-late}}
+                 (try (main/start-app! (assoc-in (make-app "groundwork_app") [:handlers :orders/count :refusals] {:orders/too-late nil}))
+                      (catch clojure.lang.ExceptionInfo e
+                        {:type    (:type (ex-data e))
+                         :missing (set (mapcat :missing-texts (vals (:problems (ex-data e)))))})))))
+        (testing "a handler declaring groundwork's own reason is refused: groundwork adds it"
+          (is (= :groundwork.server.main/bad-handlers
+                 (try (main/start-app! (assoc-in (make-app "groundwork_app") [:handlers :orders/add :refusals]
+                                                 {:groundwork/once-key-not-a-uuid nil}))
+                      (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))))
         (let [running     (main/start-app! (make-app "groundwork_app"))
               stopped?    (atom false)
               server-port (get-in running [:server :port])
@@ -615,17 +647,18 @@
                   (is (= 1 (count (orders-of anna-token))) "Anna: shop 7's order, with no Origin: a token is no browser's")
                   (is (= 1 (count (orders-of bob-token))) "Bob: shop 9's")
                   (is (not= (orders-of anna-token) (orders-of bob-token)))
-                  (is (= {"error" "Not found."} (orders-of "app_not-a-token")) "a wrong token is nobody, who holds :orders/see nowhere")
+                  (is (= (refusal-of :doorman/signed-out nil) (dissoc (orders-of "app_not-a-token") "bridge/request-id"))
+                      "a wrong token is nobody: signed out")
                   (is (= 1 (count (get (json/read-value (second (call "/groundwork/http" anna-token nil "{\"orders/all\":{}}"))) "orders/all")))
                       "the messages' own route takes a token too")
-                  (is (= [403 "A request carries a session's cookie or a token, not both."]
-                         (call "/app/call" anna-token bob-cookie "{\"orders/all\":{}}")))
+                  (is (= [403 "Not allowed."] (call "/app/call" anna-token bob-cookie "{\"orders/all\":{}}"))
+                      "a cookie and a token at once: doorman's reason's text, in the request's language")
                   (is (= [200 (str anna " 1")] (take 2 (send-plain-with-token server-port "/app/orders" anna-token)))
                       "a :person route's asker, and its run-as-asker!, by the token")
                   (let [[first-answer second-answer third-answer]
                         (repeatedly 3 #(get (json/read-value (second (call "/app/call" anna-token nil "{\"orders/count\":{}}"))) "orders/count"))]
                     (is (every? int? [first-answer second-answer]))
-                    (is (= {"error" "Too many requests."} third-answer) "the handler's rate limit, {:max 2}, counted per token"))
+                    (is (is-too-many? third-answer) "the handler's rate limit, {:max 2}, counted per token"))
                   (is (int? (get (json/read-value (second (call "/app/call" bob-token nil "{\"orders/count\":{}}"))) "orders/count"))
                       "another token has its own")))
               (run-sql! owner-pool "DELETE FROM orders"))
@@ -635,9 +668,9 @@
                                     (HttpResponse$BodyHandlers/ofString))]
                 (is (= [200 "no-cache"] [(.statusCode response) (.orElse (.firstValue (.headers response) "cache-control") nil)]))
                 (is (= "Bestellungen" (get (json/read-value (.body response)) "orders/title"))))
-              (testing "and the server's own texts, the language a value"
-                (is (= "3 Bestellungen" (dictionary/make-text (:texts running) "de" :orders/count {:count 3})))
-                (is (= "1 order" (dictionary/make-text (:texts running) "en" :orders/count {:count 1})))))
+              (testing "and the server's own texts outside a request: the language bound by hand, tr inside"
+                (is (= "3 Bestellungen" (dictionary/with-language (:texts running) "de" (dictionary/tr :orders/count {:count 3}))))
+                (is (= "1 order" (dictionary/with-language (:texts running) "en" (dictionary/tr :orders/count {:count 1}))))))
             (testing "a page opened fresh: the shell, with the browser's settings in it"
               (let [[status html] (send-request server-port "GET" "/orders/42" nil nil)]
                 (is (= 200 status))
@@ -725,9 +758,11 @@
                      (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/all\":{}}"))))
             (testing "a rate limit: two a minute per session, a third is refused; another session has its own"
               (let [counted "{\"orders/count\":0,\"bridge/notes\":{\"orders/count\":{\"tables\":[]}}}"]
-                (is (= [[200 counted] [200 counted]
-                        [200 "{\"orders/count\":{\"error\":\"Too many requests.\"}}"]]
-                       (repeatedly 3 #(send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/count\":{}}"))))
+                (let [[first-send second-send [third-status third-body]]
+                      (repeatedly 3 #(send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/count\":{}}"))]
+                  (is (= [[200 counted] [200 counted]] [first-send second-send]))
+                  (is (= 200 third-status) "one POST carries many messages: the refusal is in the answer")
+                  (is (is-too-many? (get (json/read-value third-body) "orders/count"))))
                 (is (= [200 counted] (send-request server-port "POST" "/groundwork/http" bob-cookie "{\"orders/count\":{}}")))))
             (testing "doorbell: each line hears the version first, then every changed table, never a row"
               (let [anna-line  (open-sse server-port anna-cookie)
@@ -771,7 +806,8 @@
                         bob-line    (open-sse server-port bob-cookie)
                         ask-actions #(send-request server-port "POST" "/groundwork/http" % "{\"doorman/my-actions\":{}}")
                         notes       #(str ",\"bridge/notes\":{\"doorman/my-actions\":{\"tables\":[" % "]}}}")
-                        read-tables "\"doorman/memberships\",\"doorman/role-actions\",\"doorman/scopes\""]
+                        read-tables (str "\"doorman/membership-roles\",\"doorman/memberships\",\"doorman/role-actions\","
+                                         "\"doorman/roles\",\"doorman/scopes\"")]
                     (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data anna-line)))
                     (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data bob-line)))
                     (is (= [200 (str "{\"doorman/my-actions\":[{\"scope-kind\":\"shop\",\"scope-id\":\"" shop-7 "\","
@@ -781,10 +817,16 @@
                     (is (= [200 (str "{\"doorman/my-actions\":[]" (notes ""))] (ask-actions nil))
                         "nobody signed in, and this app opens no action to anyone: none, and nothing read")
                     (Thread/sleep 200)
-                    (run-sql! owner-pool (str "INSERT INTO doorman.memberships VALUES ('" anna "', 'shop', '" shop-9 "', 'Owner')"))
-                    (is (= "{\"doorbell/changed\":{\"table\":\"doorman/memberships\"}}" (read-next-data anna-line))
-                        "the table her my-actions read, so her screen asks again")
-                    (is (= "{\"doorbell/changed\":{\"table\":\"doorman/memberships\"}}" (read-next-data bob-line)))
+                    (database/run-in-transaction! owner-pool {:read-only? false}
+                                                  (fn [transaction]
+                                                    (let [staff (some #(when (= "Staff" (:name %)) (:role-id %))
+                                                                      (doorman/list-roles transaction scope-kinds [:shop shop-9]))]
+                                                      (doorman/add-membership! transaction [:shop shop-9] anna #{staff}))))
+                    (let [changed #{"{\"doorbell/changed\":{\"table\":\"doorman/memberships\"}}"
+                                    "{\"doorbell/changed\":{\"table\":\"doorman/membership-roles\"}}"}]
+                      (is (= changed (set (repeatedly 2 #(read-next-data anna-line))))
+                          "the tables her my-actions read, so her screen asks again")
+                      (is (= changed (set (repeatedly 2 #(read-next-data bob-line))))))
                     (is (= 2 (count (re-seq #"scope-kind" (second (ask-actions anna-cookie))))) "now in two shops")))
                 ;; not closed here: a read that timed out still holds them;
                 ;; stopping the server ends both streams
@@ -805,8 +847,8 @@
                   (is (not= first-answer (second (send-write server-port anna-cookie (random-uuid) (add-order shop-7 0)))))
                   (is (= (+ 2 before) (count-orders))))
                 (testing "the same key from someone else is refused, and runs nothing"
-                  (is (= [200 {"orders/add" {"error" "This one-time key was used by someone else."}}]
-                         (send-write server-port bob-cookie key-1 (add-order shop-9 0))))
+                  (is (= [200 {"orders/add" (refusal-of :groundwork/once-key-of-someone-else nil)}]
+                         (update (send-write server-port bob-cookie key-1 (add-order shop-9 0)) 1 without-request-ids)))
                   (is (= (+ 2 before) (count-orders))))
                 (testing "a repeat while the first still runs waits for it, then answers its answer"
                   (let [key-2      (random-uuid)
@@ -817,8 +859,8 @@
                     (is (= @first-send @repeat))
                     (is (= (+ 3 before) (count-orders)) "one order, not two")))
                 (testing "a key that isn't a UUID is refused"
-                  (is (= [200 {"orders/add" {"error" "The one-time key must be a UUID."}}]
-                         (send-write server-port anna-cookie "seven" (add-order shop-7 0))))
+                  (is (= [200 {"orders/add" (refusal-of :groundwork/once-key-not-a-uuid nil)}]
+                         (update (send-write server-port anna-cookie "seven" (add-order shop-7 0)) 1 without-request-ids)))
                   (is (= (+ 3 before) (count-orders))))
                 (testing "a write without a key runs every time"
                   (send-write server-port anna-cookie nil (add-order shop-7 0))
@@ -826,9 +868,10 @@
                   (is (= (+ 5 before) (count-orders))))
                 (testing "a write whose answer doesn't fit its shape saves nothing"
                   (let [key-3 (random-uuid)]
-                    (is (= [200 {"orders/add-badly" {"error" "Something went wrong."}}]
-                           (send-write server-port anna-cookie key-3
-                                       (str "{\"orders/add-badly\":{\"order/shop-id\":\"" shop-7 "\"}}"))))
+                    (is (= [200 {"orders/add-badly" (refusal-of :bridge/failed nil)}]
+                           (update (send-write server-port anna-cookie key-3
+                                               (str "{\"orders/add-badly\":{\"order/shop-id\":\"" shop-7 "\"}}"))
+                                   1 without-request-ids)))
                     (is (= (+ 5 before) (count-orders)))
                     (is (zero? (kept-keys key-3)) "and its key is not kept: a repeat runs again")))
                 (testing "a read isn't keyed"
@@ -844,15 +887,17 @@
                 (testing "groundwork's background job deletes the forgotten keys"
                   (Thread/sleep 1600)
                   (is (= 1 (kept-keys key-1)))
-                  (database/run-in-transaction! owner-pool {:read-only? false}
-                                                (fn [transaction]
-                                                  ((:run (run-once/make-forget-keys-kind (get-in running [:settings :run-once])))
-                                                   {:transaction transaction} {})))
+                  (let [kind (run-once/make-forget-keys-kind (get-in running [:settings :run-once]))]
+                    (is (= :groundwork-once-keys (:system-actor kind)) "it names its system actor")
+                    ;; as backroom runs it: one transaction on the app's pool, as the kind's actor
+                    (doorman/run-as-system! (:pool running) (:system-actor kind) {:read-only? false}
+                                            (fn [transaction] ((:run kind) {:transaction transaction} {}))))
                   (is (zero? (kept-keys key-1))))))
             (testing "one message's lines, bridge's, cellar's and the app's own, carry its request id and the person"
               (reset! lines [])
-              (is (= [200 "{\"orders/broken\":{\"error\":\"Something went wrong.\"}}"]
-                     (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/broken\":{}}")))
+              (let [[status body] (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/broken\":{}}")]
+                (is (= [200 {"orders/broken" (refusal-of :bridge/failed nil)}] [status (without-request-ids (json/read-value body))])
+                    "a crash answers :bridge/failed; the request stays 200"))
               (let [said    (first (find-lines "test/about-to-break"))
                     unknown (first (find-lines "cellar/tables-read-unknown"))
                     failed  (first (find-lines "bridge/handler-failed"))]
@@ -896,7 +941,9 @@
                                [(get kept "level") (get kept "event") (get-in kept ["context" "person-id"]) (get kept "data")])))
                       (testing "its rate limit, from the :errors settings: two a minute per asker"
                         (is (= [200 "{\"groundwork/browser-error\":true}"] (send-error)))
-                        (is (= [200 "{\"groundwork/browser-error\":{\"error\":\"Too many requests.\"}}"] (send-error))))
+                        (let [[status body] (send-error)]
+                          (is (= 200 status))
+                          (is (is-too-many? (get (json/read-value body) "groundwork/browser-error")))))
                       (testing "from another site: refused by doorman's session step, not written"
                         (let [before (count (find-lines "browser/uncaught"))
                               answer (.body (.send (HttpClient/newHttpClient)
@@ -1031,15 +1078,21 @@
               (with-open [connection (nrepl/connect :port (study/find-repl-port (:study running)))]
                 (let [client (nrepl/client connection 10000)
                       eval!  #(first (nrepl/response-values (nrepl/message client {:op "eval" :code %})))]
-                  (let [ask-all (fn [person] (set (map str (:orders/all (eval! (str "(study.tools/ask-as-person {:orders/all {}} {:person-id #uuid \""
+                  (let [count-ok #(or (some->> (meter/write-metrics-text (:meter running))
+                                                (re-find #"bridge_messages_total\{name=\"orders/all\",outcome=\"ok\",pipe=\"http\"\} (\d+)")
+                                                second parse-long)
+                                      0)
+                        before   (count-ok)
+                        ask-all (fn [person] (set (map str (:orders/all (eval! (str "(study.tools/ask-as-person {:orders/all {}} {:person-id #uuid \""
                                                                                                     person "\" :visitor-id nil :session-flags #{}})"))))))
                         pauls   (ask-all paul)
                         bobs    (ask-all bob)]
+                    (is (= (+ 2 before) (count-ok)) "each ask is counted on the app's meter, as the same message over http")
                     (is (and (contains? pauls (str order-71)) (not (contains? pauls (str order-91))))
                         "as Paul, shop 7's founder, through the check and the gates: only his shop's orders")
                     (is (and (contains? bobs (str order-91)) (not (contains? bobs (str order-71))))
                         "as Bob: none of shop 7's"))
-                  (is (= {:handler :orders/all :answer :not-found}
+                  (is (= {:handler :orders/all :answer :doorman/not-found}
                          (select-keys (eval! (str "(study.tools/why-refused {:person-id #uuid \"" (random-uuid) "\" :visitor-id nil :session-flags #{}} :orders/all {})"))
                                       [:handler :answer]))
                       "someone in no shop: doorman's explain-refusal says why")

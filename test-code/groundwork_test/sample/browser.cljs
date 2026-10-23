@@ -33,16 +33,16 @@
 (defn- add-form [shop-id]
   (let [note (reagent/atom "")]
     (fn [shop-id]
-      (let [unsaved @(rf/subscribe [:parlor/text :orders/unsaved])]
-        [:form#add-form {:on-submit (fn [event]
-                                      (.preventDefault event)
-                                      (rf/dispatch [:parlor/send [:orders/add {:order/shop-id shop-id :order/note @note}] [::added]])
-                                      (reset! note ""))}
-         [:input#note {:value     @note
-                       :on-change (fn [event]
-                                    (reset! note (.. event -target -value))
-                                    (rf/dispatch [:parlor/hold unsaved]))}]
-         [:button#add {:type "submit"} @(rf/subscribe [:parlor/text :orders/add])]]))))
+      [:form#add-form {:on-submit (fn [event]
+                                    (.preventDefault event)
+                                    (rf/dispatch [:parlor/send [:orders/add {:order/shop-id shop-id :order/note @note}] [::added]])
+                                    (reset! note ""))}
+       [:input#note {:value     @note
+                     :on-change (fn [event]
+                                  (reset! note (.. event -target -value))
+                                  ;; the guard holds the text's key; parlor asks it in the language shown then
+                                  (rf/dispatch [:parlor/hold {:text :orders/unsaved :args {}}]))}]
+       [:button#add {:type "submit"} (parlor/tr :orders/add {})]])))
 
 (defn- orders-page [shop-id]
   (let [{:keys [status data error]} @(rf/subscribe [:parlor/answer [:orders/of-shop {:shop/id shop-id}]])
@@ -50,10 +50,10 @@
         can-add?              @(rf/subscribe [:parlor/can-i? :orders/add [:shop shop-id]])
         last-add              @(rf/subscribe [::last-add])]
     [:main.sample {:data-actions (name (:status actions :none))}
-     [:h1#title @(rf/subscribe [:parlor/text :orders/title])]
+     [:h1#title (parlor/tr :orders/title {})]
      (case status
        (:ready :refresh-error) (into [:ul#orders] (for [{:order/keys [id note]} data] ^{:key (str id)} [:li.order {:data-id (str id)} note]))
-       :error                  [:p#refused (:error error)]   ; another's shop: "Not found."
+       :error                  [:p#refused (parlor/tr (:bridge/refused error) (:bridge/data error))]   ; another's shop: :doorman/not-found
        [:p#loading (name (or status :none))])
      (when can-add? [add-form shop-id])
      [:p#last-add (when last-add (str (name (:status last-add)) " " (some-> last-add :data :order/id str)))]
@@ -76,6 +76,7 @@
                                                             [[:orders/of-shop {:shop/id (parse-uuid (:shop-id path-params))}]])
                                             :reports/page (fn [_] [])}
                     :on-answer-failed      nil
+                    :on-signed-out         nil
                     :on-move               nil
                     :query-shapes-of-pages {:orders/page nil :reports/page nil}
                     :placeholder           (fn [_page status] [:p#module-loading (str status)])

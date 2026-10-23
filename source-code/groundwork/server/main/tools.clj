@@ -57,14 +57,17 @@
 (defn- make-ask-as-person
   "answer-as's answer-message, on the handlers made ready with
    doorman.repl's step asking as the asker in place of the session step,
-   no rate limits and no request: a REPL's message comes with none."
-  [{:keys [make-ready-handlers wire log handlers]}]
+   no rate limits and no request: a REPL's message comes with none. It is
+   counted on the app's meter, as every answered message is."
+  [{:keys [make-ready-handlers wire log meter metric-buckets handlers]}]
   (fn [message asker]
     (let [answer (answer-as/make-answer-message
                   {:ready-handlers (make-ready-handlers (doorman-repl/make-step-asking-as (check-asker asker)))
                    :limiter        :no-rate-limits
                    :wire           wire
-                   :log            log})]
+                   :log            log
+                   :meter          meter
+                   :metric-buckets metric-buckets})]
       (answer (turn-params-into-json-data wire handlers message) nil))))
 
 (defn- make-why-refused
@@ -89,14 +92,15 @@
 (defn make-tools
   "study's :tools, from the running app's parts: :make-ready-handlers (fn
    [find-session-step]) the app's handlers made ready with that step in
-   place of doorman's; :wire, :log and :pool the app's; :handlers, :tables
+   place of doorman's; :wire, :log, :meter and :pool the app's;
+   :metric-buckets the :server settings'; :handlers, :tables
    and :scope-kinds the app's own, as it handed them in; :settings-shape groundwork's; :docs-of-parts each
    top settings key's shape var, and :settings the whole one's."
   [parts]
   {:ask-as-person   {:doc      (str "(ask-as-person message asker): the message answered as the asker, through every check a "
                                     "browser's message gets: its params' shape, doorman's access, the gates, the answer's shape; "
                                     "a write runs and is saved. message is {name params}, the params as data with their types; "
-                                    "asker is {:person-id :visitor-id :session-flags}. No rate limits.")
+                                    "asker is {:person-id :visitor-id :session-flags}. No rate limits; counted on the app's meter.")
                      :function (make-ask-as-person parts)}
    :why-refused     {:doc      (str "(why-refused asker handler-name params): why the asker's message would be refused, or "
                                     "not, as data (doorman's explain-refusal): the check's answer, the record, the asker's "

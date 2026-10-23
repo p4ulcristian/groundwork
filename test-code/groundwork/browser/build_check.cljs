@@ -14,17 +14,17 @@
 (def ^:private build-check-styles (styles/use-stylesheet "groundwork/browser/build_check.css"))
 
 (def ^:private shapes-by-name
-  {:orders/all {:params-shape [:map] :answer-shape [:vector :uuid]}})
+  {:orders/all {:params-shape [:map] :answer-shape [:vector :uuid] :refusals {}}})
 
 (defn- draw-page [page]
   (let [{:keys [status data]} @(rf/subscribe [:parlor/answer [:orders/all {}]])
         can-see?              @(rf/subscribe [:parlor/can-i? :orders/see [:shop "7"]])]
-    [:p @(rf/subscribe [:parlor/text :orders/title {}]) " " (pr-str (:name page)) " " (name status) " " (when can-see? (pr-str data))]))
+    [:p (parlor/tr :orders/title {}) " " (pr-str (:name page)) " " (name status) " " (when can-see? (pr-str data))]))
 
 (defn- root []
   [:div {:class "build-check"}
    [:a {:href "/admin?tab=people"} "Admin"]
-   [:button {:on-click #(rf/dispatch [:parlor/hold "Leave without saving?"])} "Edit"]
+   [:button {:on-click #(rf/dispatch [:parlor/hold {:text :orders/unsaved :args {}}])} "Edit"]
    [parlor/show-page draw-page]])
 
 (defn start! []
@@ -33,6 +33,7 @@
                     :questions-of-pages {:orders/page (fn [_] [[:orders/all {}]])
                                          :admin/page  (fn [_] [])}
                     :on-answer-failed   nil
+                    :on-signed-out      [:build-check/to-login]
                     :on-move            nil
                     :query-shapes-of-pages {:orders/page nil
                                             :admin/page  [:map [:tab {:optional true} :keyword]]}

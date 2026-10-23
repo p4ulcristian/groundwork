@@ -24,6 +24,7 @@
    the log."
   (:require
    [clojure.string :as str]
+   [doorman.api :as doorman]
    [logbook.api :as logbook]
    [bridge.api :as bridge]
    [safe.api :as safe]
@@ -89,6 +90,13 @@
                                            :browser/url     (:url message-data)})
             (bridge/add-answer-to-context context true))})
 
+(def browser-error-refusals
+  "The reasons :groundwork/browser-error may refuse with: doorman's
+   :doorman/not-allowed, its find-session step's (another site's request, a
+   cookie and a token at once). Not put through doorman's access, so it
+   declares it itself; the browser's shape says the same."
+  (select-keys doorman/refusals [:doorman/not-allowed]))
+
 (defn make-browser-error-handler
   "The :groundwork/browser-error handler: doorman's find-session step, then the
    error written to the message's log at :error, answered true; limited
@@ -97,6 +105,7 @@
   {:steps        [find-session-step write-browser-error]
    :params-shape browser-error-params-shape
    :answer-shape :boolean
+   :refusals     browser-error-refusals
    :rate-limit   rate-limit
    :run-steps-in nil})
 

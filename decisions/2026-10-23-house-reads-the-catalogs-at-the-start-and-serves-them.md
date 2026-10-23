@@ -1,5 +1,7 @@
 # house reads the catalogs at the start, serves them to the browser, and holds the server's texts
 
+> **Changed in part** by [The composer takes named refusals](2026-10-23-the-composer-takes-named-refusals.md) (2026-10-23, built on tidy-up, not released): the server's own texts are `tr` under `with-language` (dictionary's `make-text` left its api), and the start checks every refusal's reason has its text in every catalog.
+
 > The user's decision, 2026-10-23 (dictionary's texts, carried over from Iron Rainbow's i18n). Takes dictionary v0.2.0 (texts: ICU messages in a JSON catalog per language) and parlor v0.7.0 (texts are re-frame data). Adds to [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md).
 
 **Decision:**

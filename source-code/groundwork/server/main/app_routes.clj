@@ -15,7 +15,9 @@
    doorman's session step runs first and finds who asks: a request that
    changes something by a cookie (or by nothing) must come from the app's
    own pages (its Origin), a request with both a cookie and a token is
-   refused, else 403; the handler gets the asker. :provider:
+   refused, else 403, its body the text of doorman's reason,
+   :doorman/not-allowed, in the request's language; the handler gets the
+   asker. :provider:
    another server calls it; no session or token is read, and the handler
    proves the caller itself (a signature, a provider's secret).
 
@@ -44,6 +46,7 @@
    another route has (groundwork's own, or the app's) refuses the start."
   (:require
    [bridge.api :as bridge]
+   [dictionary.api :as dictionary]
    [doorman.api :as doorman]
    [groundwork.server.main.asker :as asker]
    [malli.core :as malli]
@@ -84,10 +87,13 @@
   routes)
 
 (defn- turn-refusal-into-response
-  "doorman's step's refusal (another site's request, a cookie and a token
-   at once), as a 403."
-  [{:keys [error]}]
-  {:status 403 :headers {"content-type" "text/plain" "cache-control" "no-store"} :body error})
+  "doorman's step's refusal (:doorman/not-allowed: another site's request,
+   a cookie and a token at once), as a 403, its body the reason's text in
+   the request's language (bound around every request)."
+  [{reason :bridge/refused data :bridge/data}]
+  {:status  403
+   :headers {"content-type" "text/plain; charset=utf-8" "cache-control" "no-store"}
+   :body    (dictionary/tr reason (or data {}))})
 
 (defn- make-person-tools
   [request context {:keys [pool scope-kinds tables settings answer-as]}]
