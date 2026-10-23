@@ -8,7 +8,7 @@
  {org.clojure/clojure               {:mvn/version "1.12.6"}
   ;; wire: its own library, github.com/p4ulcristian/wire; main makes the app's
   ;; one wire from the :wire settings and passes it to every library
-  io.github.p4ulcristian/wire       {:git/tag "v0.2.0" :git/sha "d66b7cb"}
+  io.github.p4ulcristian/wire       {:git/tag "v0.2.1" :git/sha "900a84d"}
   ;; the settings and the browser start's options, checked by their shapes
   metosin/malli                     {:mvn/version "0.20.3"}
   ;; logbook: the app's log, its own library, github.com/p4ulcristian/logbook;
@@ -20,12 +20,12 @@
   ;; :views}, a function a file or one a library made, and drops a function in the tables'
   ;; folders that nothing declared makes; a column's type changed by a change; run-after-commit!;
   ;; run-in-transaction! takes the caller's :log, where an after-commit failure is written
-  io.github.p4ulcristian/cellar     {:git/sha "4396e6bc9353b8eb614c0db7b839da537d11863e"}
+  io.github.p4ulcristian/cellar     {:git/tag "v0.4.6" :git/sha "4396e6b"}
   ;; backroom: background jobs on Postgres, its own library, github.com/p4ulcristian/backroom
   ;; on its tidy-up branch, not released: a job kind names its system actor, and its one
   ;; transaction (the work and the done-mark) runs as it, opened by doorman's run-as-system!,
   ;; carrying the job's log; its tables in cellar's tidy-up shapes
-  io.github.p4ulcristian/backroom   {:git/sha "230a95273ce3f04a080a3ed278fc13e5fbae6eb7"}
+  io.github.p4ulcristian/backroom   {:git/tag "v0.5.6" :git/sha "43acc7c"}
   ;; bridge: named messages over http, sse and ws, a handler's steps, the routes;
   ;; both sides, its own library, github.com/p4ulcristian/bridge (it brings
   ;; Jetty 12 through rj9a, reitit-ring and reitit-frontend)
@@ -34,7 +34,7 @@
   ;; named reason, declared on its handler; answer-message counts on the app's meter;
   ;; send-message! takes :keep-alive?; an sse line tells its break (:on-break); go-to-page!
   ;; takes :push or :replace; :may-leave? is asked with the move, finish-move! finishes it
-  io.github.p4ulcristian/bridge   {:git/sha "8bdb927d950be3780088f2034fbc678597fcb49f"}
+  io.github.p4ulcristian/bridge   {:git/tag "v0.7.8" :git/sha "90dd8fa"}
   ;; doorman: who is asking and what may they do, sessions and access, its own
   ;; library, github.com/p4ulcristian/doorman (it brings malli and test.check)
   ;; on its tidy-up branch, not released: a handler says where it acts; tokens; roles have
@@ -42,12 +42,12 @@
   ;; its tables in cellar's tidy-up shapes, its own functions declared by their files, those
   ;; made from the sentences handed to the app (make-access-functions); every transaction it
   ;; opens carries its caller's log (the check's, the message's)
-  io.github.p4ulcristian/doorman    {:git/sha "6b7827a405f8b6c38dd150f70679b1cb2d3e1305"}
+  io.github.p4ulcristian/doorman    {:git/tag "v0.7.10" :git/sha "8d59580"}
   ;; doorbell: a change to a table rings every open screen, which asks again;
   ;; both sides, its own library, github.com/p4ulcristian/doorbell
   ;; on its tidy-up branch, not released: an ask with no answer is bridge's :bridge/no-answer;
   ;; doorbell.tell() declared to cellar by its file (function-files)
-  io.github.p4ulcristian/doorbell   {:git/sha "a0c9af7ae6748b96119e469958d498ad99bdb85c"}
+  io.github.p4ulcristian/doorbell   {:git/tag "v0.5.9" :git/sha "60cab75"}
   ;; parlor: the browser's screens over doorbell's question store, in re-frame,
   ;; drawn with Reagent (it brings re-frame and Reagent; react and react-dom
   ;; are package.json's); the browser's side only, its own library,
@@ -56,13 +56,13 @@
   ;; in views; :on-signed-out with the page; the unsaved-changes guard takes a key and
   ;; :ask-with; every send writes out {:once-key :keep-alive?}; a move writes :push or
   ;; :replace; find-answer reads a held answer in an event handler
-  io.github.p4ulcristian/parlor     {:git/sha "49f2220a7420331de4394714e2cd7e289ec7b138"}
+  io.github.p4ulcristian/parlor     {:git/tag "v0.8.4" :git/sha "3e89966"}
   ;; dictionary: which language a request, a page and an address are in; both
   ;; sides, its own library, github.com/p4ulcristian/dictionary (parlor brings
   ;; it to the browser too)
   ;; on its tidy-up branch, not released: with-language refuses a nil language or bad texts;
   ;; check-texts-of-reasons; tr is the one text call on the server
-  io.github.p4ulcristian/dictionary {:git/sha "a3aa64d61788e64810a24f8cd4b246f2a8a8bc58"}
+  io.github.p4ulcristian/dictionary {:git/tag "v0.4.2" :git/sha "a3aa64d"}
   ;; meter: the app's metrics, its own library, github.com/p4ulcristian/meter;
   ;; main makes one meter from the :meter settings and passes it to every
   ;; library that counts, and serves its text at the :metrics route
@@ -72,13 +72,13 @@
   ;; table and serves its upload route at :attic :upload :path
   ;; on its tidy-up branch, not released: its files table in cellar's tidy-up shapes;
   ;; delete-file-after-commit!, by cellar's run-after-commit!
-  io.github.p4ulcristian/attic     {:git/sha "b1b49dfa5713ef7feb4012d5a5173cf6907d3443"}
+  io.github.p4ulcristian/attic     {:git/tag "v0.1.4" :git/sha "ee84b16"}
   ;; postbox: the app's email, its own library, github.com/p4ulcristian/postbox;
   ;; main makes one postbox from the :postbox :sending settings, runs its
   ;; background job kind, migrates its emails table and serves its webhooks
   ;; on its tidy-up branch, not released: the sending job runs as the :system-actor the app names;
   ;; its emails table in cellar's tidy-up shapes
-  io.github.p4ulcristian/postbox   {:git/sha "90be0dd1aa6c3ec0356687c530f994bf38df8f27"}
+  io.github.p4ulcristian/postbox   {:git/tag "v0.1.4" :git/sha "4a12d5b"}
   ;; safe: the settings and their secrets, its own library, github.com/p4ulcristian/safe;
   ;; an app loads its settings with safe/load, every secret in them wrapped (it prints
   ;; as its name); groundwork compares the :errors token with safe/equal?
@@ -94,7 +94,7 @@
          :extra-deps  {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                        ;; the browser build's test compiles every browser library, and the
                        ;; end-to-end test release-builds its sample app
-                       io.github.p4ulcristian/browser-build {:git/sha "f69ed0036c1ed50437594171ebb54b5548d6ee21"}}
+                       io.github.p4ulcristian/browser-build {:git/tag "v0.4.4" :git/sha "f69ed00"}}
          :exec-fn     cognitect.test-runner.api/test
          :exec-args   {:dirs ["test-code"]}}
 
@@ -106,8 +106,8 @@
   ;; aliases, not in :deps. Development: add :browser-build to the REPL or the dev start
   ;; (its watch options are the :browser-build {:watch …} settings).
   ;; The deploy:  clojure -X:browser-release (an app writes its own :entry and :files-folder)
-  :browser-build   {:extra-deps {io.github.p4ulcristian/browser-build {:git/sha "f69ed0036c1ed50437594171ebb54b5548d6ee21"}}}
-  :browser-release {:extra-deps {io.github.p4ulcristian/browser-build {:git/sha "f69ed0036c1ed50437594171ebb54b5548d6ee21"}}
+  :browser-build   {:extra-deps {io.github.p4ulcristian/browser-build {:git/tag "v0.4.4" :git/sha "f69ed00"}}}
+  :browser-release {:extra-deps {io.github.p4ulcristian/browser-build {:git/tag "v0.4.4" :git/sha "f69ed00"}}
                     :exec-fn    browser-build.api/build-for-release!
                     :exec-args  {:entry              app.browser.main/start!
                                  :modules            {}               ; the app's :browser-modules, loaded on demand, each with its :start
