@@ -94,19 +94,20 @@
          :extra-deps  {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                        ;; the browser build's test compiles every browser library, and the
                        ;; end-to-end test release-builds its sample app
-                       io.github.p4ulcristian/browser-build {:git/sha "bca8e5c3b5e740bf6d4e7934b360e6fac6f0240d"}}
+                       io.github.p4ulcristian/browser-build {:git/sha "f69ed0036c1ed50437594171ebb54b5548d6ee21"}}
          :exec-fn     cognitect.test-runner.api/test
          :exec-args   {:dirs ["test-code"]}}
 
   ;; the browser build: browser-build, its own library, github.com/p4ulcristian/browser-build
   ;; (it brings shadow-cljs); on its tidy-up branch, not released: a module names its
-  ;; :start, a build its :silenced-warnings and :css, a watch its :preloads.
+  ;; :start, a build its :silenced-warnings, :css (its :targets; the lightningcss program is
+  ;; browser-build's pin) and :lightningcss-download-timeout-ms, a watch its :preloads.
   ;; Only to build, never in production: it is in these
   ;; aliases, not in :deps. Development: add :browser-build to the REPL or the dev start
   ;; (its watch options are the :browser-build {:watch …} settings).
   ;; The deploy:  clojure -X:browser-release (an app writes its own :entry and :files-folder)
-  :browser-build   {:extra-deps {io.github.p4ulcristian/browser-build {:git/sha "bca8e5c3b5e740bf6d4e7934b360e6fac6f0240d"}}}
-  :browser-release {:extra-deps {io.github.p4ulcristian/browser-build {:git/sha "bca8e5c3b5e740bf6d4e7934b360e6fac6f0240d"}}
+  :browser-build   {:extra-deps {io.github.p4ulcristian/browser-build {:git/sha "f69ed0036c1ed50437594171ebb54b5548d6ee21"}}}
+  :browser-release {:extra-deps {io.github.p4ulcristian/browser-build {:git/sha "f69ed0036c1ed50437594171ebb54b5548d6ee21"}}
                     :exec-fn    browser-build.api/build-for-release!
                     :exec-args  {:entry              app.browser.main/start!
                                  :modules            {}               ; the app's :browser-modules, loaded on demand, each with its :start
@@ -118,6 +119,7 @@
                                  :closure-defines    {}
                                  :warnings-as-errors #{}
                                  :silenced-warnings  #{}              ; compiler warnings not shown
-                                 :css                nil              ; no CSS step: each bundle as its files are written
+                                 :css                nil              ; no CSS step: each bundle as its files are written; or {:targets "chrome >= 119, safari >= 16.4"}
+                                 :lightningcss-download-timeout-ms 60000   ; browser-build's pinned lightningcss, downloaded with :css
                                  :source-maps?       false            ; a .map beside each file, readable by anyone
                                  :gzip-level         9}}}}            ; the .gz copies, 1 (fast) to 9 (smallest)

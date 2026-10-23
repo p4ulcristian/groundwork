@@ -143,6 +143,7 @@
                                                 :warnings-as-errors #{}
                                                 :silenced-warnings  #{}
                                                 :css                nil
+                                                :lightningcss-download-timeout-ms 60000
                                                 :source-maps?       false
                                                 :gzip-level         1}))
     folder))

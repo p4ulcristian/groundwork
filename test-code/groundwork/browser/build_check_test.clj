@@ -28,6 +28,7 @@
                                                 :warnings-as-errors #{}
                                                 :silenced-warnings  #{}
                                                 :css                nil
+                                                :lightningcss-download-timeout-ms 60000
                                                 :source-maps?       false
                                                 :gzip-level         9}))
     (let [js-files  (into {} (map (juxt :module-id :output-name)) (edn/read-string (slurp (io/file folder "js" "manifest.edn"))))

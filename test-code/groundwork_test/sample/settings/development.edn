@@ -36,6 +36,7 @@
                              :warnings-as-errors        #{}
                              :silenced-warnings         #{}
                              :css                       nil
+                             :lightningcss-download-timeout-ms 60000
                              :preloads                  []
                              :devtools-host             "localhost"
                              :devtools-port             9630
