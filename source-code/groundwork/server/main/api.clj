@@ -575,7 +575,7 @@
                                                 :tables                      tables
                                                 :scope-kinds                 scope-kinds
                                                 :find-session-step           find-session-step
-                                                :find-browser-rate-limit-key (make-rate-limit-key-finder settings)
+                                                :find-person-rate-limit-key (make-rate-limit-key-finder settings)
                                                 :answer-as                   answer-as}))
       (into (page/make-catalog-routes (:languages settings)))
       (into (bridge/make-server-routes-for-pages pages page-handler))))

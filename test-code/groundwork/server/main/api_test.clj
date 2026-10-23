@@ -256,20 +256,20 @@
   "The app's own routes: a page-like read as the asker, a sign-in, a
    call of another protocol answered as the request's asker (its cookie or
    its token), a webhook that reads its raw body."
-  {:app/orders  {:address "/app/orders" :method :get :kind :browser :rate-limit nil
+  {:app/orders  {:address "/app/orders" :method :get :kind :person :rate-limit nil
                  :handler (fn [_request {:keys [asker run-as-asker!]}]
                             {:status 200 :headers {"content-type" "text/plain"}
                              :body (str (:person-id asker) " "
                                         (run-as-asker! {:read-only? true} #(count (database/find-rows % find-all-orders {}))))})}
-   :app/sign-in {:address "/app/sign-in" :method :post :kind :browser :rate-limit nil
+   :app/sign-in {:address "/app/sign-in" :method :post :kind :person :rate-limit nil
                  :handler (fn [_request {:keys [sign-in!]}]
                             {:status 200 :headers {"set-cookie" (:set-cookie (sign-in! anna #{}))} :body "signed in"})}
-   :app/call    {:address "/app/call" :method :post :kind :browser :rate-limit nil
+   :app/call    {:address "/app/call" :method :post :kind :person :rate-limit nil
                  :handler (fn [request {:keys [answer-as]}]
                             {:status 200 :headers {"content-type" "application/json"}
                              :body (json/write-value-as-string
                                     (answer-as (update-keys (json/read-value (slurp (:body request))) keyword) request))})}
-   :app/hook    {:address "/app/hook" :method :post :kind :server-to-server :rate-limit {:max 2 :per-ms 60000}
+   :app/hook    {:address "/app/hook" :method :post :kind :provider :rate-limit {:max 2 :per-ms 60000}
                  :handler (fn [request _tools]
                             {:status 200 :headers {"content-type" "text/plain"} :body (str "got " (slurp (:body request)))})}})
 
@@ -385,7 +385,7 @@
     (is (= "2 orders" (:text (handler {:uri "/orders" :headers {}}))) "the default's")))
 
 (deftest the-apps-routes-are-checked
-  (let [route {:address "/app/x" :method :post :kind :browser :rate-limit nil :handler identity}]
+  (let [route {:address "/app/x" :method :post :kind :person :rate-limit nil :handler identity}]
     (is (= {:app/x route} (app-routes/check-routes {:app/x route})))
     (is (= :groundwork.server.main/bad-routes
            (:type (ex-data (try (app-routes/check-routes {:app/x (assoc route :kind :public)}) (catch Exception e e))))))
@@ -546,7 +546,7 @@
         (testing "an app route at an address groundwork serves is refused at the start"
           (is (thrown? Exception
                        (main/start-app! (assoc-in (make-app "groundwork_app") [:routes :app/health]
-                                                  {:address "/health/live" :method :get :kind :server-to-server
+                                                  {:address "/health/live" :method :get :kind :provider
                                                    :rate-limit nil :handler (fn [_ _] {:status 200})})))))
         (let [running     (main/start-app! (make-app "groundwork_app"))
               stopped?    (atom false)
@@ -580,11 +580,11 @@
                 (is (= 404 (first (get-page "/de/nowhere" {}))))))
             (testing "the app's own routes"
               (run-sql! owner-pool (str "INSERT INTO orders (order__shop_id) VALUES ('" shop-7 "'), ('" shop-9 "')"))
-              (testing ":browser: the asker of the request's session, and a transaction as them, held by the gates"
+              (testing ":person: the asker of the request's session, and a transaction as them, held by the gates"
                 (is (= [200 (str anna " 1")] (take 2 (send-plain server-port "GET" "/app/orders" nil anna-cookie nil)))
                     "shop 7's order, not shop 9's")
                 (is (= [200 " 0"] (take 2 (send-plain server-port "GET" "/app/orders" nil nil nil))) "nobody: no rows"))
-              (testing ":browser: a request that changes something comes from the app's own pages"
+              (testing ":person: a request that changes something comes from the app's own pages"
                 (is (= 403 (first (send-plain server-port "POST" "/app/sign-in" nil nil nil))))
                 (is (= 403 (first (send-plain server-port "POST" "/app/sign-in" "http://evil.test" nil nil))))
                 (let [[status body set-cookie] (send-plain server-port "POST" "/app/sign-in" "http://app.test" nil nil)
@@ -592,11 +592,11 @@
                   (is (= [200 "signed in"] [status body]))
                   (is (= (str anna " 1") (second (send-plain server-port "GET" "/app/orders" nil new-cookie nil)))
                       "the session it made is Anna's")))
-              (testing ":server-to-server: no session, the raw body, its rate limit"
+              (testing ":provider: no session, the raw body, its rate limit"
                 (is (= [200 "got {\"type\":\"charge\"}"] (take 2 (send-plain server-port "POST" "/app/hook" nil nil "{\"type\":\"charge\"}"))))
                 (is (= 200 (first (send-plain server-port "POST" "/app/hook" nil nil "x"))))
                 (is (= 429 (first (send-plain server-port "POST" "/app/hook" nil nil "x"))) "the third in a minute"))
-              (testing "a token's call: doorman finds its person, on a :browser route and on the messages' route"
+              (testing "a token's call: doorman finds its person, on a :person route and on the messages' route"
                 (let [make-token (fn [cookie]
                                    (:text (doorman/make-token! (:pool running) {:request-method :post :headers {"origin" "http://app.test" "cookie" cookie}}
                                                                {:settings (get-in running [:settings :sessions]) :name "a script"
@@ -621,7 +621,7 @@
                   (is (= [403 "A request carries a session's cookie or a token, not both."]
                          (call "/app/call" anna-token bob-cookie "{\"orders/all\":{}}")))
                   (is (= [200 (str anna " 1")] (take 2 (send-plain-with-token server-port "/app/orders" anna-token)))
-                      "a :browser route's asker, and its run-as-asker!, by the token")
+                      "a :person route's asker, and its run-as-asker!, by the token")
                   (let [[first-answer second-answer third-answer]
                         (repeatedly 3 #(get (json/read-value (second (call "/app/call" anna-token nil "{\"orders/count\":{}}"))) "orders/count"))]
                     (is (every? int? [first-answer second-answer]))

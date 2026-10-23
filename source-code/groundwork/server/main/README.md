@@ -272,16 +272,16 @@ language step
 ([the decision](../../../../decisions/2026-10-23-an-apps-own-server-routes-are-records-with-a-kind.md)):
 
 ```clojure
-:routes {:stripe/webhook {:address "/stripe-webhook" :method :post :kind :server-to-server
+:routes {:stripe/webhook {:address "/stripe-webhook" :method :post :kind :provider
                           :rate-limit {:max 30 :per-ms 60000}
                           :handler (fn [request {:keys [log run-as-system!]}] …)}   ; the raw body, unread
-         :flex/authorize {:address "/flex/authorize" :method :get :kind :browser :rate-limit nil
+         :flex/authorize {:address "/flex/authorize" :method :get :kind :person :rate-limit nil
                           :handler (fn [request {:keys [asker run-as-asker! sign-in!]}]
                                      {:status 302 :headers {"location" "/flex"
                                                             "set-cookie" (:set-cookie (sign-in! person-id #{}))}})}}
 ```
 
-A `:browser` route is a person's, from their browser (the session's
+A `:person` route is a person's, from their browser (the session's
 cookie) or a script (a token doorman made for them, `Authorization:
 Bearer`). It runs doorman's session step first, which finds who asks: by a
 cookie a request that isn't a GET must come from the app's own pages, a
@@ -290,9 +290,9 @@ gets what doorman found (`asker`), `run-as-asker!` (a transaction as the
 request's asker, held by the gates), `answer-as` (a message answered as
 the request's asker, through every check a browser's message gets and each
 handler's rate limit, counted per token or cookie), `sign-in!` and
-`sign-out!`. A `:server-to-server` route reads no session and no token and
+`sign-out!`. A `:provider` route reads no session and no token and
 proves its caller itself; it has no asker. No code names a person: a token
-call goes where a browser's does, the messages' own route or a `:browser`
+call goes where a browser's does, the messages' own route or a `:person`
 route
 ([the decision](../../../../decisions/2026-10-23-a-token-call-arrives-where-a-browsers-does.md)):
 

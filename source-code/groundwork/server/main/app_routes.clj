@@ -5,23 +5,23 @@
    beside groundwork's own routes and through the same steps (the
    request's language first, for every route):
 
-     {:stripe/webhook {:address \"/stripe-webhook\" :method :post :kind :server-to-server
+     {:stripe/webhook {:address \"/stripe-webhook\" :method :post :kind :provider
                        :rate-limit {:max 30 :per-ms 60000} :handler stripe/process}
-      :flex/authorize {:address \"/flex/authorize\" :method :get :kind :browser
+      :flex/authorize {:address \"/flex/authorize\" :method :get :kind :person
                        :rate-limit nil :handler flex-authorize}}
 
-   :browser: a person calls it, from their browser (the session's cookie)
+   :person: a person calls it, from their browser (the session's cookie)
    or a script (a token doorman made for them, Authorization: Bearer).
    doorman's session step runs first and finds who asks: a request that
    changes something by a cookie (or by nothing) must come from the app's
    own pages (its Origin), a request with both a cookie and a token is
-   refused, else 403; the handler gets the asker. :server-to-server:
+   refused, else 403; the handler gets the asker. :provider:
    another server calls it; no session or token is read, and the handler
    proves the caller itself (a signature, a provider's secret).
 
    A handler is (fn [request tools]) and answers a Ring response. Its
    request's body is not read (a webhook checks its signature over the
-   raw bytes). tools, for :browser:
+   raw bytes). tools, for :person:
 
      {:asker          {:person-id … :visitor-id … :session-flags #{…}}   ; what doorman found, to read
       :log            the app's log, saying who asked
@@ -35,12 +35,12 @@
                       app's own login has proven the person
       :sign-out!      (fn []) {:set-cookie …}}
 
-   for :server-to-server, {:log :run-as-system!}: no asker, so nothing
+   for :provider, {:log :run-as-system!}: no asker, so nothing
    runs as one.
 
    :rate-limit, {:max :per-ms} or nil for none: one bucket per asker (a
-   :browser route's by its session, else its address; a
-   :server-to-server route's by its address), 429 over it. An address
+   :person route's by its session, else its address; a
+   :provider route's by its address), 429 over it. An address
    another route has (groundwork's own, or the app's) refuses the start."
   (:require
    [bridge.api :as bridge]
@@ -54,7 +54,7 @@
   [:map {:closed true}
    [:address [:re {:error/message "should be a path, starting with /"} #"^/.*"]]
    [:method [:enum :get :post :put :patch :delete]]
-   [:kind [:enum :browser :server-to-server]]
+   [:kind [:enum :person :provider]]
    [:rate-limit [:maybe [:map {:closed true} [:max pos-int?] [:per-ms pos-int?]]]]
    [:handler fn?]])
 
@@ -89,7 +89,7 @@
   [{:keys [error]}]
   {:status 403 :headers {"content-type" "text/plain" "cache-control" "no-store"} :body error})
 
-(defn- make-browser-tools
+(defn- make-person-tools
   [request context {:keys [pool scope-kinds tables settings answer-as]}]
   (let [asker (asker/read-asker context)]
     {:asker          asker
@@ -103,14 +103,14 @@
                                                                  :session-flags session-flags}))
      :sign-out!      (fn [] (doorman/sign-out! pool request (:sessions settings)))}))
 
-(defn- make-browser-handler [handler {:keys [log find-session-step] :as parts}]
+(defn- make-person-handler [handler {:keys [log find-session-step] :as parts}]
   (fn [request]
     (let [context ((:enter find-session-step) {:bridge/request request :bridge/log log})]
       (if (bridge/does-context-have-answer? context)
         (turn-refusal-into-response (:bridge/answer context))
-        (handler request (make-browser-tools request context parts))))))
+        (handler request (make-person-tools request context parts))))))
 
-(defn- make-server-to-server-handler [handler {:keys [log pool]}]
+(defn- make-provider-handler [handler {:keys [log pool]}]
   (fn [request]
     (handler request {:log            log
                       :run-as-system! (fn [system-name options f] (doorman/run-as-system! pool system-name options f))})))
@@ -127,16 +127,16 @@
   "The app's routes as reitit data, one entry per address, each method's
    handler behind its kind's steps and its rate limit. parts: {:pool :log
    :settings :tables :scope-kinds :find-session-step
-   :find-browser-rate-limit-key :answer-as}."
-  [routes {:keys [settings find-browser-rate-limit-key] :as parts}]
+   :find-person-rate-limit-key :answer-as}."
+  [routes {:keys [settings find-person-rate-limit-key] :as parts}]
   (let [find-address #(bridge/find-client-address % (get-in settings [:server :client-address-header]))]
     (->> (check-routes routes)
          (reduce-kv (fn [by-address _route-name {:keys [address method kind rate-limit handler]}]
                       (let [ring-handler (case kind
-                                           :browser          (make-browser-handler handler parts)
-                                           :server-to-server (make-server-to-server-handler handler parts))
+                                           :person           (make-person-handler handler parts)
+                                           :provider         (make-provider-handler handler parts))
                             limited      (add-rate-limit ring-handler rate-limit
-                                                         (case kind :browser find-browser-rate-limit-key :server-to-server find-address)
+                                                         (case kind :person find-person-rate-limit-key :provider find-address)
                                                          parts)]
                         (assoc-in by-address [address method] {:handler limited})))
                     (sorted-map))

@@ -1,6 +1,6 @@
 (ns groundwork.server.main.answer-as
   "A message answered as the asker doorman finds in a request, off the
-   server's addresses: on an app's own :browser route that speaks another
+   server's addresses: on an app's own :person route that speaks another
    protocol (MCP's JSON-RPC, a batch API), which turns a call into a
    message. The request is the route's own, with its proof: the session's
    cookie or a token doorman made (Authorization: Bearer); nobody names the
@@ -10,7 +10,7 @@
    per asker as the server counts them (a token's hash, else the cookie's,
    else the address):
 
-     ;; a :browser route's handler, its tools' :answer-as
+     ;; a :person route's handler, its tools' :answer-as
      (answer-as {:parts/update-part params} request)                ; JSON data, as the browser sends it
      ;=> {:parts/update-part {…}}                                    ; JSON data, as the browser gets it
 
