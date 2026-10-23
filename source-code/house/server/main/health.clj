@@ -15,9 +15,13 @@
    for the next version must not take the running one out of traffic.
 
    Checks that come while one is under way wait on that one, so a hung
-   database holds one query, not one per check. Never cached (no-store)."
+   database holds one query, not one per check. Never cached (no-store).
+   Each ready check is counted on the app's meter,
+   house_ready_checks_total{outcome}, and the stage is read into
+   house_stage{stage} (house.server.main.metrics)."
   (:require
    [cellar.api :as database]
+   [house.server.main.metrics :as metrics]
    [wire.api :as wire]))
 
 (def ^:private find-database-answer
@@ -72,10 +76,13 @@
 (defn make-health-routes
   "The live and ready routes, at the :health settings' paths, as reitit
    data, answered as JSON by the app's wire; a database that answered
-   with an error is written to the app's log."
-  [wire log pool health {:keys [version] {:keys [live-path ready-path database-timeout-ms]} :health}]
+   with an error is written to the app's log; each ready check counted
+   on the app's meter."
+  [wire log meter pool health {:keys [version] {:keys [live-path ready-path database-timeout-ms]} :health}]
   [[live-path  {:get {:handler (fn [_] (answer-json wire 200 {:status "live" :version version}))}}]
    [ready-path {:get {:handler (fn [_]
                                  (if-let [reason (find-reason-not-ready log pool health database-timeout-ms)]
-                                   (answer-json wire 503 {:status "not-ready" :version version :reason reason})
-                                   (answer-json wire 200 {:status "ready" :version version})))}}]])
+                                   (do (metrics/count-ready-check! meter :not-ready)
+                                       (answer-json wire 503 {:status "not-ready" :version version :reason reason}))
+                                   (do (metrics/count-ready-check! meter :ready)
+                                       (answer-json wire 200 {:status "ready" :version version}))))}}]])

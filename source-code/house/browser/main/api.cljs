@@ -55,7 +55,12 @@
    {:house/browser-error {:message … :stack … :url …}}, where it is logged
    at :error with the server's errors (its rate limit is the server's
    :errors settings'). A failure sending one is dropped: it can't be
-   sent either."
+   sent either.
+
+   start-visitor-session! gives a visitor (someone not signed in) a
+   session of their own, the first time the app keeps something for them
+   (a cart): a POST to the page's :visitor-path, whose answer sets the
+   cookie (house.server.main.visitors)."
   (:require
    [doorbell.api :as doorbell]
    [doorman.api :as doorman]
@@ -90,7 +95,7 @@
 (defn read-settings-from-page
   "What the server put in the page: {:version :addresses
    :sse-reconnect-after-ms :ws-reopen-after-ms :doorbell :wire
-   :retry-writes :languages :language :module-stylesheets :pages}.
+   :retry-writes :visitor-path :languages :language :module-stylesheets :pages}.
    Read by the browser's JSON.parse, keys as keywords with their namespace
    (\"orders/page\" is :orders/page): the wire is made from what this
    reads, so there is none yet."
@@ -208,3 +213,19 @@
                                       :load-module!       #(showroom/load-module! module-stylesheets %)
                                       :placeholder        placeholder}])
     {:settings settings :wire wire :store store :sse-line sse-line}))
+
+(defn start-visitor-session!
+  "A session for a visitor, the first time the app keeps something for
+   them: a POST to the page's :visitor-path (the server's :visitors
+   settings), from this page, whose answer sets the session cookie. A
+   promise of the visitor's id, a UUID, which the rows kept for them name;
+   nil when someone is signed in already. Fails on any answer but 200.
+   app is what start-app! returned."
+  [{:keys [settings]}]
+  (-> (js/fetch (:visitor-path settings) #js {:method "POST" :credentials "same-origin"})
+      (.then (fn [response]
+               (if (.-ok response)
+                 (.json response)
+                 (throw (ex-info (str "The visitor's session wasn't started: " (.-status response))
+                                 {:type :house.browser.main/no-visitor-session :status (.-status response)})))))
+      (.then (fn [answer] (some-> (aget answer "visitor-id") parse-uuid)))))

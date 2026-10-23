@@ -8,7 +8,8 @@
    its request id and the person doorman found; the errors route hands a
    monitor the kept errors, only with its token; a browser's error, sent
    as a message, is kept with them. Then the health checks: live and
-   ready, a database that doesn't answer or lets nobody in, and stopping.
+   ready, a database that doesn't answer or lets nobody in, and stopping;
+   the metrics route, a visitor's session, the REPL's tools.
    Runs when
    HOUSE_SQL_TEST_PORT is set."
   (:require
@@ -22,7 +23,11 @@
    [house.server.main.api :as main]
    [house.server.main.run-once :as run-once]
    [jsonista.core :as json]
-   [mailroom.api :as mailroom])
+   [logbook.api :as logbook]
+   [mailroom.api :as mailroom]
+   [meter.api :as meter]
+   [nrepl.core :as nrepl]
+   [study.api :as study])
   (:import
    (java.io BufferedReader)
    (java.net URI)
@@ -33,9 +38,10 @@
 
 (def ^:private scope-kinds
   (doorman/check-scope-kinds
-   {:shop {:table   :shops
+   {:shop {:table   :shops :parent nil :single? false
            :actions {:orders/see #{:read} :orders/edit #{:read :insert :update}}
-           :roles   {"Staff" #{:orders/see :orders/edit}}}}))
+           :roles   {"Staff" #{:orders/see :orders/edit}}
+           :denies  []}}))
 
 (def ^:private shops
   {:table    :shops
@@ -133,7 +139,17 @@
    :leak-warning-after-ms :none
    :connect-timeout-seconds 10 :read-timeout-seconds :none :tcp-keepalive? false
    :statement-timeout-ms 5000 :lock-timeout-ms :none :idle-in-transaction-timeout-ms :none
-   :time-zone "UTC"})
+   :time-zone "UTC"
+   :metric-buckets {:query-seconds [0.01 0.1 1] :connection-acquire-seconds [0.01 0.1 1]
+                    :connection-usage-seconds [0.01 0.1 1]}})
+
+(defn- start-pool!
+  "A pool as a deploy's script starts one: its own log and meter."
+  [user]
+  (let [log (logbook/log-function (logbook/make-logbook {:lowest-level :error :format :json :errors-kept 10
+                                                         :write-to     (fn [_])}))]
+    (database/start-pool! (make-database-settings user)
+                          {:log log :meter (meter/make-meter {:jvm-metrics false :most-series-per-metric 10000} {:log log})})))
 
 (defn- make-settings [user]
   {:version           "test-1"
@@ -144,6 +160,10 @@
    :browser-wire      {:most-shapes-kept 1000 :most-keys-kept 10000}
    :logbook           {:lowest-level :debug :format :json :errors-kept 100
                        :write-to     #(swap! lines conj (json/read-value %))}
+   :meter             {:jvm-metrics true :most-series-per-metric 10000}
+   :metrics           {:path "/metrics" :token "the-metrics-token"}
+   :study             {:mode :development :bind-address "127.0.0.1" :port 0 :middleware [] :port-file nil}
+   :visitors          {:path "/house/visitor"}
    :errors            {:path "/house/errors" :token "the-errors-token" :browser-rate-limit {:max 2 :per-ms 60000}}
    :migrate-at-start? false
    :browser-build     :built
@@ -152,11 +172,12 @@
                        :addresses {:http "/house/http" :sse "/house/sse" :ws "/house/ws"}
                        :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
                        :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
-                       :rate-limit-buckets-before-cleanup 10000}
+                       :rate-limit-buckets-before-cleanup 10000
+                       :metric-buckets {:answer-seconds [0.01 0.1 1]}}
    :database          (make-database-settings user)
    :migration         {:instant-part {:statement-timeout-ms 10000 :lock-timeout-ms 5000}
                        :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
-   :sessions          {:cookie-name "house_session" :session-days 1 :renew-after-minutes 60
+   :sessions          {:cookie-name "house_session" :session-days 1 :visitor-session-days 1 :renew-after-minutes 60
                        :allowed-origin "http://app.test" :secure-cookie? false}
    :my-actions        {:rate-limit {:max 60 :per-ms 60000}}
    :run-once          {:keep-keys-ms 1500
@@ -164,7 +185,9 @@
                        :retry-writes {:times 1 :wait-ms 1000}}
    :background-jobs   {:workers 1 :poll-ms 1000
                        :retry-first-wait-ms 30000 :retry-wait-factor 2 :retry-max-wait-ms 3600000
-                       :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000 :stop-wait-ms 5000}
+                       :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
+                       :forget-done-every-ms 3600000 :stop-wait-ms 5000
+                       :metric-buckets {:job-run-seconds [0.1 1 10]}}
    :doorbell          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                        :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                    :reconnect-after-ms 1000 :stop-wait-ms 2000}}
@@ -286,6 +309,23 @@
             :errors  {:token ["missing required key"] :browser-rate-limit ["missing required key"]}}
            problems)
         "logbook's settings and the errors' have no defaults"))
+  (let [problems (try (main/check-settings (-> (make-settings "x")
+                                               (update :meter dissoc :most-series-per-metric)
+                                               (update :metrics dissoc :token)
+                                               (dissoc :study :visitors)
+                                               (update-in [:server :metric-buckets] dissoc :answer-seconds)
+                                               (update :sessions dissoc :visitor-session-days)
+                                               (update :background-jobs dissoc :forget-done-every-ms)))
+                      (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
+    (is (= {:meter           {:most-series-per-metric ["missing required key"]}
+            :metrics         {:token ["missing required key"]}
+            :study           ["missing required key"]
+            :visitors        ["missing required key"]
+            :server          {:metric-buckets {:answer-seconds ["missing required key"]}}
+            :sessions        {:visitor-session-days ["missing required key"]}
+            :background-jobs {:forget-done-every-ms ["missing required key"]}}
+           problems)
+        "the meter's, the metrics route's, the REPL's, the visitors', the buckets and the new library settings have no defaults"))
   (is (thrown? clojure.lang.ExceptionInfo
                (main/check-settings (assoc (make-settings "x") :browser-build {:watch {:entry 'app.browser.main/start!}})))
       "the watch options leave out the entry and the folder: they come from the app and :page")
@@ -293,10 +333,23 @@
                (main/check-settings (assoc (make-settings "x") :browser-build {:watch {:log (fn [_ _ _])}})))
       "and the log: house passes its own"))
 
+(deftest a-table-that-writes-what-house-puts-is-refused
+  (let [{:keys [type problems]} (try (main/make-ready-tables {:tables      [(assoc shops :on-change nil) (assoc orders :gates nil)]
+                                                              :scope-kinds scope-kinds})
+                                     (catch clojure.lang.ExceptionInfo e (ex-data e)))]
+    (is (= :house.server.main/bad-tables type))
+    (is (= [":shops writes its own :on-change, which house puts on it: doorbell's, from its :doorbell"
+            ":orders writes its own :gates, which house puts on it: doorman's, from its :access"]
+           problems)
+        "each named, not overwritten without a word"))
+  (is (= [nil {:function "doorbell.tell" :arguments []}]
+         ((juxt :gates :on-change) (first (main/make-ready-tables {:tables [shops] :scope-kinds scope-kinds}))))
+      "one that leaves them out gets doorman's and doorbell's"))
+
 (deftest the-whole-server
   (if-not port
     (println "house.server.main.api-test: skipped, HOUSE_SQL_TEST_PORT is not set")
-    (let [owner-pool (database/start-pool! (make-database-settings owner))]
+    (let [owner-pool (start-pool! owner)]
       (try
         (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE; DROP SCHEMA IF EXISTS house CASCADE")
         (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'house_app') THEN CREATE ROLE house_app LOGIN; END IF; END $$")
@@ -318,13 +371,15 @@
         (run-sql! owner-pool (str "INSERT INTO shops VALUES ('" shop-7 "'), ('" shop-9 "')"))
         (database/run-in-transaction! owner-pool {:read-only? false}
                                       (fn [transaction]
-                                        (doorman/add-scope! transaction scope-kinds :shop shop-7 paul)
-                                        (doorman/add-scope! transaction scope-kinds :shop shop-9 bob)
+                                        (doorman/add-scope! transaction scope-kinds :shop shop-7 paul nil)
+                                        (doorman/add-scope! transaction scope-kinds :shop shop-9 bob nil)
                                         (doorman/add-membership! transaction [:shop shop-7] anna "Staff")))
         (let [running     (main/start-app! (make-app "house_app"))
               stopped?    (atom false)
               server-port (get-in running [:server :port])
-              cookie      #(first (str/split (:set-cookie (doorman/sign-in! (:pool running) % (get-in running [:settings :sessions]))) #";"))
+              cookie      #(first (str/split (:set-cookie (doorman/sign-in! (:pool running) {:headers {}} %
+                                                                    {:settings (get-in running [:settings :sessions])
+                                                                     :tables [shops orders] :session-flags #{}})) #";"))
               anna-cookie (cookie anna)
               bob-cookie  (cookie bob)]
           (try
@@ -465,7 +520,7 @@
                         bob-line    (open-sse server-port bob-cookie)
                         ask-actions #(send-request server-port "POST" "/house/http" % "{\"doorman/my-actions\":{}}")
                         notes       #(str ",\"mailroom/notes\":{\"doorman/my-actions\":{\"tables\":[" % "]}}}")
-                        read-tables "\"doorman/memberships\",\"doorman/role-actions\""]
+                        read-tables "\"doorman/memberships\",\"doorman/role-actions\",\"doorman/scopes\""]
                     (is (= "{\"house/version\":\"test-1\"}" (read-next-data anna-line)))
                     (is (= "{\"house/version\":\"test-1\"}" (read-next-data bob-line)))
                     (is (= [200 (str "{\"doorman/my-actions\":[{\"scope-kind\":\"shop\",\"scope-id\":\"" shop-7 "\","
@@ -602,6 +657,69 @@
                                                    (HttpResponse$BodyHandlers/ofString)))]
                           (is (str/includes? answer "error"))
                           (is (= before (count (find-lines "browser/uncaught")))))))))))
+            (testing "the metrics: only with their token; every library's on the app's one meter, and house's"
+              (let [ask-metrics (fn [token]
+                                  (let [response (.send (HttpClient/newHttpClient)
+                                                        (cond-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/metrics")))
+                                                          token (.header "authorization" (str "Bearer " token))
+                                                          true  (.build))
+                                                        (HttpResponse$BodyHandlers/ofString))]
+                                    [(.statusCode response) (.body response)]))
+                    [status text] (ask-metrics "the-metrics-token")]
+                (is (= 401 (first (ask-metrics nil))))
+                (is (= 401 (first (ask-metrics "a-wrong-token"))))
+                (is (= 200 status))
+                (doseq [pattern [#"mailroom_messages_total\{name=\"orders/all\",outcome=\"ok\",pipe=\"http\"\} [1-9]"
+                                 #"mailroom_open_lines\{pipe=\"sse\"\} "
+                                 #"cellar_query_seconds_count\{query=\"house/server/main/claim_once_key.sql\"\} [1-9]"
+                                 #"cellar_pool_connections\{state=\"idle\"\} "
+                                 #"doorbell_listening 1"
+                                 #"doorbell_changes_total\{table=\"orders\"\} [1-9]"
+                                 #"backroom_dispatcher_failures_total 0"
+                                 #"logbook_lines_total\{level=\"info\"\} [1-9]"
+                                 #"logbook_errors_kept [1-9]"
+                                 #"house_build_info\{version=\"test-1\"\} 1"
+                                 #"house_stage\{stage=\"started\"\} 1"
+                                 #"jvm_threads_current [1-9]"]]
+                  (is (re-find pattern text) (str pattern)))))
+            (testing "a visitor's session: from the app's pages only; a cookie once, none for someone signed in"
+              (let [start-visitor (fn [origin cookie]
+                                    (let [response (.send (HttpClient/newHttpClient)
+                                                          (cond-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/house/visitor")))
+                                                            origin (.header "origin" origin)
+                                                            cookie (.header "cookie" cookie)
+                                                            true   (-> (.POST (HttpRequest$BodyPublishers/noBody)) (.build)))
+                                                          (HttpResponse$BodyHandlers/ofString))]
+                                      [(.statusCode response) (.body response)
+                                       (.orElse (.firstValue (.headers response) "set-cookie") nil)]))
+                    [status body set-cookie] (start-visitor "http://app.test" nil)]
+                (is (= 403 (first (start-visitor nil nil))))
+                (is (= 403 (first (start-visitor "https://evil.test" nil))))
+                (is (= 200 status))
+                (is (uuid? (parse-uuid (str (get (json/read-value body) "visitor-id")))))
+                (is (str/starts-with? (str set-cookie) "house_session="))
+                (is (= [200 "{\"visitor-id\":null}" nil] (start-visitor "http://app.test" anna-cookie))
+                    "Anna is signed in: no visitor, no new cookie")))
+            (testing "the REPL: house's tools in study.tools"
+              (with-open [connection (nrepl/connect :port (study/find-repl-port (:study running)))]
+                (let [client (nrepl/client connection 10000)
+                      eval!  #(first (nrepl/response-values (nrepl/message client {:op "eval" :code %})))]
+                  (let [ask-all (fn [person] (set (map str (:orders/all (eval! (str "(study.tools/ask-as-person {:orders/all {}} {:person-id #uuid \""
+                                                                                                    person "\" :visitor-id nil :session-flags #{}})"))))))
+                        pauls   (ask-all paul)
+                        bobs    (ask-all bob)]
+                    (is (and (contains? pauls (str order-71)) (not (contains? pauls (str order-91))))
+                        "as Paul, shop 7's founder, through the check and the gates: only his shop's orders")
+                    (is (and (contains? bobs (str order-91)) (not (contains? bobs (str order-71))))
+                        "as Bob: none of shop 7's"))
+                  (is (= {:handler :orders/all :answer :not-found}
+                         (select-keys (eval! (str "(study.tools/why-refused {:person-id #uuid \"" (random-uuid) "\" :visitor-id nil :session-flags #{}} :orders/all {})"))
+                                      [:handler :answer]))
+                      "someone in no shop: doorman's explain-refusal says why")
+                  (let [{:keys [shape doc]} (eval! "(study.tools/explain-setting [:server :ping-every-ms])")]
+                    (is (some? shape))
+                    (is (str/includes? doc "every key required") "the text of mailroom's settings shape"))
+                  (is (= "No setting is at this path." (:doc (eval! "(study.tools/explain-setting [:server :nope])")))))))
             (testing "health: plain GETs, no origin, no session, no rate limit, never cached"
               (is (= [200 "{\"status\":\"live\",\"version\":\"test-1\"}" "no-store"]
                      (ask-health server-port "/health/live")))

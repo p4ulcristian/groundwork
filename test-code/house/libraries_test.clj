@@ -70,6 +70,16 @@
            :when    (and (str/starts-with? (str required) "dictionary.") (not= 'dictionary.api required))]
        (str (second ns-form) " requires " required ": only dictionary's api, dictionary.api"))
      (for [required (list-required-namespaces ns-form)
+           :when    (and (str/starts-with? (str required) "meter.") (not= 'meter.api required))]
+       (str (second ns-form) " requires " required ": only meter's api, meter.api"))
+     (for [required (list-required-namespaces ns-form)
+           :when    (and (str/starts-with? (str required) "study.") (not= 'study.api required))]
+       (str (second ns-form) " requires " required ": only study's api, study.api"))
+     (for [required (list-required-namespaces ns-form)
+           :when    (and (or (str/starts-with? (str required) "meter.") (str/starts-with? (str required) "study."))
+                         (= :browser side))]
+       (str (second ns-form) " requires " required ": meter and study are the server's"))
+     (for [required (list-required-namespaces ns-form)
            :when    (and (str/starts-with? (str required) "parlor.") (not= 'parlor.api required))]
        (str (second ns-form) " requires " required ": only parlor's api, parlor.api"))
      (for [required (list-required-namespaces ns-form)

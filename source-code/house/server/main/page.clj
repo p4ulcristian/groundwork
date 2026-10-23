@@ -11,6 +11,7 @@
         \"doorbell\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000},
         \"wire\":{\"most-shapes-kept\":1000,\"most-keys-kept\":10000},
         \"retry-writes\":{\"times\":2,\"wait-ms\":1000},
+        \"visitor-path\":\"/house/visitor\",
         \"pages\":{\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}}}
      </script>
 
@@ -18,8 +19,8 @@
    addresses, the sse and ws reopen delays, the question store's settings
    (doorbell's), the browser's wire settings (:browser-wire, all but
    :exact-decimals, which the app's browser start hands in), the write
-   retries, the languages (dictionary's settings) and the request's
-   language, and each module's stylesheet bundle (for showroom's
+   retries, the visitor route's path (:visitors), the languages
+   (dictionary's settings) and the request's language, and each module's stylesheet bundle (for showroom's
    load-module!) are said once, on the server. The JSON is written by the
    app's wire.
 
@@ -93,15 +94,17 @@
    :server settings), the question store's settings (the :doorbell
    settings' :store), the browser's wire settings (:browser-wire), how a
    write that got no answer is retried (the :run-once settings'
-   :retry-writes), the languages (dictionary's settings), each module's
+   :retry-writes), where a visitor's session is started (the :visitors
+   settings' :path), the languages (dictionary's settings), each module's
    stylesheet bundle, the pages. The request's :language is added per
    request."
-  [{:keys [version doorbell browser-wire run-once languages] {:keys [addresses sse-reconnect-after-ms ws-reopen-after-ms]} :server
+  [{:keys [version doorbell browser-wire run-once languages visitors]
+    {:keys [addresses sse-reconnect-after-ms ws-reopen-after-ms]} :server
     :as settings}
    pages browser-modules]
   {:version version :addresses addresses :sse-reconnect-after-ms sse-reconnect-after-ms
    :ws-reopen-after-ms ws-reopen-after-ms :doorbell (:store doorbell) :wire browser-wire
-   :retry-writes (:retry-writes run-once) :languages languages
+   :retry-writes (:retry-writes run-once) :visitor-path (:path visitors) :languages languages
    :module-stylesheets (list-module-stylesheets settings browser-modules) :pages pages})
 
 (defn make-page-html

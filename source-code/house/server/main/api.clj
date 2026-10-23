@@ -65,7 +65,28 @@
    And one of doorman's, :doorman/my-actions (make-my-actions-handler):
    the asker's actions by scope, and the open ones under nil kind and id,
    which the browser's start names as parlor's :actions-question; its rate
-   limit is the :my-actions settings'."
+   limit is the :my-actions settings'.
+
+   One meter (meter's make-meter, from the :meter settings) is made once
+   and handed to every library that counts (cellar's pool, mailroom's
+   routes, doorbell's listener, backroom's workers), with house's own
+   (the stage, the ready checks, the version) and logbook's counts, read
+   when written (house.server.main.metrics). Its text is one more GET, at
+   the :metrics settings' :path, beside health and errors, outside them
+   too, only with its bearer token (meter's make-metrics-routes).
+
+   A visitor's session (doorman's start-visitor-session!) is a POST at the
+   :visitors settings' :path, from the app's own pages only
+   (house.server.main.visitors).
+
+   The REPL (study's start-repl-server!, the :study settings) starts last
+   and stops first, with house's tools in study.tools:
+   :ask-as-person, :why-refused and :explain-setting
+   (house.server.main.tools).
+
+   A table map of the app's says :access and :doorbell, never :gates or
+   :on-change, which doorman and doorbell put on it: one that writes
+   either is refused at the start, named."
   (:require
    [clojure.string :as str]
    [backroom.api :as backroom]
@@ -75,12 +96,17 @@
    [doorbell.api :as doorbell]
    [house.server.main.errors :as errors]
    [house.server.main.health :as health]
-   [logbook.api :as logbook]
+   [house.server.main.metrics :as metrics]
    [house.server.main.page :as page]
    [house.server.main.run-once :as run-once]
+   [house.server.main.tools :as tools]
+   [house.server.main.visitors :as visitors]
+   [logbook.api :as logbook]
    [mailroom.api :as mailroom]
    [malli.core :as malli]
    [malli.error :as malli-error]
+   [meter.api :as meter]
+   [study.api :as study]
    [wire.api :as wire]))
 
 (def page-settings-shape
@@ -211,6 +237,16 @@
                          [:max [:int {:min 1}]]
                          [:per-ms [:int {:min 1}]]]]]])
 
+(def visitors-settings-shape
+  "The :visitors part of the settings, every key required: the route that
+   gives a visitor (someone not signed in) a session of their own,
+   doorman's start-visitor-session! (house.server.main.visitors).
+   :path: the POST the browser sends the first time the app keeps
+   something for a visitor, \"/house/visitor\"; the page carries it to
+   house.browser.main's start-visitor-session!."
+  [:map {:closed true}
+   [:path [:re #"^/"]]])
+
 (defn- do-retries-end-before-keys-are-forgotten?
   "Asked only of numbers: a missing one is the map's problem, named there."
   [{:keys [keep-keys-ms] {:keys [times wait-ms]} :retry-writes}]
@@ -251,11 +287,23 @@
    a browser may ask what its person may do; :run-once how long a write's
    one-time key is kept, and how often a browser retries a write;
    :languages the app's languages (dictionary's settings), which a
-   request's, and its page's, is picked from."
+   request's, and its page's, is picked from; :meter the app's one
+   meter's (meter.api/settings-shape: :jvm-metrics, and
+   :most-series-per-metric, which must cover the largest declaration:
+   mailroom's messages_total, (handlers+1)×24, its answer_seconds,
+   (handlers+1)×(buckets+3), cellar's query_seconds, (queries+1)×(buckets+3),
+   the handlers counting house's two and the queries every library's);
+   :metrics where Prometheus pulls its text (meter's routes settings,
+   :path and :token); :study the REPL's (study.api/settings-shape:
+   :development, :ssh-only or :off with the emergency switch); :visitors
+   where a visitor's session is started."
   [:map {:closed true}
    [:version :string]
    [:wire wire/settings-shape]
    [:logbook logbook/settings-shape]
+   [:meter meter/settings-shape]
+   [:metrics meter/routes-settings-shape]
+   [:study study/settings-shape]
    [:errors errors-settings-shape]
    [:browser-wire browser-wire-settings-shape]
    [:migrate-at-start? :boolean]
@@ -264,6 +312,7 @@
    [:database database/settings-shape]
    [:migration migration-settings-shape]
    [:sessions doorman/settings-shape]
+   [:visitors visitors-settings-shape]
    [:my-actions my-actions-settings-shape]
    [:run-once run-once-settings-shape]
    [:languages dictionary/settings-shape]
@@ -295,16 +344,40 @@
                (map #(assoc % :doorbell :tell) doorman/access-tables)
                (map #(assoc % :doorbell [:silent "no screen shows background jobs"]) backroom/background-jobs-tables))))
 
+(defn- check-tables-leave-gates-and-on-change-out
+  "The app's table maps say :access and :doorbell, never :gates or
+   :on-change: those are what doorman and doorbell put on them from
+   :access and :doorbell, and a table's own would be overwritten without
+   a word. Throws naming every table that writes either, as doorman
+   refuses a handler's own :run-steps-in."
+  [tables]
+  (let [problems (for [{:keys [table] :as table-map} tables
+                       taken [:gates :on-change]
+                       :when (contains? table-map taken)]
+                   (str table " writes its own " taken ", which house puts on it: "
+                        (if (= :gates taken) "doorman's, from its :access" "doorbell's, from its :doorbell")))]
+    (when (seq problems)
+      (throw (ex-info (str "The tables have problems: " (pr-str (vec problems)))
+                      {:type :house.server.main/bad-tables :problems (vec problems)}))))
+  tables)
+
+(defn- list-all-tables
+  "The app's tables, each checked to leave :gates and :on-change out, and
+   house's."
+  [{:keys [tables]}]
+  (into (vec (check-tables-leave-gates-and-on-change-out tables)) house-tables))
+
 (defn make-ready-tables
   "The app's tables and house's, with their gates (doorman) and change
-   triggers (doorbell): what migrate brings Postgres to."
-  [{:keys [tables scope-kinds]}]
-  (-> (into (vec tables) house-tables)
+   triggers (doorbell): what migrate brings Postgres to. An app's table
+   that writes its own :gates or :on-change is refused, named."
+  [{:keys [scope-kinds] :as app}]
+  (-> (list-all-tables app)
       (doorman/put-gates-on-tables scope-kinds)
       (doorbell/put-doorbell-on-tables)))
 
-(defn- install-functions-and-migrate! [pool app log]
-  (doorman/install-access-functions! pool)
+(defn- install-functions-and-migrate! [pool {:keys [scope-kinds] :as app} log]
+  (doorman/install-access-functions! pool (list-all-tables app) scope-kinds)
   (doorbell/install-tell-function! pool)
   (database/migrate! pool (make-ready-tables app) (:changes app) (assoc (get-in app [:settings :migration]) :log log)))
 
@@ -314,10 +387,16 @@
    the tables and changes (waiting for the slow part too), each part under
    the :migration settings' time limits, and lets the app's own role
    (app-role) use them. Each planned statement is written to a log made
-   from the :logbook settings (:cellar/planned)."
+   from the :logbook settings (:cellar/planned). The owner's pool counts
+   on a meter of its own, never served (:jvm-metrics false): cellar takes
+   one meter per pool, and the deploy's run has no /metrics."
   [app owner-db-settings app-role]
-  (let [log  (logbook/log-function (logbook/make-logbook (get-in app [:settings :logbook])))
-        pool (database/start-pool! owner-db-settings)]
+  (let [settings (:settings app)
+        log      (logbook/log-function (logbook/make-logbook (:logbook settings)))
+        meter    (meter/make-meter {:jvm-metrics            false
+                                    :most-series-per-metric (get-in settings [:meter :most-series-per-metric])}
+                                   {:log log})
+        pool     (database/start-pool! owner-db-settings {:log log :meter meter})]
     (try
       (deref (:slow-part (install-functions-and-migrate! pool app log)))
       (database/grant-tables-to-role! pool (make-ready-tables app) app-role)
@@ -371,15 +450,18 @@
     (or (doorman/find-session-key-of-request request (:sessions settings))
         (mailroom/find-client-address request (get-in settings [:server :client-address-header])))))
 
-(defn- make-routes [{:keys [settings pages browser-modules]} wire running-logbook log pool running-health handlers running-doorbell]
+(defn- make-routes [{:keys [settings pages browser-modules]} wire running-logbook log app-meter pool running-health handlers running-doorbell]
   (let [browser-settings (page/make-browser-settings settings pages browser-modules)]
-    (-> (health/make-health-routes wire log pool running-health settings)
+    (-> (health/make-health-routes wire log app-meter pool running-health settings)
         (into (errors/make-errors-routes wire running-logbook settings))
+        (into (meter/make-metrics-routes app-meter (:metrics settings)))
+        (into (visitors/make-visitor-routes wire pool settings))
         (into (mailroom/make-routes-for-messages
                handlers
                (:server settings)
                {:wire                wire
                 :log                 log
+                :meter               app-meter
                 :find-rate-limit-key (make-rate-limit-key-finder settings)
                 :on-sse-open  (fn [line]
                                 (mailroom/send-message-on-sse-line! line {:house/version (:version settings)} nil)
@@ -438,27 +520,78 @@
       (throw (ex-info (str "The pages have problems: " (pr-str (vec problems)))
                       {:type :house.server.main/bad-pages :problems (vec problems)})))))
 
+(def ^:private docs-of-parts
+  "Each top settings key's shape var, whose docstring says what goes
+   there, for study's :explain-setting; :settings the whole one's."
+  {:settings        #'settings-shape
+   :version         #'settings-shape
+   :wire            #'wire/settings-shape
+   :logbook         #'logbook/settings-shape
+   :meter           #'meter/settings-shape
+   :metrics         #'meter/routes-settings-shape
+   :study           #'study/settings-shape
+   :errors          #'errors-settings-shape
+   :browser-wire    #'browser-wire-settings-shape
+   :migrate-at-start? #'settings-shape
+   :browser-build   #'browser-build-settings-shape
+   :server          #'mailroom/settings-shape
+   :database        #'database/settings-shape
+   :migration       #'migration-settings-shape
+   :sessions        #'doorman/settings-shape
+   :visitors        #'visitors-settings-shape
+   :my-actions      #'my-actions-settings-shape
+   :run-once        #'run-once-settings-shape
+   :languages       #'dictionary/settings-shape
+   :background-jobs #'backroom/settings-shape
+   :doorbell        #'doorbell-settings-shape
+   :page            #'page-settings-shape
+   :health          #'health-settings-shape})
+
+(defn- make-study-tools
+  "house's tools for the REPL (house.server.main.tools), from the running
+   app's parts."
+  [{:keys [handlers tables scope-kinds settings] :as app} wire log pool]
+  (tools/make-tools {:make-ready-handlers #(make-ready-handlers pool app %)
+                     :wire                wire
+                     :log                 log
+                     :pool                pool
+                     :handlers            handlers
+                     :tables              tables
+                     :scope-kinds         scope-kinds
+                     :allowed-origin      (get-in settings [:sessions :allowed-origin])
+                     :settings-shape      settings-shape
+                     :docs-of-parts       docs-of-parts}))
+
 (defn start-app!
   "Starts the app (see the namespace). Returns the running app, for stop-app!:
-   {:settings :wire :logbook :log :texts :pool :handlers :doorbell :workers :watching :health :server},
+   {:settings :wire :logbook :log :meter :texts :pool :handlers :doorbell :workers :watching :health :server :study},
    :texts every catalog that shows, read once (dictionary's load-texts),
    for the server's own texts: (dictionary/make-text texts \"de\"
    :mail/subject {:order 7}), the language a value (the request's, or the
    row's an email or a PDF is made for),
    :server holding the :port it listens on, :wire the app's one wire, made
    from the :wire settings, :logbook the app's one logbook, made from the
-   :logbook settings, and :log its log function, for the app's own lines."
-  [{:keys [settings background-job-kinds schedules] :as app}]
+   :logbook settings, and :log its log function, for the app's own lines,
+   :meter the app's one meter, made from the :meter settings, which every
+   library counts on and the :metrics route serves (the app counts its own
+   there too: backroom's add-background-job-to-queue! takes it), :study the
+   REPL, started last (study's start-repl-server!, the :study settings,
+   house's tools in study.tools)."
+  [{:keys [settings background-job-kinds schedules tables] :as app}]
   (check-settings settings)
   (check-modules-of-pages app)
+  (check-tables-leave-gates-and-on-change-out tables)
   (let [running-logbook (logbook/make-logbook (:logbook settings))
         log             (logbook/log-function running-logbook)]
     (when (is-watching? settings) (check-watch-options! app log))
     (let [wire     (wire/make-wire-from-settings (:wire settings))
+          app-meter (meter/make-meter (:meter settings) {:log log})
           stoppers (atom ())]
       (try
         (let [texts             (dictionary/load-texts (:languages settings))
-              pool              (start-part! stoppers #(database/start-pool! (:database settings)) database/stop-pool!)
+              pool              (start-part! stoppers
+                                             #(database/start-pool! (:database settings) {:log log :meter app-meter})
+                                             database/stop-pool!)
               _                 (if (:migrate-at-start? settings)
                                   @(:slow-part (install-functions-and-migrate! pool app log))
                                   (refuse-unsafe-database! pool app))
@@ -467,12 +600,14 @@
                                     (errors/add-browser-error-handler find-session-step
                                                                       (get-in settings [:errors :browser-rate-limit])))
               running-doorbell  (start-part! stoppers
-                                             #(doorbell/start-listening! pool (get-in settings [:doorbell :listening]) {:log log})
+                                             #(doorbell/start-listening! pool (get-in settings [:doorbell :listening])
+                                                                         {:log log :meter app-meter :tables (make-ready-tables app)})
                                              doorbell/stop-listening!)
               workers           (start-part! stoppers
                                              #(backroom/start-workers! pool (assoc (:background-jobs settings)
                                                                                    :wire wire
                                                                                    :log log
+                                                                                   :meter app-meter
                                                                                    :kinds (conj (vec background-job-kinds)
                                                                                                 (run-once/make-forget-keys-kind (:run-once settings)))
                                                                                    :schedules (conj (vec schedules)
@@ -481,27 +616,35 @@
               watching          (when (is-watching? settings)
                                   (start-part! stoppers #(start-watching-browser-build! app log) stop-watching-browser-build!))
               running-health    (health/make-health)
-              server            (mailroom/start-server!
-                                 (page/wrap-languages
-                                  (mailroom/make-ring-handler-from-routes
-                                   (make-routes app wire running-logbook log pool running-health handlers running-doorbell)
-                                   {:files (get-in settings [:page :files])})
-                                  (:languages settings))
-                                 (:server settings)
-                                 {:log log})]
+              _                 (metrics/declare-house-metrics! app-meter running-logbook (:stage running-health) (:version settings))
+              server            (start-part! stoppers
+                                             #(mailroom/start-server!
+                                               (page/wrap-languages
+                                                (mailroom/make-ring-handler-from-routes
+                                                 (make-routes app wire running-logbook log app-meter pool running-health handlers running-doorbell)
+                                                 {:files (get-in settings [:page :files])})
+                                                (:languages settings))
+                                               (:server settings)
+                                               {:log log})
+                                             mailroom/stop-server!)]
           (health/mark-stage! running-health :started)
           (log :info :house/started {:house/version (:version settings) :house/port (:port server)})
-          {:settings settings :wire wire :logbook running-logbook :log log :texts texts :pool pool :handlers handlers
-           :doorbell running-doorbell :workers workers :watching watching :health running-health :server server})
+          (let [repl (study/start-repl-server! (:study settings)
+                                               {:log log :tools (make-study-tools app wire log pool)})]
+            {:settings settings :wire wire :logbook running-logbook :log log :meter app-meter :texts texts :pool pool
+             :handlers handlers :doorbell running-doorbell :workers workers :watching watching :health running-health
+             :server server :study repl}))
         (catch Throwable e
           (doseq [stop @stoppers] (stop))
           (throw e))))))
 
 (defn stop-app!
-  "Answers ready with 503 for the :health settings' :not-ready-before-stop-ms,
-   then stops taking requests, stops the watcher, lets running background
-   jobs finish, stops listening, closes the pool."
-  [{:keys [settings log pool server workers watching] running-doorbell :doorbell running-health :health}]
+  "Closes the REPL first, then answers ready with 503 for the :health
+   settings' :not-ready-before-stop-ms, then stops taking requests, stops
+   the watcher, lets running background jobs finish, stops listening,
+   closes the pool."
+  [{:keys [settings log pool server workers watching] running-doorbell :doorbell running-health :health repl :study}]
+  (study/stop-repl-server! repl)
   (log :info :house/stopping {:house/version (:version settings)})
   (health/mark-stage! running-health :stopping)
   (Thread/sleep (long (get-in settings [:health :not-ready-before-stop-ms])))
