@@ -58,7 +58,10 @@
                [:run-once-key/person-id    :uuid         {:optional? true}]
                [:run-once-key/answer       :string       {:optional? true}]
                [:run-once-key/created-at   :time/instant {:default :now}]]
-   :indexes   [[:run-once-key/created-at]]
+   :indexes   [{:columns [[:run-once-key/created-at :ascending :nulls-last]]
+                :method :btree :ops {} :unique? false :where nil}]
+   :uniques   []
+   :checks    []
    :references []
    :triggers   []
    :gates     nil

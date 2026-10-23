@@ -21,6 +21,8 @@
    :columns  [[:shop/id :uuid {:primary-key? true}]
               [:shop/name :string]]
    :indexes  []
+   :uniques  []
+   :checks   []
    :references []
    :triggers  []
    :access   :public
@@ -29,10 +31,13 @@
 (def orders
   {:table    :orders
    :columns  [[:order/id :uuid {:primary-key? true :default :random-uuid}]
-              [:order/shop-id :uuid {:references :shop/id}]
+              [:order/shop-id :uuid {:references {:to :shop/id :on-delete :refuse :on-update :refuse :checked-at :statement}}]
               [:order/note :string]
               [:order/created-at :time/instant {:default :now}]]
-   :indexes  [[:order/shop-id :order/created-at]]
+   :indexes  [{:columns [[:order/shop-id :ascending :nulls-last] [:order/created-at :ascending :nulls-last]]
+               :method :btree :ops {} :unique? false :where nil}]
+   :uniques  []
+   :checks   []
    :references []
    :triggers  []
    :access   [{:allow #{:orders/see :orders/add} :only :all-of-the-action :to [:member :order/shop-id]}]
@@ -84,6 +89,9 @@
    :browser-entry        'groundwork-test.sample.browser/start!
    :browser-modules      browser-modules
    :tables               [shops orders]
+   :extensions           []
+   :functions            []
+   :views                []
    :changes              []
    :scope-kinds          scope-kinds
    :handlers             handlers

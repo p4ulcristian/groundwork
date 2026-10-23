@@ -245,9 +245,13 @@ An app's table map says `:access` and `:doorbell`, never `:gates` or
 `:on-change` (doorman and doorbell put them): one that writes either is
 refused at the start, named:
 [the decision](../../../../decisions/2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md).
-It writes out cellar's `:references` and `:triggers`, `[]` for none; a
-record under a record says doorman's `:parent`, and doorman adds its link
-and fill to them.
+It writes out cellar's `:indexes` (each a map), `:uniques`, `:checks`,
+`:references` and `:triggers`, `[]` for none, and each reference what it
+does on delete, on update and when it is checked; a record under a record
+says doorman's `:parent`, and doorman adds its link and fill to them.
+Beside `:tables` the app writes out cellar's `:extensions`, `:functions`
+and `:views` (`.sql` files, `[]` for none), which migrate declares with
+doorman's and doorbell's own functions.
 
 API: `groundwork.server.main.api` (`settings-shape`, `page-settings-shape`,
 `health-settings-shape`, `migration-settings-shape`, `doorbell-settings-shape`,
@@ -271,7 +275,8 @@ as its name; text written out where a secret belongs is refused:
 (def running (main/start-app! {:settings (safe/load {:file  "settings/production.edn"
                                                      :shape main/settings-shape
                                                      :env   (System/getenv)})
-                               :tables [shops orders] :changes [] :scope-kinds scope-kinds
+                               :tables [shops orders] :extensions [] :functions [] :views []
+                               :changes [] :scope-kinds scope-kinds
                                :handlers handlers :pages pages :browser-modules {}
                                :background-job-kinds [] :schedules []
                                :routes {}   ; the app's own server routes, records with a kind

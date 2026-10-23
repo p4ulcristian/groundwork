@@ -60,6 +60,8 @@
   {:table    :shops
    :columns  [[:shop/id :uuid {:primary-key? true}]]
    :indexes  []
+   :uniques  []
+   :checks   []
    :references []
    :triggers  []
    :access   :public
@@ -68,8 +70,10 @@
 (def ^:private orders
   {:table    :orders
    :columns  [[:order/id :uuid {:primary-key? true :default :random-uuid}]
-              [:order/shop-id :uuid {:references :shop/id}]]
+              [:order/shop-id :uuid {:references {:to :shop/id :on-delete :refuse :on-update :refuse :checked-at :statement}}]]
    :indexes  []
+   :uniques  []
+   :checks   []
    :references []
    :triggers  []
    :access   [{:allow #{:orders/see :orders/edit} :only :all-of-the-action :to [:member :order/shop-id]}]
@@ -80,9 +84,12 @@
    as doorman's system actor :postbox, may, and nothing else of the shop's."
   {:table    :shop-emails
    :columns  [[:shop-email/address :string {:primary-key? true}]
-              [:shop-email/shop-id :uuid {:references :shop/id}]
+              [:shop-email/shop-id :uuid {:references {:to :shop/id :on-delete :refuse :on-update :refuse :checked-at :statement}}]
               [:shop-email/bounced :boolean {:default false}]]
-   :indexes  [[:shop-email/shop-id]]
+   :indexes  [{:columns [[:shop-email/shop-id :ascending :nulls-last]]
+               :method :btree :ops {} :unique? false :where nil}]
+   :uniques  []
+   :checks   []
    :references []
    :triggers  []
    :access   [{:allow :shop-emails/see :only :all-of-the-action :to [:member :shop-email/shop-id]}
@@ -287,7 +294,7 @@
     {:status 404 :title "Not found" :description nil :head-html "" :body-html "<main>No such page</main>"}))
 
 (defn- make-app [user]
-  {:settings (make-settings user) :tables [shops orders shop-emails] :changes [] :scope-kinds scope-kinds
+  {:settings (make-settings user) :tables [shops orders shop-emails] :extensions [] :functions [] :views [] :changes [] :scope-kinds scope-kinds
    :routes app-routes
    :render-page render-page
    :may-upload? (fn [{:keys [person-id]}] (= anna person-id))

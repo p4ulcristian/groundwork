@@ -177,10 +177,15 @@ itself (a signature).
 An app's table map says `:access` and `:doorbell`; one that writes its own
 `:gates` or `:on-change`, which groundwork puts on it, is refused at the start
 ([the decision](decisions/2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md)).
-It writes out cellar's `:references` and `:triggers` (`[]` for none); a
-record under a record says doorman's `:parent {:column … :carries {…}}`,
-and doorman adds the link to its parent and the fill of its carried
-columns to them.
+It writes out cellar's `:indexes` (each a map), `:uniques`, `:checks`,
+`:references` and `:triggers` (`[]` for none), and each reference what it
+does (`{:to :shop/id :on-delete :refuse :on-update :refuse :checked-at
+:statement}`); a record under a record says doorman's `:parent {:column …
+:carries {…}}`, and doorman adds the link to its parent and the fill of its
+carried columns to them. Beside `:tables` the app writes out cellar's
+`:extensions`, `:functions` and `:views` (`.sql` files, `[]` for none);
+groundwork declares doorman's and doorbell's own functions with them, and
+cellar drops a function in the tables' folders that no file makes.
 Not in groundwork: pre-rendering pages for search engines, for now
 ([the decision](decisions/2026-10-23-no-pre-rendering-of-pages-for-search-engines-for-now.md)),
 and an MCP endpoint, which is the app's own code

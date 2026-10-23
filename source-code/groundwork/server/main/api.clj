@@ -9,6 +9,9 @@
         :browser-entry        'app.browser.main/start!  ; the function the page runs
         :browser-modules      {}                    ; browser-build's :modules, loaded on demand: {:admin {:entries [app.admin.page] :depends-on #{:main}}}
         :tables               [shops orders]        ; table maps, with :access and :doorbell
+        :extensions           []                    ; cellar's: the database's extensions
+        :functions            []                    ; cellar's: the .sql files of the app's functions
+        :views                []                    ; cellar's: the .sql files of its views, in order
         :changes              []                    ; cellar's changes
         :scope-kinds          scope-kinds           ; doorman's
         :handlers             handlers              ; bridge's table, each with :action, where it acts (:record or :scope) and shapes
@@ -469,21 +472,52 @@
       (doorman/put-gates-on-tables scope-kinds)
       (doorbell/put-doorbell-on-tables)))
 
+(def ^:private app-database-shape
+  "The app map's database objects beside its tables, as cellar declares
+   them, every key required: :extensions, the extensions' names, [] for
+   none; :functions, the .sql files on the classpath of the app's own
+   functions, one CREATE OR REPLACE FUNCTION each, [] for none; :views,
+   the .sql files of its views, one CREATE VIEW each, in the order they
+   are made, [] for none. cellar drops a function or a view in the
+   tables' folders that no file makes."
+  [:map
+   [:extensions [:sequential :string]]
+   [:functions [:sequential :string]]
+   [:views [:sequential :string]]])
+
+(defn- check-app-database [app]
+  (when-let [explanation (malli/explain app-database-shape app)]
+    (let [errors (malli-error/humanize explanation)]
+      (throw (ex-info (str "The app has problems: " (pr-str errors))
+                      {:type :groundwork.server.main/bad-app :errors errors})))))
+
+(defn- make-declared
+  "What migrate brings Postgres to, as cellar takes it: the ready tables,
+   the app's extensions and views, and its functions with doorman's and
+   doorbell's own (their function-files)."
+  [app]
+  {:tables     (make-ready-tables app)
+   :extensions (:extensions app)
+   :functions  (-> (vec doorman/function-files) (into doorbell/function-files) (into (:functions app)))
+   :views      (:views app)})
+
 (defn- install-functions-and-migrate! [pool {:keys [scope-kinds] :as app} log]
   (doorman/install-access-functions! pool (list-all-tables app) scope-kinds)
-  (doorbell/install-tell-function! pool)
-  (database/migrate! pool (make-ready-tables app) (:changes app) (assoc (get-in app [:settings :migration]) :log log)))
+  (database/migrate! pool (make-declared app) (:changes app) (assoc (get-in app [:settings :migration]) :log log)))
 
 (defn migrate-app!
   "For the deploy, before the app starts: as the role that owns the tables
-   (owner-db-settings), installs doorman's and doorbell's functions, brings Postgres to
-   the tables and changes (waiting for the slow part too), each part under
+   (owner-db-settings), installs the functions doorman makes from the
+   sentences, brings Postgres to the tables, the app's extensions,
+   functions and views (doorman's and doorbell's own functions with them)
+   and changes (waiting for the slow part too), each part under
    the :migration settings' time limits, and lets the app's own role
    (app-role) use them. Each planned statement is written to a log made
    from the :logbook settings (:cellar/planned). The owner's pool counts
    on a meter of its own, never served (:jvm-metrics false): cellar takes
    one meter per pool, and the deploy's run has no /metrics."
   [app owner-db-settings app-role]
+  (check-app-database app)
   (let [settings (:settings app)
         log      (logbook/log-function (logbook/make-logbook (:logbook settings)))
         meter    (meter/make-meter {:jvm-metrics            false
@@ -508,7 +542,7 @@
     (when (or passes-gates owns-tables)
       (throw (ex-info "The app's database role owns tables or passes the gates; it must own nothing (run migrate-app! as the owner)"
                       {:type :groundwork.server.main/role-too-strong})))
-    (when-not (database/does-database-match-tables? pool tables (:changes app))
+    (when-not (database/does-database-match-tables? pool (make-declared app) (:changes app))
       (throw (ex-info "The database isn't current: run migrate-app! first"
                       {:type :groundwork.server.main/not-migrated})))))
 
@@ -756,6 +790,7 @@
   [{:keys [settings background-job-kinds schedules tables] :as app}]
   (check-settings settings)
   (check-app-functions app)
+  (check-app-database app)
   (check-modules-of-pages app)
   (check-tables-leave-gates-and-on-change-out tables)
   (let [running-logbook (logbook/make-logbook (:logbook settings))
