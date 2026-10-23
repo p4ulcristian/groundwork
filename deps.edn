@@ -64,8 +64,9 @@
   ;; attic: the app's files, its own library, github.com/p4ulcristian/attic;
   ;; main makes one attic from the :attic :storage settings, migrates its files
   ;; table and serves its upload route at :attic :upload :path
-  ;; on its tidy-up branch, not released: its files table in cellar's tidy-up shapes
-  io.github.p4ulcristian/attic     {:git/sha "be70ee18bfb3a67ecadef6eba9e693ff5dd56ead"}
+  ;; on its tidy-up branch, not released: its files table in cellar's tidy-up shapes;
+  ;; delete-file-after-commit!, by cellar's run-after-commit!
+  io.github.p4ulcristian/attic     {:git/sha "813fd78437dccfc5d477e377139c5df3e32d8375"}
   ;; postbox: the app's email, its own library, github.com/p4ulcristian/postbox;
   ;; main makes one postbox from the :postbox :sending settings, runs its
   ;; background job kind, migrates its emails table and serves its webhooks

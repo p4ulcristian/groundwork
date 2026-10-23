@@ -123,7 +123,9 @@
    :path (groundwork.server.main.files: doorman's session step, then the app's
    :may-upload?, (fn [asker])); the app deletes a file with attic's
    delete-file! on (:attic running) and (:pool running), after its own
-   rows are kept (only a file no row names through a reference to
+   rows are kept, or in a handler's step with delete-file-after-commit!
+   and the step's :doorman/transaction, run once it commits (cellar's
+   run-after-commit!) (only a file no row names through a reference to
    :file/key goes). The provider's webhooks are postbox's, at the :postbox
    :webhooks paths, handing events to the app's :on-delivery-event (by
    tag) and :on-inbound-email (by mailbox), each run as doorman's system

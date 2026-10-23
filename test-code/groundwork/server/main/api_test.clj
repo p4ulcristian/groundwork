@@ -130,8 +130,18 @@
 (defn- find-lines [event]
   (filterv #(= event (get % "event")) @lines))
 
+(def ^:private after-commit-runs
+  "What a step's run-after-commit! work did, once its transaction committed."
+  (atom []))
+
 (def ^:private handlers
-  {:orders/count {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :refusals {} :rate-limit {:max 2 :per-ms 60000}
+  {:orders/after-commit {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :boolean
+                         :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
+                         :steps  [{:name  :remember-after-commit
+                                   :enter (fn [context]
+                                            (database/run-after-commit! (:doorman/transaction context) #(swap! after-commit-runs conj :ran))
+                                            (bridge/add-answer-to-context context (empty? @after-commit-runs)))}]}
+   :orders/count {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :refusals {} :rate-limit {:max 2 :per-ms 60000}
                   :run-steps-in nil :daily-caps []
                   :steps  [{:name :answer-count :enter #(bridge/add-answer-to-context % 0)}]}
    :orders/all {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape [:vector :uuid] :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
@@ -798,6 +808,11 @@
                   (is (= 200 third-status) "one POST carries many messages: the refusal is in the answer")
                   (is (is-too-many? (get (json/read-value third-body) "orders/count"))))
                 (is (= [200 counted] (send-request server-port "POST" "/groundwork/http" bob-cookie "{\"orders/count\":{}}")))))
+            (testing "a step's work kept by cellar's run-after-commit! runs once doorman's transaction commits"
+              (is (= [200 "{\"orders/after-commit\":true,\"bridge/notes\":{\"orders/after-commit\":{\"tables\":[]}}}"]
+                     (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/after-commit\":{}}"))
+                  "not yet while the step runs")
+              (is (= [:ran] @after-commit-runs) "run by the time the answer is back"))
             (testing "daily caps: counted after doorman's check, per asker and for everyone, in Postgres"
               (let [ask     #(get (json/read-value (second (send-request server-port "POST" "/groundwork/http" %1
                                                                          (str "{\"orders/capped\":{\"shop/id\":\"" %2 "\"}}"))))

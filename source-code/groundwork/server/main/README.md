@@ -264,7 +264,13 @@ Each function runs in a transaction as doorman's system actor `:postbox`
 :postbox]` and nothing else:
 [the decision](../../../../decisions/2026-10-23-postboxs-webhook-functions-run-as-doormans-system-actor-postbox.md).
 A file is deleted by the app, with attic's `delete-file!` on `(:attic
-running)` and `(:pool running)`, after its own rows are kept.
+running)` and `(:pool running)`, after its own rows are kept, or, in a
+handler's step, with attic's `delete-file-after-commit!` on those and the
+step's `(:doorman/transaction context)`, which runs it once that
+transaction commits (cellar's `run-after-commit!`, which a step may call
+itself for any work that may be lost: a cache, a harmless outside call;
+work that must happen is a background job queued in the same transaction:
+[cellar's decision](https://github.com/p4ulcristian/cellar/blob/tidy-up/decisions/2026-10-23-a-transaction-keeps-work-to-run-after-its-commit.md)).
 
 ```clojure
 :attic   {:storage {…}                                                   ; attic's settings, every key
