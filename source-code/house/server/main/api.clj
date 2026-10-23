@@ -13,7 +13,10 @@
         :pages                {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}
                                :admin/page  {:address \"/admin\" :title \"Admin\" :module \"admin\"}}   ; loaded on the way in
         :background-job-kinds [send-invoice-email]
-        :schedules            []})
+        :schedules            []
+        :may-upload?          (fn [{:keys [person-id]}] (some? person-id))   ; who may upload files, the asker
+        :on-delivery-event    {:orders/confirmation mark-address-bounced!} ; postbox's, by the email's tag
+        :on-inbound-email     {\"quotes\" add-quote-request!}})           ; postbox's, by the mailbox
 
      (def running (main/start-app! app))
      (main/stop-app! running)
@@ -86,15 +89,28 @@
 
    A table map of the app's says :access and :doorbell, never :gates or
    :on-change, which doorman and doorbell put on it: one that writes
-   either is refused at the start, named."
+   either is refused at the start, named.
+
+   The app's files (attic's make-attic, the :attic :storage settings)
+   and its email (postbox's make-postbox, the :postbox :sending settings)
+   are made once, on the app's log and meter (and wire, postbox's), and
+   held by the running app (:attic, :postbox); their tables (attic.files,
+   postbox.emails) are migrated with house's, postbox's background job
+   kind runs with the app's. Files are uploaded at the :attic :upload
+   :path (house.server.main.files: doorman's session step, then the app's
+   :may-upload?, (fn [asker])); the provider's webhooks are postbox's, at
+   the :postbox :webhooks paths, handing events to the app's
+   :on-delivery-event (by tag) and :on-inbound-email (by mailbox)."
   (:require
    [clojure.string :as str]
+   [attic.api :as attic]
    [backroom.api :as backroom]
    [cellar.api :as database]
    [dictionary.api :as dictionary]
    [doorman.api :as doorman]
    [doorbell.api :as doorbell]
    [house.server.main.errors :as errors]
+   [house.server.main.files :as files]
    [house.server.main.health :as health]
    [house.server.main.metrics :as metrics]
    [house.server.main.page :as page]
@@ -106,6 +122,7 @@
    [malli.core :as malli]
    [malli.error :as malli-error]
    [meter.api :as meter]
+   [postbox.api :as postbox]
    [study.api :as study]
    [wire.api :as wire]))
 
@@ -247,6 +264,32 @@
   [:map {:closed true}
    [:path [:re #"^/"]]])
 
+(def attic-settings-shape
+  "The :attic part of the settings, every key required, both attic's:
+   :storage, the bucket's (attic's settings-shape: :endpoint :bucket
+   :access-key :secret-key :region :public-url :link-expiry-seconds
+   :connect-timeout-ms :request-timeout-ms :retries), which house makes
+   the app's one attic from; :upload, the upload route's: :path, the POST
+   the browser sends files to, \"/house/files\", and attic's upload
+   settings (attic's upload-settings-shape: :key-prefix
+   :allowed-content-types :max-file-bytes :max-files). :max-file-bytes
+   must be below the :server settings' :max-body-bytes, which holds the
+   whole upload."
+  [:map {:closed true}
+   [:storage attic/settings-shape]
+   [:upload (into [:map {:closed true} [:path [:re #"^/"]]] (drop 2 attic/upload-settings-shape))]])
+
+(def postbox-settings-shape
+  "The :postbox part of the settings, every key required, both postbox's:
+   :sending, the postbox's (postbox's settings-shape: :provider, :postmark
+   or :log, :tags, :background-job), which house makes the app's one
+   postbox from; :webhooks, the provider's two routes (postbox's
+   webhook-settings-shape: :delivery-path :inbound-path :token
+   :inbound-domain)."
+  [:map {:closed true}
+   [:sending postbox/settings-shape]
+   [:webhooks postbox/webhook-settings-shape]])
+
 (defn- do-retries-end-before-keys-are-forgotten?
   "Asked only of numbers: a missing one is the map's problem, named there."
   [{:keys [keep-keys-ms] {:keys [times wait-ms]} :retry-writes}]
@@ -296,7 +339,9 @@
    :metrics where Prometheus pulls its text (meter's routes settings,
    :path and :token); :study the REPL's (study.api/settings-shape:
    :development, :ssh-only or :off with the emergency switch); :visitors
-   where a visitor's session is started."
+   where a visitor's session is started; :attic the app's files, the
+   bucket and the upload route; :postbox its email, the provider and the
+   webhooks."
   [:map {:closed true}
    [:version :string]
    [:wire wire/settings-shape]
@@ -317,32 +362,42 @@
    [:run-once run-once-settings-shape]
    [:languages dictionary/settings-shape]
    [:background-jobs backroom/settings-shape]
+   [:attic attic-settings-shape]
+   [:postbox postbox-settings-shape]
    [:doorbell doorbell-settings-shape]
    [:page page-settings-shape]
    [:health health-settings-shape]])
 
+(defn- throw-bad-settings [errors]
+  (throw (ex-info (str "The settings have problems: " (pr-str errors))
+                  {:type :house.server.main/bad-settings :errors errors})))
+
 (defn check-settings
   "Returns the settings; throws with every problem at once. Checked by
    malli itself: the settings are values the app hands in, and the wire is
-   made from them only once they fit."
+   made from them only once they fit. Then across parts: one uploaded
+   file fits in the server's body limit."
   [settings]
   (when-let [explanation (malli/explain settings-shape settings)]
-    (let [errors (malli-error/humanize explanation)]
-      (throw (ex-info (str "The settings have problems: " (pr-str errors))
-                      {:type :house.server.main/bad-settings :errors errors}))))
+    (throw-bad-settings (malli-error/humanize explanation)))
+  (when (>= (get-in settings [:attic :upload :max-file-bytes]) (get-in settings [:server :max-body-bytes]))
+    (throw-bad-settings {:attic {:upload {:max-file-bytes ["should be below the :server settings' :max-body-bytes, which holds the whole upload"]}}}))
   settings)
 
 (def house-tables
-  "doorman's tables and backroom's, each in their own folder, and house's
-   own one-time keys (house.run_once_keys), put with the app's. None knows
-   of doorbell; their doorbells are said here: the sessions, the
-   background jobs and the keys silent; doorman's access tables tell, so a
-   screen's :doorman/my-actions is asked again when a membership or a role
+  "doorman's tables, backroom's, attic's and postbox's, each in their own
+   folder, and house's own one-time keys (house.run_once_keys), put with
+   the app's. None knows of doorbell; their doorbells are said here: the
+   sessions, the background jobs, the files, the emails and the keys
+   silent; doorman's access tables tell, so a screen's
+   :doorman/my-actions is asked again when a membership or a role
    changes."
   (vec (concat [(assoc run-once/run-once-keys-table :doorbell [:silent "no screen shows one-time keys"])]
                (map #(assoc % :doorbell [:silent "no screen shows sessions"]) [doorman/sessions-table])
                (map #(assoc % :doorbell :tell) doorman/access-tables)
-               (map #(assoc % :doorbell [:silent "no screen shows background jobs"]) backroom/background-jobs-tables))))
+               (map #(assoc % :doorbell [:silent "no screen shows background jobs"]) backroom/background-jobs-tables)
+               [(assoc attic/files-table :doorbell [:silent "a screen shows the app's rows that name a file, not attic's"])
+                (assoc postbox/emails-table :doorbell [:silent "no screen shows postbox's emails"])])))
 
 (defn- check-tables-leave-gates-and-on-change-out
   "The app's table maps say :access and :doorbell, never :gates or
@@ -450,12 +505,19 @@
     (or (doorman/find-session-key-of-request request (:sessions settings))
         (mailroom/find-client-address request (get-in settings [:server :client-address-header])))))
 
-(defn- make-routes [{:keys [settings pages browser-modules]} wire running-logbook log app-meter pool running-health handlers running-doorbell]
+(defn- make-routes [{:keys [settings pages browser-modules may-upload? on-delivery-event on-inbound-email]}
+                    {:keys [wire running-logbook log app-meter pool running-health handlers running-doorbell
+                            running-attic running-postbox find-session-step]}]
   (let [browser-settings (page/make-browser-settings settings pages browser-modules)]
     (-> (health/make-health-routes wire log app-meter pool running-health settings)
         (into (errors/make-errors-routes wire running-logbook settings))
         (into (meter/make-metrics-routes app-meter (:metrics settings)))
         (into (visitors/make-visitor-routes wire pool settings))
+        (into (files/make-upload-routes running-attic wire log pool find-session-step may-upload? settings))
+        (into (postbox/make-webhook-routes running-postbox (get-in settings [:postbox :webhooks])
+                                           {:pool              pool
+                                            :on-delivery-event on-delivery-event
+                                            :on-inbound-email  on-inbound-email}))
         (into (mailroom/make-routes-for-messages
                handlers
                (:server settings)
@@ -543,6 +605,8 @@
    :run-once        #'run-once-settings-shape
    :languages       #'dictionary/settings-shape
    :background-jobs #'backroom/settings-shape
+   :attic           #'attic-settings-shape
+   :postbox         #'postbox-settings-shape
    :doorbell        #'doorbell-settings-shape
    :page            #'page-settings-shape
    :health          #'health-settings-shape})
@@ -562,9 +626,31 @@
                      :settings-shape      settings-shape
                      :docs-of-parts       docs-of-parts}))
 
+(def ^:private app-functions-shape
+  "The app map's functions for the files and the email, every key
+   required: :may-upload?, (fn [asker] true-or-false), who may upload
+   files; :on-delivery-event, {tag (fn [event {:keys [transaction log]}])},
+   a bounce or spam complaint by its email's tag, {} for none;
+   :on-inbound-email, {mailbox (fn [email {:keys [transaction log]}])}, an
+   inbound email by its mailbox, {} for none. postbox checks the two maps'
+   tags and functions."
+  [:map
+   [:may-upload? fn?]
+   [:on-delivery-event map?]
+   [:on-inbound-email map?]])
+
+(defn- check-app-functions [app]
+  (when-let [explanation (malli/explain app-functions-shape app)]
+    (let [errors (malli-error/humanize explanation)]
+      (throw (ex-info (str "The app has problems: " (pr-str errors))
+                      {:type :house.server.main/bad-app :errors errors})))))
+
 (defn start-app!
   "Starts the app (see the namespace). Returns the running app, for stop-app!:
-   {:settings :wire :logbook :log :meter :texts :pool :handlers :doorbell :workers :watching :health :server :study},
+   {:settings :wire :logbook :log :meter :texts :pool :attic :postbox :handlers :doorbell :workers :watching :health :server :study},
+   :attic the app's one attic (attic.api: store-file!, make-signed-link, …),
+   :postbox the app's one postbox (postbox.api: queue-email! in a write's
+   transaction),
    :texts every catalog that shows, read once (dictionary's load-texts),
    for the server's own texts: (dictionary/make-text texts \"de\"
    :mail/subject {:order 7}), the language a value (the request's, or the
@@ -579,6 +665,7 @@
    house's tools in study.tools)."
   [{:keys [settings background-job-kinds schedules tables] :as app}]
   (check-settings settings)
+  (check-app-functions app)
   (check-modules-of-pages app)
   (check-tables-leave-gates-and-on-change-out tables)
   (let [running-logbook (logbook/make-logbook (:logbook settings))
@@ -595,6 +682,10 @@
               _                 (if (:migrate-at-start? settings)
                                   @(:slow-part (install-functions-and-migrate! pool app log))
                                   (refuse-unsafe-database! pool app))
+              running-attic     (start-part! stoppers
+                                             #(attic/make-attic (get-in settings [:attic :storage]) {:log log :meter app-meter})
+                                             attic/stop-attic!)
+              running-postbox   (postbox/make-postbox (get-in settings [:postbox :sending]) {:log log :meter app-meter :wire wire})
               find-session-step (doorman/make-find-session-step pool (:sessions settings))
               handlers          (-> (make-ready-handlers pool app find-session-step)
                                     (errors/add-browser-error-handler find-session-step
@@ -609,7 +700,8 @@
                                                                                    :log log
                                                                                    :meter app-meter
                                                                                    :kinds (conj (vec background-job-kinds)
-                                                                                                (run-once/make-forget-keys-kind (:run-once settings)))
+                                                                                                (run-once/make-forget-keys-kind (:run-once settings))
+                                                                                                (postbox/make-background-job-kind running-postbox))
                                                                                    :schedules (conj (vec schedules)
                                                                                                     (run-once/make-forget-keys-schedule (:run-once settings)))))
                                              backroom/stop-workers!)
@@ -621,7 +713,10 @@
                                              #(mailroom/start-server!
                                                (page/wrap-languages
                                                 (mailroom/make-ring-handler-from-routes
-                                                 (make-routes app wire running-logbook log app-meter pool running-health handlers running-doorbell)
+                                                 (make-routes app {:wire wire :running-logbook running-logbook :log log :app-meter app-meter
+                                                                   :pool pool :running-health running-health :handlers handlers
+                                                                   :running-doorbell running-doorbell :running-attic running-attic
+                                                                   :running-postbox running-postbox :find-session-step find-session-step})
                                                  {:files (get-in settings [:page :files])})
                                                 (:languages settings))
                                                (:server settings)
@@ -632,7 +727,7 @@
           (let [repl (study/start-repl-server! (:study settings)
                                                {:log log :tools (make-study-tools app wire log pool)})]
             {:settings settings :wire wire :logbook running-logbook :log log :meter app-meter :texts texts :pool pool
-             :handlers handlers :doorbell running-doorbell :workers workers :watching watching :health running-health
+             :attic running-attic :postbox running-postbox :handlers handlers :doorbell running-doorbell :workers workers :watching watching :health running-health
              :server server :study repl}))
         (catch Throwable e
           (doseq [stop @stoppers] (stop))
@@ -642,8 +737,9 @@
   "Closes the REPL first, then answers ready with 503 for the :health
    settings' :not-ready-before-stop-ms, then stops taking requests, stops
    the watcher, lets running background jobs finish, stops listening,
-   closes the pool."
-  [{:keys [settings log pool server workers watching] running-doorbell :doorbell running-health :health repl :study}]
+   stops the attic's client, closes the pool."
+  [{:keys [settings log pool server workers watching] running-doorbell :doorbell running-health :health repl :study
+    running-attic :attic}]
   (study/stop-repl-server! repl)
   (log :info :house/stopping {:house/version (:version settings)})
   (health/mark-stage! running-health :stopping)
@@ -652,4 +748,5 @@
   (when watching (stop-watching-browser-build! watching))
   (backroom/stop-workers! workers)
   (doorbell/stop-listening! running-doorbell)
+  (attic/stop-attic! running-attic)
   (database/stop-pool! pool))

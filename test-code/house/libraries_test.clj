@@ -76,9 +76,15 @@
            :when    (and (str/starts-with? (str required) "study.") (not= 'study.api required))]
        (str (second ns-form) " requires " required ": only study's api, study.api"))
      (for [required (list-required-namespaces ns-form)
-           :when    (and (or (str/starts-with? (str required) "meter.") (str/starts-with? (str required) "study."))
+           :when    (and (str/starts-with? (str required) "attic.") (not= 'attic.api required))]
+       (str (second ns-form) " requires " required ": only attic's api, attic.api"))
+     (for [required (list-required-namespaces ns-form)
+           :when    (and (str/starts-with? (str required) "postbox.") (not= 'postbox.api required))]
+       (str (second ns-form) " requires " required ": only postbox's api, postbox.api"))
+     (for [required (list-required-namespaces ns-form)
+           :when    (and (some #(str/starts-with? (str required) %) ["meter." "study." "attic." "postbox."])
                          (= :browser side))]
-       (str (second ns-form) " requires " required ": meter and study are the server's"))
+       (str (second ns-form) " requires " required ": meter, study, attic and postbox are the server's"))
      (for [required (list-required-namespaces ns-form)
            :when    (and (str/starts-with? (str required) "parlor.") (not= 'parlor.api required))]
        (str (second ns-form) " requires " required ": only parlor's api, parlor.api"))

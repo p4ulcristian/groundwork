@@ -41,6 +41,14 @@
   ;; main makes one meter from the :meter settings and passes it to every
   ;; library that counts, and serves its text at the :metrics route
   io.github.p4ulcristian/meter      {:git/tag "v0.1.2" :git/sha "a0a977b"}
+  ;; attic: the app's files, its own library, github.com/p4ulcristian/attic;
+  ;; main makes one attic from the :attic :storage settings, migrates its files
+  ;; table and serves its upload route at :attic :upload :path
+  io.github.p4ulcristian/attic     {:git/tag "v0.1.0" :git/sha "dfcbefb"}
+  ;; postbox: the app's email, its own library, github.com/p4ulcristian/postbox;
+  ;; main makes one postbox from the :postbox :sending settings, runs its
+  ;; background job kind, migrates its emails table and serves its webhooks
+  io.github.p4ulcristian/postbox   {:git/tag "v0.1.0" :git/sha "b2ecdf9"}
   ;; study: the REPL into the running app, by the :study settings, with
   ;; house's tools in study.tools; its own library, github.com/p4ulcristian/study
   io.github.p4ulcristian/study      {:git/tag "v0.1.1" :git/sha "d8ba537"}}

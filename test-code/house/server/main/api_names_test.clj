@@ -16,6 +16,8 @@
            my-actions-settings-shape
            visitors-settings-shape
            run-once-settings-shape
+           attic-settings-shape
+           postbox-settings-shape
            settings-shape
            check-settings
            house-tables

@@ -172,6 +172,30 @@ asker `{:person-id :visitor-id :session-flags}`:
 ;; stage {:mode :ssh-only …}; production {:mode :off :emergency-switch {…}} or {:mode :off :emergency-switch nil}
 ```
 
+The app's files and email: one attic (attic's `make-attic`, the `:attic
+:storage` settings) and one postbox (postbox's `make-postbox`, the
+`:postbox :sending` settings), on the app's log and meter (and wire),
+held by the running app as `:attic` and `:postbox`; `attic.files` and
+`postbox.emails` migrated with house's tables; postbox's background job
+kind on the workers. The upload route (`house.server.main.files`) is
+attic's handler at `:attic :upload :path`, asking doorman's session step
+(the Origin), then the app map's `:may-upload?` `(fn [asker])`, before the
+body is read; `:max-file-bytes` must be below `:server :max-body-bytes`.
+The provider's webhooks are postbox's, at `:postbox :webhooks`' paths,
+outside sessions, handing bounces to the app map's `:on-delivery-event`
+`{tag f}` and inbound email to `:on-inbound-email` `{mailbox f}`:
+[the decision](../../../../decisions/2026-10-23-main-makes-one-attic-and-one-postbox.md).
+
+```clojure
+:attic   {:storage {…}                                                   ; attic's settings, every key
+          :upload  {:path "/house/files" :key-prefix "uploads" :allowed-content-types #{"image/png" "image/jpeg"}
+                    :max-file-bytes 10000000 :max-files 10}}
+:postbox {:sending  {:provider {:name :log :level :info}                ; or {:name :postmark …}
+                     :tags #{:orders/confirmation} :background-job {:timeout-ms 60000 :attempts 8}}
+          :webhooks {:delivery-path "/postbox/delivery" :inbound-path "/postbox/inbound"
+                     :token "…" :inbound-domain "in.shop.example"}}
+```
+
 An app's table map says `:access` and `:doorbell`, never `:gates` or
 `:on-change` (doorman and doorbell put them): one that writes either is
 refused at the start, named:
@@ -181,6 +205,7 @@ API: `house.server.main.api` (`settings-shape`, `page-settings-shape`,
 `health-settings-shape`, `migration-settings-shape`, `doorbell-settings-shape`,
 `my-actions-settings-shape`, `run-once-settings-shape`, `visitors-settings-shape`,
 `browser-build-settings-shape`, `browser-wire-settings-shape`,
+`attic-settings-shape`, `postbox-settings-shape`,
 `check-settings`, `house-tables`, `make-ready-tables`, `migrate-app!`,
 `start-app!`, `stop-app!`). Decisions:
 [`decisions/server/main`](../../../../decisions/server/main/README.md).
@@ -188,7 +213,9 @@ API: `house.server.main.api` (`settings-shape`, `page-settings-shape`,
 ```clojure
 (def running (main/start-app! {:settings settings :tables [shops orders] :changes [] :scope-kinds scope-kinds
                                :handlers handlers :pages pages :browser-modules {}
-                               :background-job-kinds [] :schedules []}))
+                               :background-job-kinds [] :schedules []
+                               :may-upload? (fn [{:keys [person-id]}] (some? person-id))
+                               :on-delivery-event {} :on-inbound-email {}}))
 (main/stop-app! running)
 ```
 
@@ -199,5 +226,7 @@ asking again through the gates to only their own shop's orders; then the health 
 and ready without origin or session; ready 503 at its timeout while every
 connection is held, 503 while the app's role can't log in, 200 again after
 each; 503 while stopping; the metrics route, the visitor route and the
-REPL's tools over a real nREPL connection. The end-to-end test
+REPL's tools over a real nREPL connection, an upload (who may, and one
+stored when a bucket is given), an email queued in a transaction and sent
+by the workers, and its bounce handed to the app by its tag. The end-to-end test
 (`house.end-to-end-test`) drives a sample app in a headless browser.

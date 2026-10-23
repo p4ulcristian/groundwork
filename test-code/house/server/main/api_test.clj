@@ -9,10 +9,15 @@
    monitor the kept errors, only with its token; a browser's error, sent
    as a message, is kept with them. Then the health checks: live and
    ready, a database that doesn't answer or lets nobody in, and stopping;
-   the metrics route, a visitor's session, the REPL's tools.
+   the metrics route, a visitor's session, the REPL's tools; an upload
+   through doorman's session and the app's :may-upload? (stored in a real
+   S3 API when HOUSE_S3_TEST_ENDPOINT is set: SeaweedFS, as attic's tests),
+   an email queued in a write's transaction and sent by the workers to the
+   log, and its bounce handed to the app's function by its tag.
    Runs when
    HOUSE_SQL_TEST_PORT is set."
   (:require
+   [attic.api :as attic]
    [clojure.java.io :as io]
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
@@ -27,13 +32,17 @@
    [mailroom.api :as mailroom]
    [meter.api :as meter]
    [nrepl.core :as nrepl]
-   [study.api :as study])
+   [postbox.api :as postbox]
+   [study.api :as study]
+   [cognitect.aws.client.api :as aws]
+   [cognitect.aws.credentials :as aws-credentials])
   (:import
    (java.io BufferedReader)
    (java.net URI)
    (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)))
 
 (def ^:private port (some-> (System/getenv "HOUSE_SQL_TEST_PORT") parse-long))
+(def ^:private s3-endpoint (System/getenv "HOUSE_S3_TEST_ENDPOINT"))
 (def ^:private owner (System/getenv "HOUSE_SQL_TEST_USER"))
 
 (def ^:private scope-kinds
@@ -188,6 +197,18 @@
                        :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
                        :forget-done-every-ms 3600000 :stop-wait-ms 5000
                        :metric-buckets {:job-run-seconds [0.1 1 10]}}
+   :attic             {:storage {:endpoint (or s3-endpoint "http://127.0.0.1:1") :bucket "house-test"
+                                 :access-key (or (System/getenv "HOUSE_S3_TEST_ACCESS_KEY") "key")
+                                 :secret-key (or (System/getenv "HOUSE_S3_TEST_SECRET_KEY") "secret")
+                                 :region "us-east-1" :public-url nil :link-expiry-seconds 300
+                                 :connect-timeout-ms 2000 :request-timeout-ms 10000
+                                 :retries {:max-retries 1 :first-wait-ms 100 :max-wait-ms 100}}
+                       :upload  {:path "/house/files" :key-prefix "orders/photos" :allowed-content-types #{"image/png"}
+                                 :max-file-bytes 1000000 :max-files 4}}
+   :postbox           {:sending  {:provider {:name :log :level :info} :tags #{:orders/confirmation}
+                                  :background-job {:timeout-ms 10000 :attempts 3}}
+                       :webhooks {:delivery-path "/postbox/delivery" :inbound-path "/postbox/inbound"
+                                  :token "the-webhook-token-0123" :inbound-domain "in.app.test"}}
    :doorbell          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                        :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                    :reconnect-after-ms 1000 :stop-wait-ms 2000}}
@@ -199,8 +220,16 @@
    :health            {:live-path "/health/live" :ready-path "/health/ready"
                        :database-timeout-ms 500 :not-ready-before-stop-ms 1000}})
 
+(def ^:private delivery-events
+  "The bounces and complaints house handed to the app's function."
+  (atom []))
+
 (defn- make-app [user]
   {:settings (make-settings user) :tables [shops orders] :changes [] :scope-kinds scope-kinds
+   :may-upload? (fn [{:keys [person-id]}] (= anna person-id))
+   :on-delivery-event {:orders/confirmation (fn [event {:keys [transaction]}]
+                                              (swap! delivery-events conj (assoc event :in-transaction? (some? transaction))))}
+   :on-inbound-email {}
    :handlers handlers :pages {:orders/page {:address "/orders/:order-id" :title "Order"}
                               :admin/page  {:address "/admin" :title "Admin" :module "admin"}}
    :browser-entry 'app.browser.main/start!
@@ -326,6 +355,20 @@
             :background-jobs {:forget-done-every-ms ["missing required key"]}}
            problems)
         "the meter's, the metrics route's, the REPL's, the visitors', the buckets and the new library settings have no defaults"))
+  (let [problems (try (main/check-settings (-> (make-settings "x")
+                                               (update-in [:attic :storage] dissoc :region)
+                                               (update-in [:attic :upload] dissoc :path)
+                                               (update-in [:postbox :sending] dissoc :tags)
+                                               (update-in [:postbox :webhooks] dissoc :token)))
+                      (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
+    (is (= {:attic   {:storage {:region ["missing required key"]} :upload {:path ["missing required key"]}}
+            :postbox {:sending {:tags ["missing required key"]} :webhooks {:token ["missing required key"]}}}
+           problems)
+        "attic's and postbox's settings, and the routes', have no defaults"))
+  (is (= {:attic {:upload {:max-file-bytes ["should be below the :server settings' :max-body-bytes, which holds the whole upload"]}}}
+         (try (main/check-settings (assoc-in (make-settings "x") [:attic :upload :max-file-bytes] 8388608))
+              (catch clojure.lang.ExceptionInfo e (:errors (ex-data e)))))
+      "an uploaded file larger than the server takes is refused at the start")
   (is (thrown? clojure.lang.ExceptionInfo
                (main/check-settings (assoc (make-settings "x") :browser-build {:watch {:entry 'app.browser.main/start!}})))
       "the watch options leave out the entry and the folder: they come from the app and :page")
@@ -351,7 +394,7 @@
     (println "house.server.main.api-test: skipped, HOUSE_SQL_TEST_PORT is not set")
     (let [owner-pool (start-pool! owner)]
       (try
-        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE; DROP SCHEMA IF EXISTS house CASCADE")
+        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE; DROP SCHEMA IF EXISTS house CASCADE; DROP SCHEMA IF EXISTS attic CASCADE; DROP SCHEMA IF EXISTS postbox CASCADE")
         (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'house_app') THEN CREATE ROLE house_app LOGIN; END IF; END $$")
         (testing "an app's handler named :doorman/my-actions is refused: it is house's"
           (is (= :house.server.main/handler-name-taken
@@ -359,7 +402,7 @@
                                            (assoc-in [:settings :migrate-at-start?] true)
                                            (assoc-in [:handlers :doorman/my-actions] (:orders/count handlers))))
                       (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))))
-        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE; DROP SCHEMA IF EXISTS house CASCADE")
+        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE; DROP SCHEMA IF EXISTS house CASCADE; DROP SCHEMA IF EXISTS attic CASCADE; DROP SCHEMA IF EXISTS postbox CASCADE")
         (testing "a page naming a module the app doesn't have is refused"
           (is (= :house.server.main/bad-pages
                  (try (main/start-app! (assoc (make-app owner) :browser-modules {}))
@@ -657,6 +700,71 @@
                                                    (HttpResponse$BodyHandlers/ofString)))]
                           (is (str/includes? answer "error"))
                           (is (= before (count (find-lines "browser/uncaught")))))))))))
+            (testing "files: an upload asks doorman's session step, then the app's :may-upload?"
+              (let [png    (byte-array (concat [0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A] (range 32)))
+                    body   (byte-array (concat (.getBytes (str "--b\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"door.png\"\r\n"
+                                                               "Content-Type: image/png\r\n\r\n"))
+                                               png
+                                               (.getBytes "\r\n--b--\r\n")))
+                    upload (fn [origin cookie]
+                             (let [response (.send (HttpClient/newHttpClient)
+                                                   (cond-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/house/files")))
+                                                     origin (.header "origin" origin)
+                                                     cookie (.header "cookie" cookie)
+                                                     true   (.header "content-type" "multipart/form-data; boundary=b")
+                                                     true   (-> (.POST (HttpRequest$BodyPublishers/ofByteArray body)) (.build)))
+                                                   (HttpResponse$BodyHandlers/ofString))]
+                               [(.statusCode response) (json/read-value (.body response))]))]
+                (is (= [403 {"error" "Not allowed."}] (upload "http://app.test" nil)) "nobody signed in")
+                (is (= [403 {"error" "Not allowed."}] (upload "http://app.test" bob-cookie)) "the app's :may-upload? says no to Bob")
+                (is (= [403 {"error" "Not allowed."}] (upload "https://evil.test" anna-cookie)) "from another site")
+                (if-not s3-endpoint
+                  (println "house.server.main.api-test: the stored upload skipped, HOUSE_S3_TEST_ENDPOINT is not set")
+                  (let [uri    (URI. s3-endpoint)
+                        client (aws/client {:api :s3 :region "us-east-1"
+                                            :endpoint-override {:protocol (keyword (.getScheme uri)) :hostname (.getHost uri) :port (.getPort uri)}
+                                            :credentials-provider (aws-credentials/basic-credentials-provider
+                                                                   {:access-key-id     (System/getenv "HOUSE_S3_TEST_ACCESS_KEY")
+                                                                    :secret-access-key (System/getenv "HOUSE_S3_TEST_SECRET_KEY")})})
+                        _      (aws/invoke client {:op :CreateBucket :request {:Bucket "house-test"}})
+                        [status {[stored] "stored"}] (upload "http://app.test" anna-cookie)]
+                    (aws/stop client)
+                    (is (= 200 status))
+                    (is (str/starts-with? (get stored "key") "orders/photos/"))
+                    (is (= "image/png" (:file/content-type (attic/find-file (:pool running) (get stored "key"))))
+                        "recorded in attic.files, as the app's role")
+                    (is (= (seq png) (seq (attic/read-file-bytes (:attic running) (get stored "key")))))))))
+            (testing "email: queued in a write's transaction, sent by the workers; its bounce handed to the app by tag"
+              (let [email {:key "order-confirmation/71" :tag :orders/confirmation :to ["anna@shop.test"]
+                           :from "orders@shop.test" :reply-to nil :subject "Your order" :html nil :text "Thank you."
+                           :metadata {"order" "71"} :attachments [] :stream "outbound"}]
+                (reset! lines [])
+                (is (= :queued (database/run-in-transaction! (:pool running) {:read-only? false}
+                                 #(postbox/queue-email! (:postbox running) % email))))
+                (loop [n 0]
+                  (when (and (< n 100) (not= "sent" (:email/state (postbox/find-email (:pool running) "order-confirmation/71"))))
+                    (Thread/sleep 100)
+                    (recur (inc n))))
+                (let [{:email/keys [state message-id]} (postbox/find-email (:pool running) "order-confirmation/71")]
+                  (is (= "sent" state) "by house's workers, postbox's kind among them")
+                  (is (= 1 (count (find-lines "postbox/logged-not-sent"))))
+                  (let [post (fn [token]
+                               (.statusCode (.send (HttpClient/newHttpClient)
+                                                   (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/postbox/delivery?token=" token)))
+                                                       (.header "content-type" "application/json")
+                                                       (.POST (HttpRequest$BodyPublishers/ofString
+                                                               (json/write-value-as-string {"RecordType" "Bounce" "Type" "HardBounce"
+                                                                                            "Tag" "orders/confirmation" "MessageID" message-id
+                                                                                            "Email" "anna@shop.test" "Metadata" {"order" "71"}})))
+                                                       (.build))
+                                                   (HttpResponse$BodyHandlers/ofString))))]
+                    (is (= 401 (post "a-wrong-token-0123456")))
+                    (is (= [] @delivery-events))
+                    (is (= 200 (post "the-webhook-token-0123")))
+                    (is (= [{:kind :bounce :tag :orders/confirmation :message-id message-id :email-key "order-confirmation/71"
+                             :address "anna@shop.test" :bounce-type "HardBounce" :inactive? false :metadata {"order" "71"}
+                             :in-transaction? true}]
+                           @delivery-events))))))
             (testing "the metrics: only with their token; every library's on the app's one meter, and house's"
               (let [ask-metrics (fn [token]
                                   (let [response (.send (HttpClient/newHttpClient)
@@ -676,6 +784,8 @@
                                  #"doorbell_listening 1"
                                  #"doorbell_changes_total\{table=\"orders\"\} [1-9]"
                                  #"backroom_dispatcher_failures_total 0"
+                                 #"# TYPE attic_files_stored_total counter"
+                                 #"postbox_emails_sent_total\{tag=\"orders/confirmation\"\} 1"
                                  #"logbook_lines_total\{level=\"info\"\} [1-9]"
                                  #"logbook_errors_kept [1-9]"
                                  #"house_build_info\{version=\"test-1\"\} 1"

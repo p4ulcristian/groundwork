@@ -3,7 +3,7 @@
 An opinionated Clojure framework for web apps on Postgres: the part of
 **manor** that puts its libraries together into one running app. manor is the
 group: house and its cellar, backroom, showroom, mailroom, doorman, doorbell,
-parlor, dictionary, wire, logbook, meter and study. The spec is [`decisions/`](decisions/README.md).
+parlor, dictionary, wire, logbook, meter, study, attic and postbox. The spec is [`decisions/`](decisions/README.md).
 
 One tree: each library is a folder `source-code/house/<side>/<name>/` with
 its README, its tests in `test-code/house/<side>/<name>/`, its decisions in
@@ -96,6 +96,21 @@ evaluation written to the app's log; it starts last and stops first, and
 house's tools are in `study.tools`: `ask-as-person`, `why-refused`
 (doorman's `explain-refusal`) and `explain-setting`
 ([the decision](decisions/2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md)).
+And the app's files, on the server:
+[attic](https://github.com/p4ulcristian/attic), each named by its content
+in an S3 bucket (R2, S3), recorded in `attic.files`, read through signed
+links; house makes one attic from the `:attic :storage` settings, held by
+the running app as `:attic`, and serves attic's upload route at `:attic
+:upload :path`, asking doorman's session step, then the app's
+`:may-upload?` `(fn [asker])`, before the body is read.
+And its email, on the server:
+[postbox](https://github.com/p4ulcristian/postbox), an email the app wrote
+queued in a write's transaction (`queue-email!` on the running app's
+`:postbox`) as a background job, sent once by Postmark or to the log
+(`:postbox :sending`); the provider's webhooks (`:postbox :webhooks`) hand
+bounces to the app's `:on-delivery-event` by the email's tag and inbound
+email to its `:on-inbound-email` by mailbox
+([the decision](decisions/2026-10-23-main-makes-one-attic-and-one-postbox.md)).
 A visitor (someone not signed in) gets a session of their own, doorman's,
 from a POST of house's at the `:visitors` path, which the browser's
 `start-visitor-session!` sends the first time the app keeps something for
@@ -134,5 +149,10 @@ HOUSE_E2E_BROWSER=~/.cache/ms-playwright/chromium_headless_shell-1248/chrome-hea
 clojure -X:test :nses '[house.end-to-end-test]'
 pg_ctl -D /tmp/house-pg stop
 ```
+
+The server test stores an upload in a real S3 API when
+`HOUSE_S3_TEST_ENDPOINT`, `_ACCESS_KEY` and `_SECRET_KEY` are set (SeaweedFS
+in a container, as attic's tests run it); without them it checks only who
+may upload.
 
 An app takes all of house from git.

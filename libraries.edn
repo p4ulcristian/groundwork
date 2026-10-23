@@ -25,6 +25,9 @@
 ;; library may use it, through parlor.api only; re-frame.core beside it, for
 ;; its events and subscriptions. So is dictionary, which language a request, a
 ;; page and an address are in (github.com/p4ulcristian/dictionary): any library
-;; on either side may use it, through dictionary.api only.
+;; on either side may use it, through dictionary.api only. So are attic, the
+;; app's files (github.com/p4ulcristian/attic), and postbox, its email
+;; (github.com/p4ulcristian/postbox): any server library may use them, through
+;; attic.api and postbox.api only.
 {:server  {:main #{}}
  :browser {:main #{}}}

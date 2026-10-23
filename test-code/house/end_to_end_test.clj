@@ -101,6 +101,16 @@
                        :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
                        :forget-done-every-ms 3600000 :stop-wait-ms 2000
                        :metric-buckets {:job-run-seconds [0.1 1 10]}}
+   :attic             {:storage {:endpoint "http://127.0.0.1:1" :bucket "sample" :access-key "key" :secret-key "secret"
+                                 :region "us-east-1" :public-url nil :link-expiry-seconds 300
+                                 :connect-timeout-ms 1000 :request-timeout-ms 1000
+                                 :retries {:max-retries 0 :first-wait-ms 0 :max-wait-ms 0}}
+                       :upload  {:path "/house/files" :key-prefix "sample" :allowed-content-types #{"image/png"}
+                                 :max-file-bytes 1000000 :max-files 1}}
+   :postbox           {:sending  {:provider {:name :log :level :info} :tags #{:sample/none}
+                                  :background-job {:timeout-ms 10000 :attempts 1}}
+                       :webhooks {:delivery-path "/postbox/delivery" :inbound-path "/postbox/inbound"
+                                  :token "the-webhook-token-0123" :inbound-domain "in.sample.test"}}
    :doorbell          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                        :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                    :reconnect-after-ms 1000 :stop-wait-ms 2000}}
@@ -147,7 +157,8 @@
    order in each."
   [owner-pool app]
   (run-sql! owner-pool (str "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; "
-                            "DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE; DROP SCHEMA IF EXISTS house CASCADE"))
+                            "DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE; DROP SCHEMA IF EXISTS house CASCADE; "
+                            "DROP SCHEMA IF EXISTS attic CASCADE; DROP SCHEMA IF EXISTS postbox CASCADE"))
   (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'house_e2e_app') THEN CREATE ROLE house_e2e_app LOGIN; END IF; END $$")
   (with-out-str (main/migrate-app! app (make-database-settings owner) "house_e2e_app"))
   (run-sql! owner-pool (str "INSERT INTO shops VALUES ('" annas-shop "', 'Anna''s'), ('" bobs-shop "', 'Bob''s')"))

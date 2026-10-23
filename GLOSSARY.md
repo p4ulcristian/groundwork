@@ -33,3 +33,8 @@ Each word in a manor name means one thing, everywhere. See
 | REPL | a Clojure prompt into the running app, by [study](https://github.com/p4ulcristian/study): open in development, over SSH on stage, off in production but for the emergency switch |
 | tool | a function of house's in `study.tools` while a REPL is open: `ask-as-person`, `why-refused`, `explain-setting` |
 | asker | who a message is asked as: `{:person-id :visitor-id :session-flags}`, the person or the visitor and the session's flags |
+| file | bytes the app keeps in its bucket, by [attic](https://github.com/p4ulcristian/attic): named by its content (`orders/photos/<sha256 as a uuid>.png`), never written over, a row of `attic.files`; the app's rows hold its key |
+| signed link | an address that reads one file of a private bucket until it expires (S3's presigned GET), made by attic for whom the app lets see the file |
+| upload | files sent by the browser to the server, a multipart POST, each checked by its bytes before attic stores it |
+| email | a written email the app queues in a write's transaction, sent once by [postbox](https://github.com/p4ulcristian/postbox) as a background job; its key is queued once, ever; its tag is one of the app's closed set |
+| webhook | a route a provider posts to from outside (Postmark's bounces and inbound email), checked by a token in its address, always answered 200 once the token passes |

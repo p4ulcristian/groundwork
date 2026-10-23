@@ -35,6 +35,8 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [dictionary](https://github.com/p4ulcristian/dictionary): which language a request, a page and an address are in, and the texts in it (both sides); a library of its own from the start, which house takes since [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md); its decisions are there
 - [meter](https://github.com/p4ulcristian/meter): the app's metrics, one meter handed to every library, the text Prometheus pulls behind a token; a library of its own from the start, which house takes since [main makes one meter, hands it to every library, and serves its text](2026-10-23-main-makes-one-meter-and-serves-its-text.md); its decisions are there
 - [study](https://github.com/p4ulcristian/study): the REPL into the running app, by environment, every evaluation logged; a library of its own from the start, which house takes since [The REPL starts last and stops first; house brings its tools](2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md); its decisions are there
+- [attic](https://github.com/p4ulcristian/attic): the app's files, named by their content in an S3 bucket, recorded in `attic.files`, signed links, uploads checked by their bytes; a library of its own from the start, which house takes since [main makes one attic and one postbox](2026-10-23-main-makes-one-attic-and-one-postbox.md); its decisions are there
+- [postbox](https://github.com/p4ulcristian/postbox): the app's email, queued in the caller's transaction as a background job, sent once by Postmark or the log, bounces and inbound email handed to the app by tag; a library of its own from the start, which house takes since [main makes one attic and one postbox](2026-10-23-main-makes-one-attic-and-one-postbox.md); its decisions are there
 - [server/main](server/main/README.md): the one start, the page shell, the health checks, the errors a monitor pulls, the metrics, a visitor's session, the REPL's tools
 
 ### What house is
@@ -82,6 +84,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [main makes one wire and passes it to every library](2026-10-22-main-makes-one-wire-and-passes-it-to-every-library.md), changed in part by [main makes one logbook and passes its log to every library](2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md)
 - [main makes one logbook and passes its log to every library](2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md)
 - [main makes one meter, hands it to every library, and serves its text](2026-10-23-main-makes-one-meter-and-serves-its-text.md)
+- [main makes one attic and one postbox, and serves the upload route and the provider's webhooks](2026-10-23-main-makes-one-attic-and-one-postbox.md)
 - [An app's table that writes its own :gates or :on-change is refused](2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md)
 - [The end-to-end test drives a sample app in a headless browser, over the DevTools protocol](2026-10-23-the-end-to-end-test-drives-a-headless-browser-over-devtools.md)
 - [Groundwork ships these parts](2026-10-18-groundwork-ships-these-parts.md)

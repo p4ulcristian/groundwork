@@ -83,4 +83,7 @@
    :handlers             handlers
    :pages                pages
    :background-job-kinds []
-   :schedules            []})
+   :schedules            []
+   :may-upload?          (fn [{:keys [person-id]}] (some? person-id))
+   :on-delivery-event    {}
+   :on-inbound-email     {}})
