@@ -103,8 +103,8 @@
    :routes               {}
    :render-page          (fn [_request page _tools]
                            (if page
-                             {:status 200 :title "Sample" :description nil :head-html "" :body-html ""}
-                             {:status 404 :title "Not found" :description nil :head-html "" :body-html "No such page."}))
+                             {:answer :page :status 200 :title "Sample" :description nil :head-html "" :body-html ""}
+                             {:answer :page :status 404 :title "Not found" :description nil :head-html "" :body-html "No such page."}))
    :may-upload?          (fn [{:keys [person-id]}] (some? person-id))
    :on-delivery-event    {}
    :on-inbound-email     {}})

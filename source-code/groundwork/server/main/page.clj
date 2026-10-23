@@ -31,13 +31,19 @@
    origin (the :sessions settings' :allowed-origin).
 
    What only the app knows, per page and per request, is the app's
-   :render-page, (fn [request page {:keys [nonce asker run-as-asker!]}]):
+   :render-page, (fn [request page {:keys [nonce asker run-as-asker!]}]),
+   which answers a page or a redirect, every key written out:
 
-     {:status      200                          ; 404 for the not-found page
+     {:answer      :page
+      :status      200                          ; 404 for the not-found page
       :title       \"Orders | Shop\"              ; the <title>, escaped here
       :description \"Every order, by status\"     ; the description meta, escaped here; nil for none
       :head-html   \"<link rel=\\\"canonical\\\" …>\"  ; the app's own head tags, as they are
       :body-html   \"<main>…</main>\"}             ; inside #app, as it is, replaced when the app draws
+
+     {:answer   :redirect                       ; signed out, not a member here, a page moved
+      :status   303                             ; 301, 302, 303, 307 or 308
+      :location \"/login?next=%2Forders\"}        ; the Location header, as it is; no shell, never cached
 
    page is the page the address names ({:name :address :title :module}),
    or nil for a GET no route and no file answers (the not-found page).
@@ -133,13 +139,21 @@
    :module-stylesheets (list-module-stylesheets settings browser-modules) :pages pages})
 
 (def rendered-page-shape
-  "What the app's :render-page answers, every key required."
-  [:map {:closed true}
-   [:status [:int {:min 200 :max 599}]]
-   [:title :string]
-   [:description [:maybe :string]]
-   [:head-html :string]
-   [:body-html :string]])
+  "What the app's :render-page answers, every key required: a page
+   (:answer :page), drawn in the shell, or a redirect (:answer :redirect),
+   answered with its status and Location and no shell."
+  [:multi {:dispatch :answer}
+   [:page [:map {:closed true}
+           [:answer [:= :page]]
+           [:status [:int {:min 200 :max 599}]]
+           [:title :string]
+           [:description [:maybe :string]]
+           [:head-html :string]
+           [:body-html :string]]]
+   [:redirect [:map {:closed true}
+               [:answer [:= :redirect]]
+               [:status [:enum 301 302 303 307 308]]
+               [:location :string]]]])
 
 (defn- check-rendered-page [page-name rendered]
   (when-let [explanation (malli/explain rendered-page-shape rendered)]
@@ -224,11 +238,15 @@
                                                          {:nonce         nonce
                                                           :asker         (asker/read-asker context)
                                                           :run-as-asker! (asker/make-run-as-asker pool request settings scope-kinds)}))]
-          {:status  (:status rendered)
-           :headers (make-headers settings nonce)
-           :body    (make-page-html wire settings stylesheets scripts (assoc browser-settings :language language)
-                                    language (dictionary/make-alternate-links (:languages settings) origin path)
-                                    rendered nonce)})))))
+          (if (= :redirect (:answer rendered))
+            {:status  (:status rendered)
+             :headers {"location" (:location rendered) "cache-control" "no-store"}
+             :body    ""}
+            {:status  (:status rendered)
+             :headers (make-headers settings nonce)
+             :body    (make-page-html wire settings stylesheets scripts (assoc browser-settings :language language)
+                                      language (dictionary/make-alternate-links (:languages settings) origin path)
+                                      rendered nonce)}))))))
 
 (defn make-catalog-routes
   "A GET for each language's catalog (dictionary's list-catalog-files), at

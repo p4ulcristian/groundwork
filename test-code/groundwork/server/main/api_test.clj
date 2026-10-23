@@ -292,15 +292,21 @@
 (defn- render-page
   "The test app's pages: its title, a description, a script of its own
    with the request's nonce, a body in the request's language saying who
-   asked; the not-found page for an address no page has."
+   asked; the admin page sends nobody to the login; the not-found page
+   for an address no page has."
   [_request page {:keys [nonce asker]}]
-  (if page
-    {:status      200
+  (cond
+    (and (= :admin/page (:name page)) (nil? (:person-id asker)))
+    {:answer :redirect :status 303 :location "/login?next=%2Fadmin"}
+    page
+    {:answer      :page
+     :status      200
      :title       "Shops <test>"
      :description (str "The " (name (:name page)) " page")
      :head-html   (str "<script nonce=\"" nonce "\">window.appStarted = true;</script>\n")
      :body-html   (str "<main>" (dictionary/tr :orders/title {}) " for " (or (:person-id asker) "nobody") "</main>")}
-    {:status 404 :title "Not found" :description nil :head-html "" :body-html "<main>No such page</main>"}))
+    :else
+    {:answer :page :status 404 :title "Not found" :description nil :head-html "" :body-html "<main>No such page</main>"}))
 
 (defn- make-app [user]
   {:settings (make-settings user) :tables [shops orders shop-emails] :extensions [] :functions [] :views [] :changes [] :scope-kinds scope-kinds
@@ -743,7 +749,15 @@
                 (is (str/includes? html (str "<div id=\"app\"><main>Bestellungen for " anna "</main></div>"))
                     "the body, in the request's language, for the request's asker")
                 (is (not= nonce (:nonce (page-of "/orders/42" nil))) "each answer its own nonce")
-                (is (str/includes? (:html (page-of "/orders/42" nil)) "<main>Orders for nobody</main>")))
+                (is (str/includes? (:html (page-of "/orders/42" nil)) "<main>Orders for nobody</main>"))
+                (testing "a redirect: its status and Location, no shell, never cached"
+                  (let [response (.send (HttpClient/newHttpClient)
+                                        (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/admin"))))
+                                        (HttpResponse$BodyHandlers/ofString))]
+                    (is (= [303 "/login?next=%2Fadmin" "no-store" ""]
+                           [(.statusCode response) (.orElse (.firstValue (.headers response) "location") nil)
+                            (.orElse (.firstValue (.headers response) "cache-control") nil) (.body response)])))
+                  (is (str/includes? (:html (page-of "/admin" anna-cookie)) "<main>Orders for ") "signed in: the page")))
               (testing "an address no page has: the app's not-found page, 404; not a GET: 404, nothing"
                 (let [response (.send (HttpClient/newHttpClient)
                                       (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/nowhere"))))

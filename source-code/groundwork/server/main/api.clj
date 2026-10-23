@@ -777,7 +777,7 @@
    records with a kind (groundwork.server.main.app-routes), {} for none;
    :render-page, (fn [request page {:keys [nonce asker run-as-asker!]}]),
    each page's title, description, head and body, and the not-found page
-   (page nil) (groundwork.server.main.page);
+   (page nil), or a redirect (groundwork.server.main.page);
    :may-upload?, (fn [asker] true-or-false), who may upload
    files; :on-delivery-event, {tag (fn [event {:keys [transaction log]}])},
    a bounce or spam complaint by its email's tag, {} for none;

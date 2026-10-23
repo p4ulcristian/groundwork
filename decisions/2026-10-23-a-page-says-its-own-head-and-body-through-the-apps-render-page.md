@@ -1,5 +1,7 @@
 # A page says its own head and body through the app's render-page; the composer keeps the shell and makes the nonce
 
+> **Changed in part** by [render-page answers a page or a redirect](2026-10-23-render-page-answers-a-page-or-a-redirect.md) (2026-10-23, built on tidy-up, not released): every answer writes `:answer`, `:page` or `:redirect`.
+
 > **Changed in part** by [A token call arrives where a browser's does; the composer names no person](2026-10-23-a-token-call-arrives-where-a-browsers-does.md) (2026-10-23, built on tidy-up, not released): `run-as-asker!` runs as the asker doorman finds in the page's request (doorman's `run-as-asker-of-request!`).
 
 > The user's decision, 2026-10-23, for Iron Rainbow's move to v1 (SEO titles and descriptions per page and language, the prerendered body crawlers read, `IR_CONFIG`, the boot splash, the nonce CSP, its 404). Changes in part the page-shell decisions (the shell had one title for every page and no body; `:page :title` is gone). Built the same day (`groundwork.server.main.page`, bridge v0.7.7's `:not-found`).

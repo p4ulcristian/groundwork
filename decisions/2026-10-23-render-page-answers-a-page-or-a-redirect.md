@@ -1,6 +1,6 @@
 # render-page answers a page or a redirect
 
-> The user's decision, 2026-10-23, from Iron Rainbow's port (GROUNDWORK-GAPS.md, G1: 54 GET pages send a signed-out person to the login). Changes in part [A page says its own head and body through the app's render-page](2026-10-23-a-page-says-its-own-head-and-body-through-the-apps-render-page.md). Not built yet.
+> The user's decision, 2026-10-23, from Iron Rainbow's port (GROUNDWORK-GAPS.md, G1: 54 GET pages send a signed-out person to the login). Changes in part [A page says its own head and body through the app's render-page](2026-10-23-a-page-says-its-own-head-and-body-through-the-apps-render-page.md). Built on tidy-up, not released.
 
 **Decision:** the app's `render-page` answers one of two maps, every key written out:
 
@@ -18,3 +18,9 @@ For `:redirect` the composer answers the status and `Location` and draws no page
 **Instead of:**
 - **a page record saying `:when-signed-out {:redirect-to …}`**: data, but it covers only "signed out"; a shop the person isn't in still needs code
 - **drawing the page and redirecting in the browser**: a 200 that is a login page, indexed by crawlers, and a flash
+
+**Settled while building:**
+
+1. **The shape is a malli `:multi` on `:answer`**, each map closed: a page's keys as before with `:answer :page`; a redirect's `:answer :redirect`, `:status` one of 301, 302, 303, 307, 308, `:location` text. Anything else is `:groundwork.server.main/bad-rendered-page`, as before.
+2. **A redirect's answer has two headers, `Location` (as the app wrote it) and `Cache-Control: no-store`, and an empty body**: no shell, no nonce, no content security policy (there is no page to protect).
+3. **The not-found page (page nil) may redirect too**: the same two answers for every call.

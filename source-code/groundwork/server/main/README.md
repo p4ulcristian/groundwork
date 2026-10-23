@@ -34,14 +34,23 @@ draws), and the not-found page for a GET no route and no file answers
 (page nil, 404); with `:content-security-policy {:policy "script-src
 'nonce-{nonce}' …" :nonce? true}` each answer gets a nonce of its own, on
 the shell's scripts and handed to `render-page` for the app's
-([the decision](../../../../decisions/2026-10-23-a-page-says-its-own-head-and-body-through-the-apps-render-page.md)):
+([the decision](../../../../decisions/2026-10-23-a-page-says-its-own-head-and-body-through-the-apps-render-page.md)).
+It answers a page, `:answer :page`, or a redirect, `{:answer :redirect
+:status 303 :location "/login?next=%2Fflex"}` (301, 302, 303, 307 or 308),
+answered with its status and `Location`, never cached, and no shell: a
+signed-out person sent to the login, not a 200 that is a login page
+([the decision](../../../../decisions/2026-10-23-render-page-answers-a-page-or-a-redirect.md)):
 
 ```clojure
 :render-page (fn [request page {:keys [nonce asker run-as-asker!]}]
-               (if page
-                 {:status 200 :title (dictionary/tr :site.home/title {}) :description (dictionary/tr :site.home/description {})
-                  :head-html (str "<link rel=\"canonical\" href=\"…\">") :body-html (prerender request)}
-                 {:status 404 :title "Not found" :description nil :head-html "" :body-html "<main>No such page.</main>"}))
+               (cond
+                 (nil? page)
+                 {:answer :page :status 404 :title "Not found" :description nil :head-html "" :body-html "<main>No such page.</main>"}
+                 (and (:signed-in-only? page) (nil? (:person-id asker)))
+                 {:answer :redirect :status 303 :location (str "/login?next=" (java.net.URLEncoder/encode (:uri request) "UTF-8"))}
+                 :else
+                 {:answer :page :status 200 :title (dictionary/tr :site.home/title {}) :description (dictionary/tr :site.home/description {})
+                  :head-html (str "<link rel=\"canonical\" href=\"…\">") :body-html (prerender request)}))
 ``` The shell is in the request's
 language: every request first gets it from dictionary (the `:languages`
 settings: the address's prefix, taken off before routing, the cookie,
