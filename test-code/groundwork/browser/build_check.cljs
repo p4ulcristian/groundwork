@@ -1,6 +1,6 @@
 (ns groundwork.browser.build-check
   "An entry that uses every browser library, and names a stylesheet through
-   showroom, so the browser build's test compiles all of them, as an app's
+   browser-build, so the browser build's test compiles all of them, as an app's
    release build would: groundwork's start (which starts parlor), a root drawn
    with parlor, reading an answer, \"can I?\" and the page, and a page
    whose module, groundwork.browser.build-check-admin, loads on demand."
@@ -8,7 +8,7 @@
    [groundwork.browser.main.api :as main]
    [parlor.api :as parlor]
    [re-frame.core :as rf]
-   [showroom.api :as styles]
+   [browser-build.api :as styles]
    [wire.big]))
 
 (def ^:private build-check-styles (styles/use-stylesheet "groundwork/browser/build_check.css"))

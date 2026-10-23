@@ -11,7 +11,7 @@ server answered with an error), then starts parlor (`[:parlor/start …]`, with
 the store, the write's send function (parlor's one-time key in the
 `idempotency-key` header), the page's `:retry-writes`, the pages, the app's `:questions-of-pages`,
 `:on-answer-failed`, `:on-move`, `:query-shapes-of-pages` and `:placeholder`, the page's
-languages and language, showroom's `load-module!` with each module's stylesheets, and `[:doorman/my-actions {}]` as its
+languages and language, browser-build's `load-module!` with each module's stylesheets, and `[:doorman/my-actions {}]` as its
 `:actions-question`), which follows the address bar. The app draws its root
 with parlor's `mount-root!` into the shell's `#app`. Once for the
 page, it sends every uncaught error and unhandled rejection to the server,
@@ -20,7 +20,7 @@ page, it sends every uncaught error and unhandled rejection to the server,
 shapes have both shapes for each of its names; groundwork's own are added
 (`:doorman/my-actions`'s answer shape is doorman's, which parlor's "can I?"
 checks the answer by, with the app's wire). The app's `package.json` lists
-big.js, react, react-dom and process as `dependencies`: showroom's release
+big.js, react, react-dom and process as `dependencies`: browser-build's release
 stops on one installed only for development. ClojureScript only. API:
 `groundwork.browser.main.api` (`read-settings-from-page`, `start-app!`,
 `start-visitor-session!`: a session for a visitor, the first time the app

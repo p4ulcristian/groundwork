@@ -55,8 +55,8 @@
            :when    (and (str/starts-with? (str required) "backroom.") (not= 'backroom.api required))]
        (str (second ns-form) " requires " required ": only backroom's api, backroom.api"))
      (for [required (list-required-namespaces ns-form)
-           :when    (and (str/starts-with? (str required) "showroom.") (not= 'showroom.api required))]
-       (str (second ns-form) " requires " required ": only showroom's api, showroom.api"))
+           :when    (and (str/starts-with? (str required) "browser-build.") (not= 'browser-build.api required))]
+       (str (second ns-form) " requires " required ": only browser-build's api, browser-build.api"))
      (for [required (list-required-namespaces ns-form)
            :when    (and (str/starts-with? (str required) "bridge.") (not= 'bridge.api required))]
        (str (second ns-form) " requires " required ": only bridge's api, bridge.api"))
@@ -96,8 +96,8 @@
                          (= :server side))]
        (str (second ns-form) " requires " required ": parlor and re-frame are the browser's"))
      (for [required (list-required-namespaces ns-form)
-           :when    (and (str/starts-with? (str required) "showroom.") (= :server side))]
-       (str (second ns-form) " requires " required ": the server loads showroom only when it watches (requiring-resolve)"))
+           :when    (and (str/starts-with? (str required) "browser-build.") (= :server side))]
+       (str (second ns-form) " requires " required ": the server loads browser-build only when it watches (requiring-resolve)"))
      (for [required (list-required-namespaces ns-form)
            :let     [[required-side required-library] (find-library-of required)]
            :when    (and required-library (not= [side library] [required-side required-library]))

@@ -39,7 +39,7 @@
    every watched question asked again after any break); then starts
    parlor, re-frame over the store (dispatch-sync [:parlor/start …]), with
    the store, the app's :query-shapes-of-pages and :placeholder, the
-   page's languages and language, showroom's load-module! with each
+   page's languages and language, browser-build's load-module! with each
    module's stylesheet bundle from the page, the write's send function (the one-time key parlor makes for
    each write in the idempotency-key header, groundwork.server.main.run-once on
    the server), the page's :retry-writes, the page's pages, the app's
@@ -70,7 +70,7 @@
    [malli.error :as malli-error]
    [parlor.api] ; registers parlor's events and subscriptions, which the start dispatches
    [re-frame.core :as rf]
-   [showroom.api :as showroom]
+   [browser-build.api :as browser-build]
    [wire.api :as wire]))
 
 (def ^:private groundwork-shapes-by-name
@@ -211,7 +211,7 @@
                                       :on-move            on-move
                                       :query-shapes-of-pages query-shapes-of-pages
                                       :languages          {:dictionary languages :language-of-page language}
-                                      :load-module!       #(showroom/load-module! module-stylesheets %)
+                                      :load-module!       #(browser-build/load-module! module-stylesheets %)
                                       :placeholder        placeholder}])
     {:settings settings :wire wire :store store :sse-line sse-line}))
 

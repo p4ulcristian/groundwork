@@ -6,11 +6,11 @@
 ;; So is cellar, Postgres (github.com/p4ulcristian/cellar): any server library
 ;; may use it, through cellar.api only. So is backroom, background jobs
 ;; (github.com/p4ulcristian/backroom): any server library may use it, through
-;; backroom.api only. So is showroom, the browser build and the stylesheets it
-;; bundles (github.com/p4ulcristian/showroom): only to build, never in
+;; backroom.api only. So is browser-build, the browser build and the stylesheets it
+;; bundles (github.com/p4ulcristian/browser-build): only to build, never in
 ;; production, so no server namespace requires it (main loads it only when it
 ;; watches, by requiring-resolve); a browser namespace names its stylesheets
-;; through showroom.api only. So is bridge, how the browser and the server
+;; through browser-build.api only. So is bridge, how the browser and the server
 ;; talk, with a handler's steps and the routes (github.com/p4ulcristian/bridge):
 ;; any library on either side may use it, through bridge.api only. So is
 ;; doorman, who is asking and what they may do, sessions and access

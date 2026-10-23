@@ -2,7 +2,7 @@
   "groundwork from end to end: a sample app (groundwork-test.sample.*: shops and
    their orders, Anna in one shop and Bob in another, one page \"orders
    of my shop\" with a write \"add order\", English and German, one module
-   loaded on demand), its browser half release-built by showroom, started
+   loaded on demand), its browser half release-built by browser-build, started
    by groundwork's own start-app! on a throwaway Postgres, served over HTTP and
    driven by a headless browser over the DevTools protocol
    (groundwork-test.cdp). No window opens.
@@ -26,7 +26,7 @@
    [logbook.api :as logbook]
    [meter.api :as meter]
    [safe.api :as safe]
-   [showroom.api :as showroom])
+   [browser-build.api :as browser-build])
   (:import
    (java.net ServerSocket URI)
    (java.net.http HttpClient HttpRequest HttpResponse$BodyHandlers)
@@ -126,11 +126,11 @@
                        :database-timeout-ms 1000 :not-ready-before-stop-ms 2000}})
 
 (defn- build-browser-half!
-  "The sample's browser half, release-built by showroom into a new folder,
+  "The sample's browser half, release-built by browser-build into a new folder,
    as the deploy builds it; returns the folder."
   []
   (let [folder (make-temporary-folder "groundwork-e2e-files")]
-    (with-out-str (showroom/build-for-release! {:entry              'groundwork-test.sample.browser/start!
+    (with-out-str (browser-build/build-for-release! {:entry              'groundwork-test.sample.browser/start!
                                                 :modules            sample/browser-modules
                                                 :files-folder       folder
                                                 :cache-folder       ".shadow-cljs"

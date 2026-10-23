@@ -12,9 +12,9 @@ that writes a line (the running app holds both, `:logbook` and `:log`;
 production, and starts the pool, the handlers (doorman's check, groundwork's
 `:doorman/my-actions`, then doorbell's notes),
 doorbell's listener (the `:doorbell :listening` settings), backroom's
-background job workers (`:background-jobs`), in development showroom's
+background job workers (`:background-jobs`), in development browser-build's
 watcher of the browser build (`:browser-build {:watch options}`, checked by
-showroom before anything starts), and bridge's server (its
+browser-build before anything starts), and bridge's server (its
 `:server` settings, bridge's, every key required; askers told apart by
 session, else address; sse hooks for doorbell, the ws hooks nil; files from
 `:page :files`). `migrate-app!` is for the deploy, as the owner; the
@@ -144,7 +144,7 @@ nothing is saved. A write without a key runs as it is:
 :doorbell        {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                   :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                               :reconnect-after-ms 1000 :stop-wait-ms 2000}}
-:browser-build   :built                                                  ; or {:watch {…}}: showroom's watch options
+:browser-build   :built                                                  ; or {:watch {…}}: browser-build's watch options
                                                                          ; but :entry, :files-folder and :log
 ```
 

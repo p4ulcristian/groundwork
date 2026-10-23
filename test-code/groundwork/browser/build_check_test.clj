@@ -1,5 +1,5 @@
 (ns groundwork.browser.build-check-test
-  "A release build, by showroom, of an entry using every browser library,
+  "A release build, by browser-build, of an entry using every browser library,
    and a module loaded on demand: they all compile, optimized, main into
    one file with a hashed name and the module into another, with their
    manifest, and the stylesheets each names become its bundle."
@@ -8,14 +8,14 @@
    [clojure.java.io :as io]
    [clojure.string :as str]
    [clojure.test :refer [deftest is]]
-   [showroom.api :as showroom])
+   [browser-build.api :as browser-build])
   (:import
    (java.nio.file Files)
    (java.nio.file.attribute FileAttribute)))
 
 (deftest every-browser-library-compiles-in-a-release-build
   (let [folder (str (Files/createTempDirectory "groundwork-build" (make-array FileAttribute 0)))]
-    (with-out-str (showroom/build-for-release! {:entry              'groundwork.browser.build-check/start!
+    (with-out-str (browser-build/build-for-release! {:entry              'groundwork.browser.build-check/start!
                                                 :modules            {:admin {:entries    '[groundwork.browser.build-check-admin]
                                                                              :depends-on #{:main}}}
                                                 :files-folder       folder

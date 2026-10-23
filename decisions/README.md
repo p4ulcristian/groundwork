@@ -25,7 +25,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [wire](https://github.com/p4ulcristian/wire): how data keeps its types (both sides), a library of its own since [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md); its decisions are there
 - [cellar](https://github.com/p4ulcristian/cellar): Postgres, queries and tables as maps, a library of its own since [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md); its decisions are there
 - [backroom](https://github.com/p4ulcristian/backroom): background jobs on Postgres, what runs later, a library of its own since [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md); its decisions are there
-- [showroom](https://github.com/p4ulcristian/showroom): what the browser downloads and how the page looks, the build and the stylesheets it bundles, a library of its own since [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md); its decisions are there
+- [browser-build](https://github.com/p4ulcristian/browser-build) (named showroom until [showroom is renamed browser-build](2026-10-23-showroom-is-renamed-browser-build.md)): what the browser downloads and how the page looks, the build and the stylesheets it bundles, a library of its own since [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md); its decisions are there
 - [Groundwork's libraries share the GitHub topic groundwork](2026-10-22-groundworks-libraries-share-the-topic-groundwork.md), changed in part by [Groundwork is renamed house, and the group of libraries is manor](2026-10-22-groundwork-is-renamed-house-and-the-group-is-manor.md) and [The family and its composer are groundwork](2026-10-23-the-family-and-its-composer-are-groundwork.md)
 - [bridge](https://github.com/p4ulcristian/bridge): how the browser and the server talk (both sides): named messages over http, sse and ws, a handler's steps, the routes; a library of its own since [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md), named bridge since [mailroom is renamed bridge, and its server is Jetty 12](2026-10-23-mailroom-is-renamed-bridge-and-serves-on-jetty.md); its decisions are there
 - [doorman](https://github.com/p4ulcristian/doorman): who is asking and what they may do, sessions and access, a library of its own since [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md); its decisions are there
@@ -60,11 +60,12 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [wire comes from its own repository](2026-10-22-wire-comes-from-its-own-repository.md)
 - [cellar comes from its own repository](2026-10-22-cellar-comes-from-its-own-repository.md)
 - [backroom comes from its own repository](2026-10-22-backroom-comes-from-its-own-repository.md)
-- [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
+- [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md), changed in part by [showroom is renamed browser-build](2026-10-23-showroom-is-renamed-browser-build.md)
 - [doorman comes from its own repository](2026-10-22-doorman-comes-from-its-own-repository.md), changed in part by [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md)
 - [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md), changed in part by [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md)
 - [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md), changed in part by mailroom's [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md), [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) and [mailroom is renamed bridge, and its server is Jetty 12](2026-10-23-mailroom-is-renamed-bridge-and-serves-on-jetty.md)
 - [mailroom is renamed bridge, and its server is Jetty 12](2026-10-23-mailroom-is-renamed-bridge-and-serves-on-jetty.md)
+- [showroom is renamed browser-build](2026-10-23-showroom-is-renamed-browser-build.md)
 - [The server puts the browser's settings in the page](2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md), changed in part by [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) and [main makes one wire and passes it to every library](2026-10-22-main-makes-one-wire-and-passes-it-to-every-library.md)
 - [A library holds one idea and knows nothing of who uses it](2026-10-22-a-library-holds-one-idea-and-knows-nothing-of-who-uses-it.md)
 - [A library's name is its door](2026-10-22-a-librarys-name-is-its-door.md), changed in part by [A library's api is its api file](2026-10-22-a-librarys-api-is-its-api-file.md) and [A library is laid out by its languages](2026-10-22-a-library-is-laid-out-by-its-languages.md)
@@ -176,8 +177,8 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 
 - [http-kit serves, reitit routes](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-12-http-kit-and-reitit.md): moved to mailroom with the library
 - [Groundwork ships the page shell](2026-10-12-groundwork-ships-the-page-shell.md)
-- [re-frame and Reagent in the browser](2026-10-12-re-frame-and-reagent-in-the-browser.md), changed in part by [A namespace names its stylesheets](https://github.com/p4ulcristian/showroom/blob/main/decisions/2026-10-17-a-namespace-names-its-stylesheets.md)
-- [Groundwork starts the browser and owns the build](2026-10-12-groundwork-starts-the-browser-and-owns-the-build.md), changed in part by [The browser build is Groundwork's](https://github.com/p4ulcristian/showroom/blob/main/decisions/2026-10-22-the-browser-build-is-groundworks.md) and [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
+- [re-frame and Reagent in the browser](2026-10-12-re-frame-and-reagent-in-the-browser.md), changed in part by [A namespace names its stylesheets](https://github.com/p4ulcristian/browser-build/blob/main/decisions/2026-10-17-a-namespace-names-its-stylesheets.md)
+- [Groundwork starts the browser and owns the build](2026-10-12-groundwork-starts-the-browser-and-owns-the-build.md), changed in part by [The browser build is Groundwork's](https://github.com/p4ulcristian/browser-build/blob/main/decisions/2026-10-22-the-browser-build-is-groundworks.md) and [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md)
 - [A build can have several modules](2026-10-12-a-build-can-have-several-modules.md), carried over by [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md)
 - [Nothing asks before the start](2026-10-13-nothing-asks-before-the-start.md), changed in part by [doorbell comes from its own repository](2026-10-22-doorbell-comes-from-its-own-repository.md)
 - [Routing is Groundwork's, and a route is a record](2026-10-14-routing-is-groundworks-and-a-route-is-a-record.md), its extras carried over by [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md)
@@ -189,7 +190,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 
 ### Styles
 
-- [A namespace names its stylesheets](https://github.com/p4ulcristian/showroom/blob/main/decisions/2026-10-17-a-namespace-names-its-stylesheets.md): moved to showroom with the library, with the styles decisions before it
+- [A namespace names its stylesheets](https://github.com/p4ulcristian/browser-build/blob/main/decisions/2026-10-17-a-namespace-names-its-stylesheets.md): moved to showroom with the library, with the styles decisions before it
 
 ### Jobs and the REPL
 

@@ -7,7 +7,7 @@
                                           :shape main/settings-shape          ; checked against settings-shape
                                           :env   (System/getenv)})
         :browser-entry        'app.browser.main/start!  ; the function the page runs
-        :browser-modules      {}                    ; showroom's :modules, loaded on demand: {:admin {:entries [app.admin.page] :depends-on #{:main}}}
+        :browser-modules      {}                    ; browser-build's :modules, loaded on demand: {:admin {:entries [app.admin.page] :depends-on #{:main}}}
         :tables               [shops orders]        ; table maps, with :access and :doorbell
         :changes              []                    ; cellar's changes
         :scope-kinds          scope-kinds           ; doorman's
@@ -36,7 +36,7 @@
    health checks; no library makes its own), makes the app's one logbook
    from the :logbook settings and passes its log to every library that
    writes a line (cellar's migrate, doorbell's listener, backroom's
-   workers, showroom's watcher, bridge's routes and server, the health
+   workers, browser-build's watcher, bridge's routes and server, the health
    checks; each message's steps get one with its request id, the person
    added once doorman finds them), puts groundwork's own tables with
    the app's, migrates in development (:migrate-at-start?
@@ -61,9 +61,9 @@
 
    In production the deploy runs migrate-app! first, as the role that owns
    the tables (the app's own role owns nothing), and the browser's release
-   build (showroom, its own library), whose files the page lists
-   (:browser-build :built). Production has neither showroom nor
-   shadow-cljs: showroom is loaded only when it watches.
+   build (browser-build, its own library), whose files the page lists
+   (:browser-build :built). Production has neither browser-build nor
+   shadow-cljs: browser-build is loaded only when it watches.
 
    Two GETs answer whoever runs the app, outside sessions, access and rate
    limits (groundwork.server.main.health, the :health settings): live, 200
@@ -226,11 +226,11 @@
 
 (def browser-build-settings-shape
   "The :browser-build setting: :built, the release build's files, listed
-   by their manifests; or {:watch options}, development, showroom's
-   watcher started with these options: every one of showroom's
+   by their manifests; or {:watch options}, development, browser-build's
+   watcher started with these options: every one of browser-build's
    start-watching! options but :entry, :modules, :files-folder and :log,
    which come from the app's :browser-entry and :browser-modules, the
-   :page :files :folder and the app's log. showroom checks them, every key required, before the app starts
+   :page :files :folder and the app's log. browser-build checks them, every key required, before the app starts
    anything."
   [:or
    [:= :built]
@@ -583,7 +583,7 @@
   (map? (:browser-build settings)))
 
 (defn- make-watch-options
-  "showroom's start-watching! options: the :browser-build :watch settings,
+  "browser-build's start-watching! options: the :browser-build :watch settings,
    with the app's entry, the files folder and the app's log."
   [{:keys [browser-entry browser-modules settings]} log]
   (assoc (get-in settings [:browser-build :watch])
@@ -593,19 +593,19 @@
          :log log))
 
 (defn- check-watch-options!
-  "showroom checks the watch options, every key required, before anything
-   starts: showroom's make-build checks them and builds nothing."
+  "browser-build checks the watch options, every key required, before anything
+   starts: browser-build's make-build checks them and builds nothing."
   [app log]
-  ((requiring-resolve 'showroom.api/make-build) :watch (make-watch-options app log)))
+  ((requiring-resolve 'browser-build.api/make-build) :watch (make-watch-options app log)))
 
 (defn- start-watching-browser-build!
-  "Loaded here, not required above: production has neither showroom nor
+  "Loaded here, not required above: production has neither browser-build nor
    shadow-cljs."
   [app log]
-  ((requiring-resolve 'showroom.api/start-watching!) (make-watch-options app log)))
+  ((requiring-resolve 'browser-build.api/start-watching!) (make-watch-options app log)))
 
 (defn- stop-watching-browser-build! [watching]
-  ((requiring-resolve 'showroom.api/stop-watching!) watching))
+  ((requiring-resolve 'browser-build.api/stop-watching!) watching))
 
 (defn- start-part!
   "Starts one part, remembering how to stop it, so a failed start stops

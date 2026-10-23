@@ -20,7 +20,7 @@
    (doorbell's), the browser's wire settings (:browser-wire, all but
    :exact-decimals, which the app's browser start hands in), the write
    retries, the visitor route's path (:visitors), the languages
-   (dictionary's settings) and the request's language, and each module's stylesheet bundle (for showroom's
+   (dictionary's settings) and the request's language, and each module's stylesheet bundle (for browser-build's
    load-module!) are said once, on the server. The JSON is written by the
    app's wire.
 
@@ -90,9 +90,9 @@
 
 (defn list-scripts
   "The page's scripts, the module main's: while watching (:browser-build
-   {:watch …}) /js/main.js, showroom's watched build; built, the file the
+   {:watch …}) /js/main.js, browser-build's watched build; built, the file the
    release build's manifest lists, its name hashed. The modules loaded on
-   demand come later, by showroom's loader."
+   demand come later, by browser-build's loader."
   [{{{:keys [folder]} :files} :page :as settings}]
   (if (is-watching? settings) ["/js/main.js"] [(get (read-built-files folder "js") :main)]))
 
@@ -104,7 +104,7 @@
 
 (defn list-module-stylesheets
   "Each module loaded on demand's stylesheet bundle, by name, for
-   showroom's load-module!: while watching /css/<module>.css, for each of
+   browser-build's load-module!: while watching /css/<module>.css, for each of
    the app's :browser-modules; built, the hashed ones the manifest lists."
   [{{{:keys [folder]} :files} :page :as settings} browser-modules]
   (if (is-watching? settings)

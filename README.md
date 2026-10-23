@@ -3,7 +3,7 @@
 An opinionated Clojure framework for web apps on Postgres: the repository
 that puts the **groundwork** libraries together into one running app.
 groundwork names both the family and this composer: groundwork and its cellar,
-backroom, showroom, bridge, doorman, doorbell, parlor, dictionary, wire,
+backroom, browser-build, bridge, doorman, doorbell, parlor, dictionary, wire,
 logbook, meter, study, attic, postbox and safe. The spec is [`decisions/`](decisions/README.md).
 
 One tree: each library is a folder `source-code/groundwork/<side>/<name>/` with
@@ -30,7 +30,7 @@ migration's time limits the `:migration` part, with no defaults. And what runs
 later, background jobs on Postgres:
 [backroom](https://github.com/p4ulcristian/backroom), a queue, workers and
 schedules; its settings are the `:background-jobs` part. And what the browser downloads and how the page looks:
-[showroom](https://github.com/p4ulcristian/showroom), the shadow-cljs build
+[browser-build](https://github.com/p4ulcristian/browser-build), the shadow-cljs build
 (watched in development, built once by the deploy) and the stylesheets a
 namespace names, bundled; taken only in the build aliases, never in production;
 its watch options are the `:browser-build {:watch …}` setting, its release
@@ -79,7 +79,7 @@ catalog per language, read by the server at the start (`:texts`, for
 emails and PDFs) and served to the browser, where parlor's
 `[:parlor/text key args]` draws them. The routing has queries (read by a
 page's shape), scrolling, a question before leaving unsaved changes, and
-modules loaded on demand (the app's `:browser-modules`, showroom's, each
+modules loaded on demand (the app's `:browser-modules`, browser-build's, each
 with its stylesheets): [the decision](decisions/2026-10-23-routing-extras-each-where-it-belongs.md).
 And how much the app does, on the server:
 [meter](https://github.com/p4ulcristian/meter); groundwork makes the app's one
@@ -170,7 +170,7 @@ clj -A:test                                                        # one REPL, e
 
 The end-to-end test (`test-code/groundwork/end_to_end_test.clj`): a sample app
 (`test-code/groundwork_test/sample/`, shops and orders, Anna and Bob, English and
-German, a module loaded on demand) release-built by showroom, started by
+German, a module loaded on demand) release-built by browser-build, started by
 `start-app!` on a throwaway Postgres and driven by a headless browser over
 the DevTools protocol; no window opens
 ([the decision](decisions/2026-10-23-the-end-to-end-test-drives-a-headless-browser-over-devtools.md)).

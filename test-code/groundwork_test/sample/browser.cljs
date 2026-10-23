@@ -9,7 +9,7 @@
    [parlor.api :as parlor]
    [re-frame.core :as rf]
    [reagent.core :as reagent]
-   [showroom.api :as styles]))
+   [browser-build.api :as styles]))
 
 (def ^:private browser-styles (styles/use-stylesheet "groundwork_test/sample/browser.css"))
 

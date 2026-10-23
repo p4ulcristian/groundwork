@@ -5,7 +5,7 @@
   (:require
    [groundwork-test.sample.browser :as browser]
    [re-frame.core :as rf]
-   [showroom.api :as styles]))
+   [browser-build.api :as styles]))
 
 (def ^:private reports-styles (styles/use-stylesheet "groundwork_test/sample/reports.css"))
 
