@@ -21,18 +21,18 @@
   ;; bridge: named messages over http, sse and ws, a handler's steps, the routes;
   ;; both sides, its own library, github.com/p4ulcristian/bridge (it brings
   ;; Jetty 12 through rj9a, reitit-ring and reitit-frontend)
-  io.github.p4ulcristian/bridge   {:git/tag "v0.7.4" :git/sha "4f5c808"}
+  io.github.p4ulcristian/bridge   {:git/tag "v0.7.5" :git/sha "35d9351"}
   ;; doorman: who is asking and what may they do, sessions and access, its own
   ;; library, github.com/p4ulcristian/doorman (it brings malli and test.check)
-  io.github.p4ulcristian/doorman    {:git/tag "v0.7.5" :git/sha "f2e63e2"}
+  io.github.p4ulcristian/doorman    {:git/tag "v0.7.6" :git/sha "b9dd5b0"}
   ;; doorbell: a change to a table rings every open screen, which asks again;
   ;; both sides, its own library, github.com/p4ulcristian/doorbell
-  io.github.p4ulcristian/doorbell   {:git/tag "v0.5.5" :git/sha "d8ca07f"}
+  io.github.p4ulcristian/doorbell   {:git/tag "v0.5.6" :git/sha "63001f7"}
   ;; parlor: the browser's screens over doorbell's question store, in re-frame,
   ;; drawn with Reagent (it brings re-frame and Reagent; react and react-dom
   ;; are package.json's); the browser's side only, its own library,
   ;; github.com/p4ulcristian/parlor
-  io.github.p4ulcristian/parlor     {:git/tag "v0.7.5" :git/sha "4e8b436"}
+  io.github.p4ulcristian/parlor     {:git/tag "v0.7.6" :git/sha "19e4540"}
   ;; dictionary: which language a request, a page and an address are in; both
   ;; sides, its own library, github.com/p4ulcristian/dictionary (parlor brings
   ;; it to the browser too)
