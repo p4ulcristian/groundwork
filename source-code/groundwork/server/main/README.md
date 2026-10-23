@@ -239,10 +239,34 @@ as its name; text written out where a secret belongs is refused:
                                :tables [shops orders] :changes [] :scope-kinds scope-kinds
                                :handlers handlers :pages pages :browser-modules {}
                                :background-job-kinds [] :schedules []
+                               :routes {}   ; the app's own server routes, records with a kind
                                :may-upload? (fn [{:keys [person-id]}] (some? person-id))
                                :on-delivery-event {} :on-inbound-email {}}))
 (main/stop-app! running)
 ```
+
+The app's own server routes (`:routes`), for what isn't a message or a
+page: a provider's webhook, a login's callback, a machine's API. Each is a
+record with a kind, served beside groundwork's routes and behind the same
+language step
+([the decision](../../../../decisions/2026-10-23-an-apps-own-server-routes-are-records-with-a-kind.md)):
+
+```clojure
+:routes {:stripe/webhook {:address "/stripe-webhook" :method :post :kind :server-to-server
+                          :rate-limit {:max 30 :per-ms 60000}
+                          :handler (fn [request {:keys [log run-as-system!]}] …)}   ; the raw body, unread
+         :flex/authorize {:address "/flex/authorize" :method :get :kind :browser :rate-limit nil
+                          :handler (fn [request {:keys [asker run-as-asker! sign-in!]}]
+                                     {:status 302 :headers {"location" "/flex"
+                                                            "set-cookie" (:set-cookie (sign-in! person-id #{}))}})}}
+```
+
+A `:browser` route runs doorman's session step first (a request that isn't
+a GET must come from the app's own pages, else 403) and gets the asker,
+`run-as-asker!` (a transaction as them, held by the gates), `sign-in!` and
+`sign-out!`; a `:server-to-server` route reads no session and proves its
+caller itself. An address groundwork serves, or two routes at one address
+and method, refuse the start.
 
 Its test starts the whole server as production does (`migrate-app!` as the
 owner, `start-app!` as a role that owns nothing) and follows a new order

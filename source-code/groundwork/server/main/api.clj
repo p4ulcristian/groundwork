@@ -49,7 +49,8 @@
    build's watcher (:browser-build {:watch options}, with the app's
    :browser-modules), and the server (bridge's three addresses, from
    :server :addresses, every page answered by the page shell in the
-   request's language, files from :page :files; no ws hooks). Every
+   request's language, the app's own :routes, files from :page :files; no
+   ws hooks). Every
    request first gets its language (dictionary's, from the :languages
    settings) and loses its address's language prefix, for routing, and is
    handled with that language bound: (dictionary/tr key args) in a
@@ -125,6 +126,7 @@
    [dictionary.api :as dictionary]
    [doorman.api :as doorman]
    [doorbell.api :as doorbell]
+   [groundwork.server.main.app-routes :as app-routes]
    [groundwork.server.main.errors :as errors]
    [groundwork.server.main.files :as files]
    [groundwork.server.main.health :as health]
@@ -535,7 +537,7 @@
    {:allow :shop-emails/mark-bounced :to [:system :postbox]}."
   :postbox)
 
-(defn- make-routes [{:keys [settings pages browser-modules may-upload? on-delivery-event on-inbound-email]}
+(defn- make-routes [{:keys [settings pages browser-modules may-upload? on-delivery-event on-inbound-email routes tables scope-kinds]}
                     {:keys [wire running-logbook log app-meter pool running-health handlers running-doorbell
                             running-attic running-postbox find-session-step]}]
   (let [browser-settings (page/make-browser-settings settings pages browser-modules)]
@@ -561,6 +563,13 @@
                 :on-sse-close #(doorbell/remove-sse-line! running-doorbell %)
                 :on-ws-open   nil
                 :on-ws-close  nil}))
+        (into (app-routes/make-app-routes routes {:pool                        pool
+                                                  :log                         log
+                                                  :settings                    settings
+                                                  :tables                      tables
+                                                  :scope-kinds                 scope-kinds
+                                                  :find-session-step           find-session-step
+                                                  :find-browser-rate-limit-key (make-rate-limit-key-finder settings)}))
         (into (page/make-catalog-routes (:languages settings)))
         (into (bridge/make-server-routes-for-pages pages (page/make-page-handler wire settings browser-settings))))))
 
@@ -657,8 +666,10 @@
                      :docs-of-parts       docs-of-parts}))
 
 (def ^:private app-functions-shape
-  "The app map's functions for the files and the email, every key
-   required: :may-upload?, (fn [asker] true-or-false), who may upload
+  "The app map's own routes and its functions for the files and the
+   email, every key required: :routes, the app's own server routes,
+   records with a kind (groundwork.server.main.app-routes), {} for none;
+   :may-upload?, (fn [asker] true-or-false), who may upload
    files; :on-delivery-event, {tag (fn [event {:keys [transaction log]}])},
    a bounce or spam complaint by its email's tag, {} for none;
    :on-inbound-email, {mailbox (fn [email {:keys [transaction log]}])}, an
@@ -668,6 +679,7 @@
    app's sentences give [:system :postbox], the open rows and the tables
    without sentences; nothing else."
   [:map
+   [:routes app-routes/routes-shape]
    [:may-upload? fn?]
    [:on-delivery-event map?]
    [:on-inbound-email map?]])

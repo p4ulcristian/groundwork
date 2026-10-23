@@ -26,6 +26,7 @@
    [doorbell.api :as doorbell]
    [doorman.api :as doorman]
    [groundwork.server.main.api :as main]
+   [groundwork.server.main.app-routes :as app-routes]
    [groundwork.server.main.page :as page]
    [groundwork.server.main.run-once :as run-once]
    [jsonista.core :as json]
@@ -249,8 +250,24 @@
   "The bounces and complaints groundwork handed to the app's function."
   (atom []))
 
+(def ^:private app-routes
+  "The app's own routes: a page-like read as the asker, a sign-in, a
+   webhook that reads its raw body."
+  {:app/orders  {:address "/app/orders" :method :get :kind :browser :rate-limit nil
+                 :handler (fn [_request {:keys [asker run-as-asker!]}]
+                            {:status 200 :headers {"content-type" "text/plain"}
+                             :body (str (:person-id asker) " "
+                                        (run-as-asker! {:read-only? true} #(count (database/find-rows % find-all-orders {}))))})}
+   :app/sign-in {:address "/app/sign-in" :method :post :kind :browser :rate-limit nil
+                 :handler (fn [_request {:keys [sign-in!]}]
+                            {:status 200 :headers {"set-cookie" (:set-cookie (sign-in! anna #{}))} :body "signed in"})}
+   :app/hook    {:address "/app/hook" :method :post :kind :server-to-server :rate-limit {:max 2 :per-ms 60000}
+                 :handler (fn [request _tools]
+                            {:status 200 :headers {"content-type" "text/plain"} :body (str "got " (slurp (:body request)))})}})
+
 (defn- make-app [user]
   {:settings (make-settings user) :tables [shops orders shop-emails] :changes [] :scope-kinds scope-kinds
+   :routes app-routes
    :may-upload? (fn [{:keys [person-id]}] (= anna person-id))
    :on-delivery-event {:orders/confirmation (fn [event {:keys [transaction]}]
                                               (swap! delivery-events conj
@@ -283,6 +300,18 @@
                                      (.build)))
                         (HttpResponse$BodyHandlers/ofString))]
     [(.statusCode response) (.body response)]))
+
+(defn- send-plain
+  "A request with the origin only when given: [status body set-cookie]."
+  [server-port method path origin cookie body]
+  (let [response (.send (HttpClient/newHttpClient)
+                        (cond-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port path)))
+                          origin (.header "origin" origin)
+                          cookie (.header "cookie" cookie)
+                          true   (-> (.method method (if body (HttpRequest$BodyPublishers/ofString body) (HttpRequest$BodyPublishers/noBody)))
+                                     (.build)))
+                        (HttpResponse$BodyHandlers/ofString))]
+    [(.statusCode response) (.body response) (.orElse (.firstValue (.headers response) "set-cookie") nil)]))
 
 (defn- send-write
   "A POST of a write with its one-time key in the idempotency-key header:
@@ -322,6 +351,15 @@
     (is (= {:uri "/orders" :text "2 Bestellungen"} (handler {:uri "/de/orders" :headers {}})) "the prefix's, bound for tr")
     (is (= "2 Bestellungen" (:text (handler {:uri "/orders" :headers {"cookie" "lang=de"}}))) "the cookie's")
     (is (= "2 orders" (:text (handler {:uri "/orders" :headers {}}))) "the default's")))
+
+(deftest the-apps-routes-are-checked
+  (let [route {:address "/app/x" :method :post :kind :browser :rate-limit nil :handler identity}]
+    (is (= {:app/x route} (app-routes/check-routes {:app/x route})))
+    (is (= :groundwork.server.main/bad-routes
+           (:type (ex-data (try (app-routes/check-routes {:app/x (assoc route :kind :public)}) (catch Exception e e))))))
+    (is (= {:shared {["/app/x" :post] [:app/x :app/y]}}
+           (:errors (ex-data (try (app-routes/check-routes {:app/x route :app/y route}) (catch Exception e e)))))
+        "two routes at one address and method")))
 
 (deftest the-settings-are-checked-all-at-once
   (let [problems (try (main/check-settings (-> (make-settings "x") (dissoc :version) (assoc-in [:server :port] "80")
@@ -473,6 +511,11 @@
                                         (doorman/add-scope! transaction scope-kinds :shop shop-7 paul nil)
                                         (doorman/add-scope! transaction scope-kinds :shop shop-9 bob nil)
                                         (doorman/add-membership! transaction [:shop shop-7] anna "Staff")))
+        (testing "an app route at an address groundwork serves is refused at the start"
+          (is (thrown? Exception
+                       (main/start-app! (assoc-in (make-app "groundwork_app") [:routes :app/health]
+                                                  {:address "/health/live" :method :get :kind :server-to-server
+                                                   :rate-limit nil :handler (fn [_ _] {:status 200})})))))
         (let [running     (main/start-app! (make-app "groundwork_app"))
               stopped?    (atom false)
               server-port (get-in running [:server :port])
@@ -503,6 +546,25 @@
                 (is (= "de" (lang-of (get-page "/orders/42" {"accept-language" "de-AT,de;q=0.9"}))))
                 (is (= "en" (lang-of (get-page "/orders/42" {"accept-language" "de" "cookie" "lang=en"}))) "the cookie first")
                 (is (= 404 (first (get-page "/de/nowhere" {}))))))
+            (testing "the app's own routes"
+              (run-sql! owner-pool (str "INSERT INTO orders (order__shop_id) VALUES ('" shop-7 "'), ('" shop-9 "')"))
+              (testing ":browser: the asker of the request's session, and a transaction as them, held by the gates"
+                (is (= [200 (str anna " 1")] (take 2 (send-plain server-port "GET" "/app/orders" nil anna-cookie nil)))
+                    "shop 7's order, not shop 9's")
+                (is (= [200 " 0"] (take 2 (send-plain server-port "GET" "/app/orders" nil nil nil))) "nobody: no rows"))
+              (testing ":browser: a request that changes something comes from the app's own pages"
+                (is (= 403 (first (send-plain server-port "POST" "/app/sign-in" nil nil nil))))
+                (is (= 403 (first (send-plain server-port "POST" "/app/sign-in" "http://evil.test" nil nil))))
+                (let [[status body set-cookie] (send-plain server-port "POST" "/app/sign-in" "http://app.test" nil nil)
+                      new-cookie (first (str/split set-cookie #";"))]
+                  (is (= [200 "signed in"] [status body]))
+                  (is (= (str anna " 1") (second (send-plain server-port "GET" "/app/orders" nil new-cookie nil)))
+                      "the session it made is Anna's")))
+              (testing ":server-to-server: no session, the raw body, its rate limit"
+                (is (= [200 "got {\"type\":\"charge\"}"] (take 2 (send-plain server-port "POST" "/app/hook" nil nil "{\"type\":\"charge\"}"))))
+                (is (= 200 (first (send-plain server-port "POST" "/app/hook" nil nil "x"))))
+                (is (= 429 (first (send-plain server-port "POST" "/app/hook" nil nil "x"))) "the third in a minute"))
+              (run-sql! owner-pool "DELETE FROM orders"))
             (testing "each language's catalog, where the browser fetches it, as the server reads it"
               (let [response (.send (HttpClient/newHttpClient)
                                     (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/groundwork_test/i18n/de.json"))))
