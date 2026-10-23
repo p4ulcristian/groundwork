@@ -81,7 +81,8 @@
    :migrate-at-start? false
    :browser-build     :built
    :server            {:ip "127.0.0.1" :port server-port :proxy-protocol :disable :client-address-header nil :server-header nil
-                       :max-body-bytes 8388608 :max-header-line-bytes 8192 :max-ws-message-bytes 4194304
+                       :max-body-bytes 8388608 :max-request-head-bytes 8192 :max-ws-message-bytes 4194304
+                       :idle-timeout-ms 60000 :threads {:min 8 :max 50 :idle-timeout-ms 60000}
                        :addresses {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"}
                        :ping-every-ms 1000 :sse-reconnect-after-ms 1000 :ws-reopen-after-ms 1000
                        :stop-wait-ms 2000 :stop-wait-after-cut-ms 500
@@ -321,11 +322,11 @@
                                (if (or found (zero? tries)) found (do (Thread/sleep 100) (recur (dec tries))))))]
                   (is (str/includes? (str (get-in kept ["data" "browser/message"])) "e2e boom"))
                   (is (= (str anna) (get-in kept ["context" "person-id"])) "with who was asking")))
-              (testing "7. /metrics, only with its token: mailroom's messages, cellar's query times, logbook's lines"
+              (testing "7. /metrics, only with its token: bridge's messages, cellar's query times, logbook's lines"
                 (is (= 401 (first (get-text (str origin "/metrics") nil))))
                 (let [text (metrics)]
-                  (is (pos? (or (read-metric text "mailroom_messages_total{name=\"orders/of-shop\",outcome=\"ok\",pipe=\"http\"}") 0)))
-                  (is (pos? (or (read-metric text "mailroom_messages_total{name=\"orders/add\",outcome=\"ok\",pipe=\"http\"}") 0)))
+                  (is (pos? (or (read-metric text "bridge_messages_total{name=\"orders/of-shop\",outcome=\"ok\",pipe=\"http\"}") 0)))
+                  (is (pos? (or (read-metric text "bridge_messages_total{name=\"orders/add\",outcome=\"ok\",pipe=\"http\"}") 0)))
                   (is (pos? (or (read-metric text "cellar_query_seconds_count{query=\"sample: the orders of a shop\"}") 0)))
                   (is (pos? (or (read-metric text "logbook_lines_total{level=\"info\"}") 0)))
                   (is (pos? (or (read-metric text "logbook_lines_total{level=\"error\"}") 0)) "the browser's error among them")))
@@ -353,7 +354,7 @@
                     "and, saying no, stays")
                 (is (true? (cdp/evaluate connection anna-1 "document.querySelector('#reports') === null && document.querySelector('#orders') !== null"))))
               (testing "11. a dropped sse line is closed by the next ping"
-                (let [open-lines #(read-metric (metrics) "mailroom_open_lines{pipe=\"sse\"}")
+                (let [open-lines #(read-metric (metrics) "bridge_open_lines{pipe=\"sse\"}")
                       before     (open-lines)
                       bob-2      (cdp/open-page! connection bobs)]
                   (cdp/go-to! connection bob-2 (str origin "/shops/" bobs-shop "/orders"))

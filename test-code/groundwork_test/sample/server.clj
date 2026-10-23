@@ -7,7 +7,7 @@
    [cellar.api :as database]
    [doorman.api :as doorman]
    [groundwork-test.sample.shapes :as shapes]
-   [mailroom.api :as mailroom]))
+   [bridge.api :as bridge]))
 
 (def scope-kinds
   (doorman/check-scope-kinds
@@ -54,8 +54,8 @@
                            :rate-limit   nil
                            :run-steps-in nil
                            :steps        [{:name  :sample/find-orders-of-shop
-                                           :enter (fn [{:mailroom/keys [message-data] :as context}]
-                                                    (mailroom/add-answer-to-context
+                                           :enter (fn [{:bridge/keys [message-data] :as context}]
+                                                    (bridge/add-answer-to-context
                                                      context (database/find-rows (:doorman/transaction context) find-orders-of-shop
                                                                                  (select-keys message-data [:shop/id]))))}]})
    :orders/add     (merge (:orders/add shapes/shapes-by-name)
@@ -63,8 +63,8 @@
                            :rate-limit   nil
                            :run-steps-in nil
                            :steps        [{:name  :sample/add-order
-                                           :enter (fn [{:mailroom/keys [message-data] :as context}]
-                                                    (mailroom/add-answer-to-context
+                                           :enter (fn [{:bridge/keys [message-data] :as context}]
+                                                    (bridge/add-answer-to-context
                                                      context (database/find-one-row (:doorman/transaction context) insert-order
                                                                                     (select-keys message-data [:order/shop-id :order/note]))))}]})})
 

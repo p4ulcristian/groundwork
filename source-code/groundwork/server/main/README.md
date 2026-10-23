@@ -4,7 +4,7 @@ The server's one start: `start-app!` takes the app as one map (settings,
 tables, changes, scope kinds, handlers, pages, background job kinds,
 schedules), checks the settings (each library brings its part; every problem
 at once), makes the app's one wire from the `:wire` settings and passes it to
-mailroom's routes, backroom's workers, the page and the health checks (no
+bridge's routes, backroom's workers, the page and the health checks (no
 library makes its own; the running app holds it, `:wire`), makes the app's
 one logbook from the `:logbook` settings and passes its log to every library
 that writes a line (the running app holds both, `:logbook` and `:log`;
@@ -14,8 +14,8 @@ production, and starts the pool, the handlers (doorman's check, groundwork's
 doorbell's listener (the `:doorbell :listening` settings), backroom's
 background job workers (`:background-jobs`), in development showroom's
 watcher of the browser build (`:browser-build {:watch options}`, checked by
-showroom before anything starts), and mailroom's server (its
-`:server` settings, mailroom's, every key required; askers told apart by
+showroom before anything starts), and bridge's server (its
+`:server` settings, bridge's, every key required; askers told apart by
 session, else address; sse hooks for doorbell, the ws hooks nil; files from
 `:page :files`). `migrate-app!` is for the deploy, as the owner; the
 `:migration` settings are each part's time limits. The page
@@ -122,7 +122,7 @@ nothing is saved. A write without a key runs as it is:
                   :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
                   :forget-done-every-ms 3600000 :stop-wait-ms 30000
                   :metric-buckets {:job-run-seconds [0.01 0.1 1 10 60 600]}}
-:server          {…                                                      ; mailroom's settings, every key
+:server          {…                                                      ; bridge's settings, every key
                   :metric-buckets {:answer-seconds [0.005 0.01 0.025 0.05 0.1 0.25 0.5 1 2.5 5 10]}}
 :sessions        {:cookie-name "app_session" :session-days 30 :visitor-session-days 7   ; doorman's
                   :renew-after-minutes 60 :allowed-origin "https://shop.example" :secure-cookie? true}
@@ -134,13 +134,13 @@ nothing is saved. A write without a key runs as it is:
 ```
 
 One meter, made from the `:meter` settings and handed to cellar's pool,
-mailroom's routes, doorbell's listener and backroom's workers; groundwork's
+bridge's routes, doorbell's listener and backroom's workers; groundwork's
 own metrics (`groundwork_stage{stage}`, `groundwork_ready_checks_total{outcome}`,
 `groundwork_build_info{version}`) and logbook's counts read when the text is
 written (`logbook_lines_total{level}`, `logbook_write_failures_total`,
 `logbook_errors_kept`); the text at the `:metrics` path, outside sessions,
 access and rate limits, only with its bearer token (else 401).
-`:most-series-per-metric` covers the largest declaration: mailroom's
+`:most-series-per-metric` covers the largest declaration: bridge's
 `messages_total`, (handlers+1)×24; its `answer_seconds` and cellar's
 `query_seconds`, (names+1)×(buckets+3). `migrate-app!`'s owner pool counts
 on a meter of its own, never served:
@@ -156,9 +156,9 @@ Origin only (else 403), doorman's `start-visitor-session!`, answered
 `{"visitor-id": "…"}` with its Set-Cookie; the page carries the path to the
 browser's `start-visitor-session!`:
 [the decision](../../../../decisions/2026-10-23-a-visitors-session-starts-on-a-post-of-houses.md).
-One address (mailroom's `find-client-address`, the `:server` settings'
+One address (bridge's `find-client-address`, the `:server` settings'
 `:client-address-header`) may POST it `:rate-limit` times; more are
-answered 429 and make nothing (mailroom's `make-rate-limited-ring-handler`):
+answered 429 and make nothing (bridge's `make-rate-limited-ring-handler`):
 [the decision](../../../../decisions/2026-10-23-the-visitor-route-is-rate-limited-by-address-with-mailrooms-buckets.md).
 
 ```clojure

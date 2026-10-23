@@ -35,7 +35,7 @@
   (:require
    [cellar.api :as database]
    [doorman.api :as doorman]
-   [mailroom.api :as mailroom]
+   [bridge.api :as bridge]
    [wire.api :as wire]))
 
 (def key-header
@@ -74,9 +74,9 @@
 (defn- check-answer-fits!
   "A write's answer, as JSON data by its shape; one that doesn't fit throws,
    so the transaction rolls back. An error answer passes as it is, as
-   mailroom sends it."
+   bridge sends it."
   [wire answer-shape handler-name answer]
-  (if (mailroom/is-error-answer? answer)
+  (if (bridge/is-error-answer? answer)
     answer
     (let [{:keys [json-data errors]} (wire/turn-shaped-data-into-json-data-or-errors wire answer-shape answer)]
       (when errors
@@ -89,7 +89,7 @@
    the answer shape."
   [wire answer-shape handler-name text]
   (let [data (wire/turn-json-text-into-data wire text)]
-    (if (mailroom/is-error-answer? data)
+    (if (bridge/is-error-answer? data)
       data
       (let [{:keys [shaped-data errors]} (wire/turn-json-data-into-shaped-data-or-errors wire answer-shape data)]
         (when errors
@@ -101,32 +101,32 @@
   "The handler's steps, and its answer checked against its shape: the
    context and the answer as JSON data, nil when no step answered."
   [handler-steps answer-shape handler-name context]
-  (let [context (mailroom/run-steps-until-answered handler-steps context)]
-    [context (when (mailroom/does-context-have-answer? context)
-               (check-answer-fits! (:mailroom/wire context) answer-shape handler-name (:mailroom/answer context)))]))
+  (let [context (bridge/run-steps-until-answered handler-steps context)]
+    [context (when (bridge/does-context-have-answer? context)
+               (check-answer-fits! (:bridge/wire context) answer-shape handler-name (:bridge/answer context)))]))
 
 (defn- answer-from-kept-row
   "A repeat: the first answer, when the same person claimed the key."
   [context answer-shape handler-name {:run-once-key/keys [person-id answer]}]
   (cond
-    (not= person-id (:doorman/person-id context)) (mailroom/add-answer-to-context context key-of-someone-else)
+    (not= person-id (:doorman/person-id context)) (bridge/add-answer-to-context context key-of-someone-else)
     (nil? answer)                                 context
-    :else (mailroom/add-answer-to-context
-           context (turn-kept-text-into-answer (:mailroom/wire context) answer-shape handler-name answer))))
+    :else (bridge/add-answer-to-context
+           context (turn-kept-text-into-answer (:bridge/wire context) answer-shape handler-name answer))))
 
 (defn- run-keyed [handler-steps answer-shape handler-name keep-keys-ms once-key context]
   (let [transaction (:doorman/transaction context)
         row-key     {:run-once-key/key          once-key
-                     :run-once-key/message-name (turn-message-name-into-text (:mailroom/message-name context))}]
+                     :run-once-key/message-name (turn-message-name-into-text (:bridge/message-name context))}]
     (if (database/find-one-row transaction claim-once-key
                                (assoc row-key
                                       :run-once-key/person-id (:doorman/person-id context)
                                       :keep-keys-ms keep-keys-ms))
       (let [[context json-data] (run-and-check handler-steps answer-shape handler-name context)]
-        (when (mailroom/does-context-have-answer? context)
+        (when (bridge/does-context-have-answer? context)
           (database/run-statement! transaction update-once-key-answer
                                    (assoc row-key :run-once-key/answer
-                                          (wire/turn-data-into-json-text (:mailroom/wire context) json-data))))
+                                          (wire/turn-data-into-json-text (:bridge/wire context) json-data))))
         context)
       (answer-from-kept-row context answer-shape handler-name
                             (database/find-one-row transaction find-once-key row-key)))))
@@ -136,7 +136,7 @@
   [handler-name {handler-steps :steps :keys [answer-shape]} keep-keys-ms]
   {:name  :groundwork/run-once
    :enter (fn [context]
-            (let [header (get-in context [:mailroom/request :headers key-header])]
+            (let [header (get-in context [:bridge/request :headers key-header])]
               (cond
                 (nil? header)
                 (first (run-and-check handler-steps answer-shape handler-name context))
@@ -145,7 +145,7 @@
                 (run-keyed handler-steps answer-shape handler-name keep-keys-ms (parse-uuid header) context)
 
                 :else
-                (mailroom/add-answer-to-context context key-not-a-uuid))))})
+                (bridge/add-answer-to-context context key-not-a-uuid))))})
 
 (defn put-run-once-into-handlers
   "The app's handlers, each whose :action may write (doorman's

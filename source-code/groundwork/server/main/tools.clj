@@ -6,7 +6,7 @@
 
      (study.tools/ask-as-person {:orders/of-shop {:shop/id shop-id}}
                                 {:person-id anna :visitor-id nil :session-flags #{}})
-     ;=> {:orders/of-shop [{:order/id \"…\" …}] :mailroom/notes {…}}
+     ;=> {:orders/of-shop [{:order/id \"…\" …}] :bridge/notes {…}}
 
      (study.tools/why-refused {:person-id anna :visitor-id nil :session-flags #{}}
                               :orders/add {:order/shop-id bobs-shop :order/note \"x\"})
@@ -16,7 +16,7 @@
      ;=> {:path [:server :ping-every-ms] :shape :int :doc \"The settings, every key required …\"}"
   (:require
    [logbook.api :as logbook]
-   [mailroom.api :as mailroom]
+   [bridge.api :as bridge]
    [malli.core :as malli]
    [malli.error :as malli-error]
    [malli.util :as malli-util]
@@ -50,13 +50,13 @@
                 (assoc :doorman/person-id person-id
                        :doorman/visitor-id visitor-id
                        :doorman/session-flags session-flags)
-                (update :mailroom/log logbook/with-context
+                (update :bridge/log logbook/with-context
                         (cond-> {} person-id (assoc :person-id person-id) visitor-id (assoc :visitor-id visitor-id)))))})
 
 (defn- turn-params-into-json-data
   "Each named message's params as the browser sends them, JSON data, by
    its handler's :params-shape; params that don't fit are left as they
-   are, so mailroom answers their errors."
+   are, so bridge answers their errors."
   [wire handlers message]
   (into {} (map (fn [[message-name params]]
                   (let [shape (get-in handlers [message-name :params-shape])]
@@ -70,7 +70,7 @@
   [{:keys [make-ready-handlers wire log handlers allowed-origin]}]
   (fn [message asker]
     (let [ready (make-ready-handlers (make-stand-in-session-step (check-asker asker)))]
-      (mailroom/answer-message ready :no-rate-limits
+      (bridge/answer-message ready :no-rate-limits
                                {:request-method :post :uri "/" :headers {"origin" allowed-origin}}
                                (turn-params-into-json-data wire handlers message)
                                {:wire wire :log log}))))

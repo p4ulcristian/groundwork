@@ -25,12 +25,12 @@
 
      ;; a ws line, when the app wants one: the address and the delay from the page, the app's wire
      (let [{:keys [addresses ws-reopen-after-ms]} (:settings app)]
-       (mailroom/open-ws-line! (:ws addresses) shapes-by-name {:chat/said show-said!}
+       (bridge/open-ws-line! (:ws addresses) shapes-by-name {:chat/said show-said!}
                                {:wire (:wire app) :reopen-after-ms ws-reopen-after-ms}))
 
    start-app! makes the app's one wire in the browser, from the page's wire
    settings and the :exact-decimals it is handed (a function, so not in the
-   page), and passes it to mailroom (no library makes its own); makes the
+   page), and passes it to bridge (no library makes its own); makes the
    question store (doorbell's, with the :doorbell settings from the page);
    opens the sse line (doorbell's messages, the app's own, and the version:
    a page older than the server reloads; reopened after
@@ -64,7 +64,7 @@
   (:require
    [doorbell.api :as doorbell]
    [doorman.api :as doorman]
-   [mailroom.api :as mailroom]
+   [bridge.api :as bridge]
    [malli.core :as malli]
    [malli.error :as malli-error]
    [parlor.api] ; registers parlor's events and subscriptions, which the start dispatches
@@ -121,7 +121,7 @@
    :placeholder: parlor's, a component (fn [page status]) drawn by
    parlor's show-page while a page's :module loads; nil when no page
    names one.
-   :shapes-by-name: the app's shapes, by message name (mailroom's).
+   :shapes-by-name: the app's shapes, by message name (bridge's).
    :sse-handlers: the app's own sse messages' handlers, by name.
    :questions-of-pages: parlor's, every page's declaration of the
    questions it needs while open, by page name, one for each of the
@@ -185,13 +185,13 @@
         module-stylesheets (update-keys module-stylesheets name)
         wire           (wire/make-wire-from-settings (assoc (:wire settings) :exact-decimals exact-decimals))
         shapes-by-name (merge shapes-by-name doorbell/message-shapes-by-name groundwork-shapes-by-name)
-        send!          #(mailroom/send-message! (:http addresses) shapes-by-name % {:wire wire :headers {}})
+        send!          #(bridge/send-message! (:http addresses) shapes-by-name % {:wire wire :headers {}})
         send-write!    (fn [message once-key]
-                         (mailroom/send-message! (:http addresses) shapes-by-name message
+                         (bridge/send-message! (:http addresses) shapes-by-name message
                                                  {:wire wire :headers {write-key-header once-key}}))
         _              (send-errors-to-server! send!)
         store          (doorbell/make-question-store send! store-settings)
-        sse-line       (mailroom/open-sse-line! (:sse addresses) shapes-by-name
+        sse-line       (bridge/open-sse-line! (:sse addresses) shapes-by-name
                                                  (merge sse-handlers
                                                         (doorbell/make-sse-handlers store)
                                                         {:groundwork/version #(reload-when-older! settings %)})

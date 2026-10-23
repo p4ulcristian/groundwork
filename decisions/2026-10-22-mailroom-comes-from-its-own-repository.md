@@ -1,5 +1,7 @@
 # mailroom comes from its own repository
 
+> **Changed in part** by [mailroom is renamed bridge, and its server is Jetty 12](2026-10-23-mailroom-is-renamed-bridge-and-serves-on-jetty.md) (2026-10-23, bridge v0.7.5): the library is bridge, at github.com/p4ulcristian/bridge, its keys `:bridge/…`; its server is Jetty 12 and `:server` gains `:idle-timeout-ms` and `:threads`, `:max-header-line-bytes` becoming `:max-request-head-bytes`.
+
 > **Changed in part** by [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) (2026-10-22, mailroom v0.1.3): `:server` gains seven more keys, every handler writes out `:rate-limit` and `:run-steps-in`, the page carries `:sse-reconnect-after-ms` and the browser's sse line opens with it.
 
 > **Changed in part** by mailroom's [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](https://github.com/p4ulcristian/mailroom/blob/main/decisions/2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md) (2026-10-22, mailroom v0.1.1): main writes out all four hooks (the ws ones nil); `:server` gains `:stop-wait-ms`, `:ws-reopen-after-ms` and `:rate-limit-buckets-before-cleanup`, every key required; the page carries `:ws-reopen-after-ms` to the browser beside the addresses, and a ws line opens with it (`{:reopen-after-ms …}`).

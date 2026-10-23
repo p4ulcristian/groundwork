@@ -4,7 +4,7 @@
    message with its notes, and doorbell: a new order is told to every open
    sse line as only its table, and each person's asking again sees, through the
    gates, only their own shop's orders. One message's lines, written by
-   mailroom, by cellar through doorbell and by the app's own step, carry
+   bridge, by cellar through doorbell and by the app's own step, carry
    its request id and the person doorman found; the errors route hands a
    monitor the kept errors, only with its token; a browser's error, sent
    as a message, is kept with them. Then the health checks: live and
@@ -29,7 +29,7 @@
    [groundwork.server.main.run-once :as run-once]
    [jsonista.core :as json]
    [logbook.api :as logbook]
-   [mailroom.api :as mailroom]
+   [bridge.api :as bridge]
    [meter.api :as meter]
    [nrepl.core :as nrepl]
    [postbox.api :as postbox]
@@ -120,28 +120,28 @@
 (def ^:private handlers
   {:orders/count {:action :orders/see :params-shape [:map] :answer-shape :int :rate-limit {:max 2 :per-ms 60000}
                   :run-steps-in nil
-                  :steps  [{:name :answer-count :enter #(mailroom/add-answer-to-context % 0)}]}
+                  :steps  [{:name :answer-count :enter #(bridge/add-answer-to-context % 0)}]}
    :orders/all {:action :orders/see :params-shape [:map] :answer-shape [:vector :uuid] :rate-limit nil :run-steps-in nil
                 :steps  [{:name  :answer-all-orders
-                          :enter #(mailroom/add-answer-to-context
+                          :enter #(bridge/add-answer-to-context
                                    % (mapv :order/id (database/find-rows (:doorman/transaction %) find-all-orders {})))}]}
    :orders/add {:action :orders/edit :params-shape [:map [:order/shop-id :uuid] [:test/wait-ms :int]] :answer-shape :uuid
                 :rate-limit nil :run-steps-in nil
                 :steps  [{:name  :add-order
-                          :enter (fn [{:mailroom/keys [message-data] :as context}]
+                          :enter (fn [{:bridge/keys [message-data] :as context}]
                                    (Thread/sleep (long (:test/wait-ms message-data)))
-                                   (mailroom/add-answer-to-context
+                                   (bridge/add-answer-to-context
                                     context (:order/id (database/find-one-row (:doorman/transaction context) insert-order
                                                                               (select-keys message-data [:order/shop-id])))))}]}
    :orders/add-badly {:action :orders/edit :params-shape [:map [:order/shop-id :uuid]] :answer-shape :uuid
                       :rate-limit nil :run-steps-in nil
                       :steps  [{:name  :add-order-and-answer-a-number
-                                :enter (fn [{:mailroom/keys [message-data] :as context}]
+                                :enter (fn [{:bridge/keys [message-data] :as context}]
                                          (database/find-one-row (:doorman/transaction context) insert-order message-data)
-                                         (mailroom/add-answer-to-context context 42))}]}
+                                         (bridge/add-answer-to-context context 42))}]}
    :orders/broken {:action :orders/see :params-shape [:map] :answer-shape :int :rate-limit nil :run-steps-in nil
                    :steps  [{:name  :say-and-ask-untyped
-                             :enter (fn [{:mailroom/keys [log] :as context}]
+                             :enter (fn [{:bridge/keys [log] :as context}]
                                       (log :info :test/about-to-break {})
                                       (database/find-one-row (:doorman/transaction context) find-untyped {:x "a"})
                                       context)}
@@ -200,7 +200,8 @@
    :migrate-at-start? false
    :browser-build     :built
    :server            {:ip "127.0.0.1" :port 0 :proxy-protocol :disable :client-address-header nil :server-header nil
-                       :max-body-bytes 8388608 :max-header-line-bytes 8192 :max-ws-message-bytes 4194304
+                       :max-body-bytes 8388608 :max-request-head-bytes 8192 :max-ws-message-bytes 4194304
+                       :idle-timeout-ms 60000 :threads {:min 8 :max 50 :idle-timeout-ms 60000}
                        :addresses {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"}
                        :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
                        :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
@@ -293,7 +294,7 @@
                           once-key (.header "idempotency-key" (str once-key))
                           true     (-> (.POST (HttpRequest$BodyPublishers/ofString body)) (.build)))
                         (HttpResponse$BodyHandlers/ofString))]
-    [(.statusCode response) (dissoc (json/read-value (.body response)) "mailroom/notes")]))
+    [(.statusCode response) (dissoc (json/read-value (.body response)) "bridge/notes")]))
 
 (defn- open-sse [server-port cookie]
   (io/reader (.body (.send (HttpClient/newHttpClient)
@@ -318,7 +319,7 @@
     (is (contains? problems :version))
     (is (contains? (:server problems) :port))
     (is (= #{:port :addresses :ping-every-ms} (set (keys (:server problems))))
-        "mailroom's settings have no defaults: each missing one is named"))
+        "bridge's settings have no defaults: each missing one is named"))
   (let [problems (try (main/check-settings (update (make-settings "x") :health dissoc :ready-path :database-timeout-ms))
                       (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
     (is (= #{:ready-path :database-timeout-ms} (set (keys (:health problems))))
@@ -557,10 +558,10 @@
             (testing "no page, no file: 404"
               (is (= 404 (first (send-request server-port "GET" "/nowhere" nil nil)))))
             (testing "an answer comes with the tables its steps read"
-              (is (= [200 "{\"orders/all\":[],\"mailroom/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}"]
+              (is (= [200 "{\"orders/all\":[],\"bridge/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}"]
                      (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/all\":{}}"))))
             (testing "a rate limit: two a minute per session, a third is refused; another session has its own"
-              (let [counted "{\"orders/count\":0,\"mailroom/notes\":{\"orders/count\":{\"tables\":[]}}}"]
+              (let [counted "{\"orders/count\":0,\"bridge/notes\":{\"orders/count\":{\"tables\":[]}}}"]
                 (is (= [[200 counted] [200 counted]
                         [200 "{\"orders/count\":{\"error\":\"Too many requests.\"}}"]]
                        (repeatedly 3 #(send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/count\":{}}"))))
@@ -570,7 +571,7 @@
                     bob-line   (open-sse server-port bob-cookie)
                     ask-orders #(send-request server-port "POST" "/groundwork/http" % "{\"orders/all\":{}}")
                     orders-are #(str "{\"orders/all\":[" (str/join "," (map (fn [id] (str "\"" id "\"")) %))
-                                     "],\"mailroom/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}")]
+                                     "],\"bridge/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}")]
                 (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data anna-line)))
                 (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data bob-line)))
                 (Thread/sleep 200)
@@ -606,7 +607,7 @@
                   (let [anna-line   (open-sse server-port anna-cookie)
                         bob-line    (open-sse server-port bob-cookie)
                         ask-actions #(send-request server-port "POST" "/groundwork/http" % "{\"doorman/my-actions\":{}}")
-                        notes       #(str ",\"mailroom/notes\":{\"doorman/my-actions\":{\"tables\":[" % "]}}}")
+                        notes       #(str ",\"bridge/notes\":{\"doorman/my-actions\":{\"tables\":[" % "]}}}")
                         read-tables "\"doorman/memberships\",\"doorman/role-actions\",\"doorman/scopes\""]
                     (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data anna-line)))
                     (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data bob-line)))
@@ -685,13 +686,13 @@
                                                   ((:run (run-once/make-forget-keys-kind (get-in running [:settings :run-once])))
                                                    {:transaction transaction} {})))
                   (is (zero? (kept-keys key-1))))))
-            (testing "one message's lines, mailroom's, cellar's and the app's own, carry its request id and the person"
+            (testing "one message's lines, bridge's, cellar's and the app's own, carry its request id and the person"
               (reset! lines [])
               (is (= [200 "{\"orders/broken\":{\"error\":\"Something went wrong.\"}}"]
                      (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/broken\":{}}")))
               (let [said    (first (find-lines "test/about-to-break"))
                     unknown (first (find-lines "cellar/tables-read-unknown"))
-                    failed  (first (find-lines "mailroom/handler-failed"))]
+                    failed  (first (find-lines "bridge/handler-failed"))]
                 (is (some? (get-in said ["context" "request-id"])))
                 (is (= [(get said "context")] (distinct (map #(get % "context") [said unknown failed])))
                     "the same context on all three: one request id")
@@ -714,7 +715,7 @@
                       errors        (json/read-value body)
                       last-seq      (get (peek errors) "seq")]
                   (is (= 200 status))
-                  (is (= "mailroom/handler-failed" (get (peek errors) "event")))
+                  (is (= "bridge/handler-failed" (get (peek errors) "event")))
                   (is (= ["seq" "time" "level" "event" "context" "data" "error"] (vec (keys (peek errors))))
                       "each as written, its number first")
                   (is (= [200 "[]"] (ask-errors "the-errors-token" (str "?since=" last-seq))) "none after the last")
@@ -827,8 +828,8 @@
                 (is (= 401 (first (ask-metrics nil))))
                 (is (= 401 (first (ask-metrics "a-wrong-token"))))
                 (is (= 200 status))
-                (doseq [pattern [#"mailroom_messages_total\{name=\"orders/all\",outcome=\"ok\",pipe=\"http\"\} [1-9]"
-                                 #"mailroom_open_lines\{pipe=\"sse\"\} "
+                (doseq [pattern [#"bridge_messages_total\{name=\"orders/all\",outcome=\"ok\",pipe=\"http\"\} [1-9]"
+                                 #"bridge_open_lines\{pipe=\"sse\"\} "
                                  #"cellar_query_seconds_count\{query=\"groundwork/server/main/claim_once_key.sql\"\} [1-9]"
                                  #"cellar_pool_connections\{state=\"idle\"\} "
                                  #"doorbell_listening 1"
@@ -881,7 +882,7 @@
                       "someone in no shop: doorman's explain-refusal says why")
                   (let [{:keys [shape doc]} (eval! "(study.tools/explain-setting [:server :ping-every-ms])")]
                     (is (some? shape))
-                    (is (str/includes? doc "every key required") "the text of mailroom's settings shape"))
+                    (is (str/includes? doc "every key required") "the text of bridge's settings shape"))
                   (is (= "No setting is at this path." (:doc (eval! "(study.tools/explain-setting [:server :nope])")))))))
             (testing "health: plain GETs, no origin, no session, no rate limit, never cached"
               (is (= [200 "{\"status\":\"live\",\"version\":\"test-1\"}" "no-store"]

@@ -25,7 +25,7 @@
   (:require
    [clojure.string :as str]
    [logbook.api :as logbook]
-   [mailroom.api :as mailroom]
+   [bridge.api :as bridge]
    [safe.api :as safe]
    [wire.api :as wire]))
 
@@ -83,11 +83,11 @@
 
 (def ^:private write-browser-error
   {:name  :groundwork/write-browser-error
-   :enter (fn [{:mailroom/keys [log message-data] :as context}]
+   :enter (fn [{:bridge/keys [log message-data] :as context}]
             (log :error :browser/uncaught {:browser/message (:message message-data)
                                            :browser/stack   (:stack message-data)
                                            :browser/url     (:url message-data)})
-            (mailroom/add-answer-to-context context true))})
+            (bridge/add-answer-to-context context true))})
 
 (defn make-browser-error-handler
   "The :groundwork/browser-error handler: doorman's find-session step, then the

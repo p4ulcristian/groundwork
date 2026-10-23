@@ -17,15 +17,15 @@
    app keeps a file's key in its own rows by a message, as any write."
   (:require
    [attic.api :as attic]
-   [mailroom.api :as mailroom]))
+   [bridge.api :as bridge]))
 
 (defn- make-may-upload
   "attic's :may-upload?: doorman's session step on the request, then the
    app's (fn [asker])."
   [log find-session-step app-may-upload?]
   (fn [request]
-    (let [context ((:enter find-session-step) {:mailroom/request request :mailroom/log log})]
-      (and (not (mailroom/does-context-have-answer? context))
+    (let [context ((:enter find-session-step) {:bridge/request request :bridge/log log})]
+      (and (not (bridge/does-context-have-answer? context))
            (boolean (app-may-upload? {:person-id     (:doorman/person-id context)
                                       :visitor-id    (:doorman/visitor-id context)
                                       :session-flags (:doorman/session-flags context)}))))))

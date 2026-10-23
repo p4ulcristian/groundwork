@@ -11,7 +11,7 @@
         :tables               [shops orders]        ; table maps, with :access and :doorbell
         :changes              []                    ; cellar's changes
         :scope-kinds          scope-kinds           ; doorman's
-        :handlers             handlers              ; mailroom's table, each with :action and shapes
+        :handlers             handlers              ; bridge's table, each with :action and shapes
         :pages                {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}
                                :admin/page  {:address \"/admin\" :title \"Admin\" :module \"admin\"}}   ; loaded on the way in
         :background-job-kinds [send-invoice-email]
@@ -32,11 +32,11 @@
    start-app! checks the settings (every problem at once), makes the app's
    one wire from the :wire settings (wire.api's make-wire-from-settings)
    and passes it to every library that sends or reads data across the
-   app's edges (mailroom's routes, backroom's workers, the page, the
+   app's edges (bridge's routes, backroom's workers, the page, the
    health checks; no library makes its own), makes the app's one logbook
    from the :logbook settings and passes its log to every library that
    writes a line (cellar's migrate, doorbell's listener, backroom's
-   workers, showroom's watcher, mailroom's routes and server, the health
+   workers, showroom's watcher, bridge's routes and server, the health
    checks; each message's steps get one with its request id, the person
    added once doorman finds them), puts groundwork's own tables with
    the app's, migrates in development (:migrate-at-start?
@@ -47,7 +47,7 @@
    background job workers (groundwork's own that forgets old one-time keys
    among them), in development the browser
    build's watcher (:browser-build {:watch options}, with the app's
-   :browser-modules), and the server (mailroom's three addresses, from
+   :browser-modules), and the server (bridge's three addresses, from
    :server :addresses, every page answered by the page shell in the
    request's language, files from :page :files; no ws hooks). Every
    request first gets its language (dictionary's, from the :languages
@@ -79,7 +79,7 @@
    limit is the :my-actions settings'.
 
    One meter (meter's make-meter, from the :meter settings) is made once
-   and handed to every library that counts (cellar's pool, mailroom's
+   and handed to every library that counts (cellar's pool, bridge's
    routes, doorbell's listener, backroom's workers), with groundwork's own
    (the stage, the ready checks, the version) and logbook's counts, read
    when written (groundwork.server.main.metrics). Its text is one more GET, at
@@ -132,7 +132,7 @@
    [groundwork.server.main.tools :as tools]
    [groundwork.server.main.visitors :as visitors]
    [logbook.api :as logbook]
-   [mailroom.api :as mailroom]
+   [bridge.api :as bridge]
    [malli.core :as malli]
    [malli.error :as malli-error]
    [meter.api :as meter]
@@ -151,7 +151,7 @@
    :referrer-policy: the header, \"same-origin\".
    :frame-options: the X-Frame-Options header, \"DENY\" or \"SAMEORIGIN\",
    or :none when other sites may frame the page.
-   :files: mailroom's files: :folder, where the browser build is (the
+   :files: bridge's files: :folder, where the browser build is (the
    watcher writes it, the release build's manifests are read from it, a
    GET no route matches is answered from it); :hashed-name-min-hex-digits,
    how many hex digits make a name hashed (main.3F9A0C1D.js);
@@ -355,7 +355,7 @@
    request's, and its page's, is picked from; :meter the app's one
    meter's (meter.api/settings-shape: :jvm-metrics, and
    :most-series-per-metric, which must cover the largest declaration:
-   mailroom's messages_total, (handlers+1)×24, its answer_seconds,
+   bridge's messages_total, (handlers+1)×24, its answer_seconds,
    (handlers+1)×(buckets+3), cellar's query_seconds, (queries+1)×(buckets+3),
    the handlers counting groundwork's two and the queries every library's);
    :metrics where Prometheus pulls its text (meter's routes settings,
@@ -375,7 +375,7 @@
    [:browser-wire browser-wire-settings-shape]
    [:migrate-at-start? :boolean]
    [:browser-build browser-build-settings-shape]
-   [:server mailroom/settings-shape]
+   [:server bridge/settings-shape]
    [:database database/settings-shape]
    [:migration migration-settings-shape]
    [:sessions doorman/settings-shape]
@@ -525,7 +525,7 @@
   [settings]
   (fn [request]
     (or (doorman/find-session-key-of-request request (:sessions settings))
-        (mailroom/find-client-address request (get-in settings [:server :client-address-header])))))
+        (bridge/find-client-address request (get-in settings [:server :client-address-header])))))
 
 (def ^:private postbox-system-actor
   "The system actor postbox's webhook functions run as (doorman's
@@ -546,7 +546,7 @@
                                            {:run-in-transaction #(doorman/run-as-system! pool postbox-system-actor {:read-only? false} %)
                                             :on-delivery-event  on-delivery-event
                                             :on-inbound-email   on-inbound-email}))
-        (into (mailroom/make-routes-for-messages
+        (into (bridge/make-routes-for-messages
                handlers
                (:server settings)
                {:wire                wire
@@ -554,13 +554,13 @@
                 :meter               app-meter
                 :find-rate-limit-key (make-rate-limit-key-finder settings)
                 :on-sse-open  (fn [line]
-                                (mailroom/send-message-on-sse-line! line {:groundwork/version (:version settings)} nil)
+                                (bridge/send-message-on-sse-line! line {:groundwork/version (:version settings)} nil)
                                 (doorbell/add-sse-line! running-doorbell line))
                 :on-sse-close #(doorbell/remove-sse-line! running-doorbell %)
                 :on-ws-open   nil
                 :on-ws-close  nil}))
         (into (page/make-catalog-routes (:languages settings)))
-        (into (mailroom/make-server-routes-for-pages pages (page/make-page-handler wire settings browser-settings))))))
+        (into (bridge/make-server-routes-for-pages pages (page/make-page-handler wire settings browser-settings))))))
 
 (defn- is-watching? [settings]
   (map? (:browser-build settings)))
@@ -624,7 +624,7 @@
    :browser-wire    #'browser-wire-settings-shape
    :migrate-at-start? #'settings-shape
    :browser-build   #'browser-build-settings-shape
-   :server          #'mailroom/settings-shape
+   :server          #'bridge/settings-shape
    :database        #'database/settings-shape
    :migration       #'migration-settings-shape
    :sessions        #'doorman/settings-shape
@@ -741,9 +741,9 @@
               running-health    (health/make-health)
               _                 (metrics/declare-groundwork-metrics! app-meter running-logbook (:stage running-health) (:version settings))
               server            (start-part! stoppers
-                                             #(mailroom/start-server!
+                                             #(bridge/start-server!
                                                (page/wrap-languages
-                                                (mailroom/make-ring-handler-from-routes
+                                                (bridge/make-ring-handler-from-routes
                                                  (make-routes app {:wire wire :running-logbook running-logbook :log log :app-meter app-meter
                                                                    :pool pool :running-health running-health :handlers handlers
                                                                    :running-doorbell running-doorbell :running-attic running-attic
@@ -752,7 +752,7 @@
                                                 (:languages settings))
                                                (:server settings)
                                                {:log log})
-                                             mailroom/stop-server!)]
+                                             bridge/stop-server!)]
           (health/mark-stage! running-health :started)
           (log :info :groundwork/started {:groundwork/version (:version settings) :groundwork/port (:port server)})
           (let [repl (study/start-repl-server! (:study settings)
@@ -775,7 +775,7 @@
   (log :info :groundwork/stopping {:groundwork/version (:version settings)})
   (health/mark-stage! running-health :stopping)
   (Thread/sleep (long (get-in settings [:health :not-ready-before-stop-ms])))
-  (mailroom/stop-server! server)
+  (bridge/stop-server! server)
   (when watching (stop-watching-browser-build! watching))
   (backroom/stop-workers! workers)
   (doorbell/stop-listening! running-doorbell)

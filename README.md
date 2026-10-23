@@ -3,7 +3,7 @@
 An opinionated Clojure framework for web apps on Postgres: the repository
 that puts the **groundwork** libraries together into one running app.
 groundwork names both the family and this composer: groundwork and its cellar,
-backroom, showroom, mailroom, doorman, doorbell, parlor, dictionary, wire,
+backroom, showroom, bridge, doorman, doorbell, parlor, dictionary, wire,
 logbook, meter, study, attic, postbox and safe. The spec is [`decisions/`](decisions/README.md).
 
 One tree: each library is a folder `source-code/groundwork/<side>/<name>/` with
@@ -36,7 +36,7 @@ namespace names, bundled; taken only in the build aliases, never in production;
 its watch options are the `:browser-build {:watch …}` setting, its release
 options the `:browser-release` alias's `:exec-args`.
 And how the browser and the server talk, on both sides:
-[mailroom](https://github.com/p4ulcristian/mailroom), named messages over http,
+[bridge](https://github.com/p4ulcristian/bridge), named messages over http,
 sse and ws answered by a handler's steps, and the routes; its addresses and
 ping are in the `:server` settings, with no defaults.
 And who is asking and what they may do, at one door:
@@ -83,7 +83,7 @@ modules loaded on demand (the app's `:browser-modules`, showroom's, each
 with its stylesheets): [the decision](decisions/2026-10-23-routing-extras-each-where-it-belongs.md).
 And how much the app does, on the server:
 [meter](https://github.com/p4ulcristian/meter); groundwork makes the app's one
-meter from the `:meter` settings and hands it to cellar's pool, mailroom's
+meter from the `:meter` settings and hands it to cellar's pool, bridge's
 routes, doorbell's listener and backroom's workers, each declaring its own
 metrics (their histograms' buckets are each library's `:metric-buckets`
 setting), adds its own (the stage, the ready checks, the version) and

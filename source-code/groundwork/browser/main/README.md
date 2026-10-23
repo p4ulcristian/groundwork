@@ -4,7 +4,7 @@ The browser's one start: reads what the server's page shell put in the page
 (the version, the three addresses, the sse and ws reopen delays, the
 browser's wire settings, the pages), makes the app's one wire in the browser
 from those and its required `:exact-decimals` option (`wire.big/big` or nil),
-passes it to mailroom and returns it (`:wire`), makes the question store (doorbell's, with the page's `:doorbell`
+passes it to bridge and returns it (`:wire`), makes the question store (doorbell's, with the page's `:doorbell`
 settings), opens the sse line (doorbell's messages, the app's own, and the version: a page older than
 the server reloads, once per version; reopened after the sse delay when the
 server answered with an error), then starts parlor (`[:parlor/start …]`, with

@@ -58,8 +58,8 @@
            :when    (and (str/starts-with? (str required) "showroom.") (not= 'showroom.api required))]
        (str (second ns-form) " requires " required ": only showroom's api, showroom.api"))
      (for [required (list-required-namespaces ns-form)
-           :when    (and (str/starts-with? (str required) "mailroom.") (not= 'mailroom.api required))]
-       (str (second ns-form) " requires " required ": only mailroom's api, mailroom.api"))
+           :when    (and (str/starts-with? (str required) "bridge.") (not= 'bridge.api required))]
+       (str (second ns-form) " requires " required ": only bridge's api, bridge.api"))
      (for [required (list-required-namespaces ns-form)
            :when    (and (str/starts-with? (str required) "doorman.") (not= 'doorman.api required))]
        (str (second ns-form) " requires " required ": only doorman's api, doorman.api"))

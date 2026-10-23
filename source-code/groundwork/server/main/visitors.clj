@@ -15,15 +15,15 @@
    for a person's) comes back. A request from another site (its Origin
    not the app's) is refused, 403, and makes nothing. Never cached.
 
-   One asker, told apart by their address (mailroom's find-client-address,
+   One asker, told apart by their address (bridge's find-client-address,
    the :server settings' :client-address-header behind a proxy), may POST
    it the :visitors settings' :rate-limit times, {:max 10 :per-ms 60000};
-   more are answered 429 and make nothing (mailroom's
+   more are answered 429 and make nothing (bridge's
    make-rate-limited-ring-handler, its buckets dropped above the :server
    settings' :rate-limit-buckets-before-cleanup)."
   (:require
    [doorman.api :as doorman]
-   [mailroom.api :as mailroom]
+   [bridge.api :as bridge]
    [wire.api :as wire]))
 
 (def ^:private not-from-the-app
@@ -40,11 +40,11 @@
   "The visitor route, at the :visitors settings' :path, as reitit data,
    behind its rate limit."
   [wire pool {{:keys [path rate-limit]} :visitors sessions :sessions server :server}]
-  [[path {:post {:handler (mailroom/make-rate-limited-ring-handler
+  [[path {:post {:handler (bridge/make-rate-limited-ring-handler
                            (fn [request]
                              (if (= (:allowed-origin sessions) (get-in request [:headers "origin"]))
                                (answer-visitor-session wire (doorman/start-visitor-session! pool request sessions))
                                not-from-the-app))
                            {:rate-limit             rate-limit
-                            :find-rate-limit-key    #(mailroom/find-client-address % (:client-address-header server))
+                            :find-rate-limit-key    #(bridge/find-client-address % (:client-address-header server))
                             :buckets-before-cleanup (:rate-limit-buckets-before-cleanup server)})}}]])
