@@ -6,7 +6,7 @@
 #   1. each named library: next patch tag on its main, pushed; README take-line
 #   2. every library that names a bumped one in its deps.edn: pinned to
 #      the new tag, committed, pushed, then released the same way (cascade)
-#   3. groundwork: pinned to every new tag, committed and pushed on its branch
+#   3. groundwork: pinned to every new tag, committed and pushed on main
 # No tests are run. The libraries sit beside the composer, in ~/Work/apps/groundwork.
 set -euo pipefail
 family="$(cd "$(dirname "$0")/../.." && pwd)"
