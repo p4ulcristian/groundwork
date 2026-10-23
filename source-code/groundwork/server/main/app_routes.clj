@@ -11,12 +11,12 @@
                        :rate-limit nil :handler flex-authorize}}
 
    :person: a person calls it, from their browser (the session's cookie)
-   or a script (a token doorman made for them, Authorization: Bearer).
-   doorman's session step runs first and finds who asks: a request that
+   or a script (a token groundwork-access made for them, Authorization: Bearer).
+   groundwork-access's session step runs first and finds who asks: a request that
    changes something by a cookie (or by nothing) must come from the app's
    own pages (its Origin), a request with both a cookie and a token is
-   refused, else 403, its body the text of doorman's reason,
-   :doorman/not-allowed, in the request's language; the handler gets the
+   refused, else 403, its body the text of groundwork-access's reason,
+   :groundwork-access/not-allowed, in the request's language; the handler gets the
    asker. :provider:
    another server calls it; no session or token is read, and the handler
    proves the caller itself (a signature, a provider's secret).
@@ -25,12 +25,12 @@
    request's body is not read (a webhook checks its signature over the
    raw bytes). tools, for :person:
 
-     {:asker          {:person-id … :visitor-id … :session-flags #{…}}   ; what doorman found, to read
+     {:asker          {:person-id … :visitor-id … :session-flags #{…}}   ; what groundwork-access found, to read
       :log            the app's log, saying who asked
       :run-as-asker!  (fn [{:keys [read-only?]} f]) f in a transaction as the request's asker,
-                      held by the gates (doorman's run-as-asker-of-request!), carrying
-                      :log (cellar's: work kept with run-after-commit! that fails is written there)
-      :run-as-system! (fn [system-name {:keys [read-only?]} f]) doorman's, carrying :log too
+                      held by the gates (groundwork-access's run-as-asker-of-request!), carrying
+                      :log (groundwork-postgres's: work kept with run-after-commit! that fails is written there)
+      :run-as-system! (fn [system-name {:keys [read-only?]} f]) groundwork-access's, carrying :log too
       :answer-as      (fn [message request]) a message answered as the request's asker, through
                       every check (groundwork.server.main.answer-as): a route that speaks
                       another protocol (MCP's JSON-RPC) turns a call into a message
@@ -46,9 +46,9 @@
    :provider route's by its address), 429 over it. An address
    another route has (groundwork's own, or the app's) refuses the start."
   (:require
-   [bridge.api :as bridge]
-   [dictionary.api :as dictionary]
-   [doorman.api :as doorman]
+   [groundwork-bridge.api :as bridge]
+   [groundwork-languages.api :as languages]
+   [groundwork-access.api :as access]
    [groundwork.server.main.asker :as asker]
    [malli.core :as malli]
    [malli.error :as malli-error]))
@@ -88,41 +88,41 @@
   routes)
 
 (defn- turn-refusal-into-response
-  "doorman's step's refusal (:doorman/not-allowed: another site's request,
+  "groundwork-access's step's refusal (:groundwork-access/not-allowed: another site's request,
    a cookie and a token at once), as a 403, its body the reason's text in
    the request's language (bound around every request)."
-  [{reason :bridge/refused data :bridge/data}]
+  [{reason :groundwork-bridge/refused data :groundwork-bridge/data}]
   {:status  403
    :headers {"content-type" "text/plain; charset=utf-8" "cache-control" "no-store"}
-   :body    (dictionary/tr reason (or data {}))})
+   :body    (languages/tr reason (or data {}))})
 
 (defn- make-run-as-system
-  "(fn [system-name {:keys [read-only?]} f]): doorman's run-as-system!, its
-   transaction carrying log, the route's (cellar's :log: work kept with
+  "(fn [system-name {:keys [read-only?]} f]): groundwork-access's run-as-system!, its
+   transaction carrying log, the route's (groundwork-postgres's :log: work kept with
    run-after-commit! that fails is written there)."
   [pool log]
   (fn [system-name {:keys [read-only?]} f]
-    (doorman/run-as-system! pool system-name {:read-only? read-only? :log log} f)))
+    (access/run-as-system! pool system-name {:read-only? read-only? :log log} f)))
 
 (defn- make-person-tools
   [request context {:keys [pool scope-kinds tables settings answer-as]}]
   (let [asker (asker/read-asker context)]
     {:asker          asker
-     :log            (:bridge/log context)
-     :run-as-asker!  (asker/make-run-as-asker pool request settings scope-kinds (:bridge/log context))
-     :run-as-system! (make-run-as-system pool (:bridge/log context))
+     :log            (:groundwork-bridge/log context)
+     :run-as-asker!  (asker/make-run-as-asker pool request settings scope-kinds (:groundwork-bridge/log context))
+     :run-as-system! (make-run-as-system pool (:groundwork-bridge/log context))
      :answer-as      answer-as
      :sign-in!       (fn [person-id session-flags]
-                       (doorman/sign-in! pool request person-id {:settings      (:sessions settings)
+                       (access/sign-in! pool request person-id {:settings      (:access settings)
                                                                  :tables        tables
                                                                  :session-flags session-flags}))
-     :sign-out!      (fn [] (doorman/sign-out! pool request (:sessions settings)))}))
+     :sign-out!      (fn [] (access/sign-out! pool request (:access settings)))}))
 
 (defn- make-person-handler [handler {:keys [log find-session-step] :as parts}]
   (fn [request]
-    (let [context ((:enter find-session-step) {:bridge/request request :bridge/log log})]
+    (let [context ((:enter find-session-step) {:groundwork-bridge/request request :groundwork-bridge/log log})]
       (if (bridge/does-context-have-answer? context)
-        (turn-refusal-into-response (:bridge/answer context))
+        (turn-refusal-into-response (:groundwork-bridge/answer context))
         (handler request (make-person-tools request context parts))))))
 
 (defn- make-provider-handler [handler {:keys [log pool]}]
@@ -135,7 +135,7 @@
     (bridge/make-rate-limited-ring-handler ring-handler
                                            {:rate-limit             rate-limit
                                             :find-rate-limit-key    find-rate-limit-key
-                                            :buckets-before-cleanup (get-in settings [:server :rate-limit-buckets-before-cleanup])})
+                                            :buckets-before-cleanup (get-in settings [:bridge :rate-limit-buckets-before-cleanup])})
     ring-handler))
 
 (defn make-app-routes
@@ -144,7 +144,7 @@
    :settings :tables :scope-kinds :find-session-step
    :find-person-rate-limit-key :answer-as}."
   [routes {:keys [settings find-person-rate-limit-key] :as parts}]
-  (let [find-address #(bridge/find-client-address % (get-in settings [:server :client-address-header]))]
+  (let [find-address #(bridge/find-client-address % (get-in settings [:bridge :client-address-header]))]
     (->> (check-routes routes)
          (reduce-kv (fn [by-address _route-name {:keys [address method kind rate-limit handler]}]
                       (let [ring-handler (case kind

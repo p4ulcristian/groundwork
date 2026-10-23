@@ -1,5 +1,7 @@
 # The REPL starts last and stops first; house brings its tools
 
+> **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): study is groundwork-live-repl now (`groundwork-live-repl.api`), its settings `:live-repl`.
+
 > **Changed in part** by [A token call arrives where a browser's does; the composer names no person](2026-10-23-a-token-call-arrives-where-a-browsers-does.md) (2026-10-23, built on tidy-up, not released): `ask-as-person`'s stand-in for the session step is `doorman.repl`'s `make-step-asking-as`, and it answers by `answer-as`'s own path with no request.
 
 > The user's decision, 2026-10-23 (study v0.1.1). Takes study's [The tools are the app's functions, in study.tools](https://github.com/p4ulcristian/study/blob/main/decisions/2026-10-23-the-tools-are-the-apps-functions-in-study-tools.md) and [REPLs by environment](https://github.com/p4ulcristian/study/blob/main/decisions/2026-10-23-repls-by-environment.md); changes in part [REPLs by environment](2026-10-12-repls-by-environment.md): the REPL is study's, started by house.

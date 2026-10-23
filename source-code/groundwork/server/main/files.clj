@@ -1,40 +1,40 @@
 (ns groundwork.server.main.files
-  "The upload route: attic's upload handler (make-upload-handler) at the
-   :attic :upload settings' :path, a POST, multipart, one part per file.
+  "The upload route: groundwork-file-storage's upload handler (make-upload-handler) at the
+   :file-storage :upload settings' :path, a POST, multipart, one part per file.
    Who may upload is asked before the body is read, as a message's asker
-   is found: doorman's session step (by the session's cookie, the
-   request's Origin must be the :sessions settings' :allowed-origin, else
-   403; or by a token doorman made), then the app's own :may-upload?, (fn
+   is found: groundwork-access's session step (by the session's cookie, the
+   request's Origin must be the :access settings' :allowed-origin, else
+   403; or by a token groundwork-access made), then the app's own :may-upload?, (fn
    [asker] true-or-false), the asker {:person-id :visitor-id
-   :session-flags} doorman found (nils and #{} for nobody):
+   :session-flags} groundwork-access found (nils and #{} for nobody):
 
      POST /groundwork/files
      Origin: https://shop.example
      Cookie: app_session=…
      200 {\"stored\":[{\"field\":\"photo\",\"key\":\"shops/photos/….png\",…}],\"rejected\":[…]}
 
-   The files are attic's: content-named, recorded in attic.files; the
+   The files are groundwork-file-storage's: content-named, recorded in groundwork_file_storage.files; the
    app keeps a file's key in its own rows by a message, as any write."
   (:require
-   [attic.api :as attic]
-   [bridge.api :as bridge]
+   [groundwork-file-storage.api :as file-storage]
+   [groundwork-bridge.api :as bridge]
    [groundwork.server.main.asker :as asker]))
 
 (defn- make-may-upload
-  "attic's :may-upload?: doorman's session step on the request, then the
+  "groundwork-file-storage's :may-upload?: groundwork-access's session step on the request, then the
    app's (fn [asker])."
   [log find-session-step app-may-upload?]
   (fn [request]
-    (let [context ((:enter find-session-step) {:bridge/request request :bridge/log log})]
+    (let [context ((:enter find-session-step) {:groundwork-bridge/request request :groundwork-bridge/log log})]
       (and (not (bridge/does-context-have-answer? context))
            (boolean (app-may-upload? (asker/read-asker context)))))))
 
 (defn make-upload-routes
-  "The upload route, at the :attic :upload settings' :path, as reitit data."
-  [running-attic wire log pool find-session-step app-may-upload? {{:keys [upload]} :attic}]
+  "The upload route, at the :file-storage :upload settings' :path, as reitit data."
+  [running-file-storage shaper log pool find-session-step app-may-upload? {{:keys [upload]} :file-storage}]
   [[(:path upload)
-    {:post {:handler (attic/make-upload-handler running-attic
+    {:post {:handler (file-storage/make-upload-handler running-file-storage
                                                 (dissoc upload :path)
                                                 {:pool        pool
-                                                 :wire        wire
+                                                 :shaper        shaper
                                                  :may-upload? (make-may-upload log find-session-step app-may-upload?)})}}]])

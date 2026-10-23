@@ -1,5 +1,7 @@
 # main makes one logbook and passes its log to every library
 
+> **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): logbook is groundwork-logs; main makes one logger, from the `:logs` settings.
+
 > Changes in part [main makes one wire and passes it to every library](2026-10-22-main-makes-one-wire-and-passes-it-to-every-library.md) and [Main answers health checks](server/main/2026-10-22-main-answers-health-checks.md) (the database's error went to `System.Logger` `house`): one settings part more, house takes logbook v0.1.0, cellar v0.2.0, backroom v0.3.0, mailroom v0.3.0, doorman v0.3.0, doorbell v0.3.0 and showroom v0.2.0.
 
 **Decision:** logbook makes a logbook from settings, and a library is handed one function, `(log level event data)` (logbook's "A log call is level, event, data"). house makes the app's one logbook and passes its log to every library that writes a line, as a required option; no library makes its own or decides how a line is written ("the app passes its log", each library's decision).

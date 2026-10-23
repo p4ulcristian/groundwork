@@ -10,15 +10,15 @@
            health-settings-shape
            errors-settings-shape
            migration-settings-shape
-           doorbell-settings-shape
+           live-updates-settings-shape
            browser-build-settings-shape
-           browser-wire-settings-shape
+           browser-shaped-json-settings-shape
            my-actions-settings-shape
            visitors-settings-shape
            run-once-settings-shape
            daily-caps-settings-shape
-           attic-settings-shape
-           postbox-settings-shape
+           file-storage-settings-shape
+           email-settings-shape
            settings-shape
            check-settings
            groundwork-tables

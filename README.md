@@ -2,9 +2,11 @@
 
 An opinionated Clojure framework for web apps on Postgres: the repository
 that puts the **groundwork** libraries together into one running app.
-groundwork names both the family and this composer: groundwork and its cellar,
-backroom, browser-build, bridge, doorman, doorbell, parlor, dictionary, wire,
-logbook, meter, study, attic, postbox and safe. The spec is [`decisions/`](decisions/README.md).
+groundwork names both the family and this composer: groundwork and its libraries
+groundwork-postgres, groundwork-background-jobs, groundwork-browser-build, groundwork-bridge,
+groundwork-access, groundwork-live-updates, groundwork-screens, groundwork-languages,
+groundwork-shaped-json, groundwork-logs, groundwork-metrics, groundwork-live-repl,
+groundwork-file-storage, groundwork-email and groundwork-settings. The spec is [`decisions/`](decisions/README.md).
 
 One tree: each library is a folder `source-code/groundwork/<side>/<name>/` with
 its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
@@ -19,138 +21,138 @@ Every namespace says its side right after `groundwork`; no file is `.cljc`.
 Which library may use which is `libraries.edn`, checked by a test.
 
 How data keeps its types (ids, exact decimals, days, moments) is
-[wire](https://github.com/p4ulcristian/wire), a library of its own that groundwork
-takes from git; its decisions live there. groundwork makes the app's one wire on
-each side, from the `:wire` settings on the server and the `:browser-wire`
+[groundwork-shaped-json](https://github.com/p4ulcristian/groundwork-shaped-json), a library of its own that groundwork
+takes from git; its decisions live there. groundwork makes the app's one shaper on
+each side, from the `:shaped-json` settings on the server and the `:browser-shaped-json`
 settings (in the page) with the browser start's `:exact-decimals`, and
 passes it to every library; none makes its own. So is talking to Postgres and shaping
-its tables: [cellar](https://github.com/p4ulcristian/cellar), every query a
-`.sql` file, tables as maps; its pool settings are the `:database` part, and a
+its tables: [groundwork-postgres](https://github.com/p4ulcristian/groundwork-postgres), every query a
+`.sql` file, tables as maps; its pool settings are the `:postgres` part, and a
 migration's time limits the `:migration` part, with no defaults. And what runs
 later, background jobs on Postgres:
-[backroom](https://github.com/p4ulcristian/backroom), a queue, workers and
+[groundwork-background-jobs](https://github.com/p4ulcristian/groundwork-background-jobs), a queue, workers and
 schedules; each job kind names its `:system-actor`, and its one
-transaction, the work and its done-mark, is doorman's `run-as-system!` as
+transaction, the work and its done-mark, is groundwork-access's `run-as-system!` as
 that actor, which reaches what its sentences give it; its settings are the
 `:background-jobs` part. And what the browser downloads and how the page looks:
-[browser-build](https://github.com/p4ulcristian/browser-build), the shadow-cljs build
+[groundwork-browser-build](https://github.com/p4ulcristian/groundwork-browser-build), the shadow-cljs build
 (watched in development, built once by the deploy) and the stylesheets a
 namespace names, bundled; taken only in the build aliases, never in production;
 its watch options are the `:browser-build {:watch …}` setting, its release
 options the `:browser-release` alias's `:exec-args`.
 And how the browser and the server talk, on both sides:
-[bridge](https://github.com/p4ulcristian/bridge), named messages over http,
+[groundwork-bridge](https://github.com/p4ulcristian/groundwork-bridge), named messages over http,
 sse and ws answered by a handler's steps, and the routes; its addresses and
 ping are in the `:server` settings, with no defaults. A refusal is a named
 reason with data, declared on its handler (`:refusals`, `{}` for none),
-never English on the wire; every reason, the libraries' own (bridge's,
-doorman's, groundwork's run-once ones) too, needs its text in every
+never English on the groundwork-shaped-json; every reason, the libraries' own (bridge's,
+groundwork-access's, groundwork's run-once ones) too, needs its text in every
 catalog, or the start is refused, and the browser draws it with
-`(parlor/tr reason data)`. Every answered message is counted on the app's
+`(screens/tr reason data)`. Every answered message is counted on the app's
 meter, whichever door it came through (an app route's `answer-as`, the
 REPL's `ask-as-person`).
 And who is asking and what they may do, at one door:
-[doorman](https://github.com/p4ulcristian/doorman), sessions in Postgres, a
+[groundwork-access](https://github.com/p4ulcristian/groundwork-access), sessions in Postgres, a
 person's own tokens for scripts (a call by `Authorization: Bearer` is that
 person's) and access (scopes, roles by id, memberships holding a set of
 roles, the check in front of every handler, which says where it acts, the
 gates, the leak test); its
-settings are the `:sessions` part, with no defaults.
+settings are the `:access` part, with no defaults.
 And how screens stay current, on both sides:
-[doorbell](https://github.com/p4ulcristian/doorbell), a change to a table rings
+[groundwork-live-updates](https://github.com/p4ulcristian/groundwork-live-updates), a change to a table rings
 every open screen with only the table's name, and the screens that read it ask
-again through the gates; table maps say `:doorbell :tell` or `[:silent "why"]`,
-and the `:doorbell` settings hold the browser's question store's (`:store`) and
+again through the gates; table maps say `:live-updates :tell` or `[:silent "why"]`,
+and the `:live-updates` settings hold the browser's question store's (`:store`) and
 the server's listener's (`:listening`), with no defaults.
 And what the browser shows:
-[parlor](https://github.com/p4ulcristian/parlor), re-frame over doorbell's
+[groundwork-screens](https://github.com/p4ulcristian/groundwork-screens), re-frame over groundwork-live-updates's
 question store, drawn with Reagent: a screen's answers with four statuses,
 the page the address bar leads to (each page declares its questions, the
 browser start's `:questions-of-pages`), writes that ask again what they
-touched, and "can I?" from doorman's `:doorman/my-actions`, a handler groundwork
+touched, and "can I?" from groundwork-access's `:groundwork-access/my-actions`, a handler groundwork
 adds (its rate limit the `:my-actions` part). groundwork's browser start starts it;
-the app draws its root with parlor's `mount-root!` into the shell's `#app`.
-Every write runs once: parlor sends each with a one-time key (a random
+the app draws its root with groundwork-screens's `mount-root!` into the shell's `#app`.
+Every write runs once: groundwork-screens sends each with a one-time key (a random
 UUID, the same on each retry of that send, in the `idempotency-key`
 header), and groundwork claims it in the write's own transaction; a repeat gets
 the first answer and saves nothing (the `:run-once` settings, [the
 decision](decisions/2026-10-23-every-write-runs-once-by-its-one-time-key.md)).
 Every handler writes out its daily caps, `:daily-caps` (`[]` for none),
-counted by groundwork in Postgres after doorman's check; over one, the call
+counted by groundwork in Postgres after groundwork-access's check; over one, the call
 is refused `:groundwork/daily-cap-reached {:retry-after-ms …}` until
 midnight UTC (the `:daily-caps` settings, [the
 decision](decisions/2026-10-23-daily-caps-are-counted-by-the-composer-after-the-permission.md)).
 And what the app says, on the server:
-[logbook](https://github.com/p4ulcristian/logbook), one function
-`(log level event data)`; groundwork makes the app's one logbook from the
-`:logbook` settings and passes its log to every library, each message's steps
-get one with its request id (and the person, once doorman finds them), and a
+[groundwork-logs](https://github.com/p4ulcristian/groundwork-logs), one function
+`(log level event data)`; groundwork makes the app's one logger from the
+`:logs` settings and passes its log to every library, each message's steps
+get one with its request id (and the person, once groundwork-access finds them), and a
 monitor pulls the kept errors, the browser's among them, from the `:errors`
 route.
 And which language a request, a page and an address are in, on both sides:
-[dictionary](https://github.com/p4ulcristian/dictionary); its settings are
+[groundwork-languages](https://github.com/p4ulcristian/groundwork-languages); its settings are
 the `:languages` part. Every request gets its language (the address's
 prefix, the cookie, Accept-Language, the default) and loses the prefix
 before routing; the shell's `<html lang>` and alternate links follow it,
-and parlor keeps it on every move. Texts are ICU messages in a JSON
+and groundwork-screens keeps it on every move. Texts are ICU messages in a JSON
 catalog per language, read by the server at the start and served to the
-browser, where parlor's `tr`, called only in views, draws them. On
+browser, where groundwork-screens's `tr`, called only in views, draws them. On
 the server every request is handled with its language bound, so
-`(dictionary/tr key args)` in a handler's steps, a page's `render-page`
+`(languages/tr key args)` in a handler's steps, a page's `render-page`
 or an app's own route is in the request's language; the running app's
 `:texts` is for what runs outside a request: an email, a PDF or a job
-binds the language of its row, `(dictionary/with-language texts "de" …)`. The routing has queries (read by a
+binds the language of its row, `(languages/with-language texts "de" …)`. The routing has queries (read by a
 page's shape), scrolling, a question before leaving unsaved changes, and
 modules loaded on demand (the app's `:browser-modules`, browser-build's, each
 with its stylesheets and its `:start`, nil for none): [the decision](decisions/2026-10-23-routing-extras-each-where-it-belongs.md).
 And how much the app does, on the server:
-[meter](https://github.com/p4ulcristian/meter); groundwork makes the app's one
-meter from the `:meter` settings and hands it to cellar's pool, bridge's
-routes, doorbell's listener and backroom's workers, each declaring its own
+[groundwork-metrics](https://github.com/p4ulcristian/groundwork-metrics); groundwork makes the app's one
+meter from the `:meter` settings and hands it to groundwork-postgres's pool, bridge's
+routes, groundwork-live-updates's listener and groundwork-background-jobs's workers, each declaring its own
 metrics (their histograms' buckets are each library's `:metric-buckets`
 setting), adds its own (the stage, the ready checks, the version) and
-logbook's counts, and serves the text Prometheus pulls at the `:metrics`
+groundwork-logs's counts, and serves the text Prometheus pulls at the `:metrics`
 route, beside health and errors, behind its bearer token
 ([the decision](decisions/2026-10-23-main-makes-one-meter-and-serves-its-text.md)).
 And a REPL into the running app, on the server:
-[study](https://github.com/p4ulcristian/study), by the `:study` settings
+[groundwork-live-repl](https://github.com/p4ulcristian/groundwork-live-repl), by the `:live-repl` settings
 (`:development`, `:ssh-only`, or `:off` with the emergency switch), every
 evaluation written to the app's log; it starts last and stops first, and
-groundwork's tools are in `study.tools`: `ask-as-person`, `why-refused`
-(doorman's `explain-refusal`) and `explain-setting`
+groundwork's tools are in `groundwork-live-repl.tools`: `ask-as-person`, `why-refused`
+(groundwork-access's `explain-refusal`) and `explain-setting`
 ([the decision](decisions/2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md)).
 And the app's files, on the server:
-[attic](https://github.com/p4ulcristian/attic), each named by its content
-in an S3 bucket (R2, S3), recorded in `attic.files`, read through signed
-links; groundwork makes one attic from the `:attic :storage` settings, held by
-the running app as `:attic`, and serves attic's upload route at `:attic
-:upload :path`, asking doorman's session step, then the app's
+[groundwork-file-storage](https://github.com/p4ulcristian/groundwork-file-storage), each named by its content
+in an S3 bucket (R2, S3), recorded in `groundwork_file_storage.files`, read through signed
+links; groundwork makes one file storage from the `:file-storage :storage` settings, held by
+the running app as `:file-storage`, and serves groundwork-file-storage's upload route at `:file-storage
+:upload :path`, asking groundwork-access's session step, then the app's
 `:may-upload?` `(fn [asker])`, before the body is read. The app deletes a
-file with attic's `delete-file!`, after its own rows are kept: a file goes,
+file with groundwork-file-storage's `delete-file!`, after its own rows are kept: a file goes,
 row and object, only when no row names it through a reference to
 `:file/key`.
 And its email, on the server:
-[postbox](https://github.com/p4ulcristian/postbox), an email the app wrote
+[groundwork-email](https://github.com/p4ulcristian/groundwork-email), an email the app wrote
 queued in a write's transaction (`queue-email!` on the running app's
-`:postbox`) as a background job, sent once by Postmark or to the log
-(`:postbox :sending`); the provider's webhooks (`:postbox :webhooks`) hand
+`:email`) as a background job, sent once by Postmark or to the log
+(`:email :sending`); the provider's webhooks (`:email :webhooks`) hand
 bounces to the app's `:on-delivery-event` by the email's tag and inbound
 email to its `:on-inbound-email` by mailbox
 ([the decision](decisions/2026-10-23-main-makes-one-attic-and-one-postbox.md)),
-each run as doorman's system actor `:postbox`, which the app's sentences
-give what it may do, `{:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :postbox]}`,
+each run as groundwork-access's system actor `:email`, which the app's sentences
+give what it may do, `{:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :email]}`,
 and nothing else ([the decision](decisions/2026-10-23-postboxs-webhook-functions-run-as-doormans-system-actor-postbox.md)).
 And its settings and their secrets:
-[safe](https://github.com/p4ulcristian/safe), one EDN file per environment,
+[groundwork-settings](https://github.com/p4ulcristian/groundwork-settings), one EDN file per environment,
 its `#secret` references read from sops or 1Password, its `#env` from the
 environment, checked against groundwork's `settings-shape` with every problem at
 once. Every secret in the settings (the database's password, the `:errors`
 and `:metrics` tokens, the bucket's keys, Postmark's and the webhooks'
-tokens) is safe's: it prints as its name, is revealed only by the library
+tokens) is groundwork-settings's: it prints as its name, is revealed only by the library
 that uses it, and text written out in its place is refused. An app starts:
 
 ```clojure
-(main/start-app! {:settings (safe/load {:file  "settings/production.edn"
+(main/start-app! {:settings (settings/load {:file  "settings/production.edn"
                                         :shape main/settings-shape
                                         :env   (System/getenv)})
                   …})
@@ -160,7 +162,7 @@ The sample app's development settings load the same way
 (`test-code/groundwork_test/sample/settings/development.edn`, its secrets opened
 by a committed, development-only age key)
 ([the decision](decisions/2026-10-23-secrets-are-safes-wrapped-secrets.md)).
-A visitor (someone not signed in) gets a session of their own, doorman's,
+A visitor (someone not signed in) gets a session of their own, groundwork-access's,
 from a POST of groundwork's at the `:visitors` path, which the browser's
 `start-visitor-session!` sends the first time the app keeps something for
 them ([the decision](decisions/2026-10-23-a-visitors-session-starts-on-a-post-of-houses.md)),
@@ -171,7 +173,7 @@ API for machines) are records in the app map's `:routes` (`{}` for none),
 each with a kind, served beside groundwork's own through the same steps
 ([the decision](decisions/2026-10-23-an-apps-own-server-routes-are-records-with-a-kind.md),
 [the kinds](decisions/2026-10-23-route-kinds-are-person-and-provider.md)):
-a `:person` route's handler gets the asker doorman found, by the session's
+a `:person` route's handler gets the asker groundwork-access found, by the session's
 cookie or the person's token, and its tools, among them `:run-as-asker!`
 and `:answer-as`, `(answer-as message request)`, a message answered as
 that asker through every check a browser's message gets, each handler's
@@ -179,19 +181,19 @@ rate limit counted on a limiter of its own
 ([the decision](decisions/2026-10-23-a-token-call-arrives-where-a-browsers-does.md));
 a `:provider` route reads no session or token and proves its caller
 itself (a signature).
-An app's table map says `:access` and `:doorbell`; one that writes its own
+An app's table map says `:access` and `:live-updates`; one that writes its own
 `:gates` or `:on-change`, which groundwork puts on it, is refused at the start
 ([the decision](decisions/2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md)).
-It writes out cellar's `:indexes` (each a map), `:uniques`, `:checks`,
+It writes out groundwork-postgres's `:indexes` (each a map), `:uniques`, `:checks`,
 `:references` and `:triggers` (`[]` for none), and each reference what it
 does (`{:to :shop/id :on-delete :refuse :on-update :refuse :checked-at
-:statement}`); a record under a record says doorman's `:parent {:column …
-:carries {…}}`, and doorman adds the link to its parent and the fill of its
-carried columns to them. Beside `:tables` the app writes out cellar's
+:statement}`); a record under a record says groundwork-access's `:parent {:column …
+:carries {…}}`, and groundwork-access adds the link to its parent and the fill of its
+carried columns to them. Beside `:tables` the app writes out groundwork-postgres's
 `:extensions`, `:functions` and `:views` (`.sql` files, `[]` for none);
-groundwork declares doorman's and doorbell's own functions with them, and
-the ones doorman makes from the sentences (`make-access-functions`, cellar's
-made functions), and cellar drops a function in the tables' folders that
+groundwork declares groundwork-access's and groundwork-live-updates's own functions with them, and
+the ones groundwork-access makes from the sentences (`make-access-functions`, groundwork-postgres's
+made functions), and groundwork-postgres drops a function in the tables' folders that
 nothing declared makes.
 Not in groundwork: pre-rendering pages for search engines, for now
 ([the decision](decisions/2026-10-23-no-pre-rendering-of-pages-for-search-engines-for-now.md)),
@@ -231,14 +233,14 @@ pg_ctl -D /tmp/groundwork-pg stop
 
 The server test stores an upload in a real S3 API when
 `GROUNDWORK_S3_TEST_ENDPOINT`, `_ACCESS_KEY` and `_SECRET_KEY` are set (SeaweedFS
-in a container, as attic's tests run it); without them it checks only who
+in a container, as groundwork-file-storage's tests run it); without them it checks only who
 may upload.
 
 An app takes all of groundwork from git.
 
 ## Releasing a library
 
-`tools/bump cellar` (or several names) tags the next patch version of each
+`tools/bump groundwork-postgres` (or several names) tags the next patch version of each
 named library, then pins the new tag in every library that uses it, releases
 those the same way, in order, and pins everything in groundwork last. No tests
 are run. The libraries sit beside groundwork, in ~/Work/apps/groundwork.

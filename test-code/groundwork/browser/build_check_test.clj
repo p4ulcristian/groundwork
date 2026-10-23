@@ -8,7 +8,7 @@
    [clojure.java.io :as io]
    [clojure.string :as str]
    [clojure.test :refer [deftest is]]
-   [browser-build.api :as browser-build])
+   [groundwork-browser-build.api :as browser-build])
   (:import
    (java.nio.file Files)
    (java.nio.file.attribute FileAttribute)))

@@ -1,6 +1,6 @@
 (ns groundwork.server.main.daily-caps
   "A handler's daily caps, counted by groundwork in Postgres, after
-   doorman's check.
+   groundwork-access's check.
 
    Every app handler writes out :daily-caps beside bridge's :rate-limit,
    [] for none:
@@ -11,7 +11,7 @@
    :per is :asker (the person, a token's person, else the visitor, else,
    nobody signed in, the request's address) or :everyone. A day is a UTC
    date. A capped handler gets one step first among its steps,
-   :groundwork/daily-caps, which runs after doorman's check (so only an
+   :groundwork/daily-caps, which runs after groundwork-access's check (so only an
    asker the handler lets through spends its budget) and before the
    handler's own steps, inside a write's run-once step (a repeat answered
    from its one-time key isn't counted again). It counts in
@@ -26,8 +26,8 @@
    midnight UTC. groundwork's background job, on the :forget-counts cron
    line, deletes the days before today."
   (:require
-   [bridge.api :as bridge]
-   [cellar.api :as database]
+   [groundwork-bridge.api :as bridge]
+   [groundwork-postgres.api :as postgres]
    [malli.core :as malli]
    [malli.error :as malli-error])
   (:import
@@ -50,9 +50,9 @@
    :gates     nil
    :on-change nil})
 
-(def ^:private lock-count (database/make-query-from-sql-file "groundwork/server/main/lock_daily_cap_count.sql"))
-(def ^:private add-to-count (database/make-query-from-sql-file "groundwork/server/main/add_to_daily_cap_count.sql"))
-(def ^:private delete-old-counts (database/make-query-from-sql-file "groundwork/server/main/delete_old_daily_cap_counts.sql"))
+(def ^:private lock-count (postgres/make-query-from-sql-file "groundwork/server/main/lock_daily_cap_count.sql"))
+(def ^:private add-to-count (postgres/make-query-from-sql-file "groundwork/server/main/add_to_daily_cap_count.sql"))
+(def ^:private delete-old-counts (postgres/make-query-from-sql-file "groundwork/server/main/delete_old_daily_cap_counts.sql"))
 
 (def refusals
   "groundwork's reason a capped handler refuses with, and its data's
@@ -99,7 +99,7 @@
 (defn- find-counted-for
   "Whom a cap counts: everyone, or the asker, the person (a token's
    person too), else the visitor, else the request's address."
-  [per {:doorman/keys [person-id visitor-id] :bridge/keys [request]} client-address-header]
+  [per {:groundwork-access/keys [person-id visitor-id] :groundwork-bridge/keys [request]} client-address-header]
   (case per
     :everyone "everyone"
     :asker    (cond person-id  (str "person " person-id)
@@ -115,17 +115,17 @@
                                       (update most (find-counted-for per context client-address-header) (fnil min max) max))
                                     (sorted-map) daily-caps)]
     ;; groundwork's own, never handed to app code: keeps no work
-    (database/run-in-transaction! counting-pool {:read-only? false :log nil}
+    (postgres/run-in-transaction! counting-pool {:read-only? false :log nil}
       (fn [transaction]
         (let [row-of   (fn [counted-for] {:daily-cap-count/message-name message-name
                                           :daily-cap-count/counted-for  counted-for
                                           :daily-cap-count/day          day})
               counts   (into {} (for [counted-for (keys most-by-counted-for)]
-                                  [counted-for (:daily-cap-count/count (database/find-one-row transaction lock-count (row-of counted-for)))]))
+                                  [counted-for (:daily-cap-count/count (postgres/find-one-row transaction lock-count (row-of counted-for)))]))
               under?   (every? (fn [[counted-for most]] (< (get counts counted-for) most)) most-by-counted-for)]
           (when under?
             (doseq [counted-for (keys most-by-counted-for)]
-              (database/run-statement! transaction add-to-count (row-of counted-for))))
+              (postgres/run-statement! transaction add-to-count (row-of counted-for))))
           under?)))))
 
 (defn- make-daily-caps-step [counting-pool handler-name daily-caps client-address-header]
@@ -142,7 +142,7 @@
   "The app's handlers, every one checked to write out :daily-caps; each
    capped one with the counting step first among its steps and
    groundwork's reason in its :refusals, the others as they are. Before
-   groundwork's run-once and doorman's check, which put their steps
+   groundwork's run-once and groundwork-access's check, which put their steps
    around these."
   [handlers counting-pool client-address-header]
   (check-handlers! handlers)
@@ -157,7 +157,7 @@
         handlers))
 
 (def forget-counts-system-actor
-  "The named system actor (doorman's) the forgetting runs as: it deletes
+  "The named system actor (groundwork-access's) the forgetting runs as: it deletes
    from groundwork.daily_cap_counts, a table without sentences, which any
    system actor reaches; no app sentence names it."
   :groundwork-daily-caps)
@@ -171,7 +171,7 @@
    :system-actor forget-counts-system-actor
    :params-shape [:map {:closed true}]
    :run          (fn [{:keys [transaction]} _params]
-                   (database/run-statement! transaction delete-old-counts
+                   (postgres/run-statement! transaction delete-old-counts
                                             {:daily-cap-count/day (LocalDate/now ZoneOffset/UTC)}))
    :timeout-ms   timeout-ms
    :attempts     attempts})

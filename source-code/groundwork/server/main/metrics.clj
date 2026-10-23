@@ -7,31 +7,31 @@
                                      (starting, started, stopping), 0 for the others
      groundwork_ready_checks_total{outcome}  counter: each ready check, ready or not-ready
      groundwork_build_info{version}       gauge, read: 1, under the :version setting
-     logbook_lines_total{level}      counter, read: lines written, by level
-     logbook_write_failures_total    counter, read: lines that couldn't be written
-     logbook_errors_kept             gauge, read: :error lines kept for the errors route
+     groundwork_logs_lines_total{level}      counter, read: lines written, by level
+     groundwork_logs_write_failures_total    counter, read: lines that couldn't be written
+     groundwork_logs_errors_kept             gauge, read: :error lines kept for the errors route
 
-   logbook counts nothing into a meter itself (meter's own log is a
-   logbook), so groundwork reads logbook's read-counts when the text is
-   written, under logbook's names."
+   groundwork-logs counts nothing into a meter itself (groundwork-metrics's own log is a
+   groundwork-logs), so groundwork reads groundwork-logs's read-counts when the text is
+   written, under groundwork-logs's names."
   (:require
-   [logbook.api :as logbook]
-   [meter.api :as meter]))
+   [groundwork-logs.api :as logs]
+   [groundwork-metrics.api :as metrics]))
 
 (def ^:private stages #{:starting :started :stopping})
 
 (defn- read-stage [stage]
   (into {} (for [each stages] [{:stage each} (if (= each @stage) 1 0)])))
 
-(defn- read-lines [running-logbook]
-  (into {} (for [[level n] (:lines (logbook/read-counts running-logbook))] [{:level level} n])))
+(defn- read-lines [running-logger]
+  (into {} (for [[level n] (:lines (logs/read-counts running-logger))] [{:level level} n])))
 
 (defn declare-groundwork-metrics!
-  "groundwork's metrics and logbook's, on the app's meter: the stage read from
-   the health's stage atom, the version from the settings, logbook's
-   counts from the running logbook."
-  [meter running-logbook stage version]
-  (meter/declare-metrics!
+  "groundwork's metrics and groundwork-logs's, on the app's meter: the stage read from
+   the health's stage atom, the version from the settings, groundwork-logs's
+   counts from the running logger."
+  [meter running-logger stage version]
+  (metrics/declare-metrics!
    meter
    [{:name    :groundwork/stage
      :type    :gauge
@@ -51,26 +51,26 @@
      :labels  {:version #{version}}
      :buckets nil
      :read    (fn [] {{:version version} 1})}
-    {:name    :logbook/lines-total
+    {:name    :groundwork-logs/lines-total
      :type    :counter
-     :help    "Lines the app's logbook wrote, by level."
+     :help    "Lines the app's logger wrote, by level."
      :labels  {:level #{:debug :info :warn :error}}
      :buckets nil
-     :read    #(read-lines running-logbook)}
-    {:name    :logbook/write-failures-total
+     :read    #(read-lines running-logger)}
+    {:name    :groundwork-logs/write-failures-total
      :type    :counter
-     :help    "Lines the app's logbook couldn't write."
+     :help    "Lines the app's logger couldn't write."
      :labels  {}
      :buckets nil
-     :read    (fn [] {{} (:write-failures (logbook/read-counts running-logbook))})}
-    {:name    :logbook/errors-kept
+     :read    (fn [] {{} (:write-failures (logs/read-counts running-logger))})}
+    {:name    :groundwork-logs/errors-kept
      :type    :gauge
      :help    "The :error lines kept for the errors route."
      :labels  {}
      :buckets nil
-     :read    (fn [] {{} (:errors-kept (logbook/read-counts running-logbook))})}]))
+     :read    (fn [] {{} (:errors-kept (logs/read-counts running-logger))})}]))
 
 (defn count-ready-check!
   "One ready check answered, :ready or :not-ready."
   [meter outcome]
-  (meter/add-to-counter! meter :groundwork/ready-checks-total {:outcome outcome} 1))
+  (metrics/add-to-counter! meter :groundwork/ready-checks-total {:outcome outcome} 1))

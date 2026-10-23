@@ -6,86 +6,86 @@
 
  :deps
  {org.clojure/clojure               {:mvn/version "1.12.6"}
-  ;; wire: its own library, github.com/p4ulcristian/wire; main makes the app's
-  ;; one wire from the :wire settings and passes it to every library
-  io.github.p4ulcristian/wire       {:git/tag "v0.2.1" :git/sha "900a84d"}
+  ;; groundwork-shaped-json: its own library, github.com/p4ulcristian/groundwork-shaped-json; main makes the app's
+  ;; one shaper from the :shaped-json settings and passes it to every library
+  io.github.p4ulcristian/groundwork-shaped-json       {:git/tag "v0.2.1" :git/sha "900a84d"}
   ;; the settings and the browser start's options, checked by their shapes
   metosin/malli                     {:mvn/version "0.20.3"}
-  ;; logbook: the app's log, its own library, github.com/p4ulcristian/logbook;
-  ;; main makes one logbook from the :logbook settings and passes its log to every library
-  io.github.p4ulcristian/logbook    {:git/tag "v0.1.2" :git/sha "823f8fc"}
-  ;; cellar: Postgres, its own library, github.com/p4ulcristian/cellar
+  ;; groundwork-logs: the app's log, its own library, github.com/p4ulcristian/groundwork-logs;
+  ;; main makes one logger from the :logs settings and passes its log to every library
+  io.github.p4ulcristian/groundwork-logs    {:git/tag "v0.1.2" :git/sha "823f8fc"}
+  ;; groundwork-postgres: Postgres, its own library, github.com/p4ulcristian/groundwork-postgres
   ;; on its tidy-up branch, not released: a table map writes out :uniques and :checks, a
   ;; reference what it does, an index as a map; migrate! takes {:tables :extensions :functions
   ;; :views}, a function a file or one a library made, and drops a function in the tables'
   ;; folders that nothing declared makes; a column's type changed by a change; run-after-commit!;
   ;; run-in-transaction! takes the caller's :log, where an after-commit failure is written
-  io.github.p4ulcristian/cellar     {:git/tag "v0.4.6" :git/sha "4396e6b"}
-  ;; backroom: background jobs on Postgres, its own library, github.com/p4ulcristian/backroom
+  io.github.p4ulcristian/groundwork-postgres     {:git/tag "v0.4.6" :git/sha "4396e6b"}
+  ;; groundwork-background-jobs: background jobs on Postgres, its own library, github.com/p4ulcristian/groundwork-background-jobs
   ;; on its tidy-up branch, not released: a job kind names its system actor, and its one
-  ;; transaction (the work and the done-mark) runs as it, opened by doorman's run-as-system!,
-  ;; carrying the job's log; its tables in cellar's tidy-up shapes
-  io.github.p4ulcristian/backroom   {:git/tag "v0.5.6" :git/sha "43acc7c"}
+  ;; transaction (the work and the done-mark) runs as it, opened by groundwork-access's run-as-system!,
+  ;; carrying the job's log; its tables in groundwork-postgres's tidy-up shapes
+  io.github.p4ulcristian/groundwork-background-jobs   {:git/tag "v0.5.6" :git/sha "43acc7c"}
   ;; bridge: named messages over http, sse and ws, a handler's steps, the routes;
-  ;; both sides, its own library, github.com/p4ulcristian/bridge (it brings
+  ;; both sides, its own library, github.com/p4ulcristian/groundwork-bridge (it brings
   ;; Jetty 12 through rj9a, reitit-ring and reitit-frontend)
   ;; on its tidy-up branch, not released: a message may come with no request (the REPL's);
   ;; answer-message's limiter is make-message-limiter's (or :no-rate-limits); a refusal is a
   ;; named reason, declared on its handler; answer-message counts on the app's meter;
   ;; send-message! takes :keep-alive?; an sse line tells its break (:on-break); go-to-page!
   ;; takes :push or :replace; :may-leave? is asked with the move, finish-move! finishes it
-  io.github.p4ulcristian/bridge   {:git/tag "v0.7.8" :git/sha "90dd8fa"}
-  ;; doorman: who is asking and what may they do, sessions and access, its own
-  ;; library, github.com/p4ulcristian/doorman (it brings malli and test.check)
+  io.github.p4ulcristian/groundwork-bridge   {:git/tag "v0.7.8" :git/sha "90dd8fa"}
+  ;; groundwork-access: who is asking and what may they do, sessions and access, its own
+  ;; library, github.com/p4ulcristian/groundwork-access (it brings malli and test.check)
   ;; on its tidy-up branch, not released: a handler says where it acts; tokens; roles have
-  ;; ids; doorman's own reasons put on every handler; the leak test takes the app's meter;
-  ;; its tables in cellar's tidy-up shapes, its own functions declared by their files, those
+  ;; ids; groundwork-access's own reasons put on every handler; the leak test takes the app's meter;
+  ;; its tables in groundwork-postgres's tidy-up shapes, its own functions declared by their files, those
   ;; made from the sentences handed to the app (make-access-functions); every transaction it
   ;; opens carries its caller's log (the check's, the message's)
-  io.github.p4ulcristian/doorman    {:git/tag "v0.7.10" :git/sha "8d59580"}
-  ;; doorbell: a change to a table rings every open screen, which asks again;
-  ;; both sides, its own library, github.com/p4ulcristian/doorbell
-  ;; on its tidy-up branch, not released: an ask with no answer is bridge's :bridge/no-answer;
-  ;; doorbell.tell() declared to cellar by its file (function-files)
-  io.github.p4ulcristian/doorbell   {:git/tag "v0.5.9" :git/sha "60cab75"}
-  ;; parlor: the browser's screens over doorbell's question store, in re-frame,
+  io.github.p4ulcristian/groundwork-access    {:git/tag "v0.7.10" :git/sha "8d59580"}
+  ;; groundwork-live-updates: a change to a table rings every open screen, which asks again;
+  ;; both sides, its own library, github.com/p4ulcristian/groundwork-live-updates
+  ;; on its tidy-up branch, not released: an ask with no answer is bridge's :groundwork-bridge/no-answer;
+  ;; groundwork_live_updates.tell() declared to groundwork-postgres by its file (function-files)
+  io.github.p4ulcristian/groundwork-live-updates   {:git/tag "v0.5.9" :git/sha "60cab75"}
+  ;; groundwork-screens: the browser's screens over groundwork-live-updates's question store, in re-frame,
   ;; drawn with Reagent (it brings re-frame and Reagent; react and react-dom
   ;; are package.json's); the browser's side only, its own library,
-  ;; github.com/p4ulcristian/parlor
-  ;; on its tidy-up branch, not released: mount-root! refuses before :parlor/start; tr only
+  ;; github.com/p4ulcristian/groundwork-screens
+  ;; on its tidy-up branch, not released: mount-root! refuses before :groundwork-screens/start; tr only
   ;; in views; :on-signed-out with the page; the unsaved-changes guard takes a key and
   ;; :ask-with; every send writes out {:once-key :keep-alive?}; a move writes :push or
   ;; :replace; find-answer reads a held answer in an event handler
-  io.github.p4ulcristian/parlor     {:git/tag "v0.8.4" :git/sha "3e89966"}
-  ;; dictionary: which language a request, a page and an address are in; both
-  ;; sides, its own library, github.com/p4ulcristian/dictionary (parlor brings
+  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.4" :git/sha "3e89966"}
+  ;; groundwork-languages: which language a request, a page and an address are in; both
+  ;; sides, its own library, github.com/p4ulcristian/groundwork-languages (groundwork-screens brings
   ;; it to the browser too)
   ;; on its tidy-up branch, not released: with-language refuses a nil language or bad texts;
   ;; check-texts-of-reasons; tr is the one text call on the server
-  io.github.p4ulcristian/dictionary {:git/tag "v0.4.2" :git/sha "a3aa64d"}
-  ;; meter: the app's metrics, its own library, github.com/p4ulcristian/meter;
+  io.github.p4ulcristian/groundwork-languages {:git/tag "v0.4.2" :git/sha "a3aa64d"}
+  ;; groundwork-metrics: the app's metrics, its own library, github.com/p4ulcristian/groundwork-metrics;
   ;; main makes one meter from the :meter settings and passes it to every
   ;; library that counts, and serves its text at the :metrics route
-  io.github.p4ulcristian/meter      {:git/tag "v0.1.4" :git/sha "bf81c46"}
-  ;; attic: the app's files, its own library, github.com/p4ulcristian/attic;
-  ;; main makes one attic from the :attic :storage settings, migrates its files
-  ;; table and serves its upload route at :attic :upload :path
-  ;; on its tidy-up branch, not released: its files table in cellar's tidy-up shapes;
-  ;; delete-file-after-commit!, by cellar's run-after-commit!
-  io.github.p4ulcristian/attic     {:git/tag "v0.1.4" :git/sha "ee84b16"}
-  ;; postbox: the app's email, its own library, github.com/p4ulcristian/postbox;
-  ;; main makes one postbox from the :postbox :sending settings, runs its
+  io.github.p4ulcristian/groundwork-metrics      {:git/tag "v0.1.4" :git/sha "bf81c46"}
+  ;; groundwork-file-storage: the app's files, its own library, github.com/p4ulcristian/groundwork-file-storage;
+  ;; main makes one file storage from the :file-storage :storage settings, migrates its files
+  ;; table and serves its upload route at :file-storage :upload :path
+  ;; on its tidy-up branch, not released: its files table in groundwork-postgres's tidy-up shapes;
+  ;; delete-file-after-commit!, by groundwork-postgres's run-after-commit!
+  io.github.p4ulcristian/groundwork-file-storage     {:git/tag "v0.1.4" :git/sha "ee84b16"}
+  ;; groundwork-email: the app's email, its own library, github.com/p4ulcristian/groundwork-email;
+  ;; main makes one mailer from the :email :sending settings, runs its
   ;; background job kind, migrates its emails table and serves its webhooks
   ;; on its tidy-up branch, not released: the sending job runs as the :system-actor the app names;
-  ;; its emails table in cellar's tidy-up shapes
-  io.github.p4ulcristian/postbox   {:git/tag "v0.1.4" :git/sha "4a12d5b"}
-  ;; safe: the settings and their secrets, its own library, github.com/p4ulcristian/safe;
-  ;; an app loads its settings with safe/load, every secret in them wrapped (it prints
-  ;; as its name); groundwork compares the :errors token with safe/equal?
-  io.github.p4ulcristian/safe       {:git/tag "v0.1.1" :git/sha "72d0dbb"}
-  ;; study: the REPL into the running app, by the :study settings, with
-  ;; groundwork's tools in study.tools; its own library, github.com/p4ulcristian/study
-  io.github.p4ulcristian/study      {:git/tag "v0.1.2" :git/sha "94df041"}}
+  ;; its emails table in groundwork-postgres's tidy-up shapes
+  io.github.p4ulcristian/groundwork-email   {:git/tag "v0.1.4" :git/sha "4a12d5b"}
+  ;; groundwork-settings: the settings and their secrets, its own library, github.com/p4ulcristian/groundwork-settings;
+  ;; an app loads its settings with settings/load, every secret in them wrapped (it prints
+  ;; as its name); groundwork compares the :errors token with settings/equal?
+  io.github.p4ulcristian/groundwork-settings       {:git/tag "v0.1.1" :git/sha "72d0dbb"}
+  ;; groundwork-live-repl: the REPL into the running app, by the :live-repl settings, with
+  ;; groundwork's tools in groundwork-live-repl.tools; its own library, github.com/p4ulcristian/groundwork-live-repl
+  io.github.p4ulcristian/groundwork-live-repl      {:git/tag "v0.1.2" :git/sha "94df041"}}
 
  :aliases
  {;; every test:                  clojure -X:test
@@ -94,11 +94,11 @@
          :extra-deps  {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                        ;; the browser build's test compiles every browser library, and the
                        ;; end-to-end test release-builds its sample app
-                       io.github.p4ulcristian/browser-build {:git/tag "v0.4.4" :git/sha "f69ed00"}}
+                       io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.4.4" :git/sha "f69ed00"}}
          :exec-fn     cognitect.test-runner.api/test
          :exec-args   {:dirs ["test-code"]}}
 
-  ;; the browser build: browser-build, its own library, github.com/p4ulcristian/browser-build
+  ;; the browser build: browser-build, its own library, github.com/p4ulcristian/groundwork-browser-build
   ;; (it brings shadow-cljs); on its tidy-up branch, not released: a module names its
   ;; :start, a build its :silenced-warnings, :css (its :targets; the lightningcss program is
   ;; browser-build's pin) and :lightningcss-download-timeout-ms, a watch its :preloads.
@@ -106,9 +106,9 @@
   ;; aliases, not in :deps. Development: add :browser-build to the REPL or the dev start
   ;; (its watch options are the :browser-build {:watch …} settings).
   ;; The deploy:  clojure -X:browser-release (an app writes its own :entry and :files-folder)
-  :browser-build   {:extra-deps {io.github.p4ulcristian/browser-build {:git/tag "v0.4.4" :git/sha "f69ed00"}}}
-  :browser-release {:extra-deps {io.github.p4ulcristian/browser-build {:git/tag "v0.4.4" :git/sha "f69ed00"}}
-                    :exec-fn    browser-build.api/build-for-release!
+  :browser-build   {:extra-deps {io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.4.4" :git/sha "f69ed00"}}}
+  :browser-release {:extra-deps {io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.4.4" :git/sha "f69ed00"}}
+                    :exec-fn    groundwork-browser-build.api/build-for-release!
                     :exec-args  {:entry              app.browser.main/start!
                                  :modules            {}               ; the app's :browser-modules, loaded on demand, each with its :start
                                  :files-folder       "target/public"

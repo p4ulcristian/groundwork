@@ -3,69 +3,69 @@
    running app. The browser's start is groundwork.browser.main.
 
      (def app
-       {:settings             (safe/load {:file  \"settings/production.edn\"   ; safe's: #secret and #env filled,
+       {:settings             (settings/load {:file  \"settings/production.edn\"   ; groundwork-settings's: #secret and #env filled,
                                           :shape main/settings-shape          ; checked against settings-shape
                                           :env   (System/getenv)})
         :browser-entry        'app.browser.main/start!  ; the function the page runs
         :browser-modules      {}                    ; browser-build's :modules, loaded on demand: {:admin {:entries [app.admin.page] :depends-on #{:main} :start nil}}
-        :tables               [shops orders]        ; table maps, with :access and :doorbell
-        :extensions           []                    ; cellar's: the database's extensions
-        :functions            []                    ; cellar's: the .sql files of the app's functions
-        :views                []                    ; cellar's: the .sql files of its views, in order
-        :changes              []                    ; cellar's changes
-        :scope-kinds          scope-kinds           ; doorman's
+        :tables               [shops orders]        ; table maps, with :access and :live-updates
+        :extensions           []                    ; groundwork-postgres's: the database's extensions
+        :functions            []                    ; groundwork-postgres's: the .sql files of the app's functions
+        :views                []                    ; groundwork-postgres's: the .sql files of its views, in order
+        :changes              []                    ; groundwork-postgres's changes
+        :scope-kinds          scope-kinds           ; groundwork-access's
         :handlers             handlers              ; bridge's table, each with :action, where it acts (:record or :scope), shapes and :daily-caps
         :pages                {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}
                                :admin/page  {:address \"/admin\" :title \"Admin\" :module \"admin\"}}   ; loaded on the way in
-        :background-job-kinds [send-invoice-email]  ; backroom's kinds, each naming its :system-actor
+        :background-job-kinds [send-invoice-email]  ; groundwork-background-jobs's kinds, each naming its :system-actor
         :schedules            []
         :may-upload?          (fn [{:keys [person-id]}] (some? person-id))   ; who may upload files, the asker
-        :on-delivery-event    {:orders/confirmation mark-address-bounced!} ; postbox's, by the email's tag
-        :on-inbound-email     {\"quotes\" add-quote-request!}})           ; postbox's, by the mailbox
+        :on-delivery-event    {:orders/confirmation mark-address-bounced!} ; groundwork-email's, by the email's tag
+        :on-inbound-email     {\"quotes\" add-quote-request!}})           ; groundwork-email's, by the mailbox
 
      (def running (main/start-app! app))
      (main/stop-app! running)
 
-   The settings are one EDN file per environment, loaded by safe: every
+   The settings are one EDN file per environment, loaded by groundwork-settings: every
    secret in them (the database's password, the :errors and :metrics
    tokens, the bucket's keys, Postmark's and the webhooks' tokens) is
-   safe's, which prints as its name, revealed only where it is used; text
+   groundwork-settings's, which prints as its name, revealed only where it is used; text
    written out where a secret belongs is refused.
 
    start-app! checks the settings (every problem at once), makes the app's
-   one wire from the :wire settings (wire.api's make-wire-from-settings)
+   one shaper from the :shaped-json settings (groundwork-shaped-json.api's make-shaper-from-settings)
    and passes it to every library that sends or reads data across the
-   app's edges (bridge's routes, backroom's workers, the page, the
-   health checks; no library makes its own), makes the app's one logbook
-   from the :logbook settings and passes its log to every library that
-   writes a line (cellar's migrate, doorbell's listener, backroom's
+   app's edges (bridge's routes, groundwork-background-jobs's workers, the page, the
+   health checks; no library makes its own), makes the app's one logger
+   from the :logs settings and passes its log to every library that
+   writes a line (groundwork-postgres's migrate, groundwork-live-updates's listener, groundwork-background-jobs's
    workers, browser-build's watcher, bridge's routes and server, the health
    checks; each message's steps get one with its request id, the person
-   added once doorman finds them), puts groundwork's own tables with
+   added once groundwork-access finds them), puts groundwork's own tables with
    the app's, migrates in development (:migrate-at-start?
    true) or else refuses a database that isn't current or a role that could
-   pass the gates, then starts the pool, the handlers (doorman's check,
-   groundwork's :doorman/my-actions, then doorbell's notes; every write keyed
+   pass the gates, then starts the pool, the handlers (groundwork-access's check,
+   groundwork's :groundwork-access/my-actions, then groundwork-live-updates's notes; every write keyed
    to run once, groundwork.server.main.run-once; every handler's
-   :daily-caps counted after doorman's check, groundwork.server.main.daily-caps), doorbell's listener, the
+   :daily-caps counted after groundwork-access's check, groundwork.server.main.daily-caps), groundwork-live-updates's listener, the
    background job workers (groundwork's own that forgets old one-time keys
-   among them; each job's one transaction is doorman's run-as-system! as
+   among them; each job's one transaction is groundwork-access's run-as-system! as
    its kind's :system-actor, so it reaches what that actor's sentences
    give it), in development the browser
    build's watcher (:browser-build {:watch options}, with the app's
    :browser-modules), and the server (bridge's three addresses, from
-   :server :addresses, every page answered by the page shell in the
+   :bridge :addresses, every page answered by the page shell in the
    request's language, the app's own :routes, files from :page :files; no
    ws hooks). Every
-   request first gets its language (dictionary's, from the :languages
+   request first gets its language (groundwork-languages's, from the :languages
    settings) and loses its address's language prefix, for routing, and is
-   handled with that language bound: (dictionary/tr key args) in a
+   handled with that language bound: (languages/tr key args) in a
    handler is in the request's language. Each
    language's catalog is read at the start (a missing one refuses it) and
    served where the browser fetches it, /<catalogs-path>/<language>.json.
-   Every reason a refusal may give (bridge's, doorman's, the run-once
+   Every reason a refusal may give (bridge's, groundwork-access's, the run-once
    ones, every handler's :refusals) needs its text in every catalog: one
-   missing refuses the start (dictionary's check-texts-of-reasons). A page
+   missing refuses the start (groundwork-languages's check-texts-of-reasons). A page
    may name a :module of :browser-modules, loaded on demand by the browser.
 
    In production the deploy runs migrate-app! first, as the role that owns
@@ -80,65 +80,65 @@
    answers, else 503, and 503 from the start of stop-app!.
 
    One more GET, for a monitor, outside them too (groundwork.server.main.errors,
-   the :errors settings): the :error lines logbook keeps, after ?since=N,
+   the :errors settings): the :error lines groundwork-logs keeps, after ?since=N,
    only with the settings' bearer token. And one handler of groundwork's own,
    :groundwork/browser-error: the browser's errors, uncaught or caught by
    an app's error boundary, sent by groundwork.browser.main with their
    kind and the bundle's version, written at :error as :browser/error, so
    they are kept with the server's, the one list a monitor reads; its rate
    limit is the :errors settings'.
-   And one of doorman's, :doorman/my-actions (make-my-actions-handler):
+   And one of groundwork-access's, :groundwork-access/my-actions (make-my-actions-handler):
    the asker's actions by scope, and the open ones under nil kind and id,
-   which the browser's start names as parlor's :actions-question; its rate
+   which the browser's start names as groundwork-screens's :actions-question; its rate
    limit is the :my-actions settings'.
 
-   One meter (meter's make-meter, from the :meter settings) is made once
-   and handed to every library that counts (cellar's pool, bridge's
-   routes, doorbell's listener, backroom's workers), with groundwork's own
-   (the stage, the ready checks, the version) and logbook's counts, read
+   One meter (groundwork-metrics's make-meter, from the :metrics settings) is made once
+   and handed to every library that counts (groundwork-postgres's pool, bridge's
+   routes, groundwork-live-updates's listener, groundwork-background-jobs's workers), with groundwork's own
+   (the stage, the ready checks, the version) and groundwork-logs's counts, read
    when written (groundwork.server.main.metrics). Its text is one more GET, at
-   the :metrics settings' :path, beside health and errors, outside them
-   too, only with its bearer token (meter's make-metrics-routes).
+   the :metrics settings' :route :path, beside health and errors, outside them
+   too, only with its bearer token (groundwork-metrics's make-metrics-routes).
 
-   A visitor's session (doorman's start-visitor-session!) is a POST at the
+   A visitor's session (groundwork-access's start-visitor-session!) is a POST at the
    :visitors settings' :path, from the app's own pages only, rate-limited
    by the asker's address (:visitors :rate-limit, 429 over it;
    groundwork.server.main.visitors).
 
-   The REPL (study's start-repl-server!, the :study settings) starts last
-   and stops first, with groundwork's tools in study.tools:
+   The REPL (groundwork-live-repl's start-repl-server!, the :live-repl settings) starts last
+   and stops first, with groundwork's tools in groundwork-live-repl.tools:
    :ask-as-person, :why-refused and :explain-setting
    (groundwork.server.main.tools).
 
-   A table map of the app's says :access and :doorbell, never :gates or
-   :on-change, which doorman and doorbell put on it: one that writes
+   A table map of the app's says :access and :live-updates, never :gates or
+   :on-change, which groundwork-access and groundwork-live-updates put on it: one that writes
    either is refused at the start, named.
 
-   The app's files (attic's make-attic, the :attic :storage settings)
-   and its email (postbox's make-postbox, the :postbox :sending settings)
-   are made once, on the app's log and meter (and wire, postbox's), and
-   held by the running app (:attic, :postbox); their tables (attic.files,
-   postbox.emails) are migrated with groundwork's, postbox's background job
-   kind runs with the app's. Files are uploaded at the :attic :upload
-   :path (groundwork.server.main.files: doorman's session step, then the app's
-   :may-upload?, (fn [asker])); the app deletes a file with attic's
-   delete-file! on (:attic running) and (:pool running), after its own
+   The app's files (groundwork-file-storage's make-file-storage, the :file-storage :storage settings)
+   and its email (groundwork-email's make-mailer, the :email :sending settings)
+   are made once, on the app's log and meter (and groundwork-shaped-json, groundwork-email's), and
+   held by the running app (:file-storage, :email); their tables (groundwork_file_storage.files,
+   groundwork_email.emails) are migrated with groundwork's, groundwork-email's background job
+   kind runs with the app's. Files are uploaded at the :file-storage :upload
+   :path (groundwork.server.main.files: groundwork-access's session step, then the app's
+   :may-upload?, (fn [asker])); the app deletes a file with groundwork-file-storage's
+   delete-file! on (:file-storage running) and (:pool running), after its own
    rows are kept, or in a handler's step with delete-file-after-commit!
-   and the step's :doorman/transaction, run once it commits (cellar's
+   and the step's :groundwork-access/transaction, run once it commits (groundwork-postgres's
    run-after-commit!) (only a file no row names through a reference to
-   :file/key goes). The provider's webhooks are postbox's, at the :postbox
+   :file/key goes). The provider's webhooks are groundwork-email's, at the :email
    :webhooks paths, handing events to the app's :on-delivery-event (by
-   tag) and :on-inbound-email (by mailbox), each run as doorman's system
-   actor :postbox, which the app's sentences give what it may do:
-   {:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :postbox]}."
+   tag) and :on-inbound-email (by mailbox), each run as groundwork-access's system
+   actor :email, which the app's sentences give what it may do:
+   {:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :email]}."
   (:require
    [clojure.string :as str]
-   [attic.api :as attic]
-   [backroom.api :as backroom]
-   [cellar.api :as database]
-   [dictionary.api :as dictionary]
-   [doorman.api :as doorman]
-   [doorbell.api :as doorbell]
+   [groundwork-file-storage.api :as file-storage]
+   [groundwork-background-jobs.api :as background-jobs]
+   [groundwork-postgres.api :as postgres]
+   [groundwork-languages.api :as languages]
+   [groundwork-access.api :as access]
+   [groundwork-live-updates.api :as live-updates]
    [groundwork.server.main.answer-as :as answer-as]
    [groundwork.server.main.app-routes :as app-routes]
    [groundwork.server.main.daily-caps :as daily-caps]
@@ -150,15 +150,15 @@
    [groundwork.server.main.run-once :as run-once]
    [groundwork.server.main.tools :as tools]
    [groundwork.server.main.visitors :as visitors]
-   [logbook.api :as logbook]
-   [bridge.api :as bridge]
+   [groundwork-logs.api :as logs]
+   [groundwork-bridge.api :as bridge]
    [malli.core :as malli]
    [malli.error :as malli-error]
-   [meter.api :as meter]
-   [postbox.api :as postbox]
-   [safe.api :as safe]
-   [study.api :as study]
-   [wire.api :as wire]))
+   [groundwork-metrics.api :as groundwork-metrics]
+   [groundwork-email.api :as email]
+   [groundwork-settings.api :as settings]
+   [groundwork-live-repl.api :as live-repl]
+   [groundwork-shaped-json.api :as shaped-json]))
 
 (def page-settings-shape
   "The :page part of the settings, every key required: the page shell's
@@ -216,7 +216,7 @@
 
 (def migration-settings-shape
   "The :migration part of the settings, every key required: the time limits
-   each part of a migration runs under (cellar's migrate! options), in
+   each part of a migration runs under (groundwork-postgres's migrate! options), in
    place of the pool's. :none is no limit.
    :instant-part: the catalog changes, in one transaction before the app
    starts; a :lock-timeout-ms keeps an ALTER queued behind a long
@@ -226,14 +226,14 @@
    [:instant-part part-limits-shape]
    [:slow-part part-limits-shape]])
 
-(def doorbell-settings-shape
-  "The :doorbell part of the settings, every key required, both doorbell's:
+(def live-updates-settings-shape
+  "The :live-updates part of the settings, every key required, both groundwork-live-updates's:
    :store, the browser's question store's, which the page carries
-   (doorbell's store-settings-shape); :listening, the server's listener's
-   (doorbell's listening-settings-shape)."
+   (groundwork-live-updates's store-settings-shape); :listening, the server's listener's
+   (groundwork-live-updates's listening-settings-shape)."
   [:map {:closed true}
-   [:store doorbell/store-settings-shape]
-   [:listening doorbell/listening-settings-shape]])
+   [:store live-updates/store-settings-shape]
+   [:listening live-updates/listening-settings-shape]])
 
 (defn- leaves-entry-folder-and-log-out? [watch-options]
   (not-any? #(contains? watch-options %) [:entry :modules :files-folder :log]))
@@ -254,12 +254,12 @@
              [:fn {:error/message ":entry, :modules, :files-folder and :log come from :browser-entry, :browser-modules, :page :files :folder and the app's log"}
               leaves-entry-folder-and-log-out?]]]]])
 
-(def browser-wire-settings-shape
-  "The :browser-wire part of the settings, every key required: the
-   browser's wire settings (wire's settings-shape in the browser) but
+(def browser-shaped-json-settings-shape
+  "The :browser-shaped-json part of the settings, every key required: the
+   browser's groundwork-shaped-json settings (groundwork-shaped-json's settings-shape in the browser) but
    :exact-decimals, a function, which the app's browser start hands to
    groundwork.browser.main's start-app!. The page carries them.
-   :most-shapes-kept: how many shapes' tools the browser's wire keeps
+   :most-shapes-kept: how many shapes' tools the browser's groundwork-shaped-json keeps
    before all are forgotten and made again as used.
    :most-keys-kept: the same for the JSON keys' keywords."
   [:map {:closed true}
@@ -271,22 +271,22 @@
    monitor pulls, and the browser's (groundwork.server.main.errors).
    :path: the GET a monitor asks the kept errors from, \"/groundwork/errors\".
    :token: the bearer token it must send (Authorization: Bearer …), a
-   secret of safe's (#secret :errors/token in the app's settings file);
+   secret of groundwork-settings's (#secret :errors/token in the app's settings file);
    text written out is refused.
    :browser-rate-limit: how many browser errors one asker may send,
    {:max 10 :per-ms 60000}; more are answered \"Too many requests.\" and
    not written."
   [:map {:closed true}
    [:path :string]
-   [:token safe/secret]
+   [:token settings/secret]
    [:browser-rate-limit [:map {:closed true}
                          [:max [:int {:min 1}]]
                          [:per-ms [:int {:min 1}]]]]])
 
 (def my-actions-settings-shape
   "The :my-actions part of the settings, every key required: groundwork's
-   :doorman/my-actions handler (doorman's make-my-actions-handler), which
-   the browser asks for parlor's \"can I?\".
+   :groundwork-access/my-actions handler (groundwork-access's make-my-actions-handler), which
+   the browser asks for groundwork-screens's \"can I?\".
    :rate-limit: how many times one asker may ask, {:max 60 :per-ms
    60000}, or nil for no limit; more are answered \"Too many requests.\"."
   [:map {:closed true}
@@ -297,12 +297,12 @@
 (def visitors-settings-shape
   "The :visitors part of the settings, every key required: the route that
    gives a visitor (someone not signed in) a session of their own,
-   doorman's start-visitor-session! (groundwork.server.main.visitors).
+   groundwork-access's start-visitor-session! (groundwork.server.main.visitors).
    :path: the POST the browser sends the first time the app keeps
    something for a visitor, \"/groundwork/visitor\"; the page carries it to
    groundwork.browser.main's start-visitor-session!.
    :rate-limit: how many times one asker, told apart by their address
-   (the :server settings' :client-address-header behind a proxy), may POST
+   (the :bridge settings' :client-address-header behind a proxy), may POST
    it, {:max 10 :per-ms 60000}; more are answered 429 and make no session."
   [:map {:closed true}
    [:path [:re #"^/"]]
@@ -310,42 +310,42 @@
                  [:max [:int {:min 1}]]
                  [:per-ms [:int {:min 1}]]]]])
 
-(def attic-settings-shape
-  "The :attic part of the settings, every key required, both attic's:
-   :storage, the bucket's (attic's settings-shape: :endpoint :bucket
+(def file-storage-settings-shape
+  "The :file-storage part of the settings, every key required, both groundwork-file-storage's:
+   :storage, the bucket's (groundwork-file-storage's settings-shape: :endpoint :bucket
    :access-key :secret-key :region :public-url :link-expiry-seconds
    :connect-timeout-ms :request-timeout-ms :retries), which groundwork makes
-   the app's one attic from; :upload, the upload route's: :path, the POST
-   the browser sends files to, \"/groundwork/files\", and attic's upload
-   settings (attic's upload-settings-shape: :key-prefix
+   the app's one file storage from; :upload, the upload route's: :path, the POST
+   the browser sends files to, \"/groundwork/files\", and groundwork-file-storage's upload
+   settings (groundwork-file-storage's upload-settings-shape: :key-prefix
    :allowed-content-types :max-file-bytes :max-files). :max-file-bytes
-   must be below the :server settings' :max-body-bytes, which holds the
+   must be below the :bridge settings' :max-body-bytes, which holds the
    whole upload."
   [:map {:closed true}
-   [:storage attic/settings-shape]
-   [:upload (into [:map {:closed true} [:path [:re #"^/"]]] (drop 2 attic/upload-settings-shape))]])
+   [:storage file-storage/settings-shape]
+   [:upload (into [:map {:closed true} [:path [:re #"^/"]]] (drop 2 file-storage/upload-settings-shape))]])
 
-(def postbox-settings-shape
-  "The :postbox part of the settings, every key required, both postbox's:
-   :sending, the postbox's (postbox's settings-shape: :provider, :postmark
+(def email-settings-shape
+  "The :email part of the settings, every key required, both groundwork-email's:
+   :sending, the mailer's (groundwork-email's settings-shape: :provider, :postmark
    or :log, :tags, :background-job), which groundwork makes the app's one
-   postbox from; :webhooks, the provider's two routes (postbox's
+   groundwork-email from; :webhooks, the provider's two routes (groundwork-email's
    webhook-settings-shape: :delivery-path :inbound-path :token
    :inbound-domain)."
   [:map {:closed true}
-   [:sending postbox/settings-shape]
-   [:webhooks postbox/webhook-settings-shape]])
+   [:sending email/settings-shape]
+   [:webhooks email/webhook-settings-shape]])
 
 (def daily-caps-settings-shape
   "The :daily-caps part of the settings, every key required: the
    handlers' :daily-caps, counted in Postgres (groundwork.server.main.daily-caps).
    :pool-size: the connections of the pool the counts run on, a pool of
-   their own (the :database settings, but this size), so a handler's
+   their own (the :postgres settings, but this size), so a handler's
    transaction never waits for a second connection of the app's pool;
    its metrics are on a meter of its own, not served.
    :forget-counts: groundwork's background job that deletes the counts of
-   the days before today: :cron, when it runs (UTC, backroom's cron line,
-   \"15 0 * * *\"); :timeout-ms and :attempts, backroom's for its kind."
+   the days before today: :cron, when it runs (UTC, groundwork-background-jobs's cron line,
+   \"15 0 * * *\"); :timeout-ms and :attempts, groundwork-background-jobs's for its kind."
   [:map {:closed true}
    [:pool-size [:int {:min 1}]]
    [:forget-counts [:map {:closed true}
@@ -365,9 +365,9 @@
    :keep-keys-ms: how long a key is kept; a repeat after it runs again
    (a day, 86400000).
    :forget-keys: groundwork's background job that deletes the keys kept longer:
-   :cron, when it runs (UTC, backroom's cron line, \"*/15 * * * *\");
-   :timeout-ms and :attempts, backroom's for its kind.
-   :retry-writes: the browser's, which the page carries to parlor: a write
+   :cron, when it runs (UTC, groundwork-background-jobs's cron line, \"*/15 * * * *\");
+   :timeout-ms and :attempts, groundwork-background-jobs's for its kind.
+   :retry-writes: the browser's, which the page carries to groundwork-screens: a write
    that got no answer is sent again with the same key, up to :times more,
    :wait-ms apart; the retries must end before the key is forgotten."
   [:and
@@ -385,52 +385,51 @@
 
 (def settings-shape
   "The whole settings, every key required; each library brings its part.
-   :wire is wire's settings on the JVM (wire.api/settings-shape), which
-   groundwork makes the app's one wire from; :browser-wire the browser's.
-   :logbook is logbook's settings (logbook.api/settings-shape), which
-   groundwork makes the app's one logbook from; :errors where its kept errors
+   :shaped-json is groundwork-shaped-json's settings on the JVM (groundwork-shaped-json.api/settings-shape), which
+   groundwork makes the app's one shaper from; :browser-shaped-json the browser's.
+   :logs is groundwork-logs's settings (groundwork-logs.api/settings-shape), which
+   groundwork makes the app's one logger from; :errors where its kept errors
    are pulled, and how often a browser may send one; :my-actions how often
    a browser may ask what its person may do; :run-once how long a write's
    one-time key is kept, and how often a browser retries a write;
    :daily-caps the pool the handlers' daily caps are counted on, and the
    job that forgets old counts;
-   :languages the app's languages (dictionary's settings), which a
-   request's, and its page's, is picked from; :meter the app's one
-   meter's (meter.api/settings-shape: :jvm-metrics, and
+   :languages the app's languages (groundwork-languages's settings), which a
+   request's, and its page's, is picked from; :metrics the app's one
+   groundwork-metrics's (groundwork-metrics.api/settings-shape: :jvm-metrics, and
    :most-series-per-metric, which must cover the largest declaration:
    bridge's messages_total, (handlers+1)×24, its answer_seconds,
-   (handlers+1)×(buckets+3), cellar's query_seconds, (queries+1)×(buckets+3),
-   the handlers counting groundwork's two and the queries every library's);
-   :metrics where Prometheus pulls its text (meter's routes settings,
-   :path and :token); :study the REPL's (study.api/settings-shape:
+   (handlers+1)×(buckets+3), groundwork-postgres's query_seconds, (queries+1)×(buckets+3),
+   the handlers counting groundwork's two and the queries every library's)
+   and its :route, where Prometheus pulls its text (groundwork-metrics.api/routes-settings-shape:
+   :path and :token); :live-repl the REPL's (groundwork-live-repl.api/settings-shape:
    :development, :ssh-only or :off with the emergency switch); :visitors
-   where a visitor's session is started; :attic the app's files, the
-   bucket and the upload route; :postbox its email, the provider and the
+   where a visitor's session is started; :file-storage the app's files, the
+   bucket and the upload route; :email its email, the provider and the
    webhooks."
   [:map {:closed true}
    [:version :string]
-   [:wire wire/settings-shape]
-   [:logbook logbook/settings-shape]
-   [:meter meter/settings-shape]
-   [:metrics meter/routes-settings-shape]
-   [:study study/settings-shape]
+   [:shaped-json shaped-json/settings-shape]
+   [:logs logs/settings-shape]
+   [:metrics (into groundwork-metrics/settings-shape [[:route groundwork-metrics/routes-settings-shape]])]
+   [:live-repl live-repl/settings-shape]
    [:errors errors-settings-shape]
-   [:browser-wire browser-wire-settings-shape]
+   [:browser-shaped-json browser-shaped-json-settings-shape]
    [:migrate-at-start? :boolean]
    [:browser-build browser-build-settings-shape]
-   [:server bridge/settings-shape]
-   [:database database/settings-shape]
+   [:bridge bridge/settings-shape]
+   [:postgres postgres/settings-shape]
    [:migration migration-settings-shape]
-   [:sessions doorman/settings-shape]
+   [:access access/settings-shape]
    [:visitors visitors-settings-shape]
    [:my-actions my-actions-settings-shape]
    [:run-once run-once-settings-shape]
    [:daily-caps daily-caps-settings-shape]
-   [:languages dictionary/settings-shape]
-   [:background-jobs backroom/settings-shape]
-   [:attic attic-settings-shape]
-   [:postbox postbox-settings-shape]
-   [:doorbell doorbell-settings-shape]
+   [:languages languages/settings-shape]
+   [:background-jobs background-jobs/settings-shape]
+   [:file-storage file-storage-settings-shape]
+   [:email email-settings-shape]
+   [:live-updates live-updates-settings-shape]
    [:page page-settings-shape]
    [:health health-settings-shape]])
 
@@ -440,46 +439,46 @@
 
 (defn check-settings
   "Returns the settings; throws with every problem at once. Checked by
-   malli itself: the settings are values the app hands in, and the wire is
+   malli itself: the settings are values the app hands in, and the shaper is
    made from them only once they fit. Then across parts: one uploaded
    file fits in the server's body limit."
   [settings]
   (when-let [explanation (malli/explain settings-shape settings)]
     (throw-bad-settings (malli-error/humanize explanation)))
-  (when (>= (get-in settings [:attic :upload :max-file-bytes]) (get-in settings [:server :max-body-bytes]))
-    (throw-bad-settings {:attic {:upload {:max-file-bytes ["should be below the :server settings' :max-body-bytes, which holds the whole upload"]}}}))
+  (when (>= (get-in settings [:file-storage :upload :max-file-bytes]) (get-in settings [:bridge :max-body-bytes]))
+    (throw-bad-settings {:file-storage {:upload {:max-file-bytes ["should be below the :bridge settings' :max-body-bytes, which holds the whole upload"]}}}))
   settings)
 
 (def groundwork-tables
-  "doorman's tables, backroom's, attic's and postbox's, each in their own
+  "groundwork-access's tables, groundwork-background-jobs's, groundwork-file-storage's and groundwork-email's, each in their own
    folder, and groundwork's own one-time keys (groundwork.run_once_keys) and
    daily caps' counts (groundwork.daily_cap_counts), put with the app's. None
-   knows of doorbell; their doorbells are said here: the sessions, the
+   knows of groundwork-live-updates; their live updates are said here: the sessions, the
    tokens, the background jobs, the files, the emails, the keys and the
-   counts silent; doorman's access tables tell, so a screen's
-   :doorman/my-actions is asked again when a membership or a role
+   counts silent; groundwork-access's access tables tell, so a screen's
+   :groundwork-access/my-actions is asked again when a membership or a role
    changes."
-  (vec (concat [(assoc run-once/run-once-keys-table :doorbell [:silent "no screen shows one-time keys"])
-                (assoc daily-caps/daily-cap-counts-table :doorbell [:silent "no screen shows the daily caps' counts"])]
-               (map #(assoc % :doorbell [:silent "no screen shows sessions"]) [doorman/sessions-table])
-               (map #(assoc % :doorbell [:silent "doorman's list-tokens reads it off a message's transaction: no screen's notes name it"]) [doorman/tokens-table])
-               (map #(assoc % :doorbell :tell) doorman/access-tables)
-               (map #(assoc % :doorbell [:silent "no screen shows background jobs"]) backroom/background-jobs-tables)
-               [(assoc attic/files-table :doorbell [:silent "a screen shows the app's rows that name a file, not attic's"])
-                (assoc postbox/emails-table :doorbell [:silent "no screen shows postbox's emails"])])))
+  (vec (concat [(assoc run-once/run-once-keys-table :live-updates [:silent "no screen shows one-time keys"])
+                (assoc daily-caps/daily-cap-counts-table :live-updates [:silent "no screen shows the daily caps' counts"])]
+               (map #(assoc % :live-updates [:silent "no screen shows sessions"]) [access/sessions-table])
+               (map #(assoc % :live-updates [:silent "groundwork-access's list-tokens reads it off a message's transaction: no screen's notes name it"]) [access/tokens-table])
+               (map #(assoc % :live-updates :tell) access/access-tables)
+               (map #(assoc % :live-updates [:silent "no screen shows background jobs"]) background-jobs/background-jobs-tables)
+               [(assoc file-storage/files-table :live-updates [:silent "a screen shows the app's rows that name a file, not groundwork-file-storage's"])
+                (assoc email/emails-table :live-updates [:silent "no screen shows groundwork-email's emails"])])))
 
 (defn- check-tables-leave-gates-and-on-change-out
-  "The app's table maps say :access and :doorbell, never :gates or
-   :on-change: those are what doorman and doorbell put on them from
-   :access and :doorbell, and a table's own would be overwritten without
-   a word. Throws naming every table that writes either, as doorman
+  "The app's table maps say :access and :live-updates, never :gates or
+   :on-change: those are what groundwork-access and groundwork-live-updates put on them from
+   :access and :live-updates, and a table's own would be overwritten without
+   a word. Throws naming every table that writes either, as groundwork-access
    refuses a handler's own :run-steps-in."
   [tables]
   (let [problems (for [{:keys [table] :as table-map} tables
                        taken [:gates :on-change]
                        :when (contains? table-map taken)]
                    (str table " writes its own " taken ", which groundwork puts on it: "
-                        (if (= :gates taken) "doorman's, from its :access" "doorbell's, from its :doorbell")))]
+                        (if (= :gates taken) "groundwork-access's, from its :access" "groundwork-live-updates's, from its :live-updates")))]
     (when (seq problems)
       (throw (ex-info (str "The tables have problems: " (pr-str (vec problems)))
                       {:type :groundwork.server.main/bad-tables :problems (vec problems)}))))
@@ -492,21 +491,21 @@
   (into (vec (check-tables-leave-gates-and-on-change-out tables)) groundwork-tables))
 
 (defn make-ready-tables
-  "The app's tables and groundwork's, with their gates (doorman) and change
-   triggers (doorbell): what migrate brings Postgres to. An app's table
+  "The app's tables and groundwork's, with their gates (groundwork-access) and change
+   triggers (groundwork-live-updates): what migrate brings Postgres to. An app's table
    that writes its own :gates or :on-change is refused, named."
   [{:keys [scope-kinds] :as app}]
   (-> (list-all-tables app)
-      (doorman/put-gates-on-tables scope-kinds)
-      (doorbell/put-doorbell-on-tables)))
+      (access/put-gates-on-tables scope-kinds)
+      (live-updates/put-live-updates-on-tables)))
 
 (def ^:private app-database-shape
-  "The app map's database objects beside its tables, as cellar declares
+  "The app map's database objects beside its tables, as groundwork-postgres declares
    them, every key required: :extensions, the extensions' names, [] for
    none; :functions, the .sql files on the classpath of the app's own
    functions, one CREATE OR REPLACE FUNCTION each, [] for none; :views,
    the .sql files of its views, one CREATE VIEW each, in the order they
-   are made, [] for none. cellar drops a function or a view in the
+   are made, [] for none. groundwork-postgres drops a function or a view in the
    tables' folders that nothing declared makes."
   [:map
    [:extensions [:sequential :string]]
@@ -520,75 +519,75 @@
                       {:type :groundwork.server.main/bad-app :errors errors})))))
 
 (defn- make-declared
-  "What migrate brings Postgres to, as cellar takes it: the ready tables,
-   the app's extensions and views, and its functions with doorman's and
-   doorbell's own (their function-files) and those doorman makes from
-   the sentences (make-access-functions), declared to cellar as made
+  "What migrate brings Postgres to, as groundwork-postgres takes it: the ready tables,
+   the app's extensions and views, and its functions with groundwork-access's and
+   groundwork-live-updates's own (their function-files) and those groundwork-access makes from
+   the sentences (make-access-functions), declared to groundwork-postgres as made
    functions, so it makes them before the gates and drops one whose
    sentence is gone."
   [{:keys [scope-kinds] :as app}]
   {:tables     (make-ready-tables app)
    :extensions (:extensions app)
-   :functions  (-> (vec doorman/function-files)
-                   (into (doorman/make-access-functions (list-all-tables app) scope-kinds))
-                   (into doorbell/function-files)
+   :functions  (-> (vec access/function-files)
+                   (into (access/make-access-functions (list-all-tables app) scope-kinds))
+                   (into live-updates/function-files)
                    (into (:functions app)))
    :views      (:views app)})
 
 (defn- migrate! [pool app log]
-  (database/migrate! pool (make-declared app) (:changes app) (assoc (get-in app [:settings :migration]) :log log)))
+  (postgres/migrate! pool (make-declared app) (:changes app) (assoc (get-in app [:settings :migration]) :log log)))
 
 (defn migrate-app!
   "For the deploy, before the app starts: as the role that owns the tables
    (owner-db-settings), brings Postgres to the tables, the app's extensions,
-   functions and views (doorman's and doorbell's own functions with them,
-   and those doorman makes from the sentences)
+   functions and views (groundwork-access's and groundwork-live-updates's own functions with them,
+   and those groundwork-access makes from the sentences)
    and changes (waiting for the slow part too), each part under
    the :migration settings' time limits, and lets the app's own role
    (app-role) use them. Each planned statement is written to a log made
-   from the :logbook settings (:cellar/planned). The owner's pool counts
-   on a meter of its own, never served (:jvm-metrics false): cellar takes
+   from the :logs settings (:groundwork-postgres/planned). The owner's pool counts
+   on a meter of its own, never served (:jvm-metrics false): groundwork-postgres takes
    one meter per pool, and the deploy's run has no /metrics."
   [app owner-db-settings app-role]
   (check-app-database app)
   (let [settings (:settings app)
-        log      (logbook/log-function (logbook/make-logbook (:logbook settings)))
-        meter    (meter/make-meter {:jvm-metrics            false
-                                    :most-series-per-metric (get-in settings [:meter :most-series-per-metric])}
+        log      (logs/log-function (logs/make-logger (:logs settings)))
+        meter    (groundwork-metrics/make-meter {:jvm-metrics            false
+                                    :most-series-per-metric (get-in settings [:metrics :most-series-per-metric])}
                                    {:log log})
-        pool     (database/start-pool! owner-db-settings {:log log :meter meter})]
+        pool     (postgres/start-pool! owner-db-settings {:log log :meter meter})]
     (try
       (deref (:slow-part (migrate! pool app log)))
-      (database/grant-tables-to-role! pool (make-ready-tables app) app-role)
-      (finally (database/stop-pool! pool)))))
+      (postgres/grant-tables-to-role! pool (make-ready-tables app) app-role)
+      (finally (postgres/stop-pool! pool)))))
 
 (def ^:private find-powers-of-role
-  (database/make-query-from-sql-file "groundwork/server/main/find_powers_of_role.sql"))
+  (postgres/make-query-from-sql-file "groundwork/server/main/find_powers_of_role.sql"))
 
 (defn- find-folders [tables]
   (set (map #(or (some-> (namespace (:table %)) (str/replace "-" "_")) "public") tables)))
 
 (defn- refuse-unsafe-database! [pool app]
   (let [tables (make-ready-tables app)
-        {:keys [passes-gates owns-tables]} (database/find-one-row pool find-powers-of-role
+        {:keys [passes-gates owns-tables]} (postgres/find-one-row pool find-powers-of-role
                                                                   {:folders (str/join "," (find-folders tables))})]
     (when (or passes-gates owns-tables)
       (throw (ex-info "The app's database role owns tables or passes the gates; it must own nothing (run migrate-app! as the owner)"
                       {:type :groundwork.server.main/role-too-strong})))
-    (when-not (database/does-database-match-tables? pool (make-declared app) (:changes app))
+    (when-not (postgres/does-database-match-tables? pool (make-declared app) (:changes app))
       (throw (ex-info "The database isn't current: run migrate-app! first"
                       {:type :groundwork.server.main/not-migrated})))))
 
 (defn- add-my-actions-handler
-  "The handlers with groundwork's :doorman/my-actions, doorman's
-   make-my-actions-handler: the asker's actions for the browser (parlor's
+  "The handlers with groundwork's :groundwork-access/my-actions, groundwork-access's
+   make-my-actions-handler: the asker's actions for the browser (groundwork-screens's
    \"can I?\"). An app's own handler of that name is refused."
   [handlers pool {:keys [tables scope-kinds settings]} find-session-step]
-  (when (contains? handlers :doorman/my-actions)
-    (throw (ex-info "The handler name :doorman/my-actions is groundwork's own; the app's handlers use it"
-                    {:type :groundwork.server.main/handler-name-taken :handler :doorman/my-actions})))
-  (assoc handlers :doorman/my-actions
-         (doorman/make-my-actions-handler {:pool              pool
+  (when (contains? handlers :groundwork-access/my-actions)
+    (throw (ex-info "The handler name :groundwork-access/my-actions is groundwork's own; the app's handlers use it"
+                    {:type :groundwork.server.main/handler-name-taken :handler :groundwork-access/my-actions})))
+  (assoc handlers :groundwork-access/my-actions
+         (access/make-my-actions-handler {:pool              pool
                                            :tables            tables
                                            :scope-kinds       scope-kinds
                                            :find-session-step find-session-step
@@ -596,12 +595,12 @@
 
 (defn- make-ready-handlers [pool counting-pool {:keys [handlers tables scope-kinds settings] :as app} find-session-step]
   (-> handlers
-      (daily-caps/put-daily-caps-into-handlers counting-pool (get-in settings [:server :client-address-header]))
+      (daily-caps/put-daily-caps-into-handlers counting-pool (get-in settings [:bridge :client-address-header]))
       (run-once/put-run-once-into-handlers scope-kinds (get-in settings [:run-once :keep-keys-ms]))
-      (doorman/put-access-into-handlers {:pool pool :tables tables :scope-kinds scope-kinds
+      (access/put-access-into-handlers {:pool pool :tables tables :scope-kinds scope-kinds
                                          :find-session-step find-session-step})
       (add-my-actions-handler pool app find-session-step)
-      (doorbell/put-table-notes-into-handlers)))
+      (live-updates/put-table-notes-into-handlers)))
 
 (defn- make-all-ready-handlers
   "The handlers the server answers: the app's made ready, and
@@ -618,58 +617,58 @@
    their address, the proxy's header when the settings name one."
   [settings]
   (fn [request]
-    (or (doorman/find-session-key-of-request request (:sessions settings))
-        (bridge/find-client-address request (get-in settings [:server :client-address-header])))))
+    (or (access/find-session-key-of-request request (:access settings))
+        (bridge/find-client-address request (get-in settings [:bridge :client-address-header])))))
 
 (defn- check-texts-of-reasons!
   "Every reason a refusal may give has its text in every catalog that
-   shows (dictionary's check-texts-of-reasons): bridge's own, doorman's,
+   shows (groundwork-languages's check-texts-of-reasons): bridge's own, groundwork-access's,
    groundwork's run-once ones, and every ready handler's :refusals (the
-   app's, with doorman's and groundwork's added); the start is refused,
-   :dictionary/missing-texts, with every missing one at once."
+   app's, with groundwork-access's and groundwork's added); the start is refused,
+   :groundwork-languages/missing-texts, with every missing one at once."
   [texts ready-handlers]
-  (dictionary/check-texts-of-reasons texts (apply merge bridge/refusals doorman/refusals run-once/refusals
+  (languages/check-texts-of-reasons texts (apply merge bridge/refusals access/refusals run-once/refusals
                                                   (map :refusals (vals ready-handlers)))))
 
 (defn- run-as-system-actor!
-  "backroom's :run-in-transaction-as: a job's one transaction as its
-   kind's :system-actor, doorman's run-as-system!, read and write,
+  "groundwork-background-jobs's :run-in-transaction-as: a job's one transaction as its
+   kind's :system-actor, groundwork-access's run-as-system!, read and write,
    carrying the job's log (work kept with run-after-commit! that fails is
    written there, with the job's id and kind)."
   [pool system-actor log f]
-  (doorman/run-as-system! pool system-actor {:read-only? false :log log} f))
+  (access/run-as-system! pool system-actor {:read-only? false :log log} f))
 
-(def ^:private postbox-system-actor
-  "The system actor postbox's webhook functions run as (doorman's
+(def ^:private email-system-actor
+  "The system actor groundwork-email's webhook functions run as (groundwork-access's
    run-as-system!): the app's sentences give it what they may do,
-   {:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :postbox]}.
-   postbox's sending job runs as it too (make-postbox's :system-actor): it
-   reaches postbox.emails, a table without sentences."
-  :postbox)
+   {:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :email]}.
+   groundwork-email's sending job runs as it too (make-mailer's :system-actor): it
+   reaches groundwork_email.emails, a table without sentences."
+  :email)
 
 (defn- make-routes [{:keys [settings pages may-upload? on-delivery-event on-inbound-email routes tables scope-kinds]}
-                    {:keys [wire running-logbook log app-meter pool running-health handlers running-doorbell
-                            running-attic running-postbox find-session-step answer-as page-handler]}]
-  (-> (health/make-health-routes wire log app-meter pool running-health settings)
-      (into (errors/make-errors-routes wire running-logbook settings))
-      (into (meter/make-metrics-routes app-meter (:metrics settings)))
-      (into (visitors/make-visitor-routes wire pool settings))
-      (into (files/make-upload-routes running-attic wire log pool find-session-step may-upload? settings))
-      (into (postbox/make-webhook-routes running-postbox (get-in settings [:postbox :webhooks])
-                                         {:run-in-transaction #(doorman/run-as-system! pool postbox-system-actor {:read-only? false :log log} %)
+                    {:keys [shaper running-logger log app-meter pool running-health handlers running-live-updates
+                            running-file-storage running-mailer find-session-step answer-as page-handler]}]
+  (-> (health/make-health-routes shaper log app-meter pool running-health settings)
+      (into (errors/make-errors-routes shaper running-logger settings))
+      (into (groundwork-metrics/make-metrics-routes app-meter (get-in settings [:metrics :route])))
+      (into (visitors/make-visitor-routes shaper pool settings))
+      (into (files/make-upload-routes running-file-storage shaper log pool find-session-step may-upload? settings))
+      (into (email/make-webhook-routes running-mailer (get-in settings [:email :webhooks])
+                                         {:run-in-transaction #(access/run-as-system! pool email-system-actor {:read-only? false :log log} %)
                                           :on-delivery-event  on-delivery-event
                                           :on-inbound-email   on-inbound-email}))
       (into (bridge/make-routes-for-messages
              handlers
-             (:server settings)
-             {:wire                wire
+             (:bridge settings)
+             {:shaper                shaper
               :log                 log
               :meter               app-meter
               :find-rate-limit-key (make-rate-limit-key-finder settings)
               :on-sse-open  (fn [line]
                               (bridge/send-message-on-sse-line! line {:groundwork/version (:version settings)} nil)
-                              (doorbell/add-sse-line! running-doorbell line))
-              :on-sse-close #(doorbell/remove-sse-line! running-doorbell %)
+                              (live-updates/add-sse-line! running-live-updates line))
+              :on-sse-close #(live-updates/remove-sse-line! running-live-updates %)
               :on-ws-open   nil
               :on-ws-close  nil}))
       (into (app-routes/make-app-routes routes {:pool                        pool
@@ -700,16 +699,16 @@
   "browser-build checks the watch options, every key required, before anything
    starts: browser-build's make-build checks them and builds nothing."
   [app log]
-  ((requiring-resolve 'browser-build.api/make-build) :watch (make-watch-options app log)))
+  ((requiring-resolve 'groundwork-browser-build.api/make-build) :watch (make-watch-options app log)))
 
 (defn- start-watching-browser-build!
   "Loaded here, not required above: production has neither browser-build nor
    shadow-cljs."
   [app log]
-  ((requiring-resolve 'browser-build.api/start-watching!) (make-watch-options app log)))
+  ((requiring-resolve 'groundwork-browser-build.api/start-watching!) (make-watch-options app log)))
 
 (defn- stop-watching-browser-build! [watching]
-  ((requiring-resolve 'browser-build.api/stop-watching!) watching))
+  ((requiring-resolve 'groundwork-browser-build.api/stop-watching!) watching))
 
 (defn- start-part!
   "Starts one part, remembering how to stop it, so a failed start stops
@@ -733,43 +732,42 @@
 
 (def ^:private docs-of-parts
   "Each top settings key's shape var, whose docstring says what goes
-   there, for study's :explain-setting; :settings the whole one's."
+   there, for groundwork-live-repl's :explain-setting; :settings the whole one's."
   {:settings        #'settings-shape
    :version         #'settings-shape
-   :wire            #'wire/settings-shape
-   :logbook         #'logbook/settings-shape
-   :meter           #'meter/settings-shape
-   :metrics         #'meter/routes-settings-shape
-   :study           #'study/settings-shape
+   :shaper            #'shaped-json/settings-shape
+   :logs         #'logs/settings-shape
+   :metrics         #'groundwork-metrics/settings-shape
+   :live-repl           #'live-repl/settings-shape
    :errors          #'errors-settings-shape
-   :browser-wire    #'browser-wire-settings-shape
+   :browser-shaped-json    #'browser-shaped-json-settings-shape
    :migrate-at-start? #'settings-shape
    :browser-build   #'browser-build-settings-shape
-   :server          #'bridge/settings-shape
-   :database        #'database/settings-shape
+   :bridge          #'bridge/settings-shape
+   :postgres        #'postgres/settings-shape
    :migration       #'migration-settings-shape
-   :sessions        #'doorman/settings-shape
+   :access        #'access/settings-shape
    :visitors        #'visitors-settings-shape
    :my-actions      #'my-actions-settings-shape
    :run-once        #'run-once-settings-shape
    :daily-caps      #'daily-caps-settings-shape
-   :languages       #'dictionary/settings-shape
-   :background-jobs #'backroom/settings-shape
-   :attic           #'attic-settings-shape
-   :postbox         #'postbox-settings-shape
-   :doorbell        #'doorbell-settings-shape
+   :languages       #'languages/settings-shape
+   :background-jobs #'background-jobs/settings-shape
+   :file-storage           #'file-storage-settings-shape
+   :email         #'email-settings-shape
+   :live-updates        #'live-updates-settings-shape
    :page            #'page-settings-shape
    :health          #'health-settings-shape})
 
-(defn- make-study-tools
+(defn- make-live-repl-tools
   "groundwork's tools for the REPL (groundwork.server.main.tools), from the running
    app's parts."
-  [{:keys [handlers tables scope-kinds settings] :as app} wire log app-meter pool counting-pool]
+  [{:keys [handlers tables scope-kinds settings] :as app} shaper log app-meter pool counting-pool]
   (tools/make-tools {:make-ready-handlers #(make-all-ready-handlers pool counting-pool app %)
-                     :wire                wire
+                     :shaper                shaper
                      :log                 log
                      :meter               app-meter
-                     :metric-buckets      (get-in settings [:server :metric-buckets])
+                     :metric-buckets      (get-in settings [:bridge :metric-buckets])
                      :pool                pool
                      :handlers            handlers
                      :tables              tables
@@ -788,10 +786,10 @@
    files; :on-delivery-event, {tag (fn [event {:keys [transaction log]}])},
    a bounce or spam complaint by its email's tag, {} for none;
    :on-inbound-email, {mailbox (fn [email {:keys [transaction log]}])}, an
-   inbound email by its mailbox, {} for none. postbox checks the two maps'
-   tags and functions. Each runs in a transaction as doorman's system
-   actor :postbox (postbox-system-actor): the gates let it reach what the
-   app's sentences give [:system :postbox], the open rows and the tables
+   inbound email by its mailbox, {} for none. groundwork-email checks the two maps'
+   tags and functions. Each runs in a transaction as groundwork-access's system
+   actor :email (email-system-actor): the gates let it reach what the
+   app's sentences give [:system :email], the open rows and the tables
    without sentences; nothing else."
   [:map
    [:routes app-routes/routes-shape]
@@ -808,66 +806,66 @@
 
 (defn start-app!
   "Starts the app (see the namespace). Returns the running app, for stop-app!:
-   {:settings :wire :logbook :log :meter :texts :pool :counting-pool :attic :postbox :handlers :doorbell :workers :watching :health :server :study},
+   {:settings :shaper :logger :log :meter :texts :pool :counting-pool :file-storage :mailer :handlers :live-updates :workers :watching :health :server :live-repl},
    :counting-pool the pool the daily caps are counted on (the :daily-caps settings),
-   :attic the app's one attic (attic.api: store-file!, make-signed-link, …),
-   :postbox the app's one postbox (postbox.api: queue-email! in a write's
+   :file-storage the app's one file storage (groundwork-file-storage.api: store-file!, make-signed-link, …),
+   :mailer the app's one mailer (groundwork-email.api: queue-email! in a write's
    transaction),
-   :texts every catalog that shows, read once (dictionary's load-texts),
+   :texts every catalog that shows, read once (groundwork-languages's load-texts),
    for the server's own texts outside a request: an email, a PDF or a job
-   binds the language of its row, (dictionary/with-language texts \"de\"
-   (dictionary/tr :mail/subject {:order 7})),
-   :server holding the :port it listens on, :wire the app's one wire, made
-   from the :wire settings, :logbook the app's one logbook, made from the
-   :logbook settings, and :log its log function, for the app's own lines,
-   :meter the app's one meter, made from the :meter settings, which every
-   library counts on and the :metrics route serves (the app counts its own
-   there too: backroom's add-background-job-to-queue! takes it), :study the
-   REPL, started last (study's start-repl-server!, the :study settings,
-   groundwork's tools in study.tools)."
+   binds the language of its row, (languages/with-language texts \"de\"
+   (languages/tr :mail/subject {:order 7})),
+   :server holding the :port it listens on, :shaper the app's one shaper, made
+   from the :shaped-json settings, :logger the app's one logger, made from the
+   :logs settings, and :log its log function, for the app's own lines,
+   :meter the app's one meter, made from the :metrics settings, which every
+   library counts on and the :metrics settings' :route serves (the app counts its own
+   there too: groundwork-background-jobs's add-background-job-to-queue! takes it), :live-repl the
+   REPL, started last (groundwork-live-repl's start-repl-server!, the :live-repl settings,
+   groundwork's tools in groundwork-live-repl.tools)."
   [{:keys [settings background-job-kinds schedules tables] :as app}]
   (check-settings settings)
   (check-app-functions app)
   (check-app-database app)
   (check-modules-of-pages app)
   (check-tables-leave-gates-and-on-change-out tables)
-  (let [running-logbook (logbook/make-logbook (:logbook settings))
-        log             (logbook/log-function running-logbook)]
+  (let [running-logger (logs/make-logger (:logs settings))
+        log             (logs/log-function running-logger)]
     (when (is-watching? settings) (check-watch-options! app log))
-    (let [wire     (wire/make-wire-from-settings (:wire settings))
-          app-meter (meter/make-meter (:meter settings) {:log log})
+    (let [shaper     (shaped-json/make-shaper-from-settings (:shaped-json settings))
+          app-meter (groundwork-metrics/make-meter (dissoc (:metrics settings) :route) {:log log})
           stoppers (atom ())]
       (try
-        (let [texts             (dictionary/load-texts (:languages settings))
+        (let [texts             (languages/load-texts (:languages settings))
               pool              (start-part! stoppers
-                                             #(database/start-pool! (:database settings) {:log log :meter app-meter})
-                                             database/stop-pool!)
+                                             #(postgres/start-pool! (:postgres settings) {:log log :meter app-meter})
+                                             postgres/stop-pool!)
               counting-pool     (start-part! stoppers
-                                             #(database/start-pool! (assoc (:database settings) :pool-size (get-in settings [:daily-caps :pool-size]))
+                                             #(postgres/start-pool! (assoc (:postgres settings) :pool-size (get-in settings [:daily-caps :pool-size]))
                                                                     {:log   log
-                                                                     :meter (meter/make-meter {:jvm-metrics            false
-                                                                                               :most-series-per-metric (get-in settings [:meter :most-series-per-metric])}
+                                                                     :meter (groundwork-metrics/make-meter {:jvm-metrics            false
+                                                                                               :most-series-per-metric (get-in settings [:metrics :most-series-per-metric])}
                                                                                               {:log log})})
-                                             database/stop-pool!)
+                                             postgres/stop-pool!)
               _                 (if (:migrate-at-start? settings)
                                   @(:slow-part (migrate! pool app log))
                                   (refuse-unsafe-database! pool app))
-              running-attic     (start-part! stoppers
-                                             #(attic/make-attic (get-in settings [:attic :storage]) {:log log :meter app-meter})
-                                             attic/stop-attic!)
-              running-postbox   (postbox/make-postbox (get-in settings [:postbox :sending])
-                                                      {:log log :meter app-meter :wire wire :system-actor postbox-system-actor})
-              find-session-step (doorman/make-find-session-step pool (:sessions settings))
+              running-file-storage     (start-part! stoppers
+                                             #(file-storage/make-file-storage (get-in settings [:file-storage :storage]) {:log log :meter app-meter})
+                                             file-storage/stop-file-storage!)
+              running-mailer   (email/make-mailer (get-in settings [:email :sending])
+                                                      {:log log :meter app-meter :shaper shaper :system-actor email-system-actor})
+              find-session-step (access/make-find-session-step pool (:access settings))
               handlers          (make-all-ready-handlers pool counting-pool app find-session-step)
               _                 (check-texts-of-reasons! texts handlers)
               answer-as         (answer-as/make-answer-as {:handlers               handlers
-                                                           :wire                   wire
+                                                           :shaper                   shaper
                                                            :log                    log
                                                            :meter                  app-meter
-                                                           :metric-buckets         (get-in settings [:server :metric-buckets])
+                                                           :metric-buckets         (get-in settings [:bridge :metric-buckets])
                                                            :find-rate-limit-key    (make-rate-limit-key-finder settings)
-                                                           :buckets-before-cleanup (get-in settings [:server :rate-limit-buckets-before-cleanup])})
-              page-handler      (page/make-page-handler {:wire              wire
+                                                           :buckets-before-cleanup (get-in settings [:bridge :rate-limit-buckets-before-cleanup])})
+              page-handler      (page/make-page-handler {:shaper              shaper
                                                          :settings          settings
                                                          :browser-settings  (page/make-browser-settings settings (:pages app) (:browser-modules app))
                                                          :pages             (:pages app)
@@ -876,52 +874,52 @@
                                                          :log               log
                                                          :scope-kinds       (:scope-kinds app)
                                                          :find-session-step find-session-step})
-              running-doorbell  (start-part! stoppers
-                                             #(doorbell/start-listening! pool (get-in settings [:doorbell :listening])
+              running-live-updates  (start-part! stoppers
+                                             #(live-updates/start-listening! pool (get-in settings [:live-updates :listening])
                                                                          {:log log :meter app-meter :tables (make-ready-tables app)})
-                                             doorbell/stop-listening!)
+                                             live-updates/stop-listening!)
               workers           (start-part! stoppers
-                                             #(backroom/start-workers! pool (assoc (:background-jobs settings)
-                                                                                   :wire wire
+                                             #(background-jobs/start-workers! pool (assoc (:background-jobs settings)
+                                                                                   :shaper shaper
                                                                                    :log log
                                                                                    :meter app-meter
                                                                                    :run-in-transaction-as run-as-system-actor!
                                                                                    :kinds (conj (vec background-job-kinds)
                                                                                                 (run-once/make-forget-keys-kind (:run-once settings))
                                                                                                 (daily-caps/make-forget-counts-kind (:daily-caps settings))
-                                                                                                (postbox/make-background-job-kind running-postbox))
+                                                                                                (email/make-background-job-kind running-mailer))
                                                                                    :schedules (conj (vec schedules)
                                                                                                     (run-once/make-forget-keys-schedule (:run-once settings))
                                                                                                     (daily-caps/make-forget-counts-schedule (:daily-caps settings)))))
-                                             backroom/stop-workers!)
+                                             background-jobs/stop-workers!)
               watching          (when (is-watching? settings)
                                   (start-part! stoppers #(start-watching-browser-build! app log) stop-watching-browser-build!))
               running-health    (health/make-health)
-              _                 (metrics/declare-groundwork-metrics! app-meter running-logbook (:stage running-health) (:version settings))
+              _                 (metrics/declare-groundwork-metrics! app-meter running-logger (:stage running-health) (:version settings))
               server            (start-part! stoppers
                                              #(bridge/start-server!
                                                (page/wrap-languages
                                                 (bridge/make-ring-handler-from-routes
-                                                 (make-routes app {:wire wire :running-logbook running-logbook :log log :app-meter app-meter
+                                                 (make-routes app {:shaper shaper :running-logger running-logger :log log :app-meter app-meter
                                                                    :pool pool :running-health running-health :handlers handlers
-                                                                   :running-doorbell running-doorbell :running-attic running-attic
-                                                                   :running-postbox running-postbox :find-session-step find-session-step
+                                                                   :running-live-updates running-live-updates :running-file-storage running-file-storage
+                                                                   :running-mailer running-mailer :find-session-step find-session-step
                                                                    :answer-as answer-as :page-handler page-handler})
                                                  {:files     (get-in settings [:page :files])
                                                   :not-found page-handler})
                                                 (:languages settings)
                                                 texts)
-                                               (:server settings)
+                                               (:bridge settings)
                                                {:log log})
                                              bridge/stop-server!)]
           (health/mark-stage! running-health :started)
           (log :info :groundwork/started {:groundwork/version (:version settings) :groundwork/port (:port server)})
-          (let [repl (study/start-repl-server! (:study settings)
-                                               {:log log :tools (make-study-tools app wire log app-meter pool counting-pool)})]
-            {:settings settings :wire wire :logbook running-logbook :log log :meter app-meter :texts texts :pool pool
+          (let [repl (live-repl/start-repl-server! (:live-repl settings)
+                                               {:log log :tools (make-live-repl-tools app shaper log app-meter pool counting-pool)})]
+            {:settings settings :shaper shaper :logger running-logger :log log :meter app-meter :texts texts :pool pool
              :counting-pool counting-pool
-             :attic running-attic :postbox running-postbox :handlers handlers :doorbell running-doorbell :workers workers :watching watching :health running-health
-             :server server :study repl}))
+             :file-storage running-file-storage :mailer running-mailer :handlers handlers :live-updates running-live-updates :workers workers :watching watching :health running-health
+             :server server :live-repl repl}))
         (catch Throwable e
           (doseq [stop @stoppers] (stop))
           (throw e))))))
@@ -930,17 +928,17 @@
   "Closes the REPL first, then answers ready with 503 for the :health
    settings' :not-ready-before-stop-ms, then stops taking requests, stops
    the watcher, lets running background jobs finish, stops listening,
-   stops the attic's client, closes the counting pool and the pool."
-  [{:keys [settings log pool counting-pool server workers watching] running-doorbell :doorbell running-health :health repl :study
-    running-attic :attic}]
-  (study/stop-repl-server! repl)
+   stops the file storage's client, closes the counting pool and the pool."
+  [{:keys [settings log pool counting-pool server workers watching] running-live-updates :live-updates running-health :health repl :live-repl
+    running-file-storage :file-storage}]
+  (live-repl/stop-repl-server! repl)
   (log :info :groundwork/stopping {:groundwork/version (:version settings)})
   (health/mark-stage! running-health :stopping)
   (Thread/sleep (long (get-in settings [:health :not-ready-before-stop-ms])))
   (bridge/stop-server! server)
   (when watching (stop-watching-browser-build! watching))
-  (backroom/stop-workers! workers)
-  (doorbell/stop-listening! running-doorbell)
-  (attic/stop-attic! running-attic)
-  (database/stop-pool! counting-pool)
-  (database/stop-pool! pool))
+  (background-jobs/stop-workers! workers)
+  (live-updates/stop-listening! running-live-updates)
+  (file-storage/stop-file-storage! running-file-storage)
+  (postgres/stop-pool! counting-pool)
+  (postgres/stop-pool! pool))

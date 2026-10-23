@@ -1,5 +1,7 @@
 # doorbell comes from its own repository
 
+> **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): doorbell is groundwork-live-updates now (github.com/p4ulcristian/groundwork-live-updates, `groundwork-live-updates.api`), a table map's `:doorbell` its `:live-updates`.
+
 > **Changed in part** by [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md) (2026-10-23): doorman's access tables tell; the sessions and backroom's stay silent.
 
 > Changes in part [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md), [sync keeps screens in step with the database](2026-10-22-sync-keeps-screens-in-step.md), [Nothing asks before the start](2026-10-13-nothing-asks-before-the-start.md), [Groundwork's own tables are table maps, in their own folder](2026-10-22-groundworks-tables-are-maps-in-their-own-folder.md) and [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md): sync is no longer a folder on each side of the tree; it is one library of its own, with its own names.

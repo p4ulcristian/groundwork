@@ -1,5 +1,7 @@
 # doorman comes from its own repository
 
+> **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): doorman is groundwork-access now (github.com/p4ulcristian/groundwork-access, `groundwork-access.api`).
+
 > **Changed in part** by [The browser start starts parlor; the server answers "what may I do?"](2026-10-23-the-browser-start-starts-parlor.md) (2026-10-23): doorman's access tables tell; the sessions and backroom's stay silent.
 
 > Changes in part [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md), [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md), [Nine libraries, by the questions an app asks](2026-10-22-nine-libraries-by-the-questions-an-app-asks.md), [A library says where it runs; sessions and access stay apart](2026-10-22-a-library-says-where-it-runs.md) and [Groundwork's own tables are table maps, in their own folder](2026-10-22-groundworks-tables-are-maps-in-their-own-folder.md): sessions and access are no longer folders in the tree, they are one library, not two, and their tables are in its folder, not Groundwork's.

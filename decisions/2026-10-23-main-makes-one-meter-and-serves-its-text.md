@@ -1,5 +1,7 @@
 # main makes one meter, hands it to every library, and serves its text
 
+> **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): meter is groundwork-metrics; its settings and its route's are one `:metrics` section, the route's under `:route`.
+
 > The user's decision, 2026-10-23 (meter v0.1.2; cellar v0.4, backroom v0.5, mailroom v0.7 and doorbell v0.5 count on the app's meter). Builds on [main makes one logbook and passes its log to every library](2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md) and meter's [A library takes the meter as :meter](https://github.com/p4ulcristian/meter/blob/main/decisions/2026-10-23-a-library-takes-the-meter-as-meter.md).
 
 **Decision:**

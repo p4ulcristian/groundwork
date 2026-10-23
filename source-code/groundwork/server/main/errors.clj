@@ -3,10 +3,10 @@
 
    The errors route: a GET at the :errors settings' :path, outside
    sessions, access and rate limits, answered only with the settings'
-   :token, a secret of safe's, as a bearer token (Authorization: Bearer …,
-   compared in constant time by safe/equal?; else 401). ?since=N answers, as a JSON array, the :error lines
-   logbook keeps whose number is after N, oldest first, each as written
-   with its \"seq\" (logbook's list-errors-since):
+   :token, a secret of groundwork-settings's, as a bearer token (Authorization: Bearer …,
+   compared in constant time by settings/equal?; else 401). ?since=N answers, as a JSON array, the :error lines
+   groundwork-logs keeps whose number is after N, oldest first, each as written
+   with its \"seq\" (groundwork-logs's list-errors-since):
 
      GET /groundwork/errors?since=41
      Authorization: Bearer …
@@ -26,24 +26,24 @@
    the log."
   (:require
    [clojure.string :as str]
-   [doorman.api :as doorman]
-   [logbook.api :as logbook]
-   [bridge.api :as bridge]
-   [safe.api :as safe]
-   [wire.api :as wire]))
+   [groundwork-access.api :as access]
+   [groundwork-logs.api :as logs]
+   [groundwork-bridge.api :as bridge]
+   [groundwork-settings.api :as settings]
+   [groundwork-shaped-json.api :as shaped-json]))
 
 ;; -----------------------------------------------------------------------------
 ;; The errors route
 
 (defn- has-token?
   "Whether the request carries the token (a secret) as its bearer token,
-   Authorization: Bearer <token>. The token is compared by safe/equal?, in
+   Authorization: Bearer <token>. The token is compared by settings/equal?, in
    constant time whatever its length and wherever the two first differ."
   [request token]
   (let [given (get-in request [:headers "authorization"])]
     (and (string? given)
          (str/starts-with? given "Bearer ")
-         (safe/equal? token (subs given (count "Bearer "))))))
+         (settings/equal? token (subs given (count "Bearer "))))))
 
 (defn- read-since
   "?since=N's N, or nil when it is missing or not a whole number from 0."
@@ -62,15 +62,15 @@
 
 (defn make-errors-routes
   "The errors route, at the :errors settings' :path, as reitit data,
-   answered as JSON by the app's wire."
-  [wire logbook {{:keys [path token]} :errors}]
+   answered as JSON by the app's shaper."
+  [shaper logger {{:keys [path token]} :errors}]
   [[path {:get {:handler (fn [request]
                            (if-not (has-token? request token)
                              not-allowed
                              (if-let [since (read-since request)]
                                {:status  200
                                 :headers {"content-type" "application/json" "cache-control" "no-store"}
-                                :body    (wire/turn-data-into-json-text wire (logbook/list-errors-since logbook since))}
+                                :body    (shaped-json/turn-data-into-json-text shaper (logs/list-errors-since logger since))}
                                no-since)))}}]])
 
 ;; -----------------------------------------------------------------------------
@@ -91,7 +91,7 @@
 
 (def ^:private write-browser-error
   {:name  :groundwork/write-browser-error
-   :enter (fn [{:bridge/keys [log message-data] :as context}]
+   :enter (fn [{:groundwork-bridge/keys [log message-data] :as context}]
             (log :error :browser/error {:browser/kind    (:kind message-data)
                                         :browser/version (:version message-data)
                                         :browser/message (:message message-data)
@@ -100,14 +100,14 @@
             (bridge/add-answer-to-context context true))})
 
 (def browser-error-refusals
-  "The reasons :groundwork/browser-error may refuse with: doorman's
-   :doorman/not-allowed, its find-session step's (another site's request, a
-   cookie and a token at once). Not put through doorman's access, so it
+  "The reasons :groundwork/browser-error may refuse with: groundwork-access's
+   :groundwork-access/not-allowed, its find-session step's (another site's request, a
+   cookie and a token at once). Not put through groundwork-access's access, so it
    declares it itself; the browser's shape says the same."
-  (select-keys doorman/refusals [:doorman/not-allowed]))
+  (select-keys access/refusals [:groundwork-access/not-allowed]))
 
 (defn make-browser-error-handler
-  "The :groundwork/browser-error handler: doorman's find-session step, then the
+  "The :groundwork/browser-error handler: groundwork-access's find-session step, then the
    error written to the message's log at :error, answered true; limited
    per asker by rate-limit, the :errors settings' :browser-rate-limit."
   [find-session-step rate-limit]

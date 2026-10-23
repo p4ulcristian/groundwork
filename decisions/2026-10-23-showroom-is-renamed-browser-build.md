@@ -1,5 +1,7 @@
 # showroom is renamed browser-build
 
+> **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): browser-build keeps its name; its repository and namespaces are groundwork-browser-build.
+
 > Changes in part [showroom comes from its own repository](2026-10-22-showroom-comes-from-its-own-repository.md): the library's name, repository and keys.
 
 **Decision:** groundwork takes browser-build, the library named showroom until now, from github.com/p4ulcristian/browser-build (`io.github.p4ulcristian/browser-build`, v0.4.3), in the `:browser-build` and `:browser-release` aliases only, through `browser-build.api` only; `libraries.edn` and `libraries_test.clj` say so. Every key and log event it gives is named `browser-build` (`:browser-build/bad-options`, `:browser-build/unnamed-stylesheets`, `:browser-build/bundle-failed`, …): [browser-build's decision](https://github.com/p4ulcristian/browser-build/blob/main/decisions/2026-10-23-showroom-is-renamed-browser-build.md). The app's settings do not change: `:browser-build` already named the build.

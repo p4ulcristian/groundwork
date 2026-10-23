@@ -1,5 +1,7 @@
 > **Changed in part** by [The composer takes the browser builder's changes](2026-10-23-the-composer-takes-the-browser-builders-changes.md) (2026-10-23, built on tidy-up, not released): the start takes `:on-line-change`, required; `:send-write!` takes the send's options, `{:once-key :keep-alive?}`.
 
+> **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): parlor is groundwork-screens now (`groundwork-screens.api`).
+
 > **Changed in part** by [The browser build's npm packages are real dependencies; doorman owns the shape of "what may I do?"](2026-10-23-the-builds-npm-packages-are-real-dependencies-and-doorman-owns-the-my-actions-shape.md) (2026-10-23): the answer's shape is doorman's only, handed to parlor as `:actions-answer-shape` with the wire.
 
 > **Changed in part** by [The composer takes named refusals](2026-10-23-the-composer-takes-named-refusals.md) (2026-10-23, built on tidy-up, not released): the start takes `:on-signed-out` and passes it with `:signed-out-reason :doorman/signed-out`; every name's shapes carry `:refusals`, doorman's and groundwork's reasons added.

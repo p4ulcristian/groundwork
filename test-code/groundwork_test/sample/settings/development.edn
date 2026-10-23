@@ -1,7 +1,7 @@
-;; The sample app's settings in development, read by safe/load from groundwork's
+;; The sample app's settings in development, read by settings/load from groundwork's
 ;; root (the folder the app runs in), checked against groundwork's settings-shape:
 ;;
-;;   (safe/load {:file  "test-code/groundwork_test/sample/settings/development.edn"
+;;   (settings/load {:file  "test-code/groundwork_test/sample/settings/development.edn"
 ;;               :shape main/settings-shape
 ;;               :env   (System/getenv)})
 ;;
@@ -10,22 +10,22 @@
 ;; holds anything real, and neither is used for any other environment or app.
 ;; A Postgres on localhost that trusts its local users (no password); its port
 ;; and user from SAMPLE_DATABASE_PORT and SAMPLE_DATABASE_USER. A bucket, if
-;; one is wanted, is SeaweedFS on localhost:8333 (attic's README), started
+;; one is wanted, is SeaweedFS on localhost:8333 (groundwork-file-storage's README), started
 ;; with the development keys.
 {:secrets           {:from         :sops
                      :file         "test-code/groundwork_test/sample/secrets/development.sops.yaml"
                      :age-key-file "test-code/groundwork_test/sample/secrets/development-only.age-key"
                      :timeout-ms   30000}
  :version           "development"
- :wire              {:most-shapes-kept 1000
+ :shaped-json              {:most-shapes-kept 1000
                      :json-limits      {:max-nesting-depth 1000 :max-number-length 1000 :max-string-length 20000000
                                         :max-name-length 50000 :max-document-length nil :max-token-count nil
                                         :max-writing-nesting-depth 1000}}
- :browser-wire      {:most-shapes-kept 1000 :most-keys-kept 10000}
- :logbook           {:lowest-level :debug :format :readable :errors-kept 100 :write-to :stdout}
- :meter             {:jvm-metrics true :most-series-per-metric 5000}
- :metrics           {:path "/metrics" :token #secret :meter/token}
- :study             {:mode :development :bind-address "127.0.0.1" :port 7888 :middleware [] :port-file ".nrepl-port"}
+ :browser-shaped-json      {:most-shapes-kept 1000 :most-keys-kept 10000}
+ :logs           {:lowest-level :debug :format :readable :errors-kept 100 :write-to :stdout}
+ :metrics           {:jvm-metrics true :most-series-per-metric 5000
+                     :route {:path "/metrics" :token #secret :groundwork-metrics/token}}
+ :live-repl             {:mode :development :bind-address "127.0.0.1" :port 7888 :middleware [] :port-file ".nrepl-port"}
  :errors            {:path "/groundwork/errors" :token #secret :errors/token :browser-rate-limit {:max 10 :per-ms 60000}}
  :migrate-at-start? true
  :browser-build     {:watch {:cache-folder              ".shadow-cljs"
@@ -47,7 +47,7 @@
                              :reload-strategy           :optimized
                              :hud                       #{:errors :warnings}
                              :stylesheet-check-every-ms 500}}
- :server            {:ip "127.0.0.1" :port 8080 :proxy-protocol :disable :client-address-header nil :server-header nil
+ :bridge            {:ip "127.0.0.1" :port 8080 :proxy-protocol :disable :client-address-header nil :server-header nil
                      :max-body-bytes 8388608 :max-request-head-bytes 8192 :max-ws-message-bytes 4194304
                      :idle-timeout-ms 60000 :threads {:min 8 :max 50 :idle-timeout-ms 60000}
                      :addresses {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"}
@@ -55,7 +55,7 @@
                      :stop-wait-ms 2000 :stop-wait-after-cut-ms 500
                      :rate-limit-buckets-before-cleanup 10000
                      :metric-buckets {:answer-seconds [0.005 0.05 0.5 5]}}
- :database          {:host "localhost" :port #env ["SAMPLE_DATABASE_PORT" :int] :database "postgres"
+ :postgres          {:host "localhost" :port #env ["SAMPLE_DATABASE_PORT" :int] :database "postgres"
                      :user #env "SAMPLE_DATABASE_USER" :password nil
                      :tls :off :tls-root-cert nil :pool-size 8
                      :connection-wait-ms 30000 :connection-check-wait-ms 5000
@@ -68,7 +68,7 @@
                                       :connection-usage-seconds [0.001 0.01 0.1 1]}}
  :migration         {:instant-part {:statement-timeout-ms 10000 :lock-timeout-ms 5000}
                      :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
- :sessions          {:cookie-name "sample_session" :session-days 30 :visitor-session-days 7 :renew-after-minutes 60
+ :access          {:cookie-name "sample_session" :session-days 30 :visitor-session-days 7 :renew-after-minutes 60
                      :allowed-origin "http://localhost:8080" :secure-cookie? false
                      :token-lead "sample_" :token-shown-characters 13 :token-longest-days 365}
  :visitors          {:path "/groundwork/visitor" :rate-limit {:max 10 :per-ms 60000}}
@@ -83,18 +83,18 @@
                      :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
                      :forget-done-every-ms 3600000 :stop-wait-ms 2000
                      :metric-buckets {:job-run-seconds [0.1 1 10]}}
- :attic             {:storage {:endpoint "http://127.0.0.1:8333" :bucket "sample"
-                               :access-key #secret :attic/access-key :secret-key #secret :attic/secret-key
+ :file-storage             {:storage {:endpoint "http://127.0.0.1:8333" :bucket "sample"
+                               :access-key #secret :groundwork-file-storage/access-key :secret-key #secret :groundwork-file-storage/secret-key
                                :region "us-east-1" :public-url nil :link-expiry-seconds 300
                                :connect-timeout-ms 1000 :request-timeout-ms 10000
                                :retries {:max-retries 1 :first-wait-ms 100 :max-wait-ms 400}}
                      :upload  {:path "/groundwork/files" :key-prefix "sample" :allowed-content-types #{"image/png"}
                                :max-file-bytes 1000000 :max-files 4}}
- :postbox           {:sending  {:provider {:name :log :level :info} :tags #{:sample/none}
+ :email           {:sending  {:provider {:name :log :level :info} :tags #{:sample/none}
                                 :background-job {:timeout-ms 10000 :attempts 3}}
-                     :webhooks {:delivery-path "/postbox/delivery" :inbound-path "/postbox/inbound"
-                                :token #secret :postbox/webhook-token :inbound-domain "in.sample.localhost"}}
- :doorbell          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
+                     :webhooks {:delivery-path "/email/delivery" :inbound-path "/email/inbound"
+                                :token #secret :groundwork-email/webhook-token :inbound-domain "in.sample.localhost"}}
+ :live-updates          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                      :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                  :reconnect-after-ms 1000 :stop-wait-ms 2000}}
  :languages         {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}] :default "en" :cookie-name "lang"

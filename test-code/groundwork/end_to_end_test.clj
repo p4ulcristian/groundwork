@@ -14,19 +14,19 @@
      GROUNDWORK_E2E_BROWSER=~/.cache/ms-playwright/chromium_headless_shell-1248/chrome-linux/headless_shell \\
      clojure -X:test :nses '[groundwork.end-to-end-test]'"
   (:require
-   [cellar.api :as database]
+   [groundwork-postgres.api :as postgres]
    [clojure.java.io :as io]
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
-   [doorman.api :as doorman]
+   [groundwork-access.api :as access]
    [groundwork-test.cdp :as cdp]
    [groundwork-test.sample.server :as sample]
    [groundwork.server.main.api :as main]
    [jsonista.core :as json]
-   [logbook.api :as logbook]
-   [meter.api :as meter]
-   [safe.api :as safe]
-   [browser-build.api :as browser-build])
+   [groundwork-logs.api :as logs]
+   [groundwork-metrics.api :as metrics]
+   [groundwork-settings.api :as settings]
+   [groundwork-browser-build.api :as browser-build])
   (:import
    (java.net ServerSocket URI)
    (java.net.http HttpClient HttpRequest HttpResponse$BodyHandlers)
@@ -44,7 +44,7 @@
 (def ^:private bobs-shop #uuid "5b000000-0000-4000-8000-00000000005b")
 
 (def ^:private lines
-  "The lines the app's logbook wrote, as JSON data."
+  "The lines the app's logger wrote, as JSON data."
   (atom []))
 
 (defn- find-free-port []
@@ -67,20 +67,20 @@
 
 (defn- make-settings [user server-port files-folder]
   {:version           "e2e-1"
-   :wire              {:most-shapes-kept 1000
+   :shaped-json              {:most-shapes-kept 1000
                        :json-limits      {:max-nesting-depth 1000 :max-number-length 1000 :max-string-length 20000000
                                           :max-name-length 50000 :max-document-length nil :max-token-count nil
                                           :max-writing-nesting-depth 1000}}
-   :browser-wire      {:most-shapes-kept 1000 :most-keys-kept 10000}
-   :logbook           {:lowest-level :info :format :json :errors-kept 100
+   :browser-shaped-json      {:most-shapes-kept 1000 :most-keys-kept 10000}
+   :logs           {:lowest-level :info :format :json :errors-kept 100
                        :write-to     #(swap! lines conj (json/read-value %))}
-   :meter             {:jvm-metrics true :most-series-per-metric 5000}
-   :metrics           {:path "/metrics" :token (safe/make-secret :meter/token "the-metrics-token")}
-   :study             {:mode :off :emergency-switch nil}
-   :errors            {:path "/groundwork/errors" :token (safe/make-secret :errors/token "the-errors-token") :browser-rate-limit {:max 10 :per-ms 60000}}
+   :metrics           {:jvm-metrics true :most-series-per-metric 5000
+                       :route {:path "/metrics" :token (settings/make-secret :groundwork-metrics/token "the-metrics-token")}}
+   :live-repl             {:mode :off :emergency-switch nil}
+   :errors            {:path "/groundwork/errors" :token (settings/make-secret :errors/token "the-errors-token") :browser-rate-limit {:max 10 :per-ms 60000}}
    :migrate-at-start? false
    :browser-build     :built
-   :server            {:ip "127.0.0.1" :port server-port :proxy-protocol :disable :client-address-header nil :server-header nil
+   :bridge            {:ip "127.0.0.1" :port server-port :proxy-protocol :disable :client-address-header nil :server-header nil
                        :max-body-bytes 8388608 :max-request-head-bytes 8192 :max-ws-message-bytes 4194304
                        :idle-timeout-ms 60000 :threads {:min 8 :max 50 :idle-timeout-ms 60000}
                        :addresses {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"}
@@ -88,10 +88,10 @@
                        :stop-wait-ms 2000 :stop-wait-after-cut-ms 500
                        :rate-limit-buckets-before-cleanup 10000
                        :metric-buckets {:answer-seconds [0.005 0.05 0.5 5]}}
-   :database          (make-database-settings user)
+   :postgres          (make-database-settings user)
    :migration         {:instant-part {:statement-timeout-ms 10000 :lock-timeout-ms 5000}
                        :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
-   :sessions          {:cookie-name "e2e_session" :session-days 1 :visitor-session-days 1 :renew-after-minutes 60
+   :access          {:cookie-name "e2e_session" :session-days 1 :visitor-session-days 1 :renew-after-minutes 60
                        :allowed-origin (str "http://127.0.0.1:" server-port) :secure-cookie? false
                        :token-lead "e2e_" :token-shown-characters 10 :token-longest-days 30}
    :visitors          {:path "/groundwork/visitor" :rate-limit {:max 10 :per-ms 60000}}
@@ -105,18 +105,18 @@
                        :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
                        :forget-done-every-ms 3600000 :stop-wait-ms 2000
                        :metric-buckets {:job-run-seconds [0.1 1 10]}}
-   :attic             {:storage {:endpoint "http://127.0.0.1:1" :bucket "sample" :access-key (safe/make-secret :attic/access-key "key")
-                                 :secret-key (safe/make-secret :attic/secret-key "secret")
+   :file-storage             {:storage {:endpoint "http://127.0.0.1:1" :bucket "sample" :access-key (settings/make-secret :groundwork-file-storage/access-key "key")
+                                 :secret-key (settings/make-secret :groundwork-file-storage/secret-key "secret")
                                  :region "us-east-1" :public-url nil :link-expiry-seconds 300
                                  :connect-timeout-ms 1000 :request-timeout-ms 1000
                                  :retries {:max-retries 0 :first-wait-ms 0 :max-wait-ms 0}}
                        :upload  {:path "/groundwork/files" :key-prefix "sample" :allowed-content-types #{"image/png"}
                                  :max-file-bytes 1000000 :max-files 1}}
-   :postbox           {:sending  {:provider {:name :log :level :info} :tags #{:sample/none}
+   :email           {:sending  {:provider {:name :log :level :info} :tags #{:sample/none}
                                   :background-job {:timeout-ms 10000 :attempts 1}}
-                       :webhooks {:delivery-path "/postbox/delivery" :inbound-path "/postbox/inbound"
-                                  :token (safe/make-secret :postbox/webhook-token "the-webhook-token-0123") :inbound-domain "in.sample.test"}}
-   :doorbell          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
+                       :webhooks {:delivery-path "/email/delivery" :inbound-path "/email/inbound"
+                                  :token (settings/make-secret :groundwork-email/webhook-token "the-webhook-token-0123") :inbound-domain "in.sample.test"}}
+   :live-updates          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                        :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                    :reconnect-after-ms 1000 :stop-wait-ms 2000}}
    :languages         {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}] :default "en" :cookie-name nil
@@ -149,16 +149,16 @@
     folder))
 
 (defn- start-owner-pool! []
-  (let [log (logbook/log-function (logbook/make-logbook {:lowest-level :error :format :json :errors-kept 10
+  (let [log (logs/log-function (logs/make-logger {:lowest-level :error :format :json :errors-kept 10
                                                          :write-to     (fn [_])}))]
-    (database/start-pool! (make-database-settings owner)
-                          {:log log :meter (meter/make-meter {:jvm-metrics false :most-series-per-metric 10000} {:log log})})))
+    (postgres/start-pool! (make-database-settings owner)
+                          {:log log :meter (metrics/make-meter {:jvm-metrics false :most-series-per-metric 10000} {:log log})})))
 
 (defn- run-sql! [pool text]
-  (database/run-statement! pool (database/make-query-from-sql-text "e2e setup" text) {}))
+  (postgres/run-statement! pool (postgres/make-query-from-sql-text "e2e setup" text) {}))
 
 (defn- count-orders-with-note [pool note]
-  (:n (database/find-one-row pool (database/make-query-from-sql-text "e2e: orders with a note"
+  (:n (postgres/find-one-row pool (postgres/make-query-from-sql-text "e2e: orders with a note"
                                                                      "SELECT count(*) AS n FROM orders WHERE order__note = :order/note")
                              {:order/note note})))
 
@@ -167,16 +167,16 @@
    migration, two shops, Anna founding one and Bob the other, and one
    order in each."
   [owner-pool app]
-  (run-sql! owner-pool (str "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; "
-                            "DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE; DROP SCHEMA IF EXISTS groundwork CASCADE; "
-                            "DROP SCHEMA IF EXISTS attic CASCADE; DROP SCHEMA IF EXISTS postbox CASCADE"))
+  (run-sql! owner-pool (str "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork_postgres CASCADE; "
+                            "DROP SCHEMA IF EXISTS groundwork_background_jobs CASCADE; DROP SCHEMA IF EXISTS groundwork_access CASCADE; DROP SCHEMA IF EXISTS groundwork CASCADE; "
+                            "DROP SCHEMA IF EXISTS groundwork_file_storage CASCADE; DROP SCHEMA IF EXISTS groundwork_email CASCADE"))
   (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'groundwork_e2e_app') THEN CREATE ROLE groundwork_e2e_app LOGIN; END IF; END $$")
   (with-out-str (main/migrate-app! app (make-database-settings owner) "groundwork_e2e_app"))
   (run-sql! owner-pool (str "INSERT INTO shops VALUES ('" annas-shop "', 'Anna''s'), ('" bobs-shop "', 'Bob''s')"))
-  (database/run-in-transaction! owner-pool {:read-only? false :log nil}
+  (postgres/run-in-transaction! owner-pool {:read-only? false :log nil}
                                 (fn [transaction]
-                                  (doorman/add-scope! transaction sample/scope-kinds :shop annas-shop anna nil)
-                                  (doorman/add-scope! transaction sample/scope-kinds :shop bobs-shop bob nil)))
+                                  (access/add-scope! transaction sample/scope-kinds :shop annas-shop anna nil)
+                                  (access/add-scope! transaction sample/scope-kinds :shop bobs-shop bob nil)))
   (run-sql! owner-pool (str "INSERT INTO orders (order__shop_id, order__note) VALUES ('" annas-shop "', 'a-seed'), ('" bobs-shop "', 'b-seed')")))
 
 (defn- get-text
@@ -219,15 +219,15 @@
 (deftest the-sample-apps-development-settings-load
   (if-not (has-program? "sops")
     (println "groundwork.end-to-end-test: the development settings skipped, sops is not on the PATH")
-    (let [settings (safe/load {:file  "test-code/groundwork_test/sample/settings/development.edn"
+    (let [settings (settings/load {:file  "test-code/groundwork_test/sample/settings/development.edn"
                                :shape main/settings-shape
                                :env   {"PATH"                 (System/getenv "PATH")
                                        "SAMPLE_DATABASE_PORT" "5432"
                                        "SAMPLE_DATABASE_USER" "sample"}})]
       (is (= settings (main/check-settings settings)) "groundwork's own check takes them as they are")
-      (is (= 5432 (get-in settings [:database :port])) "#env filled, as its type")
+      (is (= 5432 (get-in settings [:postgres :port])) "#env filled, as its type")
       (is (= "#secret :errors/token" (pr-str (get-in settings [:errors :token]))) "a secret prints as its name")
-      (is (= "development-only-errors-token" (safe/reveal (get-in settings [:errors :token])))
+      (is (= "development-only-errors-token" (settings/reveal (get-in settings [:errors :token])))
           "read from the development sops file, with the development-only key")
       (is (not (str/includes? (pr-str settings) "development-only-")) "no secret's text in the settings printed"))))
 
@@ -244,8 +244,8 @@
         (let [running    (main/start-app! app)
               stopped?   (atom false)
               connection (cdp/launch! browser-binary)
-              sign-in    #(:set-cookie (doorman/sign-in! (:pool running) {:headers {}} %
-                                                         {:settings (:sessions (:settings app)) :tables (:tables app) :session-flags #{}}))
+              sign-in    #(:set-cookie (access/sign-in! (:pool running) {:headers {}} %
+                                                         {:settings (:access (:settings app)) :tables (:tables app) :session-flags #{}}))
               annas      (cdp/make-context! connection)
               bobs       (cdp/make-context! connection)
               dialogs    (atom [])
@@ -274,7 +274,7 @@
             (let [anna-1 (cdp/open-page! connection annas)
                   anna-2 (cdp/open-page! connection annas)
                   bob-1  (cdp/open-page! connection bobs)]
-              (testing "1. the page loads in its language; /de/… is German, from dictionary's catalog"
+              (testing "1. the page loads in its language; /de/… is German, from groundwork-languages's catalog"
                 (cdp/go-to! connection anna-1 (str origin "/shops/" annas-shop "/orders"))
                 (is (= "Orders of my shop" (cdp/wait-for connection anna-1 "document.querySelector('#title')?.textContent || null" 15000)))
                 (is (= "en" (cdp/evaluate connection anna-1 "document.documentElement.lang")))
@@ -343,14 +343,14 @@
                   (is (= "e2e render boom" (get-in render ["data" "browser/message"])) "report-browser-error!, :kind :render")
                   (is (= ["e2e-1" "e2e-1"] (map #(get-in % ["data" "browser/version"]) [uncaught render]))
                       "with the page's version")))
-              (testing "7. /metrics, only with its token: bridge's messages, cellar's query times, logbook's lines"
+              (testing "7. /metrics, only with its token: bridge's messages, groundwork-postgres's query times, groundwork-logs's lines"
                 (is (= 401 (first (get-text (str origin "/metrics") nil))))
                 (let [text (metrics)]
-                  (is (pos? (or (read-metric text "bridge_messages_total{name=\"orders/of-shop\",outcome=\"ok\",pipe=\"http\"}") 0)))
-                  (is (pos? (or (read-metric text "bridge_messages_total{name=\"orders/add\",outcome=\"ok\",pipe=\"http\"}") 0)))
-                  (is (pos? (or (read-metric text "cellar_query_seconds_count{query=\"sample: the orders of a shop\"}") 0)))
-                  (is (pos? (or (read-metric text "logbook_lines_total{level=\"info\"}") 0)))
-                  (is (pos? (or (read-metric text "logbook_lines_total{level=\"error\"}") 0)) "the browser's error among them")))
+                  (is (pos? (or (read-metric text "groundwork_bridge_messages_total{name=\"orders/of-shop\",outcome=\"ok\",pipe=\"http\"}") 0)))
+                  (is (pos? (or (read-metric text "groundwork_bridge_messages_total{name=\"orders/add\",outcome=\"ok\",pipe=\"http\"}") 0)))
+                  (is (pos? (or (read-metric text "groundwork_postgres_query_seconds_count{query=\"sample: the orders of a shop\"}") 0)))
+                  (is (pos? (or (read-metric text "groundwork_logs_lines_total{level=\"info\"}") 0)))
+                  (is (pos? (or (read-metric text "groundwork_logs_lines_total{level=\"error\"}") 0)) "the browser's error among them")))
               (testing "9. a module loaded on demand: its stylesheet in before its code"
                 (cdp/click! connection anna-1 "#to-reports")
                 (is (= "Reports" (cdp/wait-for connection anna-1 "document.querySelector('#reports h1')?.textContent || null" 10000)))
@@ -375,7 +375,7 @@
                     "and, saying no, stays")
                 (is (true? (cdp/evaluate connection anna-1 "document.querySelector('#reports') === null && document.querySelector('#orders') !== null"))))
               (testing "11. a dropped sse line is closed by the next ping"
-                (let [open-lines #(read-metric (metrics) "bridge_open_lines{pipe=\"sse\"}")
+                (let [open-lines #(read-metric (metrics) "groundwork_bridge_open_lines{pipe=\"sse\"}")
                       before     (open-lines)
                       bob-2      (cdp/open-page! connection bobs)]
                   (cdp/go-to! connection bob-2 (str origin "/shops/" bobs-shop "/orders"))
@@ -400,6 +400,6 @@
               (cdp/quit! connection)
               (when-not @stopped? (main/stop-app! running)))))
         (finally
-          (database/stop-pool! owner-pool)
+          (postgres/stop-pool! owner-pool)
           (doseq [file (reverse (file-seq (io/file files-folder)))]
             (io/delete-file file true)))))))

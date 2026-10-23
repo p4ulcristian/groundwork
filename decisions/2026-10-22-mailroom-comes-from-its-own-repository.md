@@ -1,5 +1,7 @@
 # mailroom comes from its own repository
 
+> **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): bridge's repository and namespaces are groundwork-bridge now.
+
 > **Changed in part** by [mailroom is renamed bridge, and its server is Jetty 12](2026-10-23-mailroom-is-renamed-bridge-and-serves-on-jetty.md) (2026-10-23, bridge v0.7.5): the library is bridge, at github.com/p4ulcristian/bridge, its keys `:bridge/…`; its server is Jetty 12 and `:server` gains `:idle-timeout-ms` and `:threads`, `:max-header-line-bytes` becoming `:max-request-head-bytes`.
 
 > **Changed in part** by [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) (2026-10-22, mailroom v0.1.3): `:server` gains seven more keys, every handler writes out `:rate-limit` and `:run-steps-in`, the page carries `:sse-reconnect-after-ms` and the browser's sse line opens with it.

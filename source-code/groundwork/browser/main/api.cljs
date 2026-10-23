@@ -2,69 +2,69 @@
   "The browser's one start: the browser libraries put together. The
    server's start is groundwork.server.main, whose page shell carries what
    this reads: the version, the three addresses, the sse and ws reopen
-   delays, the question store's settings, the browser's wire settings and
+   delays, the question store's settings, the browser's groundwork-shaped-json settings and
    the pages.
 
      (def app (main/start-app! {:shapes-by-name     shapes-by-name     ; the app's .cljc, by message name
                                 :sse-handlers       {}                 ; the app's own sse messages, by name
-                                :questions-of-pages {:orders/page (fn [{:keys [path-params]}]   ; every page's, parlor's
+                                :questions-of-pages {:orders/page (fn [{:keys [path-params]}]   ; every page's, groundwork-screens's
                                                                     [[:orders/of-shop {:shop/id (parse-uuid (:shop-id path-params))}]])
                                                      :about/page  (fn [_] [])}
-                                :on-answer-failed   [:shop/answer-failed]  ; or nil: parlor's event for a failed answer
-                                :on-signed-out      [:shop/to-login]       ; or nil: parlor's, once, with the page to return to
+                                :on-answer-failed   [:shop/answer-failed]  ; or nil: groundwork-screens's event for a failed answer
+                                :on-signed-out      [:shop/to-login]       ; or nil: groundwork-screens's, once, with the page to return to
                                 :on-move            nil                    ; or an event, given {:from page :to page}
                                 :on-line-change     [:shop/line-changed]   ; or nil: given {:line :open}, :broken or :back
-                                :query-shapes-of-pages {:orders/page nil   ; every page's, parlor's: a malli map, or nil for text
+                                :query-shapes-of-pages {:orders/page nil   ; every page's, groundwork-screens's: a malli map, or nil for text
                                                         :about/page  nil}
                                 :placeholder        nil                    ; or (fn [page status]) while a page's :module loads
-                                :exact-decimals     wire.big/big}))        ; or nil: a decimal stays its text
-     (parlor/mount-root! \"app\" root)   ; the shell's element is #app; again after a save
-     ;; root draws [parlor/show-page draw-page] where the page goes
+                                :exact-decimals     groundwork-shaped-json.big/big}))        ; or nil: a decimal stays its text
+     (screens/mount-root! \"app\" root)   ; the shell's element is #app; again after a save
+     ;; root draws [screens/show-page draw-page] where the page goes
 
-     ;; screens read parlor's subscriptions and dispatch its events
-     @(rf/subscribe [:parlor/answer [:orders/of-shop {:shop/id shop-id}]])
-     @(rf/subscribe [:parlor/can-i? :orders/move [:shop shop-id]])   ; from :doorman/my-actions
-     (parlor/tr :orders.cart/add {:count 3})   ; a text in the page's language, in a view
-     (parlor/tr (:bridge/refused error) (:bridge/data error))   ; a refusal's text: its reason is the key
+     ;; screens read groundwork-screens's subscriptions and dispatch its events
+     @(rf/subscribe [:groundwork-screens/answer [:orders/of-shop {:shop/id shop-id}]])
+     @(rf/subscribe [:groundwork-screens/can-i? :orders/move [:shop shop-id]])   ; from :groundwork-access/my-actions
+     (screens/tr :orders.cart/add {:count 3})   ; a text in the page's language, in a view
+     (screens/tr (:groundwork-bridge/refused error) (:groundwork-bridge/data error))   ; a refusal's text: its reason is the key
 
-     ;; a ws line, when the app wants one: the address and the delay from the page, the app's wire
+     ;; a ws line, when the app wants one: the address and the delay from the page, the app's shaper
      (let [{:keys [addresses ws-reopen-after-ms]} (:settings app)]
        (bridge/open-ws-line! (:ws addresses) shapes-by-name {:chat/said show-said!}
-                               {:wire (:wire app) :reopen-after-ms ws-reopen-after-ms}))
+                               {:shaper (:shaped-json app) :reopen-after-ms ws-reopen-after-ms}))
 
-   start-app! makes the app's one wire in the browser, from the page's wire
+   start-app! makes the app's one shaper in the browser, from the page's groundwork-shaped-json
    settings and the :exact-decimals it is handed (a function, so not in the
    page), and passes it to bridge (no library makes its own); makes the
-   question store (doorbell's, with the :doorbell settings from the page);
-   opens the sse line (doorbell's messages, the app's own, and the version:
+   question store (groundwork-live-updates's, with the :live-updates settings from the page);
+   opens the sse line (groundwork-live-updates's messages, the app's own, and the version:
    a page older than the server reloads; reopened after
    :sse-reconnect-after-ms when the server answered with an error, and
    every watched question asked again after any break; the app's
    :on-line-change dispatched with {:line :open} when it first opens,
    {:line :broken} once per break, {:line :back} when it opens again: an
    offline banner's status); then starts
-   parlor, re-frame over the store (dispatch-sync [:parlor/start …]), with
+   groundwork-screens, re-frame over the store (dispatch-sync [:groundwork-screens/start …]), with
    the store, the app's :query-shapes-of-pages and :placeholder, the
    page's languages and language, browser-build's load-module! with each
    module's stylesheet bundle from the page, the write's send function (the
-   send's options as parlor's :parlor/send wrote them, {:once-key
+   send's options as groundwork-screens's :groundwork-screens/send wrote them, {:once-key
    :keep-alive?}: the one-time key in the idempotency-key header,
    groundwork.server.main.run-once on the server, and :keep-alive? as
    bridge's, fetch's keepalive), the page's :retry-writes, the page's pages, the app's
    :questions-of-pages, :on-answer-failed and :on-move, and
-   [:doorman/my-actions {}], the server's handler of doorman's, as its
-   :actions-question, and the app's :on-signed-out with doorman's
-   :doorman/signed-out as its :signed-out-reason (nil for both when the
-   app has none). parlor follows the address bar. Nothing can ask
+   [:groundwork-access/my-actions {}], the server's handler of groundwork-access's, as its
+   :actions-question, and the app's :on-signed-out with groundwork-access's
+   :groundwork-access/signed-out as its :signed-out-reason (nil for both when the
+   app has none). groundwork-screens follows the address bar. Nothing can ask
    before it: the store is made here. The app draws its root itself, with
-   parlor's mount-root!, into the shell's #app. The app's shapes-by-name
+   groundwork-screens's mount-root!, into the shell's #app. The app's shapes-by-name
    has the three shapes for each of its names (:params-shape,
    :answer-shape, :refusals: its handler's own reasons, {} for none);
-   doorman's reasons are added to each here (doorman's
-   put-refusals-into-shapes), as doorman adds them to every handler on the
+   groundwork-access's reasons are added to each here (groundwork-access's
+   put-refusals-into-shapes), as groundwork-access adds them to every handler on the
    server, and groundwork's run-once reasons to each, since a write may
    give them; groundwork's own names (:groundwork/version,
-   :groundwork/browser-error, :doorman/my-actions, doorbell's) are added
+   :groundwork/browser-error, :groundwork-access/my-actions, groundwork-live-updates's) are added
    too.
 
    It also listens, once for the page, for the uncaught errors and the
@@ -81,19 +81,19 @@
    (a cart): a POST to the page's :visitor-path, whose answer sets the
    cookie (groundwork.server.main.visitors)."
   (:require
-   [doorbell.api :as doorbell]
-   [doorman.api :as doorman]
-   [bridge.api :as bridge]
+   [groundwork-live-updates.api :as live-updates]
+   [groundwork-access.api :as access]
+   [groundwork-bridge.api :as bridge]
    [malli.core :as malli]
    [malli.error :as malli-error]
-   [parlor.api] ; registers parlor's events and subscriptions, which the start dispatches
+   [groundwork-screens.api] ; registers groundwork-screens's events and subscriptions, which the start dispatches
    [re-frame.core :as rf]
-   [browser-build.api :as browser-build]
-   [wire.api :as wire]))
+   [groundwork-browser-build.api :as browser-build]
+   [groundwork-shaped-json.api :as shaped-json]))
 
 (def ^:private groundwork-shapes-by-name
   {:groundwork/version       {:params-shape nil :answer-shape :string :refusals {}}
-   ;; refused only by doorman's find-session step, as on the server (groundwork.server.main.errors)
+   ;; refused only by groundwork-access's find-session step, as on the server (groundwork.server.main.errors)
    :groundwork/browser-error {:params-shape [:map {:closed true}
                                              [:kind [:enum :render :uncaught]]
                                              [:version :string]
@@ -101,12 +101,12 @@
                                              [:stack [:maybe :string]]
                                              [:url :string]]
                               :answer-shape :boolean
-                              :refusals     (select-keys doorman/refusals [:doorman/not-allowed])}})
+                              :refusals     (select-keys access/refusals [:groundwork-access/not-allowed])}})
 
 (def ^:private my-actions-shapes-by-name
-  ;; doorman's, on both sides (doorman.api's browser half); its reasons are doorman's, put in below
-  {:doorman/my-actions {:params-shape [:map {:closed true}]
-                        :answer-shape doorman/my-actions-answer-shape
+  ;; groundwork-access's, on both sides (groundwork-access.api's browser half); its reasons are groundwork-access's, put in below
+  {:groundwork-access/my-actions {:params-shape [:map {:closed true}]
+                        :answer-shape access/my-actions-answer-shape
                         :refusals     {}}})
 
 (def ^:private run-once-refusals
@@ -126,13 +126,13 @@
   "Every name's three shapes: the app's with groundwork's run-once
    reasons (a write may give them; a name that only reads never does) and
    its daily-cap reason (a capped handler may give it; the browser doesn't
-   know which are capped), and :doorman/my-actions, each with doorman's
-   reasons put in, then doorbell's and groundwork's own."
+   know which are capped), and :groundwork-access/my-actions, each with groundwork-access's
+   reasons put in, then groundwork-live-updates's and groundwork's own."
   [app-shapes-by-name]
-  (merge (doorman/put-refusals-into-shapes
+  (merge (access/put-refusals-into-shapes
           (merge (update-vals app-shapes-by-name #(update % :refusals merge run-once-refusals daily-cap-refusals))
                  my-actions-shapes-by-name))
-         doorbell/message-shapes-by-name
+         live-updates/message-shapes-by-name
          groundwork-shapes-by-name))
 
 (def ^:private write-key-header
@@ -141,15 +141,15 @@
   "idempotency-key")
 
 (def ^:private actions-question
-  "parlor's :actions-question: the server's :doorman/my-actions."
-  [:doorman/my-actions {}])
+  "groundwork-screens's :actions-question: the server's :groundwork-access/my-actions."
+  [:groundwork-access/my-actions {}])
 
 (defn read-settings-from-page
   "What the server put in the page: {:version :addresses
-   :sse-reconnect-after-ms :ws-reopen-after-ms :doorbell :wire
+   :sse-reconnect-after-ms :ws-reopen-after-ms :live-updates :shaped-json
    :retry-writes :visitor-path :languages :language :module-stylesheets :pages}.
    Read by the browser's JSON.parse, keys as keywords with their namespace
-   (\"orders/page\" is :orders/page): the wire is made from what this
+   (\"orders/page\" is :orders/page): the shaper is made from what this
    reads, so there is none yet."
   []
   (if-let [element (js/document.getElementById "groundwork-settings")]
@@ -167,35 +167,35 @@
 
 (def start-options-shape
   "start-app!'s options, every key required.
-   :query-shapes-of-pages: parlor's, every page's query shape, by page
+   :query-shapes-of-pages: groundwork-screens's, every page's query shape, by page
    name, one for each of the page's pages and no other: a malli map the
    query's text values are read by, or nil to keep them text.
-   :placeholder: parlor's, a component (fn [page status]) drawn by
-   parlor's show-page while a page's :module loads; nil when no page
+   :placeholder: groundwork-screens's, a component (fn [page status]) drawn by
+   groundwork-screens's show-page while a page's :module loads; nil when no page
    names one.
    :shapes-by-name: the app's shapes, by message name (bridge's), each
    with its three keys written out: :params-shape, :answer-shape and
-   :refusals, its handler's own reasons ({} for none; doorman's and
+   :refusals, its handler's own reasons ({} for none; groundwork-access's and
    groundwork's are added here, never written).
    :sse-handlers: the app's own sse messages' handlers, by name.
-   :questions-of-pages: parlor's, every page's declaration of the
+   :questions-of-pages: groundwork-screens's, every page's declaration of the
    questions it needs while open, by page name, one for each of the
    page's pages and no other: (fn [page]) -> questions.
-   :on-answer-failed: parlor's, an event given the question and the
+   :on-answer-failed: groundwork-screens's, an event given the question and the
    failed answer, or nil for none.
-   :on-signed-out: parlor's, an event dispatched once, the first time an
-   answer is refused :doorman/signed-out, given the page to return to
+   :on-signed-out: groundwork-screens's, an event dispatched once, the first time an
+   answer is refused :groundwork-access/signed-out, given the page to return to
    after signing in ({:page :params :query}), or nil for none.
-   :on-move: parlor's, an event given {:from page :to page} after every
+   :on-move: groundwork-screens's, an event given {:from page :to page} after every
    move, or nil for none.
    :on-line-change: an event given the sse line's status, {:line :open}
    when it first opens, {:line :broken} once per break (bridge's
    :on-break), {:line :back} when it opens again after one; or nil for
    none.
-   :exact-decimals: the browser's wire setting the page can't carry, a
-   function: wire.big/big (big.js, in the app's package.json), or nil to
+   :exact-decimals: the browser's groundwork-shaped-json setting the page can't carry, a
+   function: groundwork-shaped-json.big/big (big.js, in the app's package.json), or nil to
    keep a decimal as its text.
-   parlor checks its three again, closer, at its start."
+   groundwork-screens checks its three again, closer, at its start."
   [:map {:closed true}
    [:shapes-by-name [:map-of :keyword [:map {:closed true}
                                        [:params-shape :any]
@@ -248,54 +248,54 @@
     (js/window.addEventListener "unhandledrejection" #(send-error! :uncaught (describe-error (.-reason %) "A promise was rejected")))))
 
 (defn start-app!
-  "Starts the browser half (see the namespace), parlor last. The options
-   are checked first, every key required. Returns {:settings :wire :store
-   :sse-line}, :wire the app's one wire in the browser, and the error
+  "Starts the browser half (see the namespace), groundwork-screens last. The options
+   are checked first, every key required. Returns {:settings :shaped-json :store
+   :sse-line}, :shaped-json the app's one shaper in the browser, and the error
    sender report-browser-error! takes it for."
   [options]
   (let [{:keys [shapes-by-name sse-handlers questions-of-pages on-answer-failed on-signed-out on-move on-line-change
                 exact-decimals query-shapes-of-pages placeholder]}
         (check-start-options options)
-        {:keys [addresses pages sse-reconnect-after-ms languages language module-stylesheets] store-settings :doorbell :as settings}
+        {:keys [addresses pages sse-reconnect-after-ms languages language module-stylesheets] store-settings :live-updates :as settings}
         (read-settings-from-page)
         module-stylesheets (update-keys module-stylesheets name)
-        wire           (wire/make-wire-from-settings (assoc (:wire settings) :exact-decimals exact-decimals))
+        shaper           (shaped-json/make-shaper-from-settings (assoc (:shaped-json settings) :exact-decimals exact-decimals))
         shapes-by-name (make-shapes-by-name shapes-by-name)
-        send!          #(bridge/send-message! (:http addresses) shapes-by-name % {:wire wire :headers {} :keep-alive? false})
+        send!          #(bridge/send-message! (:http addresses) shapes-by-name % {:shaper shaper :headers {} :keep-alive? false})
         send-write!    (fn [message {:keys [once-key keep-alive?]}]
                          (bridge/send-message! (:http addresses) shapes-by-name message
-                                                 {:wire wire :headers {write-key-header once-key} :keep-alive? keep-alive?}))
+                                                 {:shaper shaper :headers {write-key-header once-key} :keep-alive? keep-alive?}))
         tell-line!     #(when on-line-change (rf/dispatch (conj on-line-change {:line %})))
         send-error!    (make-error-sender send! (:version settings))
         _              (send-errors-to-server! send-error!)
-        store          (doorbell/make-question-store send! store-settings)
+        store          (live-updates/make-question-store send! store-settings)
         sse-line       (bridge/open-sse-line! (:sse addresses) shapes-by-name
                                                  (merge sse-handlers
-                                                        (doorbell/make-sse-handlers store)
+                                                        (live-updates/make-sse-handlers store)
                                                         {:groundwork/version #(reload-when-older! settings %)})
-                                                 {:wire               wire
+                                                 {:shaper               shaper
                                                   :on-open            (fn [again?]
-                                                                        (when again? (doorbell/hear-missed-changes! store))
+                                                                        (when again? (live-updates/hear-missed-changes! store))
                                                                         (tell-line! (if again? :back :open)))
                                                   :on-break           #(tell-line! :broken)
                                                   :reconnect-after-ms sse-reconnect-after-ms})]
-    (rf/dispatch-sync [:parlor/start {:store              store
+    (rf/dispatch-sync [:groundwork-screens/start {:store              store
                                       :send-write!        send-write!
                                       :retry-writes       (:retry-writes settings)
                                       :pages              pages
                                       :questions-of-pages questions-of-pages
                                       :actions-question   actions-question
-                                      :actions-answer-shape doorman/my-actions-answer-shape
-                                      :wire               wire
+                                      :actions-answer-shape access/my-actions-answer-shape
+                                      :shaper               shaper
                                       :on-answer-failed   on-answer-failed
                                       :on-signed-out      on-signed-out
-                                      :signed-out-reason  (when on-signed-out :doorman/signed-out)
+                                      :signed-out-reason  (when on-signed-out :groundwork-access/signed-out)
                                       :on-move            on-move
                                       :query-shapes-of-pages query-shapes-of-pages
-                                      :languages          {:dictionary languages :language-of-page language}
+                                      :languages          {:settings languages :language-of-page language}
                                       :load-module!       #(browser-build/load-module! module-stylesheets %)
                                       :placeholder        placeholder}])
-    {:settings settings :wire wire :store store :sse-line sse-line
+    {:settings settings :shaper shaper :store store :sse-line sse-line
      :groundwork.browser.main/send-error! send-error!}))
 
 (def report-options-shape

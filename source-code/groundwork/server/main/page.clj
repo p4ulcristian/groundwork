@@ -8,8 +8,8 @@
         \"addresses\":{\"http\":\"/groundwork/http\",\"sse\":\"/groundwork/sse\",\"ws\":\"/groundwork/ws\"},
         \"sse-reconnect-after-ms\":3000,
         \"ws-reopen-after-ms\":1000,
-        \"doorbell\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000},
-        \"wire\":{\"most-shapes-kept\":1000,\"most-keys-kept\":10000},
+        \"groundwork-live-updates\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000},
+        \"groundwork-shaped-json\":{\"most-shapes-kept\":1000,\"most-keys-kept\":10000},
         \"retry-writes\":{\"times\":2,\"wait-ms\":1000},
         \"visitor-path\":\"/groundwork/visitor\",
         \"pages\":{\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}}}
@@ -17,18 +17,18 @@
 
    The browser reads it (groundwork.browser.main); the pages, the
    addresses, the sse and ws reopen delays, the question store's settings
-   (doorbell's), the browser's wire settings (:browser-wire, all but
+   (groundwork-live-updates's), the browser's groundwork-shaped-json settings (:browser-shaped-json, all but
    :exact-decimals, which the app's browser start hands in), the write
    retries, the visitor route's path (:visitors), the languages
-   (dictionary's settings) and the request's language, and each module's stylesheet bundle (for browser-build's
+   (groundwork-languages's settings) and the request's language, and each module's stylesheet bundle (for browser-build's
    load-module!) are said once, on the server. The JSON is written by the
-   app's wire.
+   app's shaper.
 
-   The page is in the request's language (dictionary's
+   The page is in the request's language (groundwork-languages's
    find-language-of-request: the address's prefix, the cookie,
    Accept-Language, the default): <html lang>, and with more than one
    language the alternate links, the same page in each, at the app's
-   origin (the :sessions settings' :allowed-origin).
+   origin (the :access settings' :allowed-origin).
 
    What only the app knows, per page and per request, is the app's
    :render-page, (fn [request page {:keys [nonce asker run-as-asker!]}]),
@@ -49,10 +49,10 @@
    or nil for a GET no route and no file answers (the not-found page).
    nonce is the request's, nil unless the :content-security-policy says
    :nonce? true; the shell puts it on its own scripts, the app on the
-   scripts in its head-html. asker is who doorman finds asking (the
+   scripts in its head-html. asker is who groundwork-access finds asking (the
    session's cookie, or a token), and run-as-asker! a transaction as the
    request's asker, held by the gates, for a body that reads rows
-   (doorman's run-as-asker-of-request!). The app escapes what it puts in head-html and body-html.
+   (groundwork-access's run-as-asker-of-request!). The app escapes what it puts in head-html and body-html.
 
    Fixed, not settings: the shell is never cached (no-store), so a new
    version's scripts are what the next load gets; nosniff, since every
@@ -62,14 +62,14 @@
    policy and the frame options."
   (:require
    [clojure.edn :as edn]
-   [dictionary.api :as dictionary]
+   [groundwork-languages.api :as languages]
    [groundwork.server.main.asker :as asker]
-   [bridge.api :as bridge]
+   [groundwork-bridge.api :as bridge]
    [clojure.java.io :as io]
    [clojure.string :as str]
    [malli.core :as malli]
    [malli.error :as malli-error]
-   [wire.api :as wire])
+   [groundwork-shaped-json.api :as shaped-json])
   (:import
    (java.security SecureRandom)
    (java.util Base64)))
@@ -122,19 +122,19 @@
 (defn make-browser-settings
   "What the browser needs to start, the same for every request: the
    version, the three addresses and the sse and ws reopen delays (from the
-   :server settings), the question store's settings (the :doorbell
-   settings' :store), the browser's wire settings (:browser-wire), how a
+   :bridge settings), the question store's settings (the :live-updates
+   settings' :store), the browser's groundwork-shaped-json settings (:browser-shaped-json), how a
    write that got no answer is retried (the :run-once settings'
    :retry-writes), where a visitor's session is started (the :visitors
-   settings' :path), the languages (dictionary's settings), each module's
+   settings' :path), the languages (groundwork-languages's settings), each module's
    stylesheet bundle, the pages. The request's :language is added per
    request."
-  [{:keys [version doorbell browser-wire run-once languages visitors]
-    {:keys [addresses sse-reconnect-after-ms ws-reopen-after-ms]} :server
+  [{:keys [version live-updates browser-shaped-json run-once languages visitors]
+    {:keys [addresses sse-reconnect-after-ms ws-reopen-after-ms]} :bridge
     :as settings}
    pages browser-modules]
   {:version version :addresses addresses :sse-reconnect-after-ms sse-reconnect-after-ms
-   :ws-reopen-after-ms ws-reopen-after-ms :doorbell (:store doorbell) :wire browser-wire
+   :ws-reopen-after-ms ws-reopen-after-ms :live-updates (:store live-updates) :shaped-json browser-shaped-json
    :retry-writes (:retry-writes run-once) :visitor-path (:path visitors) :languages languages
    :module-stylesheets (list-module-stylesheets settings browser-modules) :pages pages})
 
@@ -175,9 +175,9 @@
 
 (defn make-page-html
   "The shell, in the request's language, with the alternate links
-   (dictionary's, [] with one language) and the app's rendered page: its
+   (groundwork-languages's, [] with one language) and the app's rendered page: its
    title and description escaped, its head and body HTML as they are."
-  [wire {{:keys [viewport]} :page} stylesheets scripts browser-settings language alternate-links
+  [shaper {{:keys [viewport]} :page} stylesheets scripts browser-settings language alternate-links
    {:keys [title description head-html body-html]} nonce]
   (str "<!doctype html>\n"
        "<html lang=\"" (escape-html language) "\">\n<head>\n"
@@ -191,7 +191,7 @@
        (str/join (map #(str "<link rel=\"stylesheet\" href=\"" (escape-html %) "\">\n") stylesheets))
        head-html
        "<script type=\"application/json\" id=\"groundwork-settings\"" (nonce-attribute nonce) ">"
-       (escape-json-for-script (wire/turn-data-into-json-text wire browser-settings))
+       (escape-json-for-script (shaped-json/turn-data-into-json-text shaper browser-settings))
        "</script>\n"
        (str/join (map #(str "<script src=\"" (escape-html %) "\"" (nonce-attribute nonce) " defer></script>\n") scripts))
        "</head>\n<body>\n<div id=\"app\">" body-html "</div>\n</body>\n</html>\n"))
@@ -216,15 +216,15 @@
 (defn make-page-handler
   "A Ring handler answering every page address with the shell, in the
    request's language (put on the request by wrap-languages), its JSON
-   written by the app's wire, the app's render-page's head and body in it;
+   written by the app's shaper, the app's render-page's head and body in it;
    a GET of an address no page has (no route, no file) is the not-found
    page (page nil), anything else there 404 with no body. The files it
-   lists are read once. parts: {:wire :settings :browser-settings :pages
+   lists are read once. parts: {:shaped-json :settings :browser-settings :pages
    :render-page :pool :log :scope-kinds :find-session-step}."
-  [{:keys [wire settings browser-settings pages render-page pool log scope-kinds find-session-step]}]
+  [{:keys [shaper settings browser-settings pages render-page pool log scope-kinds find-session-step]}]
   (let [stylesheets (list-stylesheets settings)
         scripts     (list-scripts settings)
-        origin      (get-in settings [:sessions :allowed-origin])
+        origin      (get-in settings [:access :allowed-origin])
         nonce?      (true? (get-in settings [:page :content-security-policy :nonce?]))
         random      (SecureRandom.)]
     (fn [{:groundwork.server.main/keys [language path] :as request}]
@@ -232,29 +232,29 @@
         {:status 404 :headers {} :body ""}
         (let [page     (find-page-of-request pages request)
               nonce    (when nonce? (make-nonce random))
-              context  ((:enter find-session-step) {:bridge/request request :bridge/log log})
+              context  ((:enter find-session-step) {:groundwork-bridge/request request :groundwork-bridge/log log})
               rendered (check-rendered-page (:name page)
                                             (render-page request page
                                                          {:nonce         nonce
                                                           :asker         (asker/read-asker context)
-                                                          :run-as-asker! (asker/make-run-as-asker pool request settings scope-kinds (:bridge/log context))}))]
+                                                          :run-as-asker! (asker/make-run-as-asker pool request settings scope-kinds (:groundwork-bridge/log context))}))]
           (if (= :redirect (:answer rendered))
             {:status  (:status rendered)
              :headers {"location" (:location rendered) "cache-control" "no-store"}
              :body    ""}
             {:status  (:status rendered)
              :headers (make-headers settings nonce)
-             :body    (make-page-html wire settings stylesheets scripts (assoc browser-settings :language language)
-                                      language (dictionary/make-alternate-links (:languages settings) origin path)
+             :body    (make-page-html shaper settings stylesheets scripts (assoc browser-settings :language language)
+                                      language (languages/make-alternate-links (:languages settings) origin path)
                                       rendered nonce)}))))))
 
 (defn make-catalog-routes
-  "A GET for each language's catalog (dictionary's list-catalog-files), at
+  "A GET for each language's catalog (groundwork-languages's list-catalog-files), at
    the address the browser fetches it from, answered with the classpath
    file the server reads, as it is, read once: JSON, asked again each time
    (no-cache), so a deploy's new texts are what the next fetch gets."
   [languages]
-  (vec (for [{:keys [resource address]} (dictionary/list-catalog-files languages)
+  (vec (for [{:keys [resource address]} (languages/list-catalog-files languages)
              :let [response {:status  200
                              :headers {"content-type"           "application/json; charset=utf-8"
                                        "cache-control"          "no-cache"
@@ -264,17 +264,17 @@
 
 (defn wrap-languages
   "The Ring handler, each request first given its language and its path
-   without the language's prefix (dictionary's find-language-of-request):
+   without the language's prefix (groundwork-languages's find-language-of-request):
    :uri becomes that path, for routing, and the request carries
    :groundwork.server.main/language and :groundwork.server.main/path. The
-   handler runs with the texts and that language bound (dictionary's
-   with-language), so a (dictionary/tr key args) in it is in the
+   handler runs with the texts and that language bound (groundwork-languages's
+   with-language), so a (languages/tr key args) in it is in the
    request's language; work it hands to a thread Clojure didn't start
    binds its own."
   [handler languages texts]
   (fn [request]
-    (let [{:keys [language path]} (dictionary/find-language-of-request languages request)]
-      (dictionary/with-language texts language
+    (let [{:keys [language path]} (languages/find-language-of-request languages request)]
+      (languages/with-language texts language
         (handler (assoc request
                         :uri path
                         :groundwork.server.main/language language

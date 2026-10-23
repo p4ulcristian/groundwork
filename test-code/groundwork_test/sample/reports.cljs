@@ -4,8 +4,8 @@
    .reports-probe, so the test sees the stylesheet was in first."
   (:require
    [groundwork-test.sample.browser :as browser]
-   [parlor.api :as parlor]
-   [browser-build.api :as styles]))
+   [groundwork-screens.api :as screens]
+   [groundwork-browser-build.api :as styles]))
 
 (def ^:private reports-styles (styles/use-stylesheet "groundwork_test/sample/reports.css"))
 
@@ -20,6 +20,6 @@
 (set! (.-sampleReportsColourAtLoad js/window) (find-probe-colour))
 
 (defn- reports-page [_]
-  [:section#reports.reports [:h1 (parlor/tr :reports/title {})]])
+  [:section#reports.reports [:h1 (screens/tr :reports/title {})]])
 
 (browser/add-drawer! :reports/page reports-page)

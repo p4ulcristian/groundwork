@@ -1,36 +1,36 @@
 ;; groundwork's libraries, by side, and which others each may use.
 ;; test-code/groundwork/libraries_test.clj checks every namespace against it:
 ;; a library requires only the libraries it lists, and only their api;
-;; nobody uses another around a circle. wire is a library of its own
-;; (github.com/p4ulcristian/wire): any library may use it, through wire.api only.
-;; So is cellar, Postgres (github.com/p4ulcristian/cellar): any server library
-;; may use it, through cellar.api only. So is backroom, background jobs
-;; (github.com/p4ulcristian/backroom): any server library may use it, through
-;; backroom.api only. So is browser-build, the browser build and the stylesheets it
-;; bundles (github.com/p4ulcristian/browser-build): only to build, never in
+;; nobody uses another around a circle. groundwork-shaped-json is a library of its own
+;; (github.com/p4ulcristian/groundwork-shaped-json): any library may use it, through groundwork-shaped-json.api only.
+;; So is groundwork-postgres, Postgres (github.com/p4ulcristian/groundwork-postgres): any server library
+;; may use it, through groundwork-postgres.api only. So is groundwork-background-jobs, background jobs
+;; (github.com/p4ulcristian/groundwork-background-jobs): any server library may use it, through
+;; groundwork-background-jobs.api only. So is browser-build, the browser build and the stylesheets it
+;; bundles (github.com/p4ulcristian/groundwork-browser-build): only to build, never in
 ;; production, so no server namespace requires it (main loads it only when it
 ;; watches, by requiring-resolve); a browser namespace names its stylesheets
-;; through browser-build.api only. So is bridge, how the browser and the server
-;; talk, with a handler's steps and the routes (github.com/p4ulcristian/bridge):
-;; any library on either side may use it, through bridge.api only. So is
-;; doorman, who is asking and what they may do, sessions and access
-;; (github.com/p4ulcristian/doorman): any server library may use it, through
-;; doorman.api only (and main's REPL tools doorman.repl, asking as a named
+;; through groundwork-browser-build.api only. So is bridge, how the browser and the server
+;; talk, with a handler's steps and the routes (github.com/p4ulcristian/groundwork-bridge):
+;; any library on either side may use it, through groundwork-bridge.api only. So is
+;; groundwork-access, who is asking and what they may do, sessions and access
+;; (github.com/p4ulcristian/groundwork-access): any server library may use it, through
+;; groundwork-access.api only (and main's REPL tools groundwork-access.repl, asking as a named
 ;; person, which no app code does); a browser library too, for the shape of "what may I
-;; do?"'s answer, which doorman.api's browser half holds. So is doorbell, a change to a table rings every open
-;; screen, which asks again (github.com/p4ulcristian/doorbell): any library on
-;; either side may use it, through doorbell.api only. So is logbook, the app's
-;; log (github.com/p4ulcristian/logbook): any server library may use it, through
-;; logbook.api only. So is parlor, the browser's screens over doorbell's
-;; question store, in re-frame (github.com/p4ulcristian/parlor): any browser
-;; library may use it, through parlor.api only; re-frame.core beside it, for
-;; its events and subscriptions. So is dictionary, which language a request, a
-;; page and an address are in (github.com/p4ulcristian/dictionary): any library
-;; on either side may use it, through dictionary.api only. So are attic, the
-;; app's files (github.com/p4ulcristian/attic), and postbox, its email
-;; (github.com/p4ulcristian/postbox): any server library may use them, through
-;; attic.api and postbox.api only. So is safe, the settings and their secrets
-;; (github.com/p4ulcristian/safe): the server's only, through safe.api only; an
+;; do?"'s answer, which groundwork-access.api's browser half holds. So is groundwork-live-updates, a change to a table rings every open
+;; screen, which asks again (github.com/p4ulcristian/groundwork-live-updates): any library on
+;; either side may use it, through groundwork-live-updates.api only. So is groundwork-logs, the app's
+;; log (github.com/p4ulcristian/groundwork-logs): any server library may use it, through
+;; groundwork-logs.api only. So is groundwork-screens, the browser's screens over groundwork-live-updates's
+;; question store, in re-frame (github.com/p4ulcristian/groundwork-screens): any browser
+;; library may use it, through groundwork-screens.api only; re-frame.core beside it, for
+;; its events and subscriptions. So is groundwork-languages, which language a request, a
+;; page and an address are in (github.com/p4ulcristian/groundwork-languages): any library
+;; on either side may use it, through groundwork-languages.api only. So are groundwork-file-storage, the
+;; app's files (github.com/p4ulcristian/groundwork-file-storage), and groundwork-email, its email
+;; (github.com/p4ulcristian/groundwork-email): any server library may use them, through
+;; groundwork-file-storage.api and groundwork-email.api only. So is safe, the settings and their secrets
+;; (github.com/p4ulcristian/groundwork-settings): the server's only, through groundwork-settings.api only; an
 ;; app loads its settings with it, and groundwork compares a secret token with it.
 {:server  {:main #{}}
  :browser {:main #{}}}

@@ -20,12 +20,12 @@
    groundwork_ready_checks_total{outcome}, and the stage is read into
    groundwork_stage{stage} (groundwork.server.main.metrics)."
   (:require
-   [cellar.api :as database]
+   [groundwork-postgres.api :as postgres]
    [groundwork.server.main.metrics :as metrics]
-   [wire.api :as wire]))
+   [groundwork-shaped-json.api :as shaped-json]))
 
 (def ^:private find-database-answer
-  (database/make-query-from-sql-file "groundwork/server/main/find_database_answer.sql"))
+  (postgres/make-query-from-sql-file "groundwork/server/main/find_database_answer.sql"))
 
 (defn make-health
   "What ready reads: the app's stage (:starting, :started, :stopping) and
@@ -46,7 +46,7 @@
     (let [check @database-check]
       (if (and check (not (realized? check)))
         check
-        (reset! database-check (future (try (database/find-one-row pool find-database-answer {})
+        (reset! database-check (future (try (postgres/find-one-row pool find-database-answer {})
                                             :answered
                                             (catch Exception e e))))))))
 
@@ -68,21 +68,21 @@
     :stopping "the app is stopping"
     :started  (find-database-problem log pool health timeout-ms)))
 
-(defn- answer-json [wire status body]
+(defn- answer-json [shaper status body]
   {:status  status
    :headers {"content-type" "application/json" "cache-control" "no-store"}
-   :body    (wire/turn-data-into-json-text wire body)})
+   :body    (shaped-json/turn-data-into-json-text shaper body)})
 
 (defn make-health-routes
   "The live and ready routes, at the :health settings' paths, as reitit
-   data, answered as JSON by the app's wire; a database that answered
+   data, answered as JSON by the app's shaper; a database that answered
    with an error is written to the app's log; each ready check counted
    on the app's meter."
-  [wire log meter pool health {:keys [version] {:keys [live-path ready-path database-timeout-ms]} :health}]
-  [[live-path  {:get {:handler (fn [_] (answer-json wire 200 {:status "live" :version version}))}}]
+  [shaper log meter pool health {:keys [version] {:keys [live-path ready-path database-timeout-ms]} :health}]
+  [[live-path  {:get {:handler (fn [_] (answer-json shaper 200 {:status "live" :version version}))}}]
    [ready-path {:get {:handler (fn [_]
                                  (if-let [reason (find-reason-not-ready log pool health database-timeout-ms)]
                                    (do (metrics/count-ready-check! meter :not-ready)
-                                       (answer-json wire 503 {:status "not-ready" :version version :reason reason}))
+                                       (answer-json shaper 503 {:status "not-ready" :version version :reason reason}))
                                    (do (metrics/count-ready-check! meter :ready)
-                                       (answer-json wire 200 {:status "ready" :version version}))))}}]])
+                                       (answer-json shaper 200 {:status "ready" :version version}))))}}]])

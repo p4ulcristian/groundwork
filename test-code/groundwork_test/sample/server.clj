@@ -4,13 +4,13 @@
    order; two pages, the orders of a shop and the reports, a module
    loaded on demand."
   (:require
-   [cellar.api :as database]
-   [doorman.api :as doorman]
+   [groundwork-postgres.api :as postgres]
+   [groundwork-access.api :as access]
    [groundwork-test.sample.shapes :as shapes]
-   [bridge.api :as bridge]))
+   [groundwork-bridge.api :as bridge]))
 
 (def scope-kinds
-  (doorman/check-scope-kinds
+  (access/check-scope-kinds
    {:shop {:table   :shops :parent nil :single? false
            :actions {:orders/see #{:read} :orders/add #{:read :insert}}
            :roles   {"Staff" #{:orders/see :orders/add}}
@@ -26,7 +26,7 @@
    :references []
    :triggers  []
    :access   :public
-   :doorbell :tell})
+   :live-updates :tell})
 
 (def orders
   {:table    :orders
@@ -41,15 +41,15 @@
    :references []
    :triggers  []
    :access   [{:allow #{:orders/see :orders/add} :only :all-of-the-action :to [:member :order/shop-id]}]
-   :doorbell :tell})
+   :live-updates :tell})
 
 (def ^:private find-orders-of-shop
-  (database/make-query-from-sql-text
+  (postgres/make-query-from-sql-text
    "sample: the orders of a shop"
    "SELECT order__id, order__note FROM orders WHERE order__shop_id = :shop/id ORDER BY order__created_at, order__id"))
 
 (def ^:private insert-order
-  (database/make-query-from-sql-text
+  (postgres/make-query-from-sql-text
    "sample: a new order"
    "INSERT INTO orders (order__shop_id, order__note) VALUES (:order/shop-id, :order/note) RETURNING order__id"))
 
@@ -61,9 +61,9 @@
                            :daily-caps   []
                            :run-steps-in nil
                            :steps        [{:name  :sample/find-orders-of-shop
-                                           :enter (fn [{:bridge/keys [message-data] :as context}]
+                                           :enter (fn [{:groundwork-bridge/keys [message-data] :as context}]
                                                     (bridge/add-answer-to-context
-                                                     context (database/find-rows (:doorman/transaction context) find-orders-of-shop
+                                                     context (postgres/find-rows (:groundwork-access/transaction context) find-orders-of-shop
                                                                                  (select-keys message-data [:shop/id]))))}]})
    :orders/add     (merge (:orders/add shapes/shapes-by-name)
                           {:action       :orders/add
@@ -72,9 +72,9 @@
                            :daily-caps   [{:max 100 :per :asker} {:max 1000 :per :everyone}]   ; counted in Postgres
                            :run-steps-in nil
                            :steps        [{:name  :sample/add-order
-                                           :enter (fn [{:bridge/keys [message-data] :as context}]
+                                           :enter (fn [{:groundwork-bridge/keys [message-data] :as context}]
                                                     (bridge/add-answer-to-context
-                                                     context (database/find-one-row (:doorman/transaction context) insert-order
+                                                     context (postgres/find-one-row (:groundwork-access/transaction context) insert-order
                                                                                     (select-keys message-data [:order/shop-id :order/note]))))}]})})
 
 (def pages

@@ -1,5 +1,7 @@
 # Secrets are safe's wrapped secrets; an app loads its settings with safe
 
+> **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): safe is groundwork-settings now (`groundwork-settings.api`).
+
 > Changes in part [Main serves the kept errors to a monitor, and logs the browser's](server/main/2026-10-22-main-serves-the-kept-errors-and-logs-the-browsers.md) (the `:errors` token is `safe/secret`, compared by `safe/equal?`) and [Settings are required data](2026-10-12-settings-are-required-data.md) (where an app's settings come from). [The library does not need sops](2026-10-12-the-library-does-not-need-sops.md) still holds: house reads no file and runs no sops; the app does, through safe. On [safe](https://github.com/p4ulcristian/safe) v0.1.0, and cellar v0.4.3, postbox v0.1.1, attic v0.1.1, meter v0.1.3.
 
 **Decision:** house takes [safe](https://github.com/p4ulcristian/safe), the manor's settings and secrets, server only, through `safe.api` only (`libraries.edn`, checked by the libraries test).

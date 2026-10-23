@@ -1,42 +1,42 @@
 (ns groundwork.server.main.api-test
   "The whole server, started as production starts it: migrate-app! as the
    owner, then start-app! as a role that owns nothing. The page shell, a
-   message with its notes, and doorbell: a new order is told to every open
+   message with its notes, and groundwork-live-updates: a new order is told to every open
    sse line as only its table, and each person's asking again sees, through the
    gates, only their own shop's orders. One message's lines, written by
-   bridge, by cellar through doorbell and by the app's own step, carry
-   its request id and the person doorman found; the errors route hands a
+   bridge, by groundwork-postgres through groundwork-live-updates and by the app's own step, carry
+   its request id and the person groundwork-access found; the errors route hands a
    monitor the kept errors, only with its token; a browser's error, sent
    as a message, is kept with them. Then the health checks: live and
    ready, a database that doesn't answer or lets nobody in, and stopping;
    the metrics route, a visitor's session, the REPL's tools; an upload
-   through doorman's session and the app's :may-upload? (stored in a real
-   S3 API when GROUNDWORK_S3_TEST_ENDPOINT is set: SeaweedFS, as attic's tests),
+   through groundwork-access's session and the app's :may-upload? (stored in a real
+   S3 API when GROUNDWORK_S3_TEST_ENDPOINT is set: SeaweedFS, as groundwork-file-storage's tests),
    an email queued in a write's transaction and sent by the workers to the
    log, and its bounce handed to the app's function by its tag.
    Runs when
    GROUNDWORK_SQL_TEST_PORT is set."
   (:require
-   [attic.api :as attic]
+   [groundwork-file-storage.api :as file-storage]
    [clojure.java.io :as io]
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
-   [cellar.api :as database]
-   [dictionary.api :as dictionary]
-   [doorbell.api :as doorbell]
-   [doorman.api :as doorman]
+   [groundwork-postgres.api :as postgres]
+   [groundwork-languages.api :as languages]
+   [groundwork-live-updates.api :as live-updates]
+   [groundwork-access.api :as access]
    [groundwork.server.main.api :as main]
    [groundwork.server.main.app-routes :as app-routes]
    [groundwork.server.main.page :as page]
    [groundwork.server.main.run-once :as run-once]
    [jsonista.core :as json]
-   [logbook.api :as logbook]
-   [bridge.api :as bridge]
-   [meter.api :as meter]
+   [groundwork-logs.api :as logs]
+   [groundwork-bridge.api :as bridge]
+   [groundwork-metrics.api :as metrics]
    [nrepl.core :as nrepl]
-   [postbox.api :as postbox]
-   [safe.api :as safe]
-   [study.api :as study]
+   [groundwork-email.api :as email]
+   [groundwork-settings.api :as settings]
+   [groundwork-live-repl.api :as live-repl]
    [cognitect.aws.client.api :as aws]
    [cognitect.aws.credentials :as aws-credentials])
   (:import
@@ -49,7 +49,7 @@
 (def ^:private owner (System/getenv "GROUNDWORK_SQL_TEST_USER"))
 
 (def ^:private scope-kinds
-  (doorman/check-scope-kinds
+  (access/check-scope-kinds
    {:shop {:table   :shops :parent nil :single? false
            :actions {:orders/see #{:read} :orders/edit #{:read :insert :update}
                      :shop-emails/see #{:read} :shop-emails/mark-bounced #{:read :update}}
@@ -65,7 +65,7 @@
    :references []
    :triggers  []
    :access   :public
-   :doorbell :tell})
+   :live-updates :tell})
 
 (def ^:private orders
   {:table    :orders
@@ -77,11 +77,11 @@
    :references []
    :triggers  []
    :access   [{:allow #{:orders/see :orders/edit} :only :all-of-the-action :to [:member :order/shop-id]}]
-   :doorbell :tell})
+   :live-updates :tell})
 
 (def ^:private shop-emails
-  "A shop's address, which a bounce marks: postbox's webhook function, run
-   as doorman's system actor :postbox, may, and nothing else of the shop's."
+  "A shop's address, which a bounce marks: groundwork-email's webhook function, run
+   as groundwork-access's system actor :email, may, and nothing else of the shop's."
   {:table    :shop-emails
    :columns  [[:shop-email/address :string {:primary-key? true}]
               [:shop-email/shop-id :uuid {:references {:to :shop/id :on-delete :refuse :on-update :refuse :checked-at :statement}}]
@@ -93,11 +93,11 @@
    :references []
    :triggers  []
    :access   [{:allow :shop-emails/see :only :all-of-the-action :to [:member :shop-email/shop-id]}
-              {:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :postbox]}]
-   :doorbell :tell})
+              {:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :email]}]
+   :live-updates :tell})
 
 (def ^:private mark-bounced
-  (database/make-query-from-sql-text "a bounce" "UPDATE shop_emails SET shop_email__bounced = true WHERE shop_email__address = :address"))
+  (postgres/make-query-from-sql-text "a bounce" "UPDATE shop_emails SET shop_email__bounced = true WHERE shop_email__address = :address"))
 
 (def ^:private paul #uuid "00000000-0000-4000-8000-00000000000a")
 (def ^:private anna #uuid "00000000-0000-4000-8000-00000000000b")
@@ -108,23 +108,23 @@
 (def ^:private order-91 #uuid "91000000-0000-4000-8000-000000000091")
 
 (def ^:private find-all-orders
-  (database/make-query-from-sql-text "all orders, no WHERE" "SELECT order__id FROM orders ORDER BY order__id"))
+  (postgres/make-query-from-sql-text "all orders, no WHERE" "SELECT order__id FROM orders ORDER BY order__id"))
 
 (def ^:private insert-order
-  (database/make-query-from-sql-text "a new order" "INSERT INTO orders (order__shop_id) VALUES (:order/shop-id) RETURNING order__id"))
+  (postgres/make-query-from-sql-text "a new order" "INSERT INTO orders (order__shop_id) VALUES (:order/shop-id) RETURNING order__id"))
 
 (def ^:private find-daily-cap-counts
-  (database/make-query-from-sql-text "daily cap counts"
+  (postgres/make-query-from-sql-text "daily cap counts"
                                      "SELECT daily_cap_count__counted_for, daily_cap_count__count FROM groundwork.daily_cap_counts ORDER BY 1"))
 
 (def ^:private count-kept-keys
-  (database/make-query-from-sql-text "one-time keys kept" "SELECT count(*) AS n FROM groundwork.run_once_keys WHERE run_once_key__key = :run-once-key/key"))
+  (postgres/make-query-from-sql-text "one-time keys kept" "SELECT count(*) AS n FROM groundwork.run_once_keys WHERE run_once_key__key = :run-once-key/key"))
 
 (def ^:private find-untyped
-  (database/make-query-from-sql-text "a param Postgres can't type" "SELECT :x IS NULL AS b"))
+  (postgres/make-query-from-sql-text "a param Postgres can't type" "SELECT :x IS NULL AS b"))
 
 (def ^:private lines
-  "The lines the app's logbook wrote, as JSON data."
+  "The lines the app's logger wrote, as JSON data."
   (atom []))
 
 (defn- find-lines [event]
@@ -139,8 +139,8 @@
                          :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                          :steps  [{:name  :remember-after-commit
                                    :enter (fn [context]
-                                            (database/run-after-commit! (:doorman/transaction context) #(throw (ex-info "the cache is gone" {})))
-                                            (database/run-after-commit! (:doorman/transaction context) #(swap! after-commit-runs conj :ran))
+                                            (postgres/run-after-commit! (:groundwork-access/transaction context) #(throw (ex-info "the cache is gone" {})))
+                                            (postgres/run-after-commit! (:groundwork-access/transaction context) #(swap! after-commit-runs conj :ran))
                                             (bridge/add-answer-to-context context (empty? @after-commit-runs)))}]}
    :orders/count {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :refusals {} :rate-limit {:max 2 :per-ms 60000}
                   :run-steps-in nil :daily-caps []
@@ -148,20 +148,20 @@
    :orders/all {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape [:vector :uuid] :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                 :steps  [{:name  :answer-all-orders
                           :enter #(bridge/add-answer-to-context
-                                   % (mapv :order/id (database/find-rows (:doorman/transaction %) find-all-orders {})))}]}
+                                   % (mapv :order/id (postgres/find-rows (:groundwork-access/transaction %) find-all-orders {})))}]}
    :orders/add {:action :orders/edit :scope [:shop :order/shop-id] :params-shape [:map [:order/shop-id :uuid] [:test/wait-ms :int]] :answer-shape :uuid
                 :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                 :steps  [{:name  :add-order
-                          :enter (fn [{:bridge/keys [message-data] :as context}]
+                          :enter (fn [{:groundwork-bridge/keys [message-data] :as context}]
                                    (Thread/sleep (long (:test/wait-ms message-data)))
                                    (bridge/add-answer-to-context
-                                    context (:order/id (database/find-one-row (:doorman/transaction context) insert-order
+                                    context (:order/id (postgres/find-one-row (:groundwork-access/transaction context) insert-order
                                                                               (select-keys message-data [:order/shop-id])))))}]}
    :orders/add-badly {:action :orders/edit :scope [:shop :order/shop-id] :params-shape [:map [:order/shop-id :uuid]] :answer-shape :uuid
                       :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                       :steps  [{:name  :add-order-and-answer-a-number
-                                :enter (fn [{:bridge/keys [message-data] :as context}]
-                                         (database/find-one-row (:doorman/transaction context) insert-order message-data)
+                                :enter (fn [{:groundwork-bridge/keys [message-data] :as context}]
+                                         (postgres/find-one-row (:groundwork-access/transaction context) insert-order message-data)
                                          (bridge/add-answer-to-context context 42))}]}
    :orders/capped {:action :orders/see :scope [:shop :shop/id] :params-shape [:map [:shop/id :uuid]] :answer-shape :boolean
                    :refusals {} :rate-limit nil :run-steps-in nil
@@ -169,9 +169,9 @@
                    :steps  [{:name :answer-true :enter #(bridge/add-answer-to-context % true)}]}
    :orders/broken {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                    :steps  [{:name  :say-and-ask-untyped
-                             :enter (fn [{:bridge/keys [log] :as context}]
+                             :enter (fn [{:groundwork-bridge/keys [log] :as context}]
                                       (log :info :test/about-to-break {})
-                                      (database/find-one-row (:doorman/transaction context) find-untyped {:x "a"})
+                                      (postgres/find-one-row (:groundwork-access/transaction context) find-untyped {:x "a"})
                                       context)}
                             {:name :break :enter (fn [_] (throw (ex-info "the app's step broke" {})))}]}})
 
@@ -206,28 +206,28 @@
 (defn- start-pool!
   "A pool as a deploy's script starts one: its own log and meter."
   [user]
-  (let [log (logbook/log-function (logbook/make-logbook {:lowest-level :error :format :json :errors-kept 10
+  (let [log (logs/log-function (logs/make-logger {:lowest-level :error :format :json :errors-kept 10
                                                          :write-to     (fn [_])}))]
-    (database/start-pool! (make-database-settings user)
-                          {:log log :meter (meter/make-meter {:jvm-metrics false :most-series-per-metric 10000} {:log log})})))
+    (postgres/start-pool! (make-database-settings user)
+                          {:log log :meter (metrics/make-meter {:jvm-metrics false :most-series-per-metric 10000} {:log log})})))
 
 (defn- make-settings [user]
   {:version           "test-1"
-   :wire              {:most-shapes-kept 1000
+   :shaped-json              {:most-shapes-kept 1000
                        :json-limits      {:max-nesting-depth 1000 :max-number-length 1000 :max-string-length 20000000
                                           :max-name-length 50000 :max-document-length nil :max-token-count nil
                                           :max-writing-nesting-depth 1000}}
-   :browser-wire      {:most-shapes-kept 1000 :most-keys-kept 10000}
-   :logbook           {:lowest-level :debug :format :json :errors-kept 100
+   :browser-shaped-json      {:most-shapes-kept 1000 :most-keys-kept 10000}
+   :logs           {:lowest-level :debug :format :json :errors-kept 100
                        :write-to     #(swap! lines conj (json/read-value %))}
-   :meter             {:jvm-metrics true :most-series-per-metric 10000}
-   :metrics           {:path "/metrics" :token (safe/make-secret :meter/token "the-metrics-token")}
-   :study             {:mode :development :bind-address "127.0.0.1" :port 0 :middleware [] :port-file nil}
+   :metrics           {:jvm-metrics true :most-series-per-metric 10000
+                       :route {:path "/metrics" :token (settings/make-secret :groundwork-metrics/token "the-metrics-token")}}
+   :live-repl             {:mode :development :bind-address "127.0.0.1" :port 0 :middleware [] :port-file nil}
    :visitors          {:path "/groundwork/visitor" :rate-limit {:max 5 :per-ms 60000}}
-   :errors            {:path "/groundwork/errors" :token (safe/make-secret :errors/token "the-errors-token") :browser-rate-limit {:max 2 :per-ms 60000}}
+   :errors            {:path "/groundwork/errors" :token (settings/make-secret :errors/token "the-errors-token") :browser-rate-limit {:max 2 :per-ms 60000}}
    :migrate-at-start? false
    :browser-build     :built
-   :server            {:ip "127.0.0.1" :port 0 :proxy-protocol :disable :client-address-header nil :server-header nil
+   :bridge            {:ip "127.0.0.1" :port 0 :proxy-protocol :disable :client-address-header nil :server-header nil
                        :max-body-bytes 8388608 :max-request-head-bytes 8192 :max-ws-message-bytes 4194304
                        :idle-timeout-ms 60000 :threads {:min 8 :max 50 :idle-timeout-ms 60000}
                        :addresses {:http "/groundwork/http" :sse "/groundwork/sse" :ws "/groundwork/ws"}
@@ -235,10 +235,10 @@
                        :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
                        :rate-limit-buckets-before-cleanup 10000
                        :metric-buckets {:answer-seconds [0.01 0.1 1]}}
-   :database          (make-database-settings user)
+   :postgres          (make-database-settings user)
    :migration         {:instant-part {:statement-timeout-ms 10000 :lock-timeout-ms 5000}
                        :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
-   :sessions          {:cookie-name "groundwork_session" :session-days 1 :visitor-session-days 1 :renew-after-minutes 60
+   :access          {:cookie-name "groundwork_session" :session-days 1 :visitor-session-days 1 :renew-after-minutes 60
                        :allowed-origin "http://app.test" :secure-cookie? false
                        :token-lead "app_" :token-shown-characters 10 :token-longest-days 30}
    :my-actions        {:rate-limit {:max 60 :per-ms 60000}}
@@ -251,19 +251,19 @@
                        :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
                        :forget-done-every-ms 3600000 :stop-wait-ms 5000
                        :metric-buckets {:job-run-seconds [0.1 1 10]}}
-   :attic             {:storage {:endpoint (or s3-endpoint "http://127.0.0.1:1") :bucket "groundwork-test"
-                                 :access-key (safe/make-secret :attic/access-key (or (System/getenv "GROUNDWORK_S3_TEST_ACCESS_KEY") "key"))
-                                 :secret-key (safe/make-secret :attic/secret-key (or (System/getenv "GROUNDWORK_S3_TEST_SECRET_KEY") "secret"))
+   :file-storage             {:storage {:endpoint (or s3-endpoint "http://127.0.0.1:1") :bucket "groundwork-test"
+                                 :access-key (settings/make-secret :groundwork-file-storage/access-key (or (System/getenv "GROUNDWORK_S3_TEST_ACCESS_KEY") "key"))
+                                 :secret-key (settings/make-secret :groundwork-file-storage/secret-key (or (System/getenv "GROUNDWORK_S3_TEST_SECRET_KEY") "secret"))
                                  :region "us-east-1" :public-url nil :link-expiry-seconds 300
                                  :connect-timeout-ms 2000 :request-timeout-ms 10000
                                  :retries {:max-retries 1 :first-wait-ms 100 :max-wait-ms 100}}
                        :upload  {:path "/groundwork/files" :key-prefix "orders/photos" :allowed-content-types #{"image/png"}
                                  :max-file-bytes 1000000 :max-files 4}}
-   :postbox           {:sending  {:provider {:name :log :level :info} :tags #{:orders/confirmation}
+   :email           {:sending  {:provider {:name :log :level :info} :tags #{:orders/confirmation}
                                   :background-job {:timeout-ms 10000 :attempts 3}}
-                       :webhooks {:delivery-path "/postbox/delivery" :inbound-path "/postbox/inbound"
-                                  :token (safe/make-secret :postbox/webhook-token "the-webhook-token-0123") :inbound-domain "in.app.test"}}
-   :doorbell          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
+                       :webhooks {:delivery-path "/email/delivery" :inbound-path "/email/inbound"
+                                  :token (settings/make-secret :groundwork-email/webhook-token "the-webhook-token-0123") :inbound-domain "in.app.test"}}
+   :live-updates          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                        :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                    :reconnect-after-ms 1000 :stop-wait-ms 2000}}
    :languages         {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}] :default "en" :cookie-name "lang"
@@ -287,7 +287,7 @@
                  :handler (fn [_request {:keys [asker run-as-asker!]}]
                             {:status 200 :headers {"content-type" "text/plain"}
                              :body (str (:person-id asker) " "
-                                        (run-as-asker! {:read-only? true} #(count (database/find-rows % find-all-orders {}))))})}
+                                        (run-as-asker! {:read-only? true} #(count (postgres/find-rows % find-all-orders {}))))})}
    :app/sign-in {:address "/app/sign-in" :method :post :kind :person :rate-limit nil
                  :handler (fn [_request {:keys [sign-in!]}]
                             {:status 200 :headers {"set-cookie" (:set-cookie (sign-in! anna #{}))} :body "signed in"})}
@@ -315,7 +315,7 @@
      :title       "Shops <test>"
      :description (str "The " (name (:name page)) " page")
      :head-html   (str "<script nonce=\"" nonce "\">window.appStarted = true;</script>\n")
-     :body-html   (str "<main>" (dictionary/tr :orders/title {}) " for " (or (:person-id asker) "nobody") "</main>")}
+     :body-html   (str "<main>" (languages/tr :orders/title {}) " for " (or (:person-id asker) "nobody") "</main>")}
     :else
     {:answer :page :status 404 :title "Not found" :description nil :head-html "" :body-html "<main>No such page</main>"}))
 
@@ -327,8 +327,8 @@
    :on-delivery-event {:orders/confirmation (fn [event {:keys [transaction]}]
                                               (swap! delivery-events conj
                                                      (assoc event
-                                                            :marked (database/run-statement! transaction mark-bounced {:address (:address event)})
-                                                            :orders-seen (count (database/find-rows transaction find-all-orders {})))))}
+                                                            :marked (postgres/run-statement! transaction mark-bounced {:address (:address event)})
+                                                            :orders-seen (count (postgres/find-rows transaction find-all-orders {})))))}
    :on-inbound-email {}
    :handlers handlers :pages {:orders/page {:address "/orders/:order-id" :title "Order"}
                               :admin/page  {:address "/admin" :title "Admin" :module "admin"}}
@@ -336,27 +336,27 @@
    :browser-modules {:admin {:entries '[app.browser.admin] :depends-on #{:main} :start nil}}
    :background-job-kinds [] :schedules []})
 
-(defn- run-sql! [pool text] (database/run-statement! pool (database/make-query-from-sql-text "test" text) {}))
+(defn- run-sql! [pool text] (postgres/run-statement! pool (postgres/make-query-from-sql-text "test" text) {}))
 
 (defn- refusal-of
   "A name's refusal as JSON data reads it, without its request id: the
    reason as text, its data."
   [reason data]
-  {"bridge/refused" (subs (str reason) 1) "bridge/data" data})
+  {"groundwork-bridge/refused" (subs (str reason) 1) "groundwork-bridge/data" data})
 
 (defn- without-request-ids
   "An answer's JSON data, each name's request id taken out (a new one for
    every message), its notes too."
   [answer]
-  (update-vals (dissoc answer "bridge/notes") #(if (map? %) (dissoc % "bridge/request-id") %)))
+  (update-vals (dissoc answer "groundwork-bridge/notes") #(if (map? %) (dissoc % "groundwork-bridge/request-id") %)))
 
 (defn- is-too-many?
-  "Whether a name's JSON answer is bridge's :bridge/too-many, with a wait
+  "Whether a name's JSON answer is bridge's :groundwork-bridge/too-many, with a wait
    and a request id."
   [answer]
-  (and (= "bridge/too-many" (get answer "bridge/refused"))
-       (pos-int? (get-in answer ["bridge/data" "retry-after-ms"]))
-       (string? (get answer "bridge/request-id"))))
+  (and (= "groundwork-bridge/too-many" (get answer "groundwork-bridge/refused"))
+       (pos-int? (get-in answer ["groundwork-bridge/data" "retry-after-ms"]))
+       (string? (get answer "groundwork-bridge/request-id"))))
 
 (defn- ask-health
   "A plain GET, no origin, no cookie: [status body cache-control]."
@@ -409,7 +409,7 @@
                           once-key (.header "idempotency-key" (str once-key))
                           true     (-> (.POST (HttpRequest$BodyPublishers/ofString body)) (.build)))
                         (HttpResponse$BodyHandlers/ofString))]
-    [(.statusCode response) (dissoc (json/read-value (.body response)) "bridge/notes")]))
+    [(.statusCode response) (dissoc (json/read-value (.body response)) "groundwork-bridge/notes")]))
 
 (defn- open-sse [server-port cookie]
   (io/reader (.body (.send (HttpClient/newHttpClient)
@@ -428,11 +428,11 @@
          3000 :nothing))
 
 (deftest a-request-is-handled-in-its-language
-  (let [languages (dictionary/check-settings {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}]
+  (let [languages (languages/check-settings {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}]
                                               :default "en" :cookie-name "lang" :preview-languages []
                                               :fallback-language "en" :catalogs-path "groundwork_test/i18n"})
-        handler   (page/wrap-languages (fn [request] {:uri (:uri request) :text (dictionary/tr :orders/count {:count 2})})
-                                       languages (dictionary/load-texts languages))]
+        handler   (page/wrap-languages (fn [request] {:uri (:uri request) :text (languages/tr :orders/count {:count 2})})
+                                       languages (languages/load-texts languages))]
     (is (= {:uri "/orders" :text "2 Bestellungen"} (handler {:uri "/de/orders" :headers {}})) "the prefix's, bound for tr")
     (is (= "2 Bestellungen" (:text (handler {:uri "/orders" :headers {"cookie" "lang=de"}}))) "the cookie's")
     (is (= "2 orders" (:text (handler {:uri "/orders" :headers {}}))) "the default's")))
@@ -447,12 +447,12 @@
         "two routes at one address and method")))
 
 (deftest the-settings-are-checked-all-at-once
-  (let [problems (try (main/check-settings (-> (make-settings "x") (dissoc :version) (assoc-in [:server :port] "80")
-                                               (update :server dissoc :addresses :ping-every-ms)))
+  (let [problems (try (main/check-settings (-> (make-settings "x") (dissoc :version) (assoc-in [:bridge :port] "80")
+                                               (update :bridge dissoc :addresses :ping-every-ms)))
                       (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
     (is (contains? problems :version))
-    (is (contains? (:server problems) :port))
-    (is (= #{:port :addresses :ping-every-ms} (set (keys (:server problems))))
+    (is (contains? (:bridge problems) :port))
+    (is (= #{:port :addresses :ping-every-ms} (set (keys (:bridge problems))))
         "bridge's settings have no defaults: each missing one is named"))
   (let [problems (try (main/check-settings (update (make-settings "x") :health dissoc :ready-path :database-timeout-ms))
                       (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
@@ -460,24 +460,24 @@
         "the health settings have no defaults either"))
   (let [problems (try (main/check-settings (-> (make-settings "x")
                                                (update-in [:migration :slow-part] dissoc :lock-timeout-ms)
-                                               (update-in [:doorbell :listening] dissoc :reconnect-after-ms)
-                                               (update :database dissoc :connection-wait-ms)
+                                               (update-in [:live-updates :listening] dissoc :reconnect-after-ms)
+                                               (update :postgres dissoc :connection-wait-ms)
                                                (update :background-jobs dissoc :stop-wait-ms)))
                       (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
     (is (= {:migration       {:slow-part {:lock-timeout-ms ["missing required key"]}}
-            :doorbell        {:listening {:reconnect-after-ms ["missing required key"]}}
-            :database        {:connection-wait-ms ["missing required key"]}
+            :live-updates        {:listening {:reconnect-after-ms ["missing required key"]}}
+            :postgres        {:connection-wait-ms ["missing required key"]}
             :background-jobs {:stop-wait-ms ["missing required key"]}}
            problems)
         "the migration's limits, the listener's, the pool's and the workers' have no defaults"))
   (let [problems (try (main/check-settings (-> (make-settings "x")
-                                               (update-in [:wire :json-limits] dissoc :max-string-length)
-                                               (dissoc :browser-wire)))
+                                               (update-in [:shaped-json :json-limits] dissoc :max-string-length)
+                                               (dissoc :browser-shaped-json)))
                       (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
-    (is (= {:wire         {:json-limits {:max-string-length ["missing required key"]}}
-            :browser-wire ["missing required key"]}
+    (is (= {:shaped-json         {:json-limits {:max-string-length ["missing required key"]}}
+            :browser-shaped-json ["missing required key"]}
            problems)
-        "wire's settings, the JVM's and the browser's, have no defaults: groundwork makes the one wire from them"))
+        "groundwork-shaped-json's settings, the JVM's and the browser's, have no defaults: groundwork makes the one shaper from them"))
   (let [problems (try (main/check-settings (-> (make-settings "x")
                                                (update :run-once dissoc :keep-keys-ms)
                                                (update-in [:run-once :forget-keys] dissoc :cron)))
@@ -490,61 +490,61 @@
   (let [problems (try (main/check-settings (update (make-settings "x") :my-actions dissoc :rate-limit))
                       (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
     (is (= {:my-actions {:rate-limit ["missing required key"]}} problems)
-        ":doorman/my-actions's rate limit is written out, nil for none"))
+        ":groundwork-access/my-actions's rate limit is written out, nil for none"))
   (let [problems (try (main/check-settings (-> (make-settings "x")
-                                               (update :logbook dissoc :lowest-level)
+                                               (update :logs dissoc :lowest-level)
                                                (update :errors dissoc :token :browser-rate-limit)))
                       (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
-    (is (= {:logbook {:lowest-level ["missing required key"]}
+    (is (= {:logs {:lowest-level ["missing required key"]}
             :errors  {:token ["missing required key"] :browser-rate-limit ["missing required key"]}}
            problems)
-        "logbook's settings and the errors' have no defaults"))
+        "groundwork-logs's settings and the errors' have no defaults"))
   (let [problems (try (main/check-settings (-> (make-settings "x")
-                                               (update :meter dissoc :most-series-per-metric)
-                                               (update :metrics dissoc :token)
-                                               (dissoc :study :visitors)
-                                               (update-in [:server :metric-buckets] dissoc :answer-seconds)
-                                               (update :sessions dissoc :visitor-session-days)
+                                               (update :metrics dissoc :most-series-per-metric)
+                                               (update-in [:metrics :route] dissoc :token)
+                                               (dissoc :live-repl :visitors)
+                                               (update-in [:bridge :metric-buckets] dissoc :answer-seconds)
+                                               (update :access dissoc :visitor-session-days)
                                                (update :background-jobs dissoc :forget-done-every-ms)))
                       (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
-    (is (= {:meter           {:most-series-per-metric ["missing required key"]}
-            :metrics         {:token ["missing required key"]}
-            :study           ["missing required key"]
+    (is (= {:metrics         {:most-series-per-metric ["missing required key"]
+                              :route                  {:token ["missing required key"]}}
+            :live-repl       ["missing required key"]
             :visitors        ["missing required key"]
-            :server          {:metric-buckets {:answer-seconds ["missing required key"]}}
-            :sessions        {:visitor-session-days ["missing required key"]}
+            :bridge          {:metric-buckets {:answer-seconds ["missing required key"]}}
+            :access          {:visitor-session-days ["missing required key"]}
             :background-jobs {:forget-done-every-ms ["missing required key"]}}
            problems)
-        "the meter's, the metrics route's, the REPL's, the visitors', the buckets and the new library settings have no defaults"))
+        "the groundwork-metrics's, the metrics route's, the REPL's, the visitors', the buckets and the new library settings have no defaults"))
   (let [problems (try (main/check-settings (-> (make-settings "x")
-                                               (update-in [:attic :storage] dissoc :region)
-                                               (update-in [:attic :upload] dissoc :path)
-                                               (update-in [:postbox :sending] dissoc :tags)
-                                               (update-in [:postbox :webhooks] dissoc :token)))
+                                               (update-in [:file-storage :storage] dissoc :region)
+                                               (update-in [:file-storage :upload] dissoc :path)
+                                               (update-in [:email :sending] dissoc :tags)
+                                               (update-in [:email :webhooks] dissoc :token)))
                       (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
-    (is (= {:attic   {:storage {:region ["missing required key"]} :upload {:path ["missing required key"]}}
-            :postbox {:sending {:tags ["missing required key"]} :webhooks {:token ["missing required key"]}}}
+    (is (= {:file-storage   {:storage {:region ["missing required key"]} :upload {:path ["missing required key"]}}
+            :email {:sending {:tags ["missing required key"]} :webhooks {:token ["missing required key"]}}}
            problems)
-        "attic's and postbox's settings, and the routes', have no defaults"))
+        "groundwork-file-storage's and groundwork-email's settings, and the routes', have no defaults"))
   (let [problems (try (main/check-settings (-> (make-settings "x")
                                                (assoc-in [:errors :token] "the-errors-token")
-                                               (assoc-in [:metrics :token] "the-metrics-token")
-                                               (assoc-in [:database :password] "the-password")
-                                               (assoc-in [:attic :storage :secret-key] "secret")
-                                               (assoc-in [:postbox :webhooks :token] "the-webhook-token-0123")))
+                                               (assoc-in [:metrics :route :token] "the-metrics-token")
+                                               (assoc-in [:postgres :password] "the-password")
+                                               (assoc-in [:file-storage :storage :secret-key] "secret")
+                                               (assoc-in [:email :webhooks :token] "the-webhook-token-0123")))
                       (catch clojure.lang.ExceptionInfo e (ex-data e)))
         refused  "should be a #secret, read from the settings' secrets source"]
     (is (= {:errors   {:token [refused]}
-            :metrics  {:token [refused]}
-            :database {:password [refused]}
-            :attic    {:storage {:secret-key [refused]}}
-            :postbox  {:webhooks {:token [refused]}}}
+            :metrics  {:route {:token [refused]}}
+            :postgres {:password [refused]}
+            :file-storage    {:storage {:secret-key [refused]}}
+            :email  {:webhooks {:token [refused]}}}
            (:errors problems))
         "a secret written out as text is refused, each named")
     (is (not-any? #(str/includes? (pr-str problems) %) ["the-errors-token" "the-metrics-token" "the-password" "the-webhook-token"])
         "and its text is never said"))
-  (is (= {:attic {:upload {:max-file-bytes ["should be below the :server settings' :max-body-bytes, which holds the whole upload"]}}}
-         (try (main/check-settings (assoc-in (make-settings "x") [:attic :upload :max-file-bytes] 8388608))
+  (is (= {:file-storage {:upload {:max-file-bytes ["should be below the :bridge settings' :max-body-bytes, which holds the whole upload"]}}}
+         (try (main/check-settings (assoc-in (make-settings "x") [:file-storage :upload :max-file-bytes] 8388608))
               (catch clojure.lang.ExceptionInfo e (:errors (ex-data e)))))
       "an uploaded file larger than the server takes is refused at the start")
   (is (thrown? clojure.lang.ExceptionInfo
@@ -559,28 +559,28 @@
                                                               :scope-kinds scope-kinds})
                                      (catch clojure.lang.ExceptionInfo e (ex-data e)))]
     (is (= :groundwork.server.main/bad-tables type))
-    (is (= [":shops writes its own :on-change, which groundwork puts on it: doorbell's, from its :doorbell"
-            ":orders writes its own :gates, which groundwork puts on it: doorman's, from its :access"]
+    (is (= [":shops writes its own :on-change, which groundwork puts on it: groundwork-live-updates's, from its :live-updates"
+            ":orders writes its own :gates, which groundwork puts on it: groundwork-access's, from its :access"]
            problems)
         "each named, not overwritten without a word"))
-  (is (= [nil {:function "doorbell.tell" :arguments []}]
+  (is (= [nil {:function "groundwork_live_updates.tell" :arguments []}]
          ((juxt :gates :on-change) (first (main/make-ready-tables {:tables [shops] :scope-kinds scope-kinds}))))
-      "one that leaves them out gets doorman's and doorbell's"))
+      "one that leaves them out gets groundwork-access's and groundwork-live-updates's"))
 
 (deftest the-whole-server
   (if-not port
     (println "groundwork.server.main.api-test: skipped, GROUNDWORK_SQL_TEST_PORT is not set")
     (let [owner-pool (start-pool! owner)]
       (try
-        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS attic CASCADE; DROP SCHEMA IF EXISTS postbox CASCADE")
+        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork_postgres CASCADE; DROP SCHEMA IF EXISTS groundwork_background_jobs CASCADE; DROP SCHEMA IF EXISTS groundwork_access CASCADE; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS groundwork_file_storage CASCADE; DROP SCHEMA IF EXISTS groundwork_email CASCADE")
         (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'groundwork_app') THEN CREATE ROLE groundwork_app LOGIN; END IF; END $$")
-        (testing "an app's handler named :doorman/my-actions is refused: it is groundwork's"
+        (testing "an app's handler named :groundwork-access/my-actions is refused: it is groundwork's"
           (is (= :groundwork.server.main/handler-name-taken
                  (try (main/start-app! (-> (make-app owner)
                                            (assoc-in [:settings :migrate-at-start?] true)
-                                           (assoc-in [:handlers :doorman/my-actions] (:orders/count handlers))))
+                                           (assoc-in [:handlers :groundwork-access/my-actions] (:orders/count handlers))))
                       (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))))
-        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS cellar CASCADE; DROP SCHEMA IF EXISTS backroom CASCADE; DROP SCHEMA IF EXISTS doorman CASCADE; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS attic CASCADE; DROP SCHEMA IF EXISTS postbox CASCADE")
+        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork_postgres CASCADE; DROP SCHEMA IF EXISTS groundwork_background_jobs CASCADE; DROP SCHEMA IF EXISTS groundwork_access CASCADE; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS groundwork_file_storage CASCADE; DROP SCHEMA IF EXISTS groundwork_email CASCADE")
         (testing "a page naming a module the app doesn't have is refused"
           (is (= :groundwork.server.main/bad-pages
                  (try (main/start-app! (assoc (make-app owner) :browser-modules {}))
@@ -591,19 +591,19 @@
         (with-out-str (main/migrate-app! (make-app owner) (make-database-settings owner) "groundwork_app"))
         (run-sql! owner-pool (str "INSERT INTO shops VALUES ('" shop-7 "'), ('" shop-9 "')"))
         (run-sql! owner-pool (str "INSERT INTO shop_emails (shop_email__address, shop_email__shop_id) VALUES ('anna@shop.test', '" shop-7 "')"))
-        (database/run-in-transaction! owner-pool {:read-only? false :log nil}
+        (postgres/run-in-transaction! owner-pool {:read-only? false :log nil}
                                       (fn [transaction]
-                                        (let [roles-of-7 (doorman/add-scope! transaction scope-kinds :shop shop-7 paul nil)]
-                                          (doorman/add-scope! transaction scope-kinds :shop shop-9 bob nil)
+                                        (let [roles-of-7 (access/add-scope! transaction scope-kinds :shop shop-7 paul nil)]
+                                          (access/add-scope! transaction scope-kinds :shop shop-9 bob nil)
                                           ;; a member holds a set of roles, by their ids
-                                          (doorman/add-membership! transaction [:shop shop-7] anna #{(get roles-of-7 "Staff")}))))
+                                          (access/add-membership! transaction [:shop shop-7] anna #{(get roles-of-7 "Staff")}))))
         (testing "an app route at an address groundwork serves is refused at the start"
           (is (thrown? Exception
                        (main/start-app! (assoc-in (make-app "groundwork_app") [:routes :app/health]
                                                   {:address "/health/live" :method :get :kind :provider
                                                    :rate-limit nil :handler (fn [_ _] {:status 200})})))))
         (testing "a reason with no text in every catalog refuses the start, named"
-          (is (= {:type :dictionary/missing-texts :missing #{:orders/too-late}}
+          (is (= {:type :groundwork-languages/missing-texts :missing #{:orders/too-late}}
                  (try (main/start-app! (assoc-in (make-app "groundwork_app") [:handlers :orders/count :refusals] {:orders/too-late nil}))
                       (catch clojure.lang.ExceptionInfo e
                         {:type    (:type (ex-data e))
@@ -620,8 +620,8 @@
         (let [running     (main/start-app! (make-app "groundwork_app"))
               stopped?    (atom false)
               server-port (get-in running [:server :port])
-              cookie      #(first (str/split (:set-cookie (doorman/sign-in! (:pool running) {:headers {}} %
-                                                                    {:settings (get-in running [:settings :sessions])
+              cookie      #(first (str/split (:set-cookie (access/sign-in! (:pool running) {:headers {}} %
+                                                                    {:settings (get-in running [:settings :access])
                                                                      :tables [shops orders] :session-flags #{}})) #";"))
               anna-cookie (cookie anna)
               bob-cookie  (cookie bob)]
@@ -665,10 +665,10 @@
                 (is (= [200 "got {\"type\":\"charge\"}"] (take 2 (send-plain server-port "POST" "/app/hook" nil nil "{\"type\":\"charge\"}"))))
                 (is (= 200 (first (send-plain server-port "POST" "/app/hook" nil nil "x"))))
                 (is (= 429 (first (send-plain server-port "POST" "/app/hook" nil nil "x"))) "the third in a minute"))
-              (testing "a token's call: doorman finds its person, on a :person route and on the messages' route"
+              (testing "a token's call: groundwork-access finds its person, on a :person route and on the messages' route"
                 (let [make-token (fn [cookie]
-                                   (:text (doorman/make-token! (:pool running) {:request-method :post :headers {"origin" "http://app.test" "cookie" cookie}}
-                                                               {:settings (get-in running [:settings :sessions]) :name "a script"
+                                   (:text (access/make-token! (:pool running) {:request-method :post :headers {"origin" "http://app.test" "cookie" cookie}}
+                                                               {:settings (get-in running [:settings :access]) :name "a script"
                                                                 :ends-at  (.plus (java.time.Instant/now) (java.time.Duration/ofDays 1))})))
                       anna-token (make-token anna-cookie)
                       bob-token  (make-token bob-cookie)
@@ -684,12 +684,12 @@
                   (is (= 1 (count (orders-of anna-token))) "Anna: shop 7's order, with no Origin: a token is no browser's")
                   (is (= 1 (count (orders-of bob-token))) "Bob: shop 9's")
                   (is (not= (orders-of anna-token) (orders-of bob-token)))
-                  (is (= (refusal-of :doorman/signed-out nil) (dissoc (orders-of "app_not-a-token") "bridge/request-id"))
+                  (is (= (refusal-of :groundwork-access/signed-out nil) (dissoc (orders-of "app_not-a-token") "groundwork-bridge/request-id"))
                       "a wrong token is nobody: signed out")
                   (is (= 1 (count (get (json/read-value (second (call "/groundwork/http" anna-token nil "{\"orders/all\":{}}"))) "orders/all")))
                       "the messages' own route takes a token too")
                   (is (= [403 "Not allowed."] (call "/app/call" anna-token bob-cookie "{\"orders/all\":{}}"))
-                      "a cookie and a token at once: doorman's reason's text, in the request's language")
+                      "a cookie and a token at once: groundwork-access's reason's text, in the request's language")
                   (is (= [200 (str anna " 1")] (take 2 (send-plain-with-token server-port "/app/orders" anna-token)))
                       "a :person route's asker, and its run-as-asker!, by the token")
                   (let [[first-answer second-answer third-answer]
@@ -706,19 +706,19 @@
                 (is (= [200 "no-cache"] [(.statusCode response) (.orElse (.firstValue (.headers response) "cache-control") nil)]))
                 (is (= "Bestellungen" (get (json/read-value (.body response)) "orders/title"))))
               (testing "and the server's own texts outside a request: the language bound by hand, tr inside"
-                (is (= "3 Bestellungen" (dictionary/with-language (:texts running) "de" (dictionary/tr :orders/count {:count 3}))))
-                (is (= "1 order" (dictionary/with-language (:texts running) "en" (dictionary/tr :orders/count {:count 1}))))))
+                (is (= "3 Bestellungen" (languages/with-language (:texts running) "de" (languages/tr :orders/count {:count 3}))))
+                (is (= "1 order" (languages/with-language (:texts running) "en" (languages/tr :orders/count {:count 1}))))))
             (testing "a page opened fresh: the shell, with the browser's settings in it"
               (let [[status html] (send-request server-port "GET" "/orders/42" nil nil)]
                 (is (= 200 status))
                 (is (str/includes? html "<title>Shops &lt;test&gt;</title>"))
                 (is (str/includes? html "\"version\":\"test-1\""))
-                (is (str/includes? html "\"ws-reopen-after-ms\":1000") "the ws reopen delay, from the :server settings")
+                (is (str/includes? html "\"ws-reopen-after-ms\":1000") "the ws reopen delay, from the :bridge settings")
                 (is (str/includes? html "\"sse-reconnect-after-ms\":3000") "and the sse one")
-                (is (str/includes? html "\"doorbell\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000}")
+                (is (str/includes? html "\"live-updates\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000}")
                     "the question store's settings")
-                (is (str/includes? html "\"wire\":{\"most-shapes-kept\":1000,\"most-keys-kept\":10000}")
-                    "the browser's wire settings, from :browser-wire")
+                (is (str/includes? html "\"shaped-json\":{\"most-shapes-kept\":1000,\"most-keys-kept\":10000}")
+                    "the browser's groundwork-shaped-json settings, from :browser-shaped-json")
                 (is (str/includes? html "\"retry-writes\":{\"times\":1,\"wait-ms\":1000}")
                     "how a write that got no answer is retried, from :run-once")
                 (is (str/includes? html "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"))
@@ -730,7 +730,7 @@
                 (is (str/includes? html "\"module-stylesheets\":{\"admin\":\"/css/admin.1A2B3C4D5E6F.css\"}")
                     "each module's stylesheet bundle, for the loader")
                 (is (str/includes? html "\"languages\":{\"languages\":[{\"code\":\"en\",\"name\":\"English\"},{\"code\":\"de\",\"name\":\"Deutsch\"}],\"default\":\"en\",\"cookie-name\":\"lang\",\"preview-languages\":[],\"fallback-language\":\"en\",\"catalogs-path\":\"groundwork_test/i18n\"}")
-                    "dictionary's settings")
+                    "groundwork-languages's settings")
                 (is (str/includes? html "\"admin/page\":{\"address\":\"/admin\",\"title\":\"Admin\",\"module\":\"admin\"}")
                     "a page names its module")
                 (is (str/includes? html "<link rel=\"stylesheet\" href=\"/css/main.9F8E7D6C5B4A.css\">")
@@ -799,104 +799,104 @@
             (testing "no page, no file: 404"
               (is (= 404 (first (send-request server-port "GET" "/nowhere" nil nil)))))
             (testing "an answer comes with the tables its steps read"
-              (is (= [200 "{\"orders/all\":[],\"bridge/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}"]
+              (is (= [200 "{\"orders/all\":[],\"groundwork-bridge/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}"]
                      (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/all\":{}}"))))
             (testing "a rate limit: two a minute per session, a third is refused; another session has its own"
-              (let [counted "{\"orders/count\":0,\"bridge/notes\":{\"orders/count\":{\"tables\":[]}}}"]
+              (let [counted "{\"orders/count\":0,\"groundwork-bridge/notes\":{\"orders/count\":{\"tables\":[]}}}"]
                 (let [[first-send second-send [third-status third-body]]
                       (repeatedly 3 #(send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/count\":{}}"))]
                   (is (= [[200 counted] [200 counted]] [first-send second-send]))
                   (is (= 200 third-status) "one POST carries many messages: the refusal is in the answer")
                   (is (is-too-many? (get (json/read-value third-body) "orders/count"))))
                 (is (= [200 counted] (send-request server-port "POST" "/groundwork/http" bob-cookie "{\"orders/count\":{}}")))))
-            (testing "a step's work kept by cellar's run-after-commit! runs once doorman's transaction commits"
+            (testing "a step's work kept by groundwork-postgres's run-after-commit! runs once groundwork-access's transaction commits"
               (reset! lines [])
-              (is (= [200 "{\"orders/after-commit\":true,\"bridge/notes\":{\"orders/after-commit\":{\"tables\":[]}}}"]
+              (is (= [200 "{\"orders/after-commit\":true,\"groundwork-bridge/notes\":{\"orders/after-commit\":{\"tables\":[]}}}"]
                      (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/after-commit\":{}}"))
                   "not yet while the step runs")
               (is (= [:ran] @after-commit-runs) "run by the time the answer is back, the one after a failed one too")
-              (let [[failed :as all] (find-lines "cellar/after-commit-failed")]
+              (let [[failed :as all] (find-lines "groundwork-postgres/after-commit-failed")]
                 (is (= 1 (count all)))
                 (is (seq (get-in failed ["context" "request-id"]))
                     "the failure is written with the message's request id: the transaction carries the message's log")
                 (is (= (str anna) (get-in failed ["context" "person-id"])) "and who asked")
                 (is (= "error" (get failed "level")))))
-            (testing "daily caps: counted after doorman's check, per asker and for everyone, in Postgres"
+            (testing "daily caps: counted after groundwork-access's check, per asker and for everyone, in Postgres"
               (let [ask     #(get (json/read-value (second (send-request server-port "POST" "/groundwork/http" %1
                                                                          (str "{\"orders/capped\":{\"shop/id\":\"" %2 "\"}}"))))
                                   "orders/capped")
-                    reached #(and (= "groundwork/daily-cap-reached" (get % "bridge/refused"))
-                                  (< 0 (get-in % ["bridge/data" "retry-after-ms"]) (inc 86400000)))]
+                    reached #(and (= "groundwork/daily-cap-reached" (get % "groundwork-bridge/refused"))
+                                  (< 0 (get-in % ["groundwork-bridge/data" "retry-after-ms"]) (inc 86400000)))]
                 (is (= [true true] [(ask anna-cookie shop-7) (ask anna-cookie shop-7)]))
                 (is (reached (ask anna-cookie shop-7)) "Anna's third today: her cap, until midnight UTC")
-                (is (= "doorman/not-found" (get (ask bob-cookie shop-7) "bridge/refused")) "refused by the check: nothing spent")
+                (is (= "groundwork-access/not-found" (get (ask bob-cookie shop-7) "groundwork-bridge/refused")) "refused by the check: nothing spent")
                 (is (true? (ask bob-cookie shop-9)) "Bob's first: the third for everyone")
                 (is (reached (ask bob-cookie shop-9)) "everyone's cap spent, though Bob's own isn't")
                 (is (= [{:daily-cap-count/counted-for "everyone" :daily-cap-count/count 3}
                         {:daily-cap-count/counted-for (str "person " anna) :daily-cap-count/count 2}
                         {:daily-cap-count/counted-for (str "person " bob) :daily-cap-count/count 1}]
-                       (database/find-rows owner-pool find-daily-cap-counts {}))
+                       (postgres/find-rows owner-pool find-daily-cap-counts {}))
                     "a refused call counts on no cap")))
-            (testing "doorbell: each line hears the version first, then every changed table, never a row"
+            (testing "groundwork-live-updates: each line hears the version first, then every changed table, never a row"
               (let [anna-line  (open-sse server-port anna-cookie)
                     bob-line   (open-sse server-port bob-cookie)
                     ask-orders #(send-request server-port "POST" "/groundwork/http" % "{\"orders/all\":{}}")
                     orders-are #(str "{\"orders/all\":[" (str/join "," (map (fn [id] (str "\"" id "\"")) %))
-                                     "],\"bridge/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}")]
+                                     "],\"groundwork-bridge/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}")]
                 (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data anna-line)))
                 (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data bob-line)))
                 (Thread/sleep 200)
-                (is (= 2 (doorbell/count-open-lines (:doorbell running))))
+                (is (= 2 (live-updates/count-open-lines (:live-updates running))))
                 (run-sql! owner-pool (str "INSERT INTO orders VALUES ('" order-71 "', '" shop-7 "')"))
-                (is (= "{\"doorbell/changed\":{\"table\":\"orders\"}}" (read-next-data anna-line)))
-                (is (= "{\"doorbell/changed\":{\"table\":\"orders\"}}" (read-next-data bob-line))
+                (is (= "{\"groundwork-live-updates/changed\":{\"table\":\"orders\"}}" (read-next-data anna-line)))
+                (is (= "{\"groundwork-live-updates/changed\":{\"table\":\"orders\"}}" (read-next-data bob-line))
                     "Bob hears that orders changed, not which order")
                 (testing "asking again, the gates give each person only their own shop's orders"
                   (is (= [200 (orders-are [order-71])] (ask-orders anna-cookie)))
                   (is (= [200 (orders-are [])] (ask-orders bob-cookie)) "shop 7's order never reaches Bob"))
                 (run-sql! owner-pool (str "INSERT INTO orders VALUES ('" order-91 "', '" shop-9 "')"))
-                (is (= "{\"doorbell/changed\":{\"table\":\"orders\"}}" (read-next-data anna-line)))
-                (is (= "{\"doorbell/changed\":{\"table\":\"orders\"}}" (read-next-data bob-line)))
+                (is (= "{\"groundwork-live-updates/changed\":{\"table\":\"orders\"}}" (read-next-data anna-line)))
+                (is (= "{\"groundwork-live-updates/changed\":{\"table\":\"orders\"}}" (read-next-data bob-line)))
                 (is (= [200 (orders-are [order-91])] (ask-orders bob-cookie)))
                 (is (= [200 (orders-are [order-71])] (ask-orders anna-cookie)) "shop 9's order never reaches Anna")
                 (testing "every table that tells, tells every line"
                   (run-sql! owner-pool "INSERT INTO shops VALUES ('10000000-0000-4000-8000-000000000001')")
-                  (is (= "{\"doorbell/changed\":{\"table\":\"shops\"}}" (read-next-data anna-line)))
-                  (is (= "{\"doorbell/changed\":{\"table\":\"shops\"}}" (read-next-data bob-line))))
+                  (is (= "{\"groundwork-live-updates/changed\":{\"table\":\"shops\"}}" (read-next-data anna-line)))
+                  (is (= "{\"groundwork-live-updates/changed\":{\"table\":\"shops\"}}" (read-next-data bob-line))))
                 (testing "one transaction's statements on one table tell it once"
-                  (database/run-in-transaction! owner-pool {:read-only? false :log nil}
+                  (postgres/run-in-transaction! owner-pool {:read-only? false :log nil}
                                                 (fn [transaction]
                                                   (run-sql! transaction "UPDATE shops SET shop__id = shop__id")
                                                   (run-sql! transaction "DELETE FROM shops WHERE shop__id = '10000000-0000-4000-8000-000000000001'")))
-                  (is (= "{\"doorbell/changed\":{\"table\":\"shops\"}}" (read-next-data anna-line)))
+                  (is (= "{\"groundwork-live-updates/changed\":{\"table\":\"shops\"}}" (read-next-data anna-line)))
                   (is (= :nothing (read-next-data anna-line))))
                 (testing "a statement that changed no row tells nobody"
                   (run-sql! owner-pool "UPDATE orders SET order__shop_id = order__shop_id WHERE false")
                   (is (= :nothing (read-next-data anna-line))))
-                (testing "what may I do: doorman's handler, as the asker; a membership changed rings every line"
+                (testing "what may I do: groundwork-access's handler, as the asker; a membership changed rings every line"
                   ;; new lines: a read above that timed out still holds the old ones
                   (let [anna-line   (open-sse server-port anna-cookie)
                         bob-line    (open-sse server-port bob-cookie)
-                        ask-actions #(send-request server-port "POST" "/groundwork/http" % "{\"doorman/my-actions\":{}}")
-                        notes       #(str ",\"bridge/notes\":{\"doorman/my-actions\":{\"tables\":[" % "]}}}")
-                        read-tables (str "\"doorman/membership-roles\",\"doorman/memberships\",\"doorman/role-actions\","
-                                         "\"doorman/roles\",\"doorman/scopes\"")]
+                        ask-actions #(send-request server-port "POST" "/groundwork/http" % "{\"groundwork-access/my-actions\":{}}")
+                        notes       #(str ",\"groundwork-bridge/notes\":{\"groundwork-access/my-actions\":{\"tables\":[" % "]}}}")
+                        read-tables (str "\"groundwork-access/membership-roles\",\"groundwork-access/memberships\",\"groundwork-access/role-actions\","
+                                         "\"groundwork-access/roles\",\"groundwork-access/scopes\"")]
                     (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data anna-line)))
                     (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data bob-line)))
-                    (is (= [200 (str "{\"doorman/my-actions\":[{\"scope-kind\":\"shop\",\"scope-id\":\"" shop-7 "\","
+                    (is (= [200 (str "{\"groundwork-access/my-actions\":[{\"scope-kind\":\"shop\",\"scope-id\":\"" shop-7 "\","
                                      "\"actions\":[\"orders/edit\",\"orders/see\"]}]" (notes read-tables))]
                            (ask-actions anna-cookie))
-                        "Anna's shop and her role's actions; the notes name doorman's tables")
-                    (is (= [200 (str "{\"doorman/my-actions\":[]" (notes ""))] (ask-actions nil))
+                        "Anna's shop and her role's actions; the notes name groundwork-access's tables")
+                    (is (= [200 (str "{\"groundwork-access/my-actions\":[]" (notes ""))] (ask-actions nil))
                         "nobody signed in, and this app opens no action to anyone: none, and nothing read")
                     (Thread/sleep 200)
-                    (database/run-in-transaction! owner-pool {:read-only? false :log nil}
+                    (postgres/run-in-transaction! owner-pool {:read-only? false :log nil}
                                                   (fn [transaction]
                                                     (let [staff (some #(when (= "Staff" (:name %)) (:role-id %))
-                                                                      (doorman/list-roles transaction scope-kinds [:shop shop-9]))]
-                                                      (doorman/add-membership! transaction [:shop shop-9] anna #{staff}))))
-                    (let [changed #{"{\"doorbell/changed\":{\"table\":\"doorman/memberships\"}}"
-                                    "{\"doorbell/changed\":{\"table\":\"doorman/membership-roles\"}}"}]
+                                                                      (access/list-roles transaction scope-kinds [:shop shop-9]))]
+                                                      (access/add-membership! transaction [:shop shop-9] anna #{staff}))))
+                    (let [changed #{"{\"groundwork-live-updates/changed\":{\"table\":\"groundwork-access/memberships\"}}"
+                                    "{\"groundwork-live-updates/changed\":{\"table\":\"groundwork-access/membership-roles\"}}"}]
                       (is (= changed (set (repeatedly 2 #(read-next-data anna-line))))
                           "the tables her my-actions read, so her screen asks again")
                       (is (= changed (set (repeatedly 2 #(read-next-data bob-line))))))
@@ -906,8 +906,8 @@
                 ))
             (testing "every write runs once, by its one-time key"
               (let [add-order    #(str "{\"orders/add\":{\"order/shop-id\":\"" %1 "\",\"test/wait-ms\":" %2 "}}")
-                    count-orders #(:n (database/find-one-row owner-pool (database/make-query-from-sql-text "orders" "SELECT count(*) AS n FROM orders") {}))
-                    kept-keys    #(:n (database/find-one-row owner-pool count-kept-keys {:run-once-key/key %}))
+                    count-orders #(:n (postgres/find-one-row owner-pool (postgres/make-query-from-sql-text "orders" "SELECT count(*) AS n FROM orders") {}))
+                    kept-keys    #(:n (postgres/find-one-row owner-pool count-kept-keys {:run-once-key/key %}))
                     key-1        (random-uuid)
                     before       (count-orders)
                     [status-1 first-answer] (send-write server-port anna-cookie key-1 (add-order shop-7 0))]
@@ -941,7 +941,7 @@
                   (is (= (+ 5 before) (count-orders))))
                 (testing "a write whose answer doesn't fit its shape saves nothing"
                   (let [key-3 (random-uuid)]
-                    (is (= [200 {"orders/add-badly" (refusal-of :bridge/failed nil)}]
+                    (is (= [200 {"orders/add-badly" (refusal-of :groundwork-bridge/failed nil)}]
                            (update (send-write server-port anna-cookie key-3
                                                (str "{\"orders/add-badly\":{\"order/shop-id\":\"" shop-7 "\"}}"))
                                    1 without-request-ids)))
@@ -962,22 +962,22 @@
                   (is (= 1 (kept-keys key-1)))
                   (let [kind (run-once/make-forget-keys-kind (get-in running [:settings :run-once]))]
                     (is (= :groundwork-once-keys (:system-actor kind)) "it names its system actor")
-                    ;; as backroom runs it: one transaction on the app's pool, as the kind's actor
-                    (doorman/run-as-system! (:pool running) (:system-actor kind) {:read-only? false :log nil}
+                    ;; as groundwork-background-jobs runs it: one transaction on the app's pool, as the kind's actor
+                    (access/run-as-system! (:pool running) (:system-actor kind) {:read-only? false :log nil}
                                             (fn [transaction] ((:run kind) {:transaction transaction} {}))))
                   (is (zero? (kept-keys key-1))))))
-            (testing "one message's lines, bridge's, cellar's and the app's own, carry its request id and the person"
+            (testing "one message's lines, bridge's, groundwork-postgres's and the app's own, carry its request id and the person"
               (reset! lines [])
               (let [[status body] (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/broken\":{}}")]
-                (is (= [200 {"orders/broken" (refusal-of :bridge/failed nil)}] [status (without-request-ids (json/read-value body))])
-                    "a crash answers :bridge/failed; the request stays 200"))
+                (is (= [200 {"orders/broken" (refusal-of :groundwork-bridge/failed nil)}] [status (without-request-ids (json/read-value body))])
+                    "a crash answers :groundwork-bridge/failed; the request stays 200"))
               (let [said    (first (find-lines "test/about-to-break"))
-                    unknown (first (find-lines "cellar/tables-read-unknown"))
-                    failed  (first (find-lines "bridge/handler-failed"))]
+                    unknown (first (find-lines "groundwork-postgres/tables-read-unknown"))
+                    failed  (first (find-lines "groundwork-bridge/handler-failed"))]
                 (is (some? (get-in said ["context" "request-id"])))
                 (is (= [(get said "context")] (distinct (map #(get % "context") [said unknown failed])))
                     "the same context on all three: one request id")
-                (is (= (str anna) (get-in failed ["context" "person-id"])) "added by doorman's session step")
+                (is (= (str anna) (get-in failed ["context" "person-id"])) "added by groundwork-access's session step")
                 (is (= ["info" "warn" "error"] (map #(get % "level") [said unknown failed])))
                 (is (= "the app's step broke" (get-in failed ["error" "message"])))))
             (testing "the errors route: only with its token; the kept errors after ?since="
@@ -996,7 +996,7 @@
                       errors        (json/read-value body)
                       last-seq      (get (peek errors) "seq")]
                   (is (= 200 status))
-                  (is (= "bridge/handler-failed" (get (peek errors) "event")))
+                  (is (= "groundwork-bridge/handler-failed" (get (peek errors) "event")))
                   (is (= ["seq" "time" "level" "event" "context" "data" "error"] (vec (keys (peek errors))))
                       "each as written, its number first")
                   (is (= [200 "[]"] (ask-errors "the-errors-token" (str "?since=" last-seq))) "none after the last")
@@ -1018,7 +1018,7 @@
                         (let [[status body] (send-error)]
                           (is (= 200 status))
                           (is (is-too-many? (get (json/read-value body) "groundwork/browser-error")))))
-                      (testing "from another site: refused by doorman's session step, not written"
+                      (testing "from another site: refused by groundwork-access's session step, not written"
                         (let [before (count (find-lines "browser/error"))
                               answer (.body (.send (HttpClient/newHttpClient)
                                                    (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/groundwork/http")))
@@ -1029,7 +1029,7 @@
                                                    (HttpResponse$BodyHandlers/ofString)))]
                           (is (str/includes? answer "error"))
                           (is (= before (count (find-lines "browser/error")))))))))))
-            (testing "files: an upload asks doorman's session step, then the app's :may-upload?"
+            (testing "files: an upload asks groundwork-access's session step, then the app's :may-upload?"
               (let [png    (byte-array (concat [0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A] (range 32)))
                     body   (byte-array (concat (.getBytes (str "--b\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"door.png\"\r\n"
                                                                "Content-Type: image/png\r\n\r\n"))
@@ -1060,26 +1060,26 @@
                     (aws/stop client)
                     (is (= 200 status))
                     (is (str/starts-with? (get stored "key") "orders/photos/"))
-                    (is (= "image/png" (:file/content-type (attic/find-file (:pool running) (get stored "key"))))
-                        "recorded in attic.files, as the app's role")
-                    (is (= (seq png) (seq (attic/read-file-bytes (:attic running) (get stored "key")))))))))
+                    (is (= "image/png" (:file/content-type (file-storage/find-file (:pool running) (get stored "key"))))
+                        "recorded in groundwork_file_storage.files, as the app's role")
+                    (is (= (seq png) (seq (file-storage/read-file-bytes (:file-storage running) (get stored "key")))))))))
             (testing "email: queued in a write's transaction, sent by the workers; its bounce handed to the app by tag"
               (let [email {:key "order-confirmation/71" :tag :orders/confirmation :to ["anna@shop.test"]
                            :from "orders@shop.test" :reply-to nil :subject "Your order" :html nil :text "Thank you."
                            :metadata {"order" "71"} :attachments [] :stream "outbound"}]
                 (reset! lines [])
-                (is (= :queued (database/run-in-transaction! (:pool running) {:read-only? false :log nil}
-                                 #(postbox/queue-email! (:postbox running) % email))))
+                (is (= :queued (postgres/run-in-transaction! (:pool running) {:read-only? false :log nil}
+                                 #(email/queue-email! (:mailer running) % email))))
                 (loop [n 0]
-                  (when (and (< n 100) (not= "sent" (:email/state (postbox/find-email (:pool running) "order-confirmation/71"))))
+                  (when (and (< n 100) (not= "sent" (:email/state (email/find-email (:pool running) "order-confirmation/71"))))
                     (Thread/sleep 100)
                     (recur (inc n))))
-                (let [{:email/keys [state message-id]} (postbox/find-email (:pool running) "order-confirmation/71")]
-                  (is (= "sent" state) "by groundwork's workers, postbox's kind among them")
-                  (is (= 1 (count (find-lines "postbox/logged-not-sent"))))
+                (let [{:email/keys [state message-id]} (email/find-email (:pool running) "order-confirmation/71")]
+                  (is (= "sent" state) "by groundwork's workers, groundwork-email's kind among them")
+                  (is (= 1 (count (find-lines "groundwork-email/logged-not-sent"))))
                   (let [post (fn [token]
                                (.statusCode (.send (HttpClient/newHttpClient)
-                                                   (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/postbox/delivery?token=" token)))
+                                                   (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/email/delivery?token=" token)))
                                                        (.header "content-type" "application/json")
                                                        (.POST (HttpRequest$BodyPublishers/ofString
                                                                (json/write-value-as-string {"RecordType" "Bounce" "Type" "HardBounce"
@@ -1094,11 +1094,11 @@
                              :address "anna@shop.test" :bounce-type "HardBounce" :inactive? false :metadata {"order" "71"}
                              :marked 1 :orders-seen 0}]
                            @delivery-events)
-                        "run as the system actor :postbox: it marks the shop's address, and sees none of the shop's orders")
-                    (is (= [true] (map :shop-email/bounced (database/find-rows owner-pool (database/make-query-from-sql-text
+                        "run as the system actor :email: it marks the shop's address, and sees none of the shop's orders")
+                    (is (= [true] (map :shop-email/bounced (postgres/find-rows owner-pool (postgres/make-query-from-sql-text
                                                                                           "bounced" "SELECT shop_email__bounced FROM shop_emails")
                                                                                {})))))
-                  (is (= [] (doorman/find-system-leaks (:pool running) [shops orders shop-emails] :postbox {:orders [order-71 order-91]}))
+                  (is (= [] (access/find-system-leaks (:pool running) [shops orders shop-emails] :email {:orders [order-71 order-91]}))
                       "the system leak test, on the app's own role"))))
             (testing "the metrics: only with their token; every library's on the app's one meter, and groundwork's"
               (let [ask-metrics (fn [token]
@@ -1112,17 +1112,17 @@
                 (is (= 401 (first (ask-metrics nil))))
                 (is (= 401 (first (ask-metrics "a-wrong-token"))))
                 (is (= 200 status))
-                (doseq [pattern [#"bridge_messages_total\{name=\"orders/all\",outcome=\"ok\",pipe=\"http\"\} [1-9]"
-                                 #"bridge_open_lines\{pipe=\"sse\"\} "
-                                 #"cellar_query_seconds_count\{query=\"groundwork/server/main/claim_once_key.sql\"\} [1-9]"
-                                 #"cellar_pool_connections\{state=\"idle\"\} "
-                                 #"doorbell_listening 1"
-                                 #"doorbell_changes_total\{table=\"orders\"\} [1-9]"
-                                 #"backroom_dispatcher_failures_total 0"
-                                 #"# TYPE attic_files_stored_total counter"
-                                 #"postbox_emails_sent_total\{tag=\"orders/confirmation\"\} 1"
-                                 #"logbook_lines_total\{level=\"info\"\} [1-9]"
-                                 #"logbook_errors_kept [1-9]"
+                (doseq [pattern [#"groundwork_bridge_messages_total\{name=\"orders/all\",outcome=\"ok\",pipe=\"http\"\} [1-9]"
+                                 #"groundwork_bridge_open_lines\{pipe=\"sse\"\} "
+                                 #"groundwork_postgres_query_seconds_count\{query=\"groundwork/server/main/claim_once_key.sql\"\} [1-9]"
+                                 #"groundwork_postgres_pool_connections\{state=\"idle\"\} "
+                                 #"groundwork_live_updates_listening 1"
+                                 #"groundwork_live_updates_changes_total\{table=\"orders\"\} [1-9]"
+                                 #"groundwork_background_jobs_dispatcher_failures_total 0"
+                                 #"# TYPE groundwork_file_storage_files_stored_total counter"
+                                 #"groundwork_email_emails_sent_total\{tag=\"orders/confirmation\"\} 1"
+                                 #"groundwork_logs_lines_total\{level=\"info\"\} [1-9]"
+                                 #"groundwork_logs_errors_kept [1-9]"
                                  #"groundwork_build_info\{version=\"test-1\"\} 1"
                                  #"groundwork_stage\{stage=\"started\"\} 1"
                                  #"jvm_threads_current [1-9]"]]
@@ -1148,16 +1148,16 @@
                 (is (= 200 (first (start-visitor "http://app.test" nil))) "the fifth POST of this address, its :max")
                 (is (= [429 "Too many requests." nil] (start-visitor "http://app.test" nil))
                     "over the :visitors :rate-limit, by address: no session, no cookie")))
-            (testing "the REPL: groundwork's tools in study.tools"
-              (with-open [connection (nrepl/connect :port (study/find-repl-port (:study running)))]
+            (testing "the REPL: groundwork's tools in groundwork-live-repl.tools"
+              (with-open [connection (nrepl/connect :port (live-repl/find-repl-port (:live-repl running)))]
                 (let [client (nrepl/client connection 10000)
                       eval!  #(first (nrepl/response-values (nrepl/message client {:op "eval" :code %})))]
-                  (let [count-ok #(or (some->> (meter/write-metrics-text (:meter running))
-                                                (re-find #"bridge_messages_total\{name=\"orders/all\",outcome=\"ok\",pipe=\"http\"\} (\d+)")
+                  (let [count-ok #(or (some->> (metrics/write-metrics-text (:meter running))
+                                                (re-find #"groundwork_bridge_messages_total\{name=\"orders/all\",outcome=\"ok\",pipe=\"http\"\} (\d+)")
                                                 second parse-long)
                                       0)
                         before   (count-ok)
-                        ask-all (fn [person] (set (map str (:orders/all (eval! (str "(study.tools/ask-as-person {:orders/all {}} {:person-id #uuid \""
+                        ask-all (fn [person] (set (map str (:orders/all (eval! (str "(groundwork-live-repl.tools/ask-as-person {:orders/all {}} {:person-id #uuid \""
                                                                                                     person "\" :visitor-id nil :session-flags #{}})"))))))
                         pauls   (ask-all paul)
                         bobs    (ask-all bob)]
@@ -1166,14 +1166,14 @@
                         "as Paul, shop 7's founder, through the check and the gates: only his shop's orders")
                     (is (and (contains? bobs (str order-91)) (not (contains? bobs (str order-71))))
                         "as Bob: none of shop 7's"))
-                  (is (= {:handler :orders/all :answer :doorman/not-found}
-                         (select-keys (eval! (str "(study.tools/why-refused {:person-id #uuid \"" (random-uuid) "\" :visitor-id nil :session-flags #{}} :orders/all {})"))
+                  (is (= {:handler :orders/all :answer :groundwork-access/not-found}
+                         (select-keys (eval! (str "(groundwork-live-repl.tools/why-refused {:person-id #uuid \"" (random-uuid) "\" :visitor-id nil :session-flags #{}} :orders/all {})"))
                                       [:handler :answer]))
-                      "someone in no shop: doorman's explain-refusal says why")
-                  (let [{:keys [shape doc]} (eval! "(study.tools/explain-setting [:server :ping-every-ms])")]
+                      "someone in no shop: groundwork-access's explain-refusal says why")
+                  (let [{:keys [shape doc]} (eval! "(groundwork-live-repl.tools/explain-setting [:bridge :ping-every-ms])")]
                     (is (some? shape))
                     (is (str/includes? doc "every key required") "the text of bridge's settings shape"))
-                  (is (= "No setting is at this path." (:doc (eval! "(study.tools/explain-setting [:server :nope])")))))))
+                  (is (= "No setting is at this path." (:doc (eval! "(groundwork-live-repl.tools/explain-setting [:bridge :nope])")))))))
             (testing "health: plain GETs, no origin, no session, no rate limit, never cached"
               (is (= [200 "{\"status\":\"live\",\"version\":\"test-1\"}" "no-store"]
                      (ask-health server-port "/health/live")))
@@ -1181,7 +1181,7 @@
                      (repeatedly 20 #(ask-health server-port "/health/ready")))))
             (testing "no answer from the database (every connection held): ready answers 503 at its timeout"
               (let [release (promise)
-                    holders (doall (repeatedly 4 #(future (database/run-in-transaction! (:pool running) {:read-only? false :log nil} (fn [_] @release)))))]
+                    holders (doall (repeatedly 4 #(future (postgres/run-in-transaction! (:pool running) {:read-only? false :log nil} (fn [_] @release)))))]
                 (try
                   (Thread/sleep 300)
                   (let [started-at (System/currentTimeMillis)
@@ -1218,4 +1218,4 @@
                 (is (= 200 (first (ask-health server-port "/health/live"))))
                 @stopping))
             (finally (when-not @stopped? (main/stop-app! running)))))
-        (finally (database/stop-pool! owner-pool))))))
+        (finally (postgres/stop-pool! owner-pool))))))

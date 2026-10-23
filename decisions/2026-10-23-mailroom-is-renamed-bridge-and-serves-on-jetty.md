@@ -1,5 +1,7 @@
 # mailroom is renamed bridge, and its server is Jetty 12
 
+> **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): bridge keeps its name; its repository, namespaces and keys are groundwork-bridge (`:groundwork-bridge/…`, `groundwork_bridge_…`), and the app's `:server` settings are `:bridge`.
+
 > Changes in part [mailroom comes from its own repository](2026-10-22-mailroom-comes-from-its-own-repository.md): the library's name, repository and keys, and the `:server` settings.
 
 **Decision:** groundwork takes bridge, the library named mailroom until now, from github.com/p4ulcristian/bridge (`io.github.p4ulcristian/bridge`, v0.7.5), through `bridge.api` only; `libraries.edn` and `libraries_test.clj` say so. Every key, log event and metric it gives is named `bridge` (`:bridge/log`, `:bridge/notes`, `bridge_messages_total`, `bridge_open_lines`, …): [bridge's decision](https://github.com/p4ulcristian/bridge/blob/main/decisions/2026-10-23-mailroom-is-renamed-bridge.md). Its server is Jetty 12 through rj9a, not http-kit: [bridge's decision](https://github.com/p4ulcristian/bridge/blob/main/decisions/2026-10-23-the-server-is-jetty-12-through-rj9a.md). The app's `:server` settings change with it, every key still required:

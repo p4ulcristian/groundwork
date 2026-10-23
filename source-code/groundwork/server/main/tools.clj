@@ -1,31 +1,31 @@
 (ns groundwork.server.main.tools
-  "groundwork's tools for study's REPL: plain functions, put in study.tools
-   while a REPL is open (study's start-repl-server!, :tools). Each is made
+  "groundwork's tools for groundwork-live-repl's REPL: plain functions, put in groundwork-live-repl.tools
+   while a REPL is open (groundwork-live-repl's start-repl-server!, :tools). Each is made
    from the running app's parts, so a tool reaches the app the REPL was
    opened into; the REPL closes when that app stops.
 
-     (study.tools/ask-as-person {:orders/of-shop {:shop/id shop-id}}
+     (groundwork-live-repl.tools/ask-as-person {:orders/of-shop {:shop/id shop-id}}
                                 {:person-id anna :visitor-id nil :session-flags #{}})
-     ;=> {:orders/of-shop [{:order/id \"…\" …}] :bridge/notes {…}}
+     ;=> {:orders/of-shop [{:order/id \"…\" …}] :groundwork-bridge/notes {…}}
 
-     (study.tools/why-refused {:person-id anna :visitor-id nil :session-flags #{}}
+     (groundwork-live-repl.tools/why-refused {:person-id anna :visitor-id nil :session-flags #{}}
                               :orders/add {:order/shop-id bobs-shop :order/note \"x\"})
-     ;=> {:handler :orders/add :answer :not-found …}   ; doorman's explain-refusal
+     ;=> {:handler :orders/add :answer :not-found …}   ; groundwork-access's explain-refusal
 
-     (study.tools/explain-setting [:server :ping-every-ms])
-     ;=> {:path [:server :ping-every-ms] :shape :int :doc \"The settings, every key required …\"}"
+     (groundwork-live-repl.tools/explain-setting [:bridge :ping-every-ms])
+     ;=> {:path [:bridge :ping-every-ms] :shape :int :doc \"The settings, every key required …\"}"
   (:require
    [groundwork.server.main.answer-as :as answer-as]
    [malli.core :as malli]
    [malli.error :as malli-error]
    [malli.util :as malli-util]
-   [doorman.api :as doorman]
-   [doorman.repl :as doorman-repl]
-   [wire.api :as wire]))
+   [groundwork-access.api :as access]
+   [groundwork-access.repl :as access-repl]
+   [groundwork-shaped-json.api :as shaped-json]))
 
 (def asker-shape
-  "Who a tool asks as, every key required, as doorman's explain-refusal
-   and doorman.repl's step take it: the person (nil for nobody signed in),
+  "Who a tool asks as, every key required, as groundwork-access's explain-refusal
+   and groundwork-access.repl's step take it: the person (nil for nobody signed in),
    the visitor (nil unless a visitor's session) and the session's flags
    (#{} for none). Only the REPL names a person: the app's code finds the
    asker in a request."
@@ -45,35 +45,35 @@
   "Each named message's params as the browser sends them, JSON data, by
    its handler's :params-shape; params that don't fit are left as they
    are, so bridge answers their errors."
-  [wire handlers message]
+  [shaper handlers message]
   (into {} (map (fn [[message-name params]]
                   (let [shape (get-in handlers [message-name :params-shape])]
                     [message-name (if shape
-                                    (let [{:keys [json-data errors]} (wire/turn-shaped-data-into-json-data-or-errors wire shape params)]
+                                    (let [{:keys [json-data errors]} (shaped-json/turn-shaped-data-into-json-data-or-errors shaper shape params)]
                                       (if errors params json-data))
                                     params)])))
         message))
 
 (defn- make-ask-as-person
   "answer-as's answer-message, on the handlers made ready with
-   doorman.repl's step asking as the asker in place of the session step,
+   groundwork-access.repl's step asking as the asker in place of the session step,
    no rate limits and no request: a REPL's message comes with none. It is
    counted on the app's meter, as every answered message is."
-  [{:keys [make-ready-handlers wire log meter metric-buckets handlers]}]
+  [{:keys [make-ready-handlers shaper log meter metric-buckets handlers]}]
   (fn [message asker]
     (let [answer (answer-as/make-answer-message
-                  {:ready-handlers (make-ready-handlers (doorman-repl/make-step-asking-as (check-asker asker)))
+                  {:ready-handlers (make-ready-handlers (access-repl/make-step-asking-as (check-asker asker)))
                    :limiter        :no-rate-limits
-                   :wire           wire
+                   :shaper           shaper
                    :log            log
                    :meter          meter
                    :metric-buckets metric-buckets})]
-      (answer (turn-params-into-json-data wire handlers message) nil))))
+      (answer (turn-params-into-json-data shaper handlers message) nil))))
 
 (defn- make-why-refused
   [{:keys [pool handlers tables scope-kinds]}]
   (fn [asker handler-name params]
-    (doorman/explain-refusal {:pool pool :handlers handlers :tables tables :scope-kinds scope-kinds}
+    (access/explain-refusal {:pool pool :handlers handlers :tables tables :scope-kinds scope-kinds}
                              (check-asker asker) handler-name params)))
 
 (defn- make-explain-setting
@@ -90,23 +90,23 @@
                 :else         (:doc (meta source)))})))
 
 (defn make-tools
-  "study's :tools, from the running app's parts: :make-ready-handlers (fn
+  "groundwork-live-repl's :tools, from the running app's parts: :make-ready-handlers (fn
    [find-session-step]) the app's handlers made ready with that step in
-   place of doorman's; :wire, :log, :meter and :pool the app's;
-   :metric-buckets the :server settings'; :handlers, :tables
+   place of groundwork-access's; :shaper, :log, :meter and :pool the app's;
+   :metric-buckets the :bridge settings'; :handlers, :tables
    and :scope-kinds the app's own, as it handed them in; :settings-shape groundwork's; :docs-of-parts each
    top settings key's shape var, and :settings the whole one's."
   [parts]
   {:ask-as-person   {:doc      (str "(ask-as-person message asker): the message answered as the asker, through every check a "
-                                    "browser's message gets: its params' shape, doorman's access, the gates, the answer's shape; "
+                                    "browser's message gets: its params' shape, groundwork-access's access, the gates, the answer's shape; "
                                     "a write runs and is saved. message is {name params}, the params as data with their types; "
                                     "asker is {:person-id :visitor-id :session-flags}. No rate limits; counted on the app's meter.")
                      :function (make-ask-as-person parts)}
    :why-refused     {:doc      (str "(why-refused asker handler-name params): why the asker's message would be refused, or "
-                                    "not, as data (doorman's explain-refusal): the check's answer, the record, the asker's "
+                                    "not, as data (groundwork-access's explain-refusal): the check's answer, the record, the asker's "
                                     "roles and actions there, each sentence's parts, the denies. Read-only.")
                      :function (make-why-refused parts)}
    :explain-setting {:doc      (str "(explain-setting path): what goes at a place in groundwork's settings, "
-                                    "[:server :ping-every-ms]: {:path :shape :doc}, the shape there and the text of "
+                                    "[:bridge :ping-every-ms]: {:path :shape :doc}, the shape there and the text of "
                                     "the part's shape. [] for the whole.")
                      :function (make-explain-setting parts)}})

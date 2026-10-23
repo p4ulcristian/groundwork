@@ -1,5 +1,7 @@
 # wire comes from its own repository
 
+> **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): wire is groundwork-shaped-json now (github.com/p4ulcristian/groundwork-shaped-json, `groundwork-shaped-json.api`), and the wire it makes a shaper.
+
 > Changes in part [One tree; libraries.edn says, and a test checks, who uses whom](2026-10-22-one-tree-libraries-edn-checks-the-edges.md) and [Every namespace says its side](2026-10-22-every-namespace-says-its-side.md): wire is no longer a folder in the tree, and its namespace, `wire`, says no side.
 
 **Decision:** wire, how data keeps its types between the edges of an app, is a library of its own: the public repository github.com/p4ulcristian/wire, MIT. Groundwork takes it from git by tag and sha in `deps.edn` (`io.github.p4ulcristian/wire`, v0.1.0 first) and moves to a new tag on purpose. It is one namespace for both languages, `wire.api`, and its decisions live in its repository. `libraries.edn` no longer lists it; any Groundwork library may use it, and `libraries_test.clj` checks that Groundwork requires only `wire.api`.
