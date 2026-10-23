@@ -77,9 +77,13 @@ the `:languages` part. Every request gets its language (the address's
 prefix, the cookie, Accept-Language, the default) and loses the prefix
 before routing; the shell's `<html lang>` and alternate links follow it,
 and parlor keeps it on every move. Texts are ICU messages in a JSON
-catalog per language, read by the server at the start (`:texts`, for
-emails and PDFs) and served to the browser, where parlor's
-`[:parlor/text key args]` draws them. The routing has queries (read by a
+catalog per language, read by the server at the start and served to the
+browser, where parlor's `tr` (`[:parlor/text key args]`) draws them. On
+the server every request is handled with its language bound, so
+`(dictionary/tr key args)` in a handler's steps, a page's `render-page`
+or an app's own route is in the request's language; the running app's
+`:texts` is for what runs outside a request: an email, a PDF or a job
+binds the language of its row, `(dictionary/with-language texts "de" …)`. The routing has queries (read by a
 page's shape), scrolling, a question before leaving unsaved changes, and
 modules loaded on demand (the app's `:browser-modules`, browser-build's, each
 with its stylesheets): [the decision](decisions/2026-10-23-routing-extras-each-where-it-belongs.md).
@@ -146,6 +150,19 @@ from a POST of groundwork's at the `:visitors` path, which the browser's
 them ([the decision](decisions/2026-10-23-a-visitors-session-starts-on-a-post-of-houses.md)),
 at most `:visitors :rate-limit` times per address, 429 over it
 ([the decision](decisions/2026-10-23-the-visitor-route-is-rate-limited-by-address-with-mailrooms-buckets.md)).
+An app's own server routes (a provider's webhook, a login's callback, an
+API for machines) are records in the app map's `:routes` (`{}` for none),
+each with a kind, served beside groundwork's own through the same steps
+([the decision](decisions/2026-10-23-an-apps-own-server-routes-are-records-with-a-kind.md),
+[the kinds](decisions/2026-10-23-route-kinds-are-person-and-provider.md)):
+a `:person` route's handler gets the asker doorman found, by the session's
+cookie or the person's token, and its tools, among them `:run-as-asker!`
+and `:answer-as`, `(answer-as message request)`, a message answered as
+that asker through every check a browser's message gets, each handler's
+rate limit counted on a limiter of its own
+([the decision](decisions/2026-10-23-a-token-call-arrives-where-a-browsers-does.md));
+a `:provider` route reads no session or token and proves its caller
+itself (a signature).
 An app's table map says `:access` and `:doorbell`; one that writes its own
 `:gates` or `:on-change`, which groundwork puts on it, is refused at the start
 ([the decision](decisions/2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md)).
