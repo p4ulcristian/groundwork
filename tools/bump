@@ -42,10 +42,13 @@ release() { # release LIB: pull, tag next patch, take-line
 
 take() { # take DIR: pin every new tag in DIR/deps.edn, commit, push
   local dir=$1
-  git -C "$dir" pull -q --ff-only
+  # called as `take … || …`, where set -e is off: every step stops the run itself
+  git -C "$dir" pull -q --ff-only || { echo "bump: pulling $dir failed" >&2; exit 1; }
   for l in "${!new_tag[@]}"; do pin "$l" "${new_tag[$l]}" "${new_sha[$l]}" "$dir/deps.edn"; done
   if ! git -C "$dir" diff --quiet; then
-    git -C "$dir" commit -qam "Take the newest manor libraries" -m "$coauthor"; git -C "$dir" push -q
+    git -C "$dir" commit -qam "Take the newest manor libraries" -m "$coauthor" \
+      || { echo "bump: committing in $dir failed" >&2; exit 1; }
+    git -C "$dir" push -q || { echo "bump: pushing $dir failed" >&2; exit 1; }
     return 0
   fi
   return 1
