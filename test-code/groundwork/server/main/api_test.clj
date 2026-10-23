@@ -26,6 +26,7 @@
    [doorbell.api :as doorbell]
    [doorman.api :as doorman]
    [groundwork.server.main.api :as main]
+   [groundwork.server.main.page :as page]
    [groundwork.server.main.run-once :as run-once]
    [jsonista.core :as json]
    [logbook.api :as logbook]
@@ -236,7 +237,7 @@
    :doorbell          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                        :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                    :reconnect-after-ms 1000 :stop-wait-ms 2000}}
-   :languages         {:languages ["en" "de"] :default "en" :cookie-name "lang"
+   :languages         {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}] :default "en" :cookie-name "lang"
                        :preview-languages [] :fallback-language "en" :catalogs-path "groundwork_test/i18n"}
    :page              {:title "Shops <test>" :viewport "width=device-width, initial-scale=1"
                        :content-security-policy :none :referrer-policy "same-origin" :frame-options "DENY"
@@ -311,6 +312,16 @@
                            (str/starts-with? line "data: ") (subs line 6)
                            :else                           (recur)))))
          3000 :nothing))
+
+(deftest a-request-is-handled-in-its-language
+  (let [languages (dictionary/check-settings {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}]
+                                              :default "en" :cookie-name "lang" :preview-languages []
+                                              :fallback-language "en" :catalogs-path "groundwork_test/i18n"})
+        handler   (page/wrap-languages (fn [request] {:uri (:uri request) :text (dictionary/tr :orders/count {:count 2})})
+                                       languages (dictionary/load-texts languages))]
+    (is (= {:uri "/orders" :text "2 Bestellungen"} (handler {:uri "/de/orders" :headers {}})) "the prefix's, bound for tr")
+    (is (= "2 Bestellungen" (:text (handler {:uri "/orders" :headers {"cookie" "lang=de"}}))) "the cookie's")
+    (is (= "2 orders" (:text (handler {:uri "/orders" :headers {}}))) "the default's")))
 
 (deftest the-settings-are-checked-all-at-once
   (let [problems (try (main/check-settings (-> (make-settings "x") (dissoc :version) (assoc-in [:server :port] "80")
@@ -522,7 +533,7 @@
                 (is (not (str/includes? html "admin.6F5E4D3C2B1A.js")) "main only: a module loads on demand")
                 (is (str/includes? html "\"module-stylesheets\":{\"admin\":\"/css/admin.1A2B3C4D5E6F.css\"}")
                     "each module's stylesheet bundle, for the loader")
-                (is (str/includes? html "\"languages\":{\"languages\":[\"en\",\"de\"],\"default\":\"en\",\"cookie-name\":\"lang\",\"preview-languages\":[],\"fallback-language\":\"en\",\"catalogs-path\":\"groundwork_test/i18n\"}")
+                (is (str/includes? html "\"languages\":{\"languages\":[{\"code\":\"en\",\"name\":\"English\"},{\"code\":\"de\",\"name\":\"Deutsch\"}],\"default\":\"en\",\"cookie-name\":\"lang\",\"preview-languages\":[],\"fallback-language\":\"en\",\"catalogs-path\":\"groundwork_test/i18n\"}")
                     "dictionary's settings")
                 (is (str/includes? html "\"admin/page\":{\"address\":\"/admin\",\"title\":\"Admin\",\"module\":\"admin\"}")
                     "a page names its module")

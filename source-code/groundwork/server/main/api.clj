@@ -51,7 +51,9 @@
    :server :addresses, every page answered by the page shell in the
    request's language, files from :page :files; no ws hooks). Every
    request first gets its language (dictionary's, from the :languages
-   settings) and loses its address's language prefix, for routing. Each
+   settings) and loses its address's language prefix, for routing, and is
+   handled with that language bound: (dictionary/tr key args) in a
+   handler is in the request's language. Each
    language's catalog is read at the start (a missing one refuses it) and
    served where the browser fetches it, /<catalogs-path>/<language>.json. A page
    may name a :module of :browser-modules, loaded on demand by the browser.
@@ -683,9 +685,9 @@
    :postbox the app's one postbox (postbox.api: queue-email! in a write's
    transaction),
    :texts every catalog that shows, read once (dictionary's load-texts),
-   for the server's own texts: (dictionary/make-text texts \"de\"
-   :mail/subject {:order 7}), the language a value (the request's, or the
-   row's an email or a PDF is made for),
+   for the server's own texts outside a request: an email, a PDF or a job
+   binds the language of its row, (dictionary/with-language texts \"de\"
+   (dictionary/tr :mail/subject {:order 7})),
    :server holding the :port it listens on, :wire the app's one wire, made
    from the :wire settings, :logbook the app's one logbook, made from the
    :logbook settings, and :log its log function, for the app's own lines,
@@ -749,7 +751,8 @@
                                                                    :running-doorbell running-doorbell :running-attic running-attic
                                                                    :running-postbox running-postbox :find-session-step find-session-step})
                                                  {:files (get-in settings [:page :files])})
-                                                (:languages settings))
+                                                (:languages settings)
+                                                texts)
                                                (:server settings)
                                                {:log log})
                                              bridge/stop-server!)]

@@ -87,7 +87,7 @@
  :doorbell          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                      :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                  :reconnect-after-ms 1000 :stop-wait-ms 2000}}
- :languages         {:languages ["en" "de"] :default "en" :cookie-name "lang"
+ :languages         {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}] :default "en" :cookie-name "lang"
                      :preview-languages [] :fallback-language "en" :catalogs-path "groundwork_test/sample/i18n"}
  :page              {:title "Sample" :viewport "width=device-width, initial-scale=1"
                      :content-security-policy :none :referrer-policy "same-origin" :frame-options "DENY"

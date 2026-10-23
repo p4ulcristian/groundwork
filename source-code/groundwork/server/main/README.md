@@ -41,7 +41,7 @@ served where the browser fetches it, `/<catalogs-path>/<language>.json`
 ([the decision](../../../../decisions/2026-10-23-house-reads-the-catalogs-at-the-start-and-serves-them.md)).
 
 ```clojure
-:languages {:languages ["en" "de"] :default "en" :cookie-name "lang"   ; dictionary's; :cookie-name nil for none
+:languages {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}] :default "en" :cookie-name "lang"   ; dictionary's; :cookie-name nil for none
             :preview-languages [] :fallback-language "en" :catalogs-path "i18n"}   ; [] in production; i18n/<language>.json
 ``` Every value that sets behaviour is a
 setting; what stays fixed, and why:

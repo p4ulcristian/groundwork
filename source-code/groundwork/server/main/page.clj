@@ -167,11 +167,16 @@
   "The Ring handler, each request first given its language and its path
    without the language's prefix (dictionary's find-language-of-request):
    :uri becomes that path, for routing, and the request carries
-   :groundwork.server.main/language and :groundwork.server.main/path."
-  [handler languages]
+   :groundwork.server.main/language and :groundwork.server.main/path. The
+   handler runs with the texts and that language bound (dictionary's
+   with-language), so a (dictionary/tr key args) in it is in the
+   request's language; work it hands to a thread Clojure didn't start
+   binds its own."
+  [handler languages texts]
   (fn [request]
     (let [{:keys [language path]} (dictionary/find-language-of-request languages request)]
-      (handler (assoc request
-                      :uri path
-                      :groundwork.server.main/language language
-                      :groundwork.server.main/path path)))))
+      (dictionary/with-language texts language
+        (handler (assoc request
+                        :uri path
+                        :groundwork.server.main/language language
+                        :groundwork.server.main/path path))))))

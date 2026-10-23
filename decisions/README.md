@@ -196,3 +196,4 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [A job can give up for good](https://github.com/p4ulcristian/backroom/blob/main/decisions/2026-10-12-a-job-can-give-up-for-good.md): moved to backroom with the library
 - [REPLs by environment](2026-10-12-repls-by-environment.md), changed in part by [Groundwork ships no team endpoints and no eval bridge](2026-10-18-groundwork-ships-no-team-endpoints-and-no-eval-bridge.md) and [The REPL starts last and stops first; house brings its tools](2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md)
 - [The REPL starts last and stops first; house brings its tools](2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md)
+- [Every request is handled with its language bound, for dictionary's tr](2026-10-23-every-request-is-handled-in-its-language.md)

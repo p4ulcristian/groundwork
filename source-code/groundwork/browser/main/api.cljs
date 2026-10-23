@@ -22,6 +22,7 @@
      ;; screens read parlor's subscriptions and dispatch its events
      @(rf/subscribe [:parlor/answer [:orders/of-shop {:shop/id shop-id}]])
      @(rf/subscribe [:parlor/can-i? :orders/move [:shop shop-id]])   ; from :doorman/my-actions
+     (parlor/tr :orders.cart/add {:count 3})   ; a text in the page's language
 
      ;; a ws line, when the app wants one: the address and the delay from the page, the app's wire
      (let [{:keys [addresses ws-reopen-after-ms]} (:settings app)]
