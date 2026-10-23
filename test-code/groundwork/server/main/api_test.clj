@@ -240,8 +240,9 @@
                                    :reconnect-after-ms 1000 :stop-wait-ms 2000}}
    :languages         {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}] :default "en" :cookie-name "lang"
                        :preview-languages [] :fallback-language "en" :catalogs-path "groundwork_test/i18n"}
-   :page              {:title "Shops <test>" :viewport "width=device-width, initial-scale=1"
-                       :content-security-policy :none :referrer-policy "same-origin" :frame-options "DENY"
+   :page              {:viewport "width=device-width, initial-scale=1"
+                       :content-security-policy {:policy "script-src 'nonce-{nonce}' 'strict-dynamic'; object-src 'none'" :nonce? true}
+                       :referrer-policy "same-origin" :frame-options "DENY"
                        :files {:folder files-folder :hashed-name-min-hex-digits 8 :hashed-file-cache-seconds 31536000}}
    :health            {:live-path "/health/live" :ready-path "/health/ready"
                        :database-timeout-ms 500 :not-ready-before-stop-ms 1000}})
@@ -274,9 +275,23 @@
                  :handler (fn [request _tools]
                             {:status 200 :headers {"content-type" "text/plain"} :body (str "got " (slurp (:body request)))})}})
 
+(defn- render-page
+  "The test app's pages: its title, a description, a script of its own
+   with the request's nonce, a body in the request's language saying who
+   asked; the not-found page for an address no page has."
+  [_request page {:keys [nonce asker]}]
+  (if page
+    {:status      200
+     :title       "Shops <test>"
+     :description (str "The " (name (:name page)) " page")
+     :head-html   (str "<script nonce=\"" nonce "\">window.appStarted = true;</script>\n")
+     :body-html   (str "<main>" (dictionary/tr :orders/title {}) " for " (or (:person-id asker) "nobody") "</main>")}
+    {:status 404 :title "Not found" :description nil :head-html "" :body-html "<main>No such page</main>"}))
+
 (defn- make-app [user]
   {:settings (make-settings user) :tables [shops orders shop-emails] :changes [] :scope-kinds scope-kinds
    :routes app-routes
+   :render-page render-page
    :may-upload? (fn [{:keys [person-id]}] (= anna person-id))
    :on-delivery-event {:orders/confirmation (fn [event {:keys [transaction]}]
                                               (swap! delivery-events conj
@@ -618,7 +633,7 @@
                 (is (str/includes? html "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"))
                 (is (str/includes? html "\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}"))
                 (is (str/includes? html "\"sse\":\"/groundwork/sse\""))
-                (is (str/includes? html "<script src=\"/js/main.0A1B2C3D4E5F.js\" defer></script>")
+                (is (re-find #"<script src=\"/js/main.0A1B2C3D4E5F.js\" nonce=\"[^\"]+\" defer></script>" html)
                     "the script the build's manifest lists")
                 (is (not (str/includes? html "admin.6F5E4D3C2B1A.js")) "main only: a module loads on demand")
                 (is (str/includes? html "\"module-stylesheets\":{\"admin\":\"/css/admin.1A2B3C4D5E6F.css\"}")
@@ -634,9 +649,35 @@
                                              (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/orders/42"))))
                                              (HttpResponse$BodyHandlers/discarding)))
                     header  #(.orElse (.firstValue headers %) nil)]
-                (is (= ["no-store" "nosniff" "same-origin" "DENY" nil]
-                       (map header ["cache-control" "x-content-type-options" "referrer-policy" "x-frame-options"
-                                    "content-security-policy"])))))
+                (is (= ["no-store" "nosniff" "same-origin" "DENY"]
+                       (map header ["cache-control" "x-content-type-options" "referrer-policy" "x-frame-options"])))
+                (is (re-matches #"script-src 'nonce-[A-Za-z0-9+/=]{24}' 'strict-dynamic'; object-src 'none'" (header "content-security-policy"))
+                    "the policy, a nonce of this answer's own in place of {nonce}")))
+            (testing "the app's render-page: its title, description, head and body; a nonce per answer"
+              (let [page-of   (fn [path cookie]
+                                (let [response (.send (HttpClient/newHttpClient)
+                                                      (.build (cond-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port path)))
+                                                                cookie (.header "cookie" cookie)))
+                                                      (HttpResponse$BodyHandlers/ofString))]
+                                  {:status (.statusCode response) :html (.body response)
+                                   :nonce  (second (re-find #"'nonce-([^']+)'" (.orElse (.firstValue (.headers response) "content-security-policy") "")))}))
+                    {:keys [status html nonce]} (page-of "/de/orders/42" anna-cookie)]
+                (is (= 200 status))
+                (is (str/includes? html "<meta name=\"description\" content=\"The page page\">"))
+                (is (str/includes? html (str "<script nonce=\"" nonce "\">window.appStarted = true;</script>")) "the app's head, its script with the nonce")
+                (is (str/includes? html (str "<script src=\"/js/main.0A1B2C3D4E5F.js\" nonce=\"" nonce "\" defer></script>")) "the shell's own scripts carry it")
+                (is (str/includes? html (str "<div id=\"app\"><main>Bestellungen for " anna "</main></div>"))
+                    "the body, in the request's language, for the request's asker")
+                (is (not= nonce (:nonce (page-of "/orders/42" nil))) "each answer its own nonce")
+                (is (str/includes? (:html (page-of "/orders/42" nil)) "<main>Orders for nobody</main>")))
+              (testing "an address no page has: the app's not-found page, 404; not a GET: 404, nothing"
+                (let [response (.send (HttpClient/newHttpClient)
+                                      (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/nowhere"))))
+                                      (HttpResponse$BodyHandlers/ofString))]
+                  (is (= 404 (.statusCode response)))
+                  (is (str/includes? (.body response) "<title>Not found</title>"))
+                  (is (str/includes? (.body response) "<main>No such page</main>")))
+                (is (= [404 ""] (take 2 (send-plain server-port "POST" "/nowhere" "http://app.test" nil "x"))))))
             (testing "files: a hashed one is kept for a year, any other asked again"
               (let [response (.send (HttpClient/newHttpClient)
                                     (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/js/main.0A1B2C3D4E5F.js"))))

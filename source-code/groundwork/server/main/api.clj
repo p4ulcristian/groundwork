@@ -150,9 +150,11 @@
   "The :page part of the settings, every key required: the page shell's
    details and the files served beside it. Its lang is the request's
    language (the :languages settings).
-   :title: the shell's <title>.
    :viewport: its viewport meta, \"width=device-width, initial-scale=1\".
-   :content-security-policy: the header, or :none for none.
+   :content-security-policy: :none for no header, or {:policy text
+   :nonce? bool}: with :nonce? true each page answer gets a nonce of its
+   own, put in place of {nonce} in the policy (which must name it), on the
+   shell's scripts, and handed to the app's :render-page.
    :referrer-policy: the header, \"same-origin\".
    :frame-options: the X-Frame-Options header, \"DENY\" or \"SAMEORIGIN\",
    or :none when other sites may frame the page.
@@ -162,9 +164,12 @@
    how many hex digits make a name hashed (main.3F9A0C1D.js);
    :hashed-file-cache-seconds, how long a browser keeps a hashed file."
   [:map {:closed true}
-   [:title :string]
    [:viewport :string]
-   [:content-security-policy [:or :string [:= :none]]]
+   [:content-security-policy [:or [:= :none]
+                              [:and
+                               [:map {:closed true} [:policy :string] [:nonce? :boolean]]
+                               [:fn {:error/message ":policy names {nonce} when :nonce? is true, and only then"}
+                                (fn [{:keys [policy nonce?]}] (= (boolean nonce?) (str/includes? policy "{nonce}")))]]]]
    [:referrer-policy :string]
    [:frame-options [:enum "DENY" "SAMEORIGIN" :none]]
    [:files [:map {:closed true}
@@ -538,42 +543,41 @@
    {:allow :shop-emails/mark-bounced :to [:system :postbox]}."
   :postbox)
 
-(defn- make-routes [{:keys [settings pages browser-modules may-upload? on-delivery-event on-inbound-email routes tables scope-kinds]}
+(defn- make-routes [{:keys [settings pages may-upload? on-delivery-event on-inbound-email routes tables scope-kinds]}
                     {:keys [wire running-logbook log app-meter pool running-health handlers running-doorbell
-                            running-attic running-postbox find-session-step answer-as]}]
-  (let [browser-settings (page/make-browser-settings settings pages browser-modules)]
-    (-> (health/make-health-routes wire log app-meter pool running-health settings)
-        (into (errors/make-errors-routes wire running-logbook settings))
-        (into (meter/make-metrics-routes app-meter (:metrics settings)))
-        (into (visitors/make-visitor-routes wire pool settings))
-        (into (files/make-upload-routes running-attic wire log pool find-session-step may-upload? settings))
-        (into (postbox/make-webhook-routes running-postbox (get-in settings [:postbox :webhooks])
-                                           {:run-in-transaction #(doorman/run-as-system! pool postbox-system-actor {:read-only? false} %)
-                                            :on-delivery-event  on-delivery-event
-                                            :on-inbound-email   on-inbound-email}))
-        (into (bridge/make-routes-for-messages
-               handlers
-               (:server settings)
-               {:wire                wire
-                :log                 log
-                :meter               app-meter
-                :find-rate-limit-key (make-rate-limit-key-finder settings)
-                :on-sse-open  (fn [line]
-                                (bridge/send-message-on-sse-line! line {:groundwork/version (:version settings)} nil)
-                                (doorbell/add-sse-line! running-doorbell line))
-                :on-sse-close #(doorbell/remove-sse-line! running-doorbell %)
-                :on-ws-open   nil
-                :on-ws-close  nil}))
-        (into (app-routes/make-app-routes routes {:pool                        pool
-                                                  :log                         log
-                                                  :settings                    settings
-                                                  :tables                      tables
-                                                  :scope-kinds                 scope-kinds
-                                                  :find-session-step           find-session-step
-                                                  :find-browser-rate-limit-key (make-rate-limit-key-finder settings)
-                                                  :answer-as                   answer-as}))
-        (into (page/make-catalog-routes (:languages settings)))
-        (into (bridge/make-server-routes-for-pages pages (page/make-page-handler wire settings browser-settings))))))
+                            running-attic running-postbox find-session-step answer-as page-handler]}]
+  (-> (health/make-health-routes wire log app-meter pool running-health settings)
+      (into (errors/make-errors-routes wire running-logbook settings))
+      (into (meter/make-metrics-routes app-meter (:metrics settings)))
+      (into (visitors/make-visitor-routes wire pool settings))
+      (into (files/make-upload-routes running-attic wire log pool find-session-step may-upload? settings))
+      (into (postbox/make-webhook-routes running-postbox (get-in settings [:postbox :webhooks])
+                                         {:run-in-transaction #(doorman/run-as-system! pool postbox-system-actor {:read-only? false} %)
+                                          :on-delivery-event  on-delivery-event
+                                          :on-inbound-email   on-inbound-email}))
+      (into (bridge/make-routes-for-messages
+             handlers
+             (:server settings)
+             {:wire                wire
+              :log                 log
+              :meter               app-meter
+              :find-rate-limit-key (make-rate-limit-key-finder settings)
+              :on-sse-open  (fn [line]
+                              (bridge/send-message-on-sse-line! line {:groundwork/version (:version settings)} nil)
+                              (doorbell/add-sse-line! running-doorbell line))
+              :on-sse-close #(doorbell/remove-sse-line! running-doorbell %)
+              :on-ws-open   nil
+              :on-ws-close  nil}))
+      (into (app-routes/make-app-routes routes {:pool                        pool
+                                                :log                         log
+                                                :settings                    settings
+                                                :tables                      tables
+                                                :scope-kinds                 scope-kinds
+                                                :find-session-step           find-session-step
+                                                :find-browser-rate-limit-key (make-rate-limit-key-finder settings)
+                                                :answer-as                   answer-as}))
+      (into (page/make-catalog-routes (:languages settings)))
+      (into (bridge/make-server-routes-for-pages pages page-handler))))
 
 (defn- is-watching? [settings]
   (map? (:browser-build settings)))
@@ -671,6 +675,9 @@
   "The app map's own routes and its functions for the files and the
    email, every key required: :routes, the app's own server routes,
    records with a kind (groundwork.server.main.app-routes), {} for none;
+   :render-page, (fn [request page {:keys [nonce asker run-as-asker!]}]),
+   each page's title, description, head and body, and the not-found page
+   (page nil) (groundwork.server.main.page);
    :may-upload?, (fn [asker] true-or-false), who may upload
    files; :on-delivery-event, {tag (fn [event {:keys [transaction log]}])},
    a bounce or spam complaint by its email's tag, {} for none;
@@ -682,6 +689,7 @@
    without sentences; nothing else."
   [:map
    [:routes app-routes/routes-shape]
+   [:render-page fn?]
    [:may-upload? fn?]
    [:on-delivery-event map?]
    [:on-inbound-email map?]])
@@ -742,6 +750,15 @@
                                                            :log                    log
                                                            :allowed-origin         (get-in settings [:sessions :allowed-origin])
                                                            :buckets-before-cleanup (get-in settings [:server :rate-limit-buckets-before-cleanup])})
+              page-handler      (page/make-page-handler {:wire              wire
+                                                         :settings          settings
+                                                         :browser-settings  (page/make-browser-settings settings (:pages app) (:browser-modules app))
+                                                         :pages             (:pages app)
+                                                         :render-page       (:render-page app)
+                                                         :pool              pool
+                                                         :log               log
+                                                         :scope-kinds       (:scope-kinds app)
+                                                         :find-session-step find-session-step})
               running-doorbell  (start-part! stoppers
                                              #(doorbell/start-listening! pool (get-in settings [:doorbell :listening])
                                                                          {:log log :meter app-meter :tables (make-ready-tables app)})
@@ -769,8 +786,9 @@
                                                                    :pool pool :running-health running-health :handlers handlers
                                                                    :running-doorbell running-doorbell :running-attic running-attic
                                                                    :running-postbox running-postbox :find-session-step find-session-step
-                                                                   :answer-as answer-as})
-                                                 {:files (get-in settings [:page :files])})
+                                                                   :answer-as answer-as :page-handler page-handler})
+                                                 {:files     (get-in settings [:page :files])
+                                                  :not-found page-handler})
                                                 (:languages settings)
                                                 texts)
                                                (:server settings)

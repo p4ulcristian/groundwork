@@ -24,7 +24,22 @@ browser's settings (version, addresses, sse and ws reopen delays, the
 question store's settings, `:doorbell :store`, the browser's wire settings,
 `:browser-wire`, the write retries, `:run-once :retry-writes`, pages) as
 JSON in the page; its viewport, referrer policy, frame options and content
-security policy are `:page` settings. The shell is in the request's
+security policy are `:page` settings. What only the app knows is the app
+map's `:render-page`, called for every page answer: its title, description,
+head tags and the body inside `#app` (what a crawler reads before the app
+draws), and the not-found page for a GET no route and no file answers
+(page nil, 404); with `:content-security-policy {:policy "script-src
+'nonce-{nonce}' …" :nonce? true}` each answer gets a nonce of its own, on
+the shell's scripts and handed to `render-page` for the app's
+([the decision](../../../../decisions/2026-10-23-a-page-says-its-own-head-and-body-through-the-apps-render-page.md)):
+
+```clojure
+:render-page (fn [request page {:keys [nonce asker run-as-asker!]}]
+               (if page
+                 {:status 200 :title (dictionary/tr :site.home/title {}) :description (dictionary/tr :site.home/description {})
+                  :head-html (str "<link rel=\"canonical\" href=\"…\">") :body-html (prerender request)}
+                 {:status 404 :title "Not found" :description nil :head-html "" :body-html "<main>No such page.</main>"}))
+``` The shell is in the request's
 language: every request first gets it from dictionary (the `:languages`
 settings: the address's prefix, taken off before routing, the cookie,
 Accept-Language, the default), and the shell's `<html lang>`, its
@@ -240,6 +255,7 @@ as its name; text written out where a secret belongs is refused:
                                :handlers handlers :pages pages :browser-modules {}
                                :background-job-kinds [] :schedules []
                                :routes {}   ; the app's own server routes, records with a kind
+                               :render-page render-page   ; each page's title, description, head and body
                                :may-upload? (fn [{:keys [person-id]}] (some? person-id))
                                :on-delivery-event {} :on-inbound-email {}}))
 (main/stop-app! running)

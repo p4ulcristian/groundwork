@@ -30,18 +30,42 @@
    language the alternate links, the same page in each, at the app's
    origin (the :sessions settings' :allowed-origin).
 
+   What only the app knows, per page and per request, is the app's
+   :render-page, (fn [request page {:keys [nonce asker run-as-asker!]}]):
+
+     {:status      200                          ; 404 for the not-found page
+      :title       \"Orders | Shop\"              ; the <title>, escaped here
+      :description \"Every order, by status\"     ; the description meta, escaped here; nil for none
+      :head-html   \"<link rel=\\\"canonical\\\" …>\"  ; the app's own head tags, as they are
+      :body-html   \"<main>…</main>\"}             ; inside #app, as it is, replaced when the app draws
+
+   page is the page the address names ({:name :address :title :module}),
+   or nil for a GET no route and no file answers (the not-found page).
+   nonce is the request's, nil unless the :content-security-policy says
+   :nonce? true; the shell puts it on its own scripts, the app on the
+   scripts in its head-html. asker is the request's session's, and
+   run-as-asker! a transaction as them, held by the gates, for a body that
+   reads rows. The app escapes what it puts in head-html and body-html.
+
    Fixed, not settings: the shell is never cached (no-store), so a new
    version's scripts are what the next load gets; nosniff, since every
    file goes out with its type; UTF-8; the scripts deferred; the app's
-   element is #app. The rest is the :page settings: the title, the
-   viewport, the content security policy, the referrer policy and the
-   frame options."
+   element is #app. The rest is the :page settings: the viewport, the
+   content security policy (and whether it carries a nonce), the referrer
+   policy and the frame options."
   (:require
    [clojure.edn :as edn]
    [dictionary.api :as dictionary]
+   [doorman.api :as doorman]
+   [bridge.api :as bridge]
    [clojure.java.io :as io]
    [clojure.string :as str]
-   [wire.api :as wire]))
+   [malli.core :as malli]
+   [malli.error :as malli-error]
+   [wire.api :as wire])
+  (:import
+   (java.security SecureRandom)
+   (java.util Base64)))
 
 (defn- escape-html [text]
   (-> (str text) (str/replace "&" "&amp;") (str/replace "<" "&lt;") (str/replace ">" "&gt;") (str/replace "\"" "&quot;")))
@@ -107,47 +131,107 @@
    :retry-writes (:retry-writes run-once) :visitor-path (:path visitors) :languages languages
    :module-stylesheets (list-module-stylesheets settings browser-modules) :pages pages})
 
+(def rendered-page-shape
+  "What the app's :render-page answers, every key required."
+  [:map {:closed true}
+   [:status [:int {:min 200 :max 599}]]
+   [:title :string]
+   [:description [:maybe :string]]
+   [:head-html :string]
+   [:body-html :string]])
+
+(defn- check-rendered-page [page-name rendered]
+  (when-let [explanation (malli/explain rendered-page-shape rendered)]
+    (throw (ex-info (str "render-page's answer for " (pr-str page-name) " has problems: "
+                         (pr-str (malli-error/humanize explanation)))
+                    {:type :groundwork.server.main/bad-rendered-page :page page-name
+                     :errors (malli-error/humanize explanation)})))
+  rendered)
+
+(defn- make-nonce
+  "16 random bytes, base64: one request's CSP nonce."
+  [^SecureRandom random]
+  (let [bytes (byte-array 16)]
+    (.nextBytes random bytes)
+    (.encodeToString (Base64/getEncoder) bytes)))
+
+(defn- nonce-attribute [nonce]
+  (if nonce (str " nonce=\"" (escape-html nonce) "\"") ""))
+
 (defn make-page-html
   "The shell, in the request's language, with the alternate links
-   (dictionary's, [] with one language)."
-  [wire {{:keys [title viewport]} :page} stylesheets scripts browser-settings language alternate-links]
+   (dictionary's, [] with one language) and the app's rendered page: its
+   title and description escaped, its head and body HTML as they are."
+  [wire {{:keys [viewport]} :page} stylesheets scripts browser-settings language alternate-links
+   {:keys [title description head-html body-html]} nonce]
   (str "<!doctype html>\n"
        "<html lang=\"" (escape-html language) "\">\n<head>\n"
        "<meta charset=\"utf-8\">\n"
        "<meta name=\"viewport\" content=\"" (escape-html viewport) "\">\n"
        "<title>" (escape-html title) "</title>\n"
+       (when description (str "<meta name=\"description\" content=\"" (escape-html description) "\">\n"))
        (str/join (map #(str "<link rel=\"alternate\" hreflang=\"" (escape-html (:hreflang %))
                             "\" href=\"" (escape-html (:href %)) "\">\n")
                       alternate-links))
        (str/join (map #(str "<link rel=\"stylesheet\" href=\"" (escape-html %) "\">\n") stylesheets))
-       "<script type=\"application/json\" id=\"groundwork-settings\">"
+       head-html
+       "<script type=\"application/json\" id=\"groundwork-settings\"" (nonce-attribute nonce) ">"
        (escape-json-for-script (wire/turn-data-into-json-text wire browser-settings))
        "</script>\n"
-       (str/join (map #(str "<script src=\"" (escape-html %) "\" defer></script>\n") scripts))
-       "</head>\n<body>\n<div id=\"app\"></div>\n</body>\n</html>\n"))
+       (str/join (map #(str "<script src=\"" (escape-html %) "\"" (nonce-attribute nonce) " defer></script>\n") scripts))
+       "</head>\n<body>\n<div id=\"app\">" body-html "</div>\n</body>\n</html>\n"))
 
-(defn- make-headers [{{:keys [content-security-policy referrer-policy frame-options]} :page}]
+(defn- make-headers
+  "The shell's headers; the content security policy with this request's
+   nonce in place of {nonce} when it carries one."
+  [{{:keys [content-security-policy referrer-policy frame-options]} :page} nonce]
   (cond-> {"content-type"           "text/html; charset=utf-8"
            "cache-control"          "no-store"
            "x-content-type-options" "nosniff"
            "referrer-policy"        referrer-policy}
-    (string? content-security-policy) (assoc "content-security-policy" content-security-policy)
-    (string? frame-options)           (assoc "x-frame-options" frame-options)))
+    (map? content-security-policy) (assoc "content-security-policy"
+                                          (cond-> (:policy content-security-policy)
+                                            nonce (str/replace "{nonce}" nonce)))
+    (string? frame-options)        (assoc "x-frame-options" frame-options)))
+
+(defn- find-page-of-request [pages request]
+  (when-let [page-name (get-in request [:reitit.core/match :data :name])]
+    (assoc (get pages page-name) :name page-name)))
 
 (defn make-page-handler
   "A Ring handler answering every page address with the shell, in the
    request's language (put on the request by wrap-languages), its JSON
-   written by the app's wire. The files it lists are read once."
-  [wire settings browser-settings]
-  (let [headers     (make-headers settings)
-        stylesheets (list-stylesheets settings)
+   written by the app's wire, the app's render-page's head and body in it;
+   a GET of an address no page has (no route, no file) is the not-found
+   page (page nil), anything else there 404 with no body. The files it
+   lists are read once. parts: {:wire :settings :browser-settings :pages
+   :render-page :pool :log :scope-kinds :find-session-step}."
+  [{:keys [wire settings browser-settings pages render-page pool log scope-kinds find-session-step]}]
+  (let [stylesheets (list-stylesheets settings)
         scripts     (list-scripts settings)
-        origin      (get-in settings [:sessions :allowed-origin])]
-    (fn [{:groundwork.server.main/keys [language path]}]
-      {:status  200
-       :headers headers
-       :body    (make-page-html wire settings stylesheets scripts (assoc browser-settings :language language)
-                                language (dictionary/make-alternate-links (:languages settings) origin path))})))
+        origin      (get-in settings [:sessions :allowed-origin])
+        nonce?      (true? (get-in settings [:page :content-security-policy :nonce?]))
+        random      (SecureRandom.)]
+    (fn [{:groundwork.server.main/keys [language path] :as request}]
+      (if-not (= :get (:request-method request))
+        {:status 404 :headers {} :body ""}
+        (let [page     (find-page-of-request pages request)
+              nonce    (when nonce? (make-nonce random))
+              context  ((:enter find-session-step) {:bridge/request request :bridge/log log})
+              asker    {:person-id     (:doorman/person-id context)
+                        :visitor-id    (:doorman/visitor-id context)
+                        :session-flags (:doorman/session-flags context)}
+              rendered (check-rendered-page (:name page)
+                                            (render-page request page
+                                                         {:nonce         nonce
+                                                          :asker         asker
+                                                          :run-as-asker! (fn [{:keys [read-only?]} f]
+                                                                           (doorman/run-as-asker! pool asker {:read-only? read-only? :scope-kinds scope-kinds} f))}))]
+          {:status  (:status rendered)
+           :headers (make-headers settings nonce)
+           :body    (make-page-html wire settings stylesheets scripts (assoc browser-settings :language language)
+                                    language (dictionary/make-alternate-links (:languages settings) origin path)
+                                    rendered nonce)})))))
 
 (defn make-catalog-routes
   "A GET for each language's catalog (dictionary's list-catalog-files), at

@@ -119,7 +119,7 @@
                                    :reconnect-after-ms 1000 :stop-wait-ms 2000}}
    :languages         {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}] :default "en" :cookie-name nil
                        :preview-languages [] :fallback-language "en" :catalogs-path "groundwork_test/sample/i18n"}
-   :page              {:title "Sample" :viewport "width=device-width, initial-scale=1"
+   :page              {:viewport "width=device-width, initial-scale=1"
                        :content-security-policy :none :referrer-policy "same-origin" :frame-options "DENY"
                        :files {:folder files-folder :hashed-name-min-hex-digits 8 :hashed-file-cache-seconds 31536000}}
    :health            {:live-path "/health/live" :ready-path "/health/ready"
