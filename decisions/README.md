@@ -199,3 +199,4 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [Every request is handled with its language bound, for dictionary's tr](2026-10-23-every-request-is-handled-in-its-language.md)
 - [An app's own server routes are records with a kind; the composer does their checks](2026-10-23-an-apps-own-server-routes-are-records-with-a-kind.md)
 - [A token call is answered as its person, from the app's own route](2026-10-23-a-token-call-is-answered-as-its-person-from-the-apps-route.md)
+- [A page says its own head and body through the app's render-page; the composer keeps the shell and makes the nonce](2026-10-23-a-page-says-its-own-head-and-body-through-the-apps-render-page.md)
