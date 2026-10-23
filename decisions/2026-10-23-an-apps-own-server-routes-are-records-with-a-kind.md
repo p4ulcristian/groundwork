@@ -1,6 +1,6 @@
 # An app's own server routes are records with a kind; the composer does their checks
 
-> The user's decision, 2026-10-23, for Iron Rainbow's move to v1 (its 20 route lists: Stripe and Meta webhooks, the WorkOS login, `/mcp`, storage, the catalog API). Adds to [Routing is Groundwork's, and a route is a record](2026-10-14-routing-is-groundworks-and-a-route-is-a-record.md), which is about the browser's pages. Not built yet.
+> The user's decision, 2026-10-23, for Iron Rainbow's move to v1 (its 20 route lists: Stripe and Meta webhooks, the WorkOS login, `/mcp`, storage, the catalog API). Adds to [Routing is Groundwork's, and a route is a record](2026-10-14-routing-is-groundworks-and-a-route-is-a-record.md), which is about the browser's pages. Built the same day (`groundwork.server.main.app-routes`, doorman v0.7.7's `run-as-asker!`).
 
 **Decision:** an app names its own server routes as records in the app map, each with a kind, and the composer serves them beside its own, through the same steps:
 
