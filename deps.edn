@@ -82,5 +82,8 @@
                                  :cache-folder       ".shadow-cljs"   ; shadow-cljs's cache
                                  :compile-threads    4
                                  :output-feature-set :es2020          ; what the browsers must understand
+                                 :resolve            {}
+                                 :closure-defines    {}
+                                 :warnings-as-errors #{}
                                  :source-maps?       false            ; a .map beside each file, readable by anyone
                                  :gzip-level         9}}}}            ; the .gz copies, 1 (fast) to 9 (smallest)

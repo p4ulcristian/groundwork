@@ -31,6 +31,9 @@
  :browser-build     {:watch {:cache-folder              ".shadow-cljs"
                              :compile-threads           4
                              :output-feature-set        :es2020
+                             :resolve                   {}
+                             :closure-defines           {}
+                             :warnings-as-errors        #{}
                              :devtools-host             "localhost"
                              :devtools-port             9630
                              :devtools-url              nil

@@ -22,6 +22,9 @@
                                                 :cache-folder       ".shadow-cljs"
                                                 :compile-threads    4
                                                 :output-feature-set :es2020
+                                                :resolve            {}
+                                                :closure-defines    {}
+                                                :warnings-as-errors #{}
                                                 :source-maps?       false
                                                 :gzip-level         9}))
     (let [js-files  (into {} (map (juxt :module-id :output-name)) (edn/read-string (slurp (io/file folder "js" "manifest.edn"))))
