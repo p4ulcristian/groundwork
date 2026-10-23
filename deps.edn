@@ -22,12 +22,13 @@
   ;; both sides, its own library, github.com/p4ulcristian/bridge (it brings
   ;; Jetty 12 through rj9a, reitit-ring and reitit-frontend)
   ;; on its tidy-up branch, not released: a message may come with no request (the REPL's);
-  ;; the browser passes the server's error answers past the answer shape
-  io.github.p4ulcristian/bridge   {:git/sha "f2d70fbcb57648e55d677c3321d15ca5e604b2ce"}
+  ;; the browser passes the server's error answers past the answer shape; answer-message's
+  ;; limiter is make-message-limiter's (or :no-rate-limits), never a hand-written map
+  io.github.p4ulcristian/bridge   {:git/sha "e82a5830da41597e0b4deef84492009bf70a4ff7"}
   ;; doorman: who is asking and what may they do, sessions and access, its own
   ;; library, github.com/p4ulcristian/doorman (it brings malli and test.check)
   ;; on its tidy-up branch, not released: a handler says where it acts; tokens
-  io.github.p4ulcristian/doorman    {:git/sha "f0a5e24b07475b6683e8667c739a105813dbd44a"}
+  io.github.p4ulcristian/doorman    {:git/sha "69e936869dad936986a53544d996927777222426"}
   ;; doorbell: a change to a table rings every open screen, which asks again;
   ;; both sides, its own library, github.com/p4ulcristian/doorbell
   io.github.p4ulcristian/doorbell   {:git/tag "v0.5.8" :git/sha "e92ec97"}
@@ -35,11 +36,13 @@
   ;; drawn with Reagent (it brings re-frame and Reagent; react and react-dom
   ;; are package.json's); the browser's side only, its own library,
   ;; github.com/p4ulcristian/parlor
-  io.github.p4ulcristian/parlor     {:git/tag "v0.8.3" :git/sha "22b611b"}
+  ;; on its tidy-up branch, not released: mount-root! refuses before :parlor/start
+  io.github.p4ulcristian/parlor     {:git/sha "b00bb64c9127926b7cb4bdea587e483aa99b44d0"}
   ;; dictionary: which language a request, a page and an address are in; both
   ;; sides, its own library, github.com/p4ulcristian/dictionary (parlor brings
   ;; it to the browser too)
-  io.github.p4ulcristian/dictionary {:git/tag "v0.4.1" :git/sha "2fefbe1"}
+  ;; on its tidy-up branch, not released: with-language refuses a nil language or bad texts
+  io.github.p4ulcristian/dictionary {:git/sha "89a5c411a563c63cabb997687fc3dc11c1daf9bb"}
   ;; meter: the app's metrics, its own library, github.com/p4ulcristian/meter;
   ;; main makes one meter from the :meter settings and passes it to every
   ;; library that counts, and serves its text at the :metrics route
