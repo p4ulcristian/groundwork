@@ -479,7 +479,7 @@
    functions, one CREATE OR REPLACE FUNCTION each, [] for none; :views,
    the .sql files of its views, one CREATE VIEW each, in the order they
    are made, [] for none. cellar drops a function or a view in the
-   tables' folders that no file makes."
+   tables' folders that nothing declared makes."
   [:map
    [:extensions [:sequential :string]]
    [:functions [:sequential :string]]
@@ -494,22 +494,27 @@
 (defn- make-declared
   "What migrate brings Postgres to, as cellar takes it: the ready tables,
    the app's extensions and views, and its functions with doorman's and
-   doorbell's own (their function-files)."
-  [app]
+   doorbell's own (their function-files) and those doorman makes from
+   the sentences (make-access-functions), declared to cellar as made
+   functions, so it makes them before the gates and drops one whose
+   sentence is gone."
+  [{:keys [scope-kinds] :as app}]
   {:tables     (make-ready-tables app)
    :extensions (:extensions app)
-   :functions  (-> (vec doorman/function-files) (into doorbell/function-files) (into (:functions app)))
+   :functions  (-> (vec doorman/function-files)
+                   (into (doorman/make-access-functions (list-all-tables app) scope-kinds))
+                   (into doorbell/function-files)
+                   (into (:functions app)))
    :views      (:views app)})
 
-(defn- install-functions-and-migrate! [pool {:keys [scope-kinds] :as app} log]
-  (doorman/install-access-functions! pool (list-all-tables app) scope-kinds)
+(defn- migrate! [pool app log]
   (database/migrate! pool (make-declared app) (:changes app) (assoc (get-in app [:settings :migration]) :log log)))
 
 (defn migrate-app!
   "For the deploy, before the app starts: as the role that owns the tables
-   (owner-db-settings), installs the functions doorman makes from the
-   sentences, brings Postgres to the tables, the app's extensions,
-   functions and views (doorman's and doorbell's own functions with them)
+   (owner-db-settings), brings Postgres to the tables, the app's extensions,
+   functions and views (doorman's and doorbell's own functions with them,
+   and those doorman makes from the sentences)
    and changes (waiting for the slow part too), each part under
    the :migration settings' time limits, and lets the app's own role
    (app-role) use them. Each planned statement is written to a log made
@@ -525,7 +530,7 @@
                                    {:log log})
         pool     (database/start-pool! owner-db-settings {:log log :meter meter})]
     (try
-      (deref (:slow-part (install-functions-and-migrate! pool app log)))
+      (deref (:slow-part (migrate! pool app log)))
       (database/grant-tables-to-role! pool (make-ready-tables app) app-role)
       (finally (database/stop-pool! pool)))))
 
@@ -805,7 +810,7 @@
                                              #(database/start-pool! (:database settings) {:log log :meter app-meter})
                                              database/stop-pool!)
               _                 (if (:migrate-at-start? settings)
-                                  @(:slow-part (install-functions-and-migrate! pool app log))
+                                  @(:slow-part (migrate! pool app log))
                                   (refuse-unsafe-database! pool app))
               running-attic     (start-part! stoppers
                                              #(attic/make-attic (get-in settings [:attic :storage]) {:log log :meter app-meter})

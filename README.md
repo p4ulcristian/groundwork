@@ -185,7 +185,9 @@ does (`{:to :shop/id :on-delete :refuse :on-update :refuse :checked-at
 carried columns to them. Beside `:tables` the app writes out cellar's
 `:extensions`, `:functions` and `:views` (`.sql` files, `[]` for none);
 groundwork declares doorman's and doorbell's own functions with them, and
-cellar drops a function in the tables' folders that no file makes.
+the ones doorman makes from the sentences (`make-access-functions`, cellar's
+made functions), and cellar drops a function in the tables' folders that
+nothing declared makes.
 Not in groundwork: pre-rendering pages for search engines, for now
 ([the decision](decisions/2026-10-23-no-pre-rendering-of-pages-for-search-engines-for-now.md)),
 and an MCP endpoint, which is the app's own code

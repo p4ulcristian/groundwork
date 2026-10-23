@@ -17,8 +17,9 @@
   ;; cellar: Postgres, its own library, github.com/p4ulcristian/cellar
   ;; on its tidy-up branch, not released: a table map writes out :uniques and :checks, a
   ;; reference what it does, an index as a map; migrate! takes {:tables :extensions :functions
-  ;; :views}, and drops a function in the tables' folders that no file makes
-  io.github.p4ulcristian/cellar     {:git/sha "d84e3e9feff9252f1cf9bacc255ae140deccb675"}
+  ;; :views}, a function a file or one a library made, and drops a function in the tables'
+  ;; folders that nothing declared makes; a column's type changed by a change; run-after-commit!
+  io.github.p4ulcristian/cellar     {:git/sha "271282cf00308ac7293113423dff3d81e8e6ca57"}
   ;; backroom: background jobs on Postgres, its own library, github.com/p4ulcristian/backroom
   ;; on its tidy-up branch, not released: a job kind names its system actor, and its one
   ;; transaction (the work and the done-mark) runs as it, opened by doorman's run-as-system!;
@@ -35,8 +36,9 @@
   ;; library, github.com/p4ulcristian/doorman (it brings malli and test.check)
   ;; on its tidy-up branch, not released: a handler says where it acts; tokens; roles have
   ;; ids; doorman's own reasons put on every handler; the leak test takes the app's meter;
-  ;; its tables in cellar's tidy-up shapes, its own functions declared by their files
-  io.github.p4ulcristian/doorman    {:git/sha "9e2ee17e4ac88c0100609ec040bb0a52d3626074"}
+  ;; its tables in cellar's tidy-up shapes, its own functions declared by their files, those
+  ;; made from the sentences handed to the app (make-access-functions)
+  io.github.p4ulcristian/doorman    {:git/sha "8e889924d53fa3e2343a9e5e5b131ca092cdbbcb"}
   ;; doorbell: a change to a table rings every open screen, which asks again;
   ;; both sides, its own library, github.com/p4ulcristian/doorbell
   ;; on its tidy-up branch, not released: an ask with no answer is bridge's :bridge/no-answer;

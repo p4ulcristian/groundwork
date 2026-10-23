@@ -251,7 +251,8 @@ does on delete, on update and when it is checked; a record under a record
 says doorman's `:parent`, and doorman adds its link and fill to them.
 Beside `:tables` the app writes out cellar's `:extensions`, `:functions`
 and `:views` (`.sql` files, `[]` for none), which migrate declares with
-doorman's and doorbell's own functions.
+doorman's and doorbell's own functions and those doorman makes from the
+sentences (`make-access-functions`).
 
 API: `groundwork.server.main.api` (`settings-shape`, `page-settings-shape`,
 `health-settings-shape`, `migration-settings-shape`, `doorbell-settings-shape`,
