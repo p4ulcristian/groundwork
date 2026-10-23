@@ -319,15 +319,25 @@
                   (is (= 1 (count-orders-with-note owner-pool "a-retry")) "saved once")
                   (is (= (str "ready " (get-in (json/read-value @failed-add) ["orders/add" "order/id"])) shown)
                       "the answer shown is the one that was lost: the server kept it for the key")))
-              (testing "6. an error thrown in the browser reaches the errors route"
+              (testing "6. an error thrown in the browser, and one an error boundary reports, reach the one errors list"
                 (cdp/evaluate connection anna-1 "setTimeout(() => { throw new Error('e2e boom') }, 0), true")
+                (cdp/evaluate connection anna-1 "window.sampleReportRenderError('e2e render boom'), true")
                 (is (= 401 (first (get-text (str origin "/groundwork/errors?since=0") nil))))
-                (let [kept (loop [tries 50]
-                             (let [[_ body] (get-text (str origin "/groundwork/errors?since=0") "the-errors-token")
-                                   found    (some #(when (= "browser/uncaught" (get % "event")) %) (json/read-value body))]
-                               (if (or found (zero? tries)) found (do (Thread/sleep 100) (recur (dec tries))))))]
-                  (is (str/includes? (str (get-in kept ["data" "browser/message"])) "e2e boom"))
-                  (is (= (str anna) (get-in kept ["context" "person-id"])) "with who was asking")))
+                (let [find-kept (fn [kind]
+                                  (loop [tries 50]
+                                    (let [[_ body] (get-text (str origin "/groundwork/errors?since=0") "the-errors-token")
+                                          found    (some #(when (and (= "browser/error" (get % "event"))
+                                                                     (= kind (get-in % ["data" "browser/kind"])))
+                                                            %)
+                                                         (json/read-value body))]
+                                      (if (or found (zero? tries)) found (do (Thread/sleep 100) (recur (dec tries)))))))
+                      uncaught  (find-kept "uncaught")
+                      render    (find-kept "render")]
+                  (is (str/includes? (str (get-in uncaught ["data" "browser/message"])) "e2e boom"))
+                  (is (= (str anna) (get-in uncaught ["context" "person-id"])) "with who was asking")
+                  (is (= "e2e render boom" (get-in render ["data" "browser/message"])) "report-browser-error!, :kind :render")
+                  (is (= ["e2e-1" "e2e-1"] (map #(get-in % ["data" "browser/version"]) [uncaught render]))
+                      "with the page's version")))
               (testing "7. /metrics, only with its token: bridge's messages, cellar's query times, logbook's lines"
                 (is (= 401 (first (get-text (str origin "/metrics") nil))))
                 (let [text (metrics)]

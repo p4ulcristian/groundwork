@@ -70,15 +70,18 @@
   [parlor/show-page draw-page])
 
 (defn start! []
-  (main/start-app! {:shapes-by-name        shapes/shapes-by-name
-                    :sse-handlers          {}
-                    :questions-of-pages    {:orders/page  (fn [{:keys [path-params]}]
-                                                            [[:orders/of-shop {:shop/id (parse-uuid (:shop-id path-params))}]])
-                                            :reports/page (fn [_] [])}
-                    :on-answer-failed      nil
-                    :on-signed-out         nil
-                    :on-move               nil
-                    :query-shapes-of-pages {:orders/page nil :reports/page nil}
-                    :placeholder           (fn [_page status] [:p#module-loading (str status)])
-                    :exact-decimals        nil})
-  (parlor/mount-root! "app" root))
+  (let [app (main/start-app! {:shapes-by-name        shapes/shapes-by-name
+                             :sse-handlers          {}
+                             :questions-of-pages    {:orders/page  (fn [{:keys [path-params]}]
+                                                                     [[:orders/of-shop {:shop/id (parse-uuid (:shop-id path-params))}]])
+                                                     :reports/page (fn [_] [])}
+                             :on-answer-failed      nil
+                             :on-signed-out         nil
+                             :on-move               nil
+                             :query-shapes-of-pages {:orders/page nil :reports/page nil}
+                             :placeholder           (fn [_page status] [:p#module-loading (str status)])
+                             :exact-decimals        nil})]
+    ;; the end-to-end test's error boundary: an error it caught, reported as :render
+    (set! (.-sampleReportRenderError js/window)
+          (fn [message] (main/report-browser-error! app {:kind :render :error (js/Error. message)})))
+    (parlor/mount-root! "app" root)))

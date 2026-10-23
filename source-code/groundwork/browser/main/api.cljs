@@ -63,10 +63,12 @@
 
    It also listens, once for the page, for the uncaught errors and the
    unhandled promise rejections, and sends each to the server as
-   {:groundwork/browser-error {:message … :stack … :url …}}, where it is logged
-   at :error with the server's errors (its rate limit is the server's
-   :errors settings'). A failure sending one is dropped: it can't be
-   sent either.
+   {:groundwork/browser-error {:kind :uncaught :version … :message … :stack …
+   :url …}}, where it is logged at :error with the server's errors, the one
+   list the app's monitor reads (its rate limit is the server's :errors
+   settings'); report-browser-error! sends one an app's error boundary
+   caught the same way, :kind :render. :version is the page's version
+   setting. A failure sending one is dropped: it can't be sent either.
 
    start-visitor-session! gives a visitor (someone not signed in) a
    session of their own, the first time the app keeps something for them
@@ -87,6 +89,8 @@
   {:groundwork/version       {:params-shape nil :answer-shape :string :refusals {}}
    ;; refused only by doorman's find-session step, as on the server (groundwork.server.main.errors)
    :groundwork/browser-error {:params-shape [:map {:closed true}
+                                             [:kind [:enum :render :uncaught]]
+                                             [:version :string]
                                              [:message :string]
                                              [:stack [:maybe :string]]
                                              [:url :string]]
@@ -213,21 +217,30 @@
     {:message (str (.-message thrown)) :stack (some-> (.-stack thrown) str)}
     {:message (if (some? thrown) (str thrown) fallback-message) :stack nil}))
 
+(defn- make-error-sender
+  "(fn [kind {:keys [message stack]}]): one error sent as a
+   :groundwork/browser-error, with the page's version and address; a
+   failure sending it is dropped, as it can't be sent either."
+  [send! version]
+  (fn [kind {:keys [message stack]}]
+    (-> (send! {:groundwork/browser-error {:kind kind :version version :message message :stack stack
+                                           :url (str js/location.href)}})
+        (.catch (fn [_] nil)))))
+
 (defn- send-errors-to-server!
   "Once for the page (a hot reload starts the app again): every uncaught
-   error and unhandled rejection is sent as a :groundwork/browser-error."
-  [send!]
+   error and unhandled rejection is sent as a :groundwork/browser-error,
+   :kind :uncaught."
+  [send-error!]
   (when (compare-and-set! sending-errors? false true)
-    (let [send-error! (fn [{:keys [message stack]}]
-                        (-> (send! {:groundwork/browser-error {:message message :stack stack :url (str js/location.href)}})
-                            (.catch (fn [_] nil))))]
-      (js/window.addEventListener "error" #(send-error! (describe-error (.-error %) (str (.-message %)))))
-      (js/window.addEventListener "unhandledrejection" #(send-error! (describe-error (.-reason %) "A promise was rejected"))))))
+    (js/window.addEventListener "error" #(send-error! :uncaught (describe-error (.-error %) (str (.-message %)))))
+    (js/window.addEventListener "unhandledrejection" #(send-error! :uncaught (describe-error (.-reason %) "A promise was rejected")))))
 
 (defn start-app!
   "Starts the browser half (see the namespace), parlor last. The options
    are checked first, every key required. Returns {:settings :wire :store
-   :sse-line}, :wire the app's one wire in the browser."
+   :sse-line}, :wire the app's one wire in the browser, and the error
+   sender report-browser-error! takes it for."
   [options]
   (let [{:keys [shapes-by-name sse-handlers questions-of-pages on-answer-failed on-signed-out on-move exact-decimals
                 query-shapes-of-pages placeholder]}
@@ -241,7 +254,8 @@
         send-write!    (fn [message once-key]
                          (bridge/send-message! (:http addresses) shapes-by-name message
                                                  {:wire wire :headers {write-key-header once-key}}))
-        _              (send-errors-to-server! send!)
+        send-error!    (make-error-sender send! (:version settings))
+        _              (send-errors-to-server! send-error!)
         store          (doorbell/make-question-store send! store-settings)
         sse-line       (bridge/open-sse-line! (:sse addresses) shapes-by-name
                                                  (merge sse-handlers
@@ -266,7 +280,31 @@
                                       :languages          {:dictionary languages :language-of-page language}
                                       :load-module!       #(browser-build/load-module! module-stylesheets %)
                                       :placeholder        placeholder}])
-    {:settings settings :wire wire :store store :sse-line sse-line}))
+    {:settings settings :wire wire :store store :sse-line sse-line
+     :groundwork.browser.main/send-error! send-error!}))
+
+(def report-options-shape
+  "report-browser-error!'s report, every key required: :kind, :render
+   for an error an app's error boundary caught (:uncaught is the
+   listener's own); :error, what was thrown (an Error, its message and
+   stack; anything else, its text)."
+  [:map {:closed true}
+   [:kind [:enum :render :uncaught]]
+   [:error :any]])
+
+(defn report-browser-error!
+  "Sends one error to the server's one list (groundwork.server.main.errors),
+   for an app's error boundary: {:kind :render :error e}, with the page's
+   version and address, as the listener sends the uncaught ones. app is
+   what start-app! returned. A failure sending it is dropped. Returns nil.
+
+     (main/report-browser-error! app {:kind :render :error e})"
+  [app report]
+  (when-let [explanation (malli/explain report-options-shape report)]
+    (throw (ex-info (str "The report has problems: " (pr-str (malli-error/humanize explanation)))
+                    {:type :groundwork.browser.main/bad-report :errors (malli-error/humanize explanation)})))
+  ((:groundwork.browser.main/send-error! app) (:kind report) (describe-error (:error report) "An error was reported"))
+  nil)
 
 (defn start-visitor-session!
   "A session for a visitor, the first time the app keeps something for

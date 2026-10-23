@@ -15,11 +15,13 @@
    A since that isn't a whole number from 0 is 400. Never cached.
 
    The browser's errors: groundwork's browser start sends each uncaught error
-   and unhandled rejection as a message, {:groundwork/browser-error {:message …
-   :stack … :url …}}; its handler finds the session (the Origin checked,
-   the person added to the message's log), then writes it at :error,
-   :browser/uncaught, so it is kept with the server's errors, with the
-   request's id and the person. Its rate limit, per asker, is the :errors
+   and unhandled rejection, and each an app's error boundary reports
+   (report-browser-error!), as a message, {:groundwork/browser-error {:kind …
+   :version … :message … :stack … :url …}}; its handler finds the session
+   (the Origin checked, the person added to the message's log), then
+   writes it at :error, :browser/error, so it is kept with the server's
+   errors in the one list a monitor reads, with the request's id and the
+   person. Its rate limit, per asker, is the :errors
    settings' :browser-rate-limit, so a page failing in a loop can't flood
    the log."
   (:require
@@ -75,9 +77,14 @@
 ;; The browser's errors
 
 (def browser-error-params-shape
-  "What the browser sends: the error's message, its stack (nil when the
-   browser has none) and the page's address."
+  "What the browser sends, every key written out: :kind, :render (an
+   app's error boundary caught it) or :uncaught (the browser start's
+   listener); :version, the version of the page's bundle (the version
+   setting the page carries); the error's message, its stack (nil when
+   the browser has none) and the page's address."
   [:map {:closed true}
+   [:kind [:enum :render :uncaught]]
+   [:version :string]
    [:message :string]
    [:stack [:maybe :string]]
    [:url :string]])
@@ -85,9 +92,11 @@
 (def ^:private write-browser-error
   {:name  :groundwork/write-browser-error
    :enter (fn [{:bridge/keys [log message-data] :as context}]
-            (log :error :browser/uncaught {:browser/message (:message message-data)
-                                           :browser/stack   (:stack message-data)
-                                           :browser/url     (:url message-data)})
+            (log :error :browser/error {:browser/kind    (:kind message-data)
+                                        :browser/version (:version message-data)
+                                        :browser/message (:message message-data)
+                                        :browser/stack   (:stack message-data)
+                                        :browser/url     (:url message-data)})
             (bridge/add-answer-to-context context true))})
 
 (def browser-error-refusals

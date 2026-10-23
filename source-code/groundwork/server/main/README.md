@@ -101,10 +101,15 @@ with 503 for `:not-ready-before-stop-ms` before the server stops:
 One more GET, for a monitor, outside them too: the `:error` lines logbook
 keeps, after `?since=N`, as a JSON array, only with the `:errors` settings'
 token as a bearer token (else 401). The browser's uncaught errors and
-unhandled rejections come in as a message, `:groundwork/browser-error`, a handler
-of groundwork's own (doorman's session step, then `:error :browser/uncaught`),
-limited per asker by `:browser-rate-limit`, and are kept with the server's:
-[the decision](../../../../decisions/server/main/2026-10-22-main-serves-the-kept-errors-and-logs-the-browsers.md).
+unhandled rejections, and those an app's error boundary reports, come in
+as a message, `:groundwork/browser-error` (`{:kind :render-or-:uncaught
+:version … :message … :stack … :url …}`), a handler of groundwork's own
+(doorman's session step, then `:error :browser/error`, with the kind and
+the bundle's version), limited per asker by `:browser-rate-limit`, and are
+kept with the server's: one numbered list, which the app's monitor reads;
+an app keeps none of its own
+([the decision](../../../../decisions/server/main/2026-10-22-main-serves-the-kept-errors-and-logs-the-browsers.md),
+[the one list](../../../../decisions/2026-10-23-browser-errors-go-to-the-composers-one-list.md)).
 
 ```clojure
 :errors {:path "/groundwork/errors" :token #secret :errors/token :browser-rate-limit {:max 10 :per-ms 60000}}

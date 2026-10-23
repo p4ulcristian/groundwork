@@ -16,8 +16,11 @@ languages and language, browser-build's `load-module!` with each module's styles
 `:actions-question`), which follows the address bar. The app draws its root
 with parlor's `mount-root!` into the shell's `#app`. Once for the
 page, it sends every uncaught error and unhandled rejection to the server,
-`{:groundwork/browser-error {:message … :stack … :url …}}`, where it is logged at
-`:error` with the server's errors. The app's
+`{:groundwork/browser-error {:kind :uncaught :version … :message … :stack … :url …}}`,
+where it is logged at `:error` with the server's errors, the one list the
+app's monitor reads; `report-browser-error!` sends one an app's error
+boundary caught, `(main/report-browser-error! app {:kind :render :error e})`,
+`app` what `start-app!` returned. `:version` is the page's version. The app's
 shapes have the three for each of its names, `:params-shape`,
 `:answer-shape` and `:refusals` (its handler's own reasons, `{}` for
 none); doorman's reasons (doorman's `put-refusals-into-shapes`) and
@@ -28,6 +31,7 @@ its reason, `(parlor/tr (:bridge/refused error) (:bridge/data error))`. The app'
 big.js, react, react-dom and process as `dependencies`: browser-build's release
 stops on one installed only for development. ClojureScript only. API:
 `groundwork.browser.main.api` (`read-settings-from-page`, `start-app!`,
+`report-browser-error!`,
 `start-visitor-session!`: a session for a visitor, the first time the app
 keeps something for them, a POST to the page's `:visitor-path`; a promise
 of the visitor's id).

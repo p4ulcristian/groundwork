@@ -979,14 +979,15 @@
                   (is (= [200 "[]"] (ask-errors "the-errors-token" (str "?since=" last-seq))) "none after the last")
                   (testing "a browser's error, sent as a message, is kept with them, with the person"
                     (let [send-error #(send-request server-port "POST" "/groundwork/http" anna-cookie
-                                                    (str "{\"groundwork/browser-error\":{\"message\":\"x is undefined\","
+                                                    (str "{\"groundwork/browser-error\":{\"kind\":\"render\",\"version\":\"test-1\",\"message\":\"x is undefined\","
                                                          "\"stack\":\"at start (main.js:1)\",\"url\":\"http://app.test/orders/42\"}}"))]
                       (is (= [200 "{\"groundwork/browser-error\":true}"] (send-error)))
                       (let [[status body] (ask-errors "the-errors-token" (str "?since=" last-seq))
                             [kept]        (json/read-value body)]
                         (is (= 200 status))
-                        (is (= ["error" "browser/uncaught" (str anna)
-                                {"browser/message" "x is undefined" "browser/stack" "at start (main.js:1)"
+                        (is (= ["error" "browser/error" (str anna)
+                                {"browser/kind"    "render"         "browser/version" "test-1"
+                                 "browser/message" "x is undefined" "browser/stack" "at start (main.js:1)"
                                  "browser/url"     "http://app.test/orders/42"}]
                                [(get kept "level") (get kept "event") (get-in kept ["context" "person-id"]) (get kept "data")])))
                       (testing "its rate limit, from the :errors settings: two a minute per asker"
@@ -995,16 +996,16 @@
                           (is (= 200 status))
                           (is (is-too-many? (get (json/read-value body) "groundwork/browser-error")))))
                       (testing "from another site: refused by doorman's session step, not written"
-                        (let [before (count (find-lines "browser/uncaught"))
+                        (let [before (count (find-lines "browser/error"))
                               answer (.body (.send (HttpClient/newHttpClient)
                                                    (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/groundwork/http")))
                                                        (.header "origin" "https://evil.test")
                                                        (.POST (HttpRequest$BodyPublishers/ofString
-                                                               "{\"groundwork/browser-error\":{\"message\":\"m\",\"stack\":null,\"url\":\"u\"}}"))
+                                                               "{\"groundwork/browser-error\":{\"kind\":\"uncaught\",\"version\":\"v\",\"message\":\"m\",\"stack\":null,\"url\":\"u\"}}"))
                                                        (.build))
                                                    (HttpResponse$BodyHandlers/ofString)))]
                           (is (str/includes? answer "error"))
-                          (is (= before (count (find-lines "browser/uncaught")))))))))))
+                          (is (= before (count (find-lines "browser/error")))))))))))
             (testing "files: an upload asks doorman's session step, then the app's :may-upload?"
               (let [png    (byte-array (concat [0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A] (range 32)))
                     body   (byte-array (concat (.getBytes (str "--b\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"door.png\"\r\n"

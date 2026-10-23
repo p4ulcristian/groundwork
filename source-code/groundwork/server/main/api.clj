@@ -82,9 +82,11 @@
    One more GET, for a monitor, outside them too (groundwork.server.main.errors,
    the :errors settings): the :error lines logbook keeps, after ?since=N,
    only with the settings' bearer token. And one handler of groundwork's own,
-   :groundwork/browser-error: the browser's uncaught errors, sent by
-   groundwork.browser.main, written at :error as :browser/uncaught, so they are
-   kept with the server's; its rate limit is the :errors settings'.
+   :groundwork/browser-error: the browser's errors, uncaught or caught by
+   an app's error boundary, sent by groundwork.browser.main with their
+   kind and the bundle's version, written at :error as :browser/error, so
+   they are kept with the server's, the one list a monitor reads; its rate
+   limit is the :errors settings'.
    And one of doorman's, :doorman/my-actions (make-my-actions-handler):
    the asker's actions by scope, and the open ones under nil kind and id,
    which the browser's start names as parlor's :actions-question; its rate
