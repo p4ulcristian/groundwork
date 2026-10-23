@@ -156,3 +156,10 @@ in a container, as attic's tests run it); without them it checks only who
 may upload.
 
 An app takes all of house from git.
+
+## Releasing a library
+
+`tools/bump cellar` (or several names) tags the next patch version of each
+named manor library, then pins the new tag in every manor library that uses
+it, releases those the same way, in order, and pins everything in house last.
+No tests are run. The libraries sit beside house, in the manor folder.
