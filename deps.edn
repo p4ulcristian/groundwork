@@ -32,11 +32,11 @@
   ;; drawn with Reagent (it brings re-frame and Reagent; react and react-dom
   ;; are package.json's); the browser's side only, its own library,
   ;; github.com/p4ulcristian/parlor
-  io.github.p4ulcristian/parlor     {:git/tag "v0.8.0" :git/sha "a788351"}
+  io.github.p4ulcristian/parlor     {:git/tag "v0.8.1" :git/sha "85a8156"}
   ;; dictionary: which language a request, a page and an address are in; both
   ;; sides, its own library, github.com/p4ulcristian/dictionary (parlor brings
   ;; it to the browser too)
-  io.github.p4ulcristian/dictionary {:git/tag "v0.4.0" :git/sha "eb7e400"}
+  io.github.p4ulcristian/dictionary {:git/tag "v0.4.1" :git/sha "2fefbe1"}
   ;; meter: the app's metrics, its own library, github.com/p4ulcristian/meter;
   ;; main makes one meter from the :meter settings and passes it to every
   ;; library that counts, and serves its text at the :metrics route
