@@ -113,6 +113,10 @@
 (def ^:private insert-order
   (database/make-query-from-sql-text "a new order" "INSERT INTO orders (order__shop_id) VALUES (:order/shop-id) RETURNING order__id"))
 
+(def ^:private find-daily-cap-counts
+  (database/make-query-from-sql-text "daily cap counts"
+                                     "SELECT daily_cap_count__counted_for, daily_cap_count__count FROM groundwork.daily_cap_counts ORDER BY 1"))
+
 (def ^:private count-kept-keys
   (database/make-query-from-sql-text "one-time keys kept" "SELECT count(*) AS n FROM groundwork.run_once_keys WHERE run_once_key__key = :run-once-key/key"))
 
@@ -128,14 +132,14 @@
 
 (def ^:private handlers
   {:orders/count {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :refusals {} :rate-limit {:max 2 :per-ms 60000}
-                  :run-steps-in nil
+                  :run-steps-in nil :daily-caps []
                   :steps  [{:name :answer-count :enter #(bridge/add-answer-to-context % 0)}]}
-   :orders/all {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape [:vector :uuid] :refusals {} :rate-limit nil :run-steps-in nil
+   :orders/all {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape [:vector :uuid] :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                 :steps  [{:name  :answer-all-orders
                           :enter #(bridge/add-answer-to-context
                                    % (mapv :order/id (database/find-rows (:doorman/transaction %) find-all-orders {})))}]}
    :orders/add {:action :orders/edit :scope [:shop :order/shop-id] :params-shape [:map [:order/shop-id :uuid] [:test/wait-ms :int]] :answer-shape :uuid
-                :refusals {} :rate-limit nil :run-steps-in nil
+                :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                 :steps  [{:name  :add-order
                           :enter (fn [{:bridge/keys [message-data] :as context}]
                                    (Thread/sleep (long (:test/wait-ms message-data)))
@@ -143,12 +147,16 @@
                                     context (:order/id (database/find-one-row (:doorman/transaction context) insert-order
                                                                               (select-keys message-data [:order/shop-id])))))}]}
    :orders/add-badly {:action :orders/edit :scope [:shop :order/shop-id] :params-shape [:map [:order/shop-id :uuid]] :answer-shape :uuid
-                      :refusals {} :rate-limit nil :run-steps-in nil
+                      :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                       :steps  [{:name  :add-order-and-answer-a-number
                                 :enter (fn [{:bridge/keys [message-data] :as context}]
                                          (database/find-one-row (:doorman/transaction context) insert-order message-data)
                                          (bridge/add-answer-to-context context 42))}]}
-   :orders/broken {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :refusals {} :rate-limit nil :run-steps-in nil
+   :orders/capped {:action :orders/see :scope [:shop :shop/id] :params-shape [:map [:shop/id :uuid]] :answer-shape :boolean
+                   :refusals {} :rate-limit nil :run-steps-in nil
+                   :daily-caps [{:max 2 :per :asker} {:max 3 :per :everyone}]
+                   :steps  [{:name :answer-true :enter #(bridge/add-answer-to-context % true)}]}
+   :orders/broken {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                    :steps  [{:name  :say-and-ask-untyped
                              :enter (fn [{:bridge/keys [log] :as context}]
                                       (log :info :test/about-to-break {})
@@ -223,6 +231,7 @@
                        :allowed-origin "http://app.test" :secure-cookie? false
                        :token-lead "app_" :token-shown-characters 10 :token-longest-days 30}
    :my-actions        {:rate-limit {:max 60 :per-ms 60000}}
+   :daily-caps        {:pool-size 2 :forget-counts {:cron "15 0 * * *" :timeout-ms 10000 :attempts 1}}
    :run-once          {:keep-keys-ms 1500
                        :forget-keys  {:cron "0 * * * *" :timeout-ms 10000 :attempts 1}
                        :retry-writes {:times 1 :wait-ms 1000}}
@@ -582,6 +591,10 @@
                       (catch clojure.lang.ExceptionInfo e
                         {:type    (:type (ex-data e))
                          :missing (set (mapcat :missing-texts (vals (:problems (ex-data e)))))})))))
+        (testing "a handler that doesn't write out :daily-caps is refused, named"
+          (is (= [":orders/count doesn't write out :daily-caps: [] for none, or [{:max 10 :per :asker} …]"]
+                 (try (main/start-app! (update-in (make-app "groundwork_app") [:handlers :orders/count] dissoc :daily-caps))
+                      (catch clojure.lang.ExceptionInfo e (:problems (ex-data e)))))))
         (testing "a handler declaring groundwork's own reason is refused: groundwork adds it"
           (is (= :groundwork.server.main/bad-handlers
                  (try (main/start-app! (assoc-in (make-app "groundwork_app") [:handlers :orders/add :refusals]
@@ -771,6 +784,22 @@
                   (is (= 200 third-status) "one POST carries many messages: the refusal is in the answer")
                   (is (is-too-many? (get (json/read-value third-body) "orders/count"))))
                 (is (= [200 counted] (send-request server-port "POST" "/groundwork/http" bob-cookie "{\"orders/count\":{}}")))))
+            (testing "daily caps: counted after doorman's check, per asker and for everyone, in Postgres"
+              (let [ask     #(get (json/read-value (second (send-request server-port "POST" "/groundwork/http" %1
+                                                                         (str "{\"orders/capped\":{\"shop/id\":\"" %2 "\"}}"))))
+                                  "orders/capped")
+                    reached #(and (= "groundwork/daily-cap-reached" (get % "bridge/refused"))
+                                  (< 0 (get-in % ["bridge/data" "retry-after-ms"]) (inc 86400000)))]
+                (is (= [true true] [(ask anna-cookie shop-7) (ask anna-cookie shop-7)]))
+                (is (reached (ask anna-cookie shop-7)) "Anna's third today: her cap, until midnight UTC")
+                (is (= "doorman/not-found" (get (ask bob-cookie shop-7) "bridge/refused")) "refused by the check: nothing spent")
+                (is (true? (ask bob-cookie shop-9)) "Bob's first: the third for everyone")
+                (is (reached (ask bob-cookie shop-9)) "everyone's cap spent, though Bob's own isn't")
+                (is (= [{:daily-cap-count/counted-for "everyone" :daily-cap-count/count 3}
+                        {:daily-cap-count/counted-for (str "person " anna) :daily-cap-count/count 2}
+                        {:daily-cap-count/counted-for (str "person " bob) :daily-cap-count/count 1}]
+                       (database/find-rows owner-pool find-daily-cap-counts {}))
+                    "a refused call counts on no cap")))
             (testing "doorbell: each line hears the version first, then every changed table, never a row"
               (let [anna-line  (open-sse server-port anna-cookie)
                     bob-line   (open-sse server-port bob-cookie)

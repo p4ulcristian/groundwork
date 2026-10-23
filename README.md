@@ -75,6 +75,11 @@ UUID, the same on each retry of that send, in the `idempotency-key`
 header), and groundwork claims it in the write's own transaction; a repeat gets
 the first answer and saves nothing (the `:run-once` settings, [the
 decision](decisions/2026-10-23-every-write-runs-once-by-its-one-time-key.md)).
+Every handler writes out its daily caps, `:daily-caps` (`[]` for none),
+counted by groundwork in Postgres after doorman's check; over one, the call
+is refused `:groundwork/daily-cap-reached {:retry-after-ms …}` until
+midnight UTC (the `:daily-caps` settings, [the
+decision](decisions/2026-10-23-daily-caps-are-counted-by-the-composer-after-the-permission.md)).
 And what the app says, on the server:
 [logbook](https://github.com/p4ulcristian/logbook), one function
 `(log level event data)`; groundwork makes the app's one logbook from the

@@ -106,14 +106,21 @@
   {:groundwork/once-key-not-a-uuid      nil
    :groundwork/once-key-of-someone-else nil})
 
+(def ^:private daily-cap-refusals
+  "groundwork's reason a capped handler refuses with, the server's
+   groundwork.server.main.daily-caps's: one of its :daily-caps is spent
+   for today, {:retry-after-ms n} until midnight UTC."
+  {:groundwork/daily-cap-reached [:map {:closed true} [:retry-after-ms :int]]})
+
 (defn- make-shapes-by-name
   "Every name's three shapes: the app's with groundwork's run-once
    reasons (a write may give them; a name that only reads never does) and
-   :doorman/my-actions, each with doorman's reasons put in, then doorbell's
-   and groundwork's own."
+   its daily-cap reason (a capped handler may give it; the browser doesn't
+   know which are capped), and :doorman/my-actions, each with doorman's
+   reasons put in, then doorbell's and groundwork's own."
   [app-shapes-by-name]
   (merge (doorman/put-refusals-into-shapes
-          (merge (update-vals app-shapes-by-name #(update % :refusals merge run-once-refusals))
+          (merge (update-vals app-shapes-by-name #(update % :refusals merge run-once-refusals daily-cap-refusals))
                  my-actions-shapes-by-name))
          doorbell/message-shapes-by-name
          groundwork-shapes-by-name))

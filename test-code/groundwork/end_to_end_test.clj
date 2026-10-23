@@ -96,6 +96,7 @@
                        :token-lead "e2e_" :token-shown-characters 10 :token-longest-days 30}
    :visitors          {:path "/groundwork/visitor" :rate-limit {:max 10 :per-ms 60000}}
    :my-actions        {:rate-limit nil}
+   :daily-caps        {:pool-size 2 :forget-counts {:cron "15 0 * * *" :timeout-ms 10000 :attempts 1}}
    :run-once          {:keep-keys-ms 600000
                        :forget-keys  {:cron "0 * * * *" :timeout-ms 10000 :attempts 1}
                        :retry-writes {:times 2 :wait-ms 300}}

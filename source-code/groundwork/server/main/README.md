@@ -134,6 +134,27 @@ nothing is saved. A write without a key runs as it is:
            :retry-writes {:times 2 :wait-ms 1000}}   ; the browser's, in the page; ends before a key is forgotten
 ```
 
+Every app handler writes out `:daily-caps` beside bridge's `:rate-limit`,
+`[]` for none (`groundwork.server.main.daily-caps`): `[{:max 10 :per :asker}
+{:max 300 :per :everyone}]`, calls a UTC day, `:asker` the person (a token's
+person too), else the visitor, else the request's address. A capped
+handler's first step, after doorman's check and inside a write's run-once
+step, counts the call in `groundwork.daily_cap_counts`, in a transaction of
+its own on a pool of its own (`:daily-caps :pool-size`), so every call let
+through counts whether or not its work commits, and only callers the
+check lets through spend a shared budget. Over a cap nothing is counted and
+the call is refused `:groundwork/daily-cap-reached {:retry-after-ms n}`,
+until midnight UTC: groundwork's own reason, added to every capped
+handler's `:refusals` (and to every name's in the browser). groundwork's
+background job `:groundwork/forget-old-daily-cap-counts`, run as its system
+actor `:groundwork-daily-caps`, deletes the days before today:
+[the decision](../../../../decisions/2026-10-23-daily-caps-are-counted-by-the-composer-after-the-permission.md).
+
+```clojure
+:daily-caps {:pool-size     2                                            ; the counts' own pool
+             :forget-counts {:cron "15 0 * * *" :timeout-ms 60000 :attempts 3}}
+```
+
 ```clojure
 :logbook         {:lowest-level :info :format :json                      ; logbook's; development :debug, :readable
                   :errors-kept 1000 :write-to :stdout}
@@ -256,7 +277,7 @@ sentences (`make-access-functions`).
 
 API: `groundwork.server.main.api` (`settings-shape`, `page-settings-shape`,
 `health-settings-shape`, `migration-settings-shape`, `doorbell-settings-shape`,
-`my-actions-settings-shape`, `run-once-settings-shape`, `visitors-settings-shape`,
+`my-actions-settings-shape`, `run-once-settings-shape`, `daily-caps-settings-shape`, `visitors-settings-shape`,
 `browser-build-settings-shape`, `browser-wire-settings-shape`,
 `attic-settings-shape`, `postbox-settings-shape`,
 `check-settings`, `groundwork-tables`, `make-ready-tables`, `migrate-app!`,

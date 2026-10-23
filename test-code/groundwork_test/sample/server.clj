@@ -58,6 +58,7 @@
                           {:action       :orders/see
                            :scope        [:shop :shop/id]          ; the shop the param names
                            :rate-limit   nil
+                           :daily-caps   []
                            :run-steps-in nil
                            :steps        [{:name  :sample/find-orders-of-shop
                                            :enter (fn [{:bridge/keys [message-data] :as context}]
@@ -68,6 +69,7 @@
                           {:action       :orders/add
                            :scope        [:shop :order/shop-id]
                            :rate-limit   nil
+                           :daily-caps   [{:max 100 :per :asker} {:max 1000 :per :everyone}]   ; counted in Postgres
                            :run-steps-in nil
                            :steps        [{:name  :sample/add-order
                                            :enter (fn [{:bridge/keys [message-data] :as context}]

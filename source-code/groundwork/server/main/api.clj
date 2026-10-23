@@ -14,7 +14,7 @@
         :views                []                    ; cellar's: the .sql files of its views, in order
         :changes              []                    ; cellar's changes
         :scope-kinds          scope-kinds           ; doorman's
-        :handlers             handlers              ; bridge's table, each with :action, where it acts (:record or :scope) and shapes
+        :handlers             handlers              ; bridge's table, each with :action, where it acts (:record or :scope), shapes and :daily-caps
         :pages                {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}
                                :admin/page  {:address \"/admin\" :title \"Admin\" :module \"admin\"}}   ; loaded on the way in
         :background-job-kinds [send-invoice-email]  ; backroom's kinds, each naming its :system-actor
@@ -46,7 +46,8 @@
    true) or else refuses a database that isn't current or a role that could
    pass the gates, then starts the pool, the handlers (doorman's check,
    groundwork's :doorman/my-actions, then doorbell's notes; every write keyed
-   to run once, groundwork.server.main.run-once), doorbell's listener, the
+   to run once, groundwork.server.main.run-once; every handler's
+   :daily-caps counted after doorman's check, groundwork.server.main.daily-caps), doorbell's listener, the
    background job workers (groundwork's own that forgets old one-time keys
    among them; each job's one transaction is doorman's run-as-system! as
    its kind's :system-actor, so it reaches what that actor's sentences
@@ -136,6 +137,7 @@
    [doorbell.api :as doorbell]
    [groundwork.server.main.answer-as :as answer-as]
    [groundwork.server.main.app-routes :as app-routes]
+   [groundwork.server.main.daily-caps :as daily-caps]
    [groundwork.server.main.errors :as errors]
    [groundwork.server.main.files :as files]
    [groundwork.server.main.health :as health]
@@ -330,6 +332,23 @@
    [:sending postbox/settings-shape]
    [:webhooks postbox/webhook-settings-shape]])
 
+(def daily-caps-settings-shape
+  "The :daily-caps part of the settings, every key required: the
+   handlers' :daily-caps, counted in Postgres (groundwork.server.main.daily-caps).
+   :pool-size: the connections of the pool the counts run on, a pool of
+   their own (the :database settings, but this size), so a handler's
+   transaction never waits for a second connection of the app's pool;
+   its metrics are on a meter of its own, not served.
+   :forget-counts: groundwork's background job that deletes the counts of
+   the days before today: :cron, when it runs (UTC, backroom's cron line,
+   \"15 0 * * *\"); :timeout-ms and :attempts, backroom's for its kind."
+  [:map {:closed true}
+   [:pool-size [:int {:min 1}]]
+   [:forget-counts [:map {:closed true}
+                    [:cron :string]
+                    [:timeout-ms [:int {:min 1}]]
+                    [:attempts [:int {:min 1}]]]]])
+
 (defn- do-retries-end-before-keys-are-forgotten?
   "Asked only of numbers: a missing one is the map's problem, named there."
   [{:keys [keep-keys-ms] {:keys [times wait-ms]} :retry-writes}]
@@ -369,6 +388,8 @@
    are pulled, and how often a browser may send one; :my-actions how often
    a browser may ask what its person may do; :run-once how long a write's
    one-time key is kept, and how often a browser retries a write;
+   :daily-caps the pool the handlers' daily caps are counted on, and the
+   job that forgets old counts;
    :languages the app's languages (dictionary's settings), which a
    request's, and its page's, is picked from; :meter the app's one
    meter's (meter.api/settings-shape: :jvm-metrics, and
@@ -400,6 +421,7 @@
    [:visitors visitors-settings-shape]
    [:my-actions my-actions-settings-shape]
    [:run-once run-once-settings-shape]
+   [:daily-caps daily-caps-settings-shape]
    [:languages dictionary/settings-shape]
    [:background-jobs backroom/settings-shape]
    [:attic attic-settings-shape]
@@ -426,13 +448,15 @@
 
 (def groundwork-tables
   "doorman's tables, backroom's, attic's and postbox's, each in their own
-   folder, and groundwork's own one-time keys (groundwork.run_once_keys), put with
-   the app's. None knows of doorbell; their doorbells are said here: the
-   sessions, the tokens, the background jobs, the files, the emails and
-   the keys silent; doorman's access tables tell, so a screen's
+   folder, and groundwork's own one-time keys (groundwork.run_once_keys) and
+   daily caps' counts (groundwork.daily_cap_counts), put with the app's. None
+   knows of doorbell; their doorbells are said here: the sessions, the
+   tokens, the background jobs, the files, the emails, the keys and the
+   counts silent; doorman's access tables tell, so a screen's
    :doorman/my-actions is asked again when a membership or a role
    changes."
-  (vec (concat [(assoc run-once/run-once-keys-table :doorbell [:silent "no screen shows one-time keys"])]
+  (vec (concat [(assoc run-once/run-once-keys-table :doorbell [:silent "no screen shows one-time keys"])
+                (assoc daily-caps/daily-cap-counts-table :doorbell [:silent "no screen shows the daily caps' counts"])]
                (map #(assoc % :doorbell [:silent "no screen shows sessions"]) [doorman/sessions-table])
                (map #(assoc % :doorbell [:silent "doorman's list-tokens reads it off a message's transaction: no screen's notes name it"]) [doorman/tokens-table])
                (map #(assoc % :doorbell :tell) doorman/access-tables)
@@ -566,8 +590,9 @@
                                            :find-session-step find-session-step
                                            :rate-limit        (get-in settings [:my-actions :rate-limit])})))
 
-(defn- make-ready-handlers [pool {:keys [handlers tables scope-kinds settings] :as app} find-session-step]
+(defn- make-ready-handlers [pool counting-pool {:keys [handlers tables scope-kinds settings] :as app} find-session-step]
   (-> handlers
+      (daily-caps/put-daily-caps-into-handlers counting-pool (get-in settings [:server :client-address-header]))
       (run-once/put-run-once-into-handlers scope-kinds (get-in settings [:run-once :keep-keys-ms]))
       (doorman/put-access-into-handlers {:pool pool :tables tables :scope-kinds scope-kinds
                                          :find-session-step find-session-step})
@@ -580,8 +605,8 @@
    ask-as-person makes the same names with its own step, so every
    answered message is counted under one table of names on the app's
    meter (bridge declares its metrics by the names)."
-  [pool {:keys [settings] :as app} find-session-step]
-  (-> (make-ready-handlers pool app find-session-step)
+  [pool counting-pool {:keys [settings] :as app} find-session-step]
+  (-> (make-ready-handlers pool counting-pool app find-session-step)
       (errors/add-browser-error-handler find-session-step (get-in settings [:errors :browser-rate-limit]))))
 
 (defn- make-rate-limit-key-finder
@@ -721,6 +746,7 @@
    :visitors        #'visitors-settings-shape
    :my-actions      #'my-actions-settings-shape
    :run-once        #'run-once-settings-shape
+   :daily-caps      #'daily-caps-settings-shape
    :languages       #'dictionary/settings-shape
    :background-jobs #'backroom/settings-shape
    :attic           #'attic-settings-shape
@@ -732,8 +758,8 @@
 (defn- make-study-tools
   "groundwork's tools for the REPL (groundwork.server.main.tools), from the running
    app's parts."
-  [{:keys [handlers tables scope-kinds settings] :as app} wire log app-meter pool]
-  (tools/make-tools {:make-ready-handlers #(make-all-ready-handlers pool app %)
+  [{:keys [handlers tables scope-kinds settings] :as app} wire log app-meter pool counting-pool]
+  (tools/make-tools {:make-ready-handlers #(make-all-ready-handlers pool counting-pool app %)
                      :wire                wire
                      :log                 log
                      :meter               app-meter
@@ -776,7 +802,8 @@
 
 (defn start-app!
   "Starts the app (see the namespace). Returns the running app, for stop-app!:
-   {:settings :wire :logbook :log :meter :texts :pool :attic :postbox :handlers :doorbell :workers :watching :health :server :study},
+   {:settings :wire :logbook :log :meter :texts :pool :counting-pool :attic :postbox :handlers :doorbell :workers :watching :health :server :study},
+   :counting-pool the pool the daily caps are counted on (the :daily-caps settings),
    :attic the app's one attic (attic.api: store-file!, make-signed-link, …),
    :postbox the app's one postbox (postbox.api: queue-email! in a write's
    transaction),
@@ -809,6 +836,13 @@
               pool              (start-part! stoppers
                                              #(database/start-pool! (:database settings) {:log log :meter app-meter})
                                              database/stop-pool!)
+              counting-pool     (start-part! stoppers
+                                             #(database/start-pool! (assoc (:database settings) :pool-size (get-in settings [:daily-caps :pool-size]))
+                                                                    {:log   log
+                                                                     :meter (meter/make-meter {:jvm-metrics            false
+                                                                                               :most-series-per-metric (get-in settings [:meter :most-series-per-metric])}
+                                                                                              {:log log})})
+                                             database/stop-pool!)
               _                 (if (:migrate-at-start? settings)
                                   @(:slow-part (migrate! pool app log))
                                   (refuse-unsafe-database! pool app))
@@ -818,7 +852,7 @@
               running-postbox   (postbox/make-postbox (get-in settings [:postbox :sending])
                                                       {:log log :meter app-meter :wire wire :system-actor postbox-system-actor})
               find-session-step (doorman/make-find-session-step pool (:sessions settings))
-              handlers          (make-all-ready-handlers pool app find-session-step)
+              handlers          (make-all-ready-handlers pool counting-pool app find-session-step)
               _                 (check-texts-of-reasons! texts handlers)
               answer-as         (answer-as/make-answer-as {:handlers               handlers
                                                            :wire                   wire
@@ -848,9 +882,11 @@
                                                                                    :run-in-transaction-as run-as-system-actor!
                                                                                    :kinds (conj (vec background-job-kinds)
                                                                                                 (run-once/make-forget-keys-kind (:run-once settings))
+                                                                                                (daily-caps/make-forget-counts-kind (:daily-caps settings))
                                                                                                 (postbox/make-background-job-kind running-postbox))
                                                                                    :schedules (conj (vec schedules)
-                                                                                                    (run-once/make-forget-keys-schedule (:run-once settings)))))
+                                                                                                    (run-once/make-forget-keys-schedule (:run-once settings))
+                                                                                                    (daily-caps/make-forget-counts-schedule (:daily-caps settings)))))
                                              backroom/stop-workers!)
               watching          (when (is-watching? settings)
                                   (start-part! stoppers #(start-watching-browser-build! app log) stop-watching-browser-build!))
@@ -875,8 +911,9 @@
           (health/mark-stage! running-health :started)
           (log :info :groundwork/started {:groundwork/version (:version settings) :groundwork/port (:port server)})
           (let [repl (study/start-repl-server! (:study settings)
-                                               {:log log :tools (make-study-tools app wire log app-meter pool)})]
+                                               {:log log :tools (make-study-tools app wire log app-meter pool counting-pool)})]
             {:settings settings :wire wire :logbook running-logbook :log log :meter app-meter :texts texts :pool pool
+             :counting-pool counting-pool
              :attic running-attic :postbox running-postbox :handlers handlers :doorbell running-doorbell :workers workers :watching watching :health running-health
              :server server :study repl}))
         (catch Throwable e
@@ -887,8 +924,8 @@
   "Closes the REPL first, then answers ready with 503 for the :health
    settings' :not-ready-before-stop-ms, then stops taking requests, stops
    the watcher, lets running background jobs finish, stops listening,
-   stops the attic's client, closes the pool."
-  [{:keys [settings log pool server workers watching] running-doorbell :doorbell running-health :health repl :study
+   stops the attic's client, closes the counting pool and the pool."
+  [{:keys [settings log pool counting-pool server workers watching] running-doorbell :doorbell running-health :health repl :study
     running-attic :attic}]
   (study/stop-repl-server! repl)
   (log :info :groundwork/stopping {:groundwork/version (:version settings)})
@@ -899,4 +936,5 @@
   (backroom/stop-workers! workers)
   (doorbell/stop-listening! running-doorbell)
   (attic/stop-attic! running-attic)
+  (database/stop-pool! counting-pool)
   (database/stop-pool! pool))
