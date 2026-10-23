@@ -265,7 +265,20 @@ A `:browser` route runs doorman's session step first (a request that isn't
 a GET must come from the app's own pages, else 403) and gets the asker,
 `run-as-asker!` (a transaction as them, held by the gates), `sign-in!` and
 `sign-out!`; a `:server-to-server` route reads no session and proves its
-caller itself. An address groundwork serves, or two routes at one address
+caller itself. Both get `answer-as`: a message answered as an asker the
+route names (a token's person), through every check a browser's message
+gets and each handler's rate limit, counted per the route's
+`:rate-limit-key`
+([the decision](../../../../decisions/2026-10-23-a-token-call-is-answered-as-its-person-from-the-apps-route.md)):
+
+```clojure
+(fn [request {:keys [answer-as]}]
+  (if-let [person-id (person-for-token pool (bearer-token request))]
+    {:status 200 :body (json-text (answer-as {:orders/of-shop {"shop/id" "…"}}   ; JSON data, as the browser sends it
+                                             {:person-id person-id :visitor-id nil :session-flags #{}}
+                                             {:rate-limit-key (str "token:" person-id)}))}
+    {:status 401}))
+``` An address groundwork serves, or two routes at one address
 and method, refuse the start.
 
 Its test starts the whole server as production does (`migrate-app!` as the

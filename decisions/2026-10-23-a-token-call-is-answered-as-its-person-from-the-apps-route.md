@@ -1,15 +1,15 @@
 # A token call is answered as its person, from the app's own route
 
-> The user's decision, 2026-10-23, for Iron Rainbow's move to v1 (`/mcp` with WorkOS AuthKit tokens, the Labs catalog API's tokens). Builds on [An app's own server routes are records with a kind](2026-10-23-an-apps-own-server-routes-are-records-with-a-kind.md). Not built yet.
+> The user's decision, 2026-10-23, for Iron Rainbow's move to v1 (`/mcp` with WorkOS AuthKit tokens, the Labs catalog API's tokens). Builds on [An app's own server routes are records with a kind](2026-10-23-an-apps-own-server-routes-are-records-with-a-kind.md). Built the same day: `answer-as` in a route's tools (`groundwork.server.main.answer-as`), bridge v0.7.6's `make-message-limiter`.
 
 **Decision:** the running app can answer a message as a given asker, through every check the browser's message goes through (doorman's access and gates, the shapes, a rate limit):
 
 ```clojure
 ;; an app's :server-to-server route
 (if-let [person-id (person-for-token pool (bearer-token request))]
-  (main/answer-as running {:parts/update-part params}
-                  {:person-id person-id :visitor-id nil :session-flags #{}}
-                  {:rate-limit-key (str "token:" person-id)})
+  (answer-as {:parts/update-part params}                             ; the route's tools' answer-as; JSON data
+             {:person-id person-id :visitor-id nil :session-flags #{}}
+             {:rate-limit-key (str "token:" person-id)})
   {:status 401})
 ```
 

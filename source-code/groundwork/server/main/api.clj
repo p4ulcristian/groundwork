@@ -126,6 +126,7 @@
    [dictionary.api :as dictionary]
    [doorman.api :as doorman]
    [doorbell.api :as doorbell]
+   [groundwork.server.main.answer-as :as answer-as]
    [groundwork.server.main.app-routes :as app-routes]
    [groundwork.server.main.errors :as errors]
    [groundwork.server.main.files :as files]
@@ -539,7 +540,7 @@
 
 (defn- make-routes [{:keys [settings pages browser-modules may-upload? on-delivery-event on-inbound-email routes tables scope-kinds]}
                     {:keys [wire running-logbook log app-meter pool running-health handlers running-doorbell
-                            running-attic running-postbox find-session-step]}]
+                            running-attic running-postbox find-session-step answer-as]}]
   (let [browser-settings (page/make-browser-settings settings pages browser-modules)]
     (-> (health/make-health-routes wire log app-meter pool running-health settings)
         (into (errors/make-errors-routes wire running-logbook settings))
@@ -569,7 +570,8 @@
                                                   :tables                      tables
                                                   :scope-kinds                 scope-kinds
                                                   :find-session-step           find-session-step
-                                                  :find-browser-rate-limit-key (make-rate-limit-key-finder settings)}))
+                                                  :find-browser-rate-limit-key (make-rate-limit-key-finder settings)
+                                                  :answer-as                   answer-as}))
         (into (page/make-catalog-routes (:languages settings)))
         (into (bridge/make-server-routes-for-pages pages (page/make-page-handler wire settings browser-settings))))))
 
@@ -735,6 +737,11 @@
               handlers          (-> (make-ready-handlers pool app find-session-step)
                                     (errors/add-browser-error-handler find-session-step
                                                                       (get-in settings [:errors :browser-rate-limit])))
+              answer-as         (answer-as/make-answer-as {:make-ready-handlers    #(make-ready-handlers pool app %)
+                                                           :wire                   wire
+                                                           :log                    log
+                                                           :allowed-origin         (get-in settings [:sessions :allowed-origin])
+                                                           :buckets-before-cleanup (get-in settings [:server :rate-limit-buckets-before-cleanup])})
               running-doorbell  (start-part! stoppers
                                              #(doorbell/start-listening! pool (get-in settings [:doorbell :listening])
                                                                          {:log log :meter app-meter :tables (make-ready-tables app)})
@@ -761,7 +768,8 @@
                                                  (make-routes app {:wire wire :running-logbook running-logbook :log log :app-meter app-meter
                                                                    :pool pool :running-health running-health :handlers handlers
                                                                    :running-doorbell running-doorbell :running-attic running-attic
-                                                                   :running-postbox running-postbox :find-session-step find-session-step})
+                                                                   :running-postbox running-postbox :find-session-step find-session-step
+                                                                   :answer-as answer-as})
                                                  {:files (get-in settings [:page :files])})
                                                 (:languages settings)
                                                 texts)

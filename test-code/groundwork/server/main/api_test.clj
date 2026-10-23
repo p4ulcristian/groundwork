@@ -261,6 +261,15 @@
    :app/sign-in {:address "/app/sign-in" :method :post :kind :browser :rate-limit nil
                  :handler (fn [_request {:keys [sign-in!]}]
                             {:status 200 :headers {"set-cookie" (:set-cookie (sign-in! anna #{}))} :body "signed in"})}
+   :app/token   {:address "/app/token" :method :post :kind :server-to-server :rate-limit nil
+                 :handler (fn [request {:keys [answer-as]}]
+                            (if-let [person-id ({"Bearer anna-token" anna "Bearer bob-token" bob} (get-in request [:headers "authorization"]))]
+                              {:status 200 :headers {"content-type" "application/json"}
+                               :body (json/write-value-as-string
+                                      (answer-as (update-keys (json/read-value (slurp (:body request))) keyword)
+                                                 {:person-id person-id :visitor-id nil :session-flags #{}}
+                                                 {:rate-limit-key (str "token:" person-id)}))}
+                              {:status 401 :headers {} :body "no such token"}))}
    :app/hook    {:address "/app/hook" :method :post :kind :server-to-server :rate-limit {:max 2 :per-ms 60000}
                  :handler (fn [request _tools]
                             {:status 200 :headers {"content-type" "text/plain"} :body (str "got " (slurp (:body request)))})}})
@@ -564,6 +573,25 @@
                 (is (= [200 "got {\"type\":\"charge\"}"] (take 2 (send-plain server-port "POST" "/app/hook" nil nil "{\"type\":\"charge\"}"))))
                 (is (= 200 (first (send-plain server-port "POST" "/app/hook" nil nil "x"))))
                 (is (= 429 (first (send-plain server-port "POST" "/app/hook" nil nil "x"))) "the third in a minute"))
+              (testing "a token's call, answered as its person through every check"
+                (let [call (fn [token body]
+                             (let [response (.send (HttpClient/newHttpClient)
+                                                   (cond-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/app/token")))
+                                                     token (.header "authorization" (str "Bearer " token))
+                                                     true  (-> (.POST (HttpRequest$BodyPublishers/ofString body)) (.build)))
+                                                   (HttpResponse$BodyHandlers/ofString))]
+                               [(.statusCode response) (.body response)]))
+                      orders-of #(get (json/read-value (second (call % "{\"orders/all\":{}}"))) "orders/all")]
+                  (is (= 1 (count (orders-of "anna-token"))) "Anna: shop 7's order")
+                  (is (= 1 (count (orders-of "bob-token"))) "Bob: shop 9's")
+                  (is (not= (orders-of "anna-token") (orders-of "bob-token")))
+                  (is (= 401 (first (call "nobody-token" "{}"))))
+                  (let [[first-answer second-answer third-answer]
+                        (repeatedly 3 #(get (json/read-value (second (call "anna-token" "{\"orders/count\":{}}"))) "orders/count"))]
+                    (is (every? int? [first-answer second-answer]))
+                    (is (= {"error" "Too many requests."} third-answer) "the handler's rate limit, {:max 2}, counted per token"))
+                  (is (int? (get (json/read-value (second (call "bob-token" "{\"orders/count\":{}}"))) "orders/count"))
+                      "another token has its own")))
               (run-sql! owner-pool "DELETE FROM orders"))
             (testing "each language's catalog, where the browser fetches it, as the server reads it"
               (let [response (.send (HttpClient/newHttpClient)

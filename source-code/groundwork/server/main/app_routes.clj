@@ -25,10 +25,13 @@
       :log            the app's log, saying who asked
       :run-as-asker!  (fn [{:keys [read-only?]} f]) f in a transaction as the asker, held by the gates
       :run-as-system! (fn [system-name {:keys [read-only?]} f]) doorman's
+      :answer-as      (fn [message asker {:keys [rate-limit-key]}]) a message answered as
+                      another asker (groundwork.server.main.answer-as)
       :sign-in!       (fn [person-id session-flags]) {:set-cookie …} for the answer
       :sign-out!      (fn []) {:set-cookie …}}
 
-   for :server-to-server, {:log :run-as-system!}.
+   for :server-to-server, {:log :run-as-system! :answer-as}: a token's
+   route checks the token and answers as its person.
 
    :rate-limit, {:max :per-ms} or nil for none: one bucket per asker (a
    :browser route's by its session, else its address; a
@@ -79,7 +82,7 @@
    :body   "This request didn't come from the app's own pages."})
 
 (defn- make-browser-tools
-  [request context {:keys [pool scope-kinds tables settings]}]
+  [request context {:keys [pool scope-kinds tables settings answer-as]}]
   (let [asker {:person-id     (:doorman/person-id context)
                :visitor-id    (:doorman/visitor-id context)
                :session-flags (:doorman/session-flags context)}]
@@ -88,6 +91,7 @@
      :run-as-asker!  (fn [{:keys [read-only?]} f]
                        (doorman/run-as-asker! pool asker {:read-only? read-only? :scope-kinds scope-kinds} f))
      :run-as-system! (fn [system-name options f] (doorman/run-as-system! pool system-name options f))
+     :answer-as      answer-as
      :sign-in!       (fn [person-id session-flags]
                        (doorman/sign-in! pool request person-id {:settings      (:sessions settings)
                                                                  :tables        tables
@@ -101,10 +105,11 @@
         not-from-the-app
         (handler request (make-browser-tools request context parts))))))
 
-(defn- make-server-to-server-handler [handler {:keys [log pool]}]
+(defn- make-server-to-server-handler [handler {:keys [log pool answer-as]}]
   (fn [request]
     (handler request {:log            log
-                      :run-as-system! (fn [system-name options f] (doorman/run-as-system! pool system-name options f))})))
+                      :run-as-system! (fn [system-name options f] (doorman/run-as-system! pool system-name options f))
+                      :answer-as      answer-as})))
 
 (defn- add-rate-limit [ring-handler rate-limit find-rate-limit-key {:keys [settings]}]
   (if rate-limit
@@ -118,7 +123,7 @@
   "The app's routes as reitit data, one entry per address, each method's
    handler behind its kind's steps and its rate limit. parts: {:pool :log
    :settings :tables :scope-kinds :find-session-step
-   :find-browser-rate-limit-key}."
+   :find-browser-rate-limit-key :answer-as}."
   [routes {:keys [settings find-browser-rate-limit-key] :as parts}]
   (let [find-address #(bridge/find-client-address % (get-in settings [:server :client-address-header]))]
     (->> (check-routes routes)
