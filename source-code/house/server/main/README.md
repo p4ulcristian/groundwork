@@ -71,7 +71,7 @@ limited per asker by `:browser-rate-limit`, and are kept with the server's:
 [the decision](../../../../decisions/server/main/2026-10-22-main-serves-the-kept-errors-and-logs-the-browsers.md).
 
 ```clojure
-:errors {:path "/house/errors" :token "…" :browser-rate-limit {:max 10 :per-ms 60000}}
+:errors {:path "/house/errors" :token #secret :errors/token :browser-rate-limit {:max 10 :per-ms 60000}}
 ```
 
 One handler of doorman's, `:doorman/my-actions` (`make-my-actions-handler`):
@@ -148,7 +148,7 @@ on a meter of its own, never served:
 
 ```clojure
 :meter   {:jvm-metrics true :most-series-per-metric 5000}
-:metrics {:path "/metrics" :token "…"}
+:metrics {:path "/metrics" :token #secret :meter/token}
 ```
 
 A visitor's session: a POST at the `:visitors` path, from the app's own
@@ -193,7 +193,7 @@ outside sessions, handing bounces to the app map's `:on-delivery-event`
 :postbox {:sending  {:provider {:name :log :level :info}                ; or {:name :postmark …}
                      :tags #{:orders/confirmation} :background-job {:timeout-ms 60000 :attempts 8}}
           :webhooks {:delivery-path "/postbox/delivery" :inbound-path "/postbox/inbound"
-                     :token "…" :inbound-domain "in.shop.example"}}
+                     :token #secret :postbox/webhook-token :inbound-domain "in.shop.example"}}
 ```
 
 An app's table map says `:access` and `:doorbell`, never `:gates` or
@@ -210,8 +210,20 @@ API: `house.server.main.api` (`settings-shape`, `page-settings-shape`,
 `start-app!`, `stop-app!`). Decisions:
 [`decisions/server/main`](../../../../decisions/server/main/README.md).
 
+The settings are one EDN file per environment, loaded by
+[safe](https://github.com/p4ulcristian/safe) (`safe/load`): its `#secret`
+references read from sops or 1Password, its `#env` from the environment,
+checked against `settings-shape`, every problem at once. Every secret in
+them (`:database :password`, `:errors :token`, `:metrics :token`, the
+bucket's keys, Postmark's and the webhooks' tokens) is safe's, which prints
+as its name; text written out where a secret belongs is refused:
+[the decision](../../../../decisions/2026-10-23-secrets-are-safes-wrapped-secrets.md).
+
 ```clojure
-(def running (main/start-app! {:settings settings :tables [shops orders] :changes [] :scope-kinds scope-kinds
+(def running (main/start-app! {:settings (safe/load {:file  "settings/production.edn"
+                                                     :shape main/settings-shape
+                                                     :env   (System/getenv)})
+                               :tables [shops orders] :changes [] :scope-kinds scope-kinds
                                :handlers handlers :pages pages :browser-modules {}
                                :background-job-kinds [] :schedules []
                                :may-upload? (fn [{:keys [person-id]}] (some? person-id))

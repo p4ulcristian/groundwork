@@ -25,6 +25,7 @@
    [jsonista.core :as json]
    [logbook.api :as logbook]
    [meter.api :as meter]
+   [safe.api :as safe]
    [showroom.api :as showroom])
   (:import
    (java.net ServerSocket URI)
@@ -74,9 +75,9 @@
    :logbook           {:lowest-level :info :format :json :errors-kept 100
                        :write-to     #(swap! lines conj (json/read-value %))}
    :meter             {:jvm-metrics true :most-series-per-metric 5000}
-   :metrics           {:path "/metrics" :token "the-metrics-token"}
+   :metrics           {:path "/metrics" :token (safe/make-secret :meter/token "the-metrics-token")}
    :study             {:mode :off :emergency-switch nil}
-   :errors            {:path "/house/errors" :token "the-errors-token" :browser-rate-limit {:max 10 :per-ms 60000}}
+   :errors            {:path "/house/errors" :token (safe/make-secret :errors/token "the-errors-token") :browser-rate-limit {:max 10 :per-ms 60000}}
    :migrate-at-start? false
    :browser-build     :built
    :server            {:ip "127.0.0.1" :port server-port :proxy-protocol :disable :client-address-header nil :server-header nil
@@ -101,7 +102,8 @@
                        :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
                        :forget-done-every-ms 3600000 :stop-wait-ms 2000
                        :metric-buckets {:job-run-seconds [0.1 1 10]}}
-   :attic             {:storage {:endpoint "http://127.0.0.1:1" :bucket "sample" :access-key "key" :secret-key "secret"
+   :attic             {:storage {:endpoint "http://127.0.0.1:1" :bucket "sample" :access-key (safe/make-secret :attic/access-key "key")
+                                 :secret-key (safe/make-secret :attic/secret-key "secret")
                                  :region "us-east-1" :public-url nil :link-expiry-seconds 300
                                  :connect-timeout-ms 1000 :request-timeout-ms 1000
                                  :retries {:max-retries 0 :first-wait-ms 0 :max-wait-ms 0}}
@@ -110,7 +112,7 @@
    :postbox           {:sending  {:provider {:name :log :level :info} :tags #{:sample/none}
                                   :background-job {:timeout-ms 10000 :attempts 1}}
                        :webhooks {:delivery-path "/postbox/delivery" :inbound-path "/postbox/inbound"
-                                  :token "the-webhook-token-0123" :inbound-domain "in.sample.test"}}
+                                  :token (safe/make-secret :postbox/webhook-token "the-webhook-token-0123") :inbound-domain "in.sample.test"}}
    :doorbell          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                        :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                    :reconnect-after-ms 1000 :stop-wait-ms 2000}}
@@ -201,6 +203,24 @@
 
 (defn- find-header [headers header-name]
   (some (fn [[k v]] (when (= header-name (str/lower-case (name k))) v)) headers))
+
+(defn- has-program? [program-name]
+  (some #(.canExecute (io/file % program-name)) (str/split (or (System/getenv "PATH") "") #":")))
+
+(deftest the-sample-apps-development-settings-load
+  (if-not (has-program? "sops")
+    (println "house.end-to-end-test: the development settings skipped, sops is not on the PATH")
+    (let [settings (safe/load {:file  "test-code/house_test/sample/settings/development.edn"
+                               :shape main/settings-shape
+                               :env   {"PATH"                 (System/getenv "PATH")
+                                       "SAMPLE_DATABASE_PORT" "5432"
+                                       "SAMPLE_DATABASE_USER" "sample"}})]
+      (is (= settings (main/check-settings settings)) "house's own check takes them as they are")
+      (is (= 5432 (get-in settings [:database :port])) "#env filled, as its type")
+      (is (= "#secret :errors/token" (pr-str (get-in settings [:errors :token]))) "a secret prints as its name")
+      (is (= "development-only-errors-token" (safe/reveal (get-in settings [:errors :token])))
+          "read from the development sops file, with the development-only key")
+      (is (not (str/includes? (pr-str settings) "development-only-")) "no secret's text in the settings printed"))))
 
 (deftest the-sample-app-in-a-headless-browser
   (if-not (and postgres-port browser-binary)

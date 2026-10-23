@@ -3,8 +3,8 @@
 
    The errors route: a GET at the :errors settings' :path, outside
    sessions, access and rate limits, answered only with the settings'
-   :token as a bearer token (Authorization: Bearer …, compared in constant
-   time; else 401). ?since=N answers, as a JSON array, the :error lines
+   :token, a secret of safe's, as a bearer token (Authorization: Bearer …,
+   compared in constant time by safe/equal?; else 401). ?since=N answers, as a JSON array, the :error lines
    logbook keeps whose number is after N, oldest first, each as written
    with its \"seq\" (logbook's list-errors-since):
 
@@ -23,27 +23,24 @@
    settings' :browser-rate-limit, so a page failing in a loop can't flood
    the log."
   (:require
+   [clojure.string :as str]
    [logbook.api :as logbook]
    [mailroom.api :as mailroom]
-   [wire.api :as wire])
-  (:import
-   (java.nio.charset StandardCharsets)
-   (java.security MessageDigest)))
+   [safe.api :as safe]
+   [wire.api :as wire]))
 
 ;; -----------------------------------------------------------------------------
 ;; The errors route
 
-(defn- hash-text ^bytes [^String text]
-  (.digest (MessageDigest/getInstance "SHA-256") (.getBytes text StandardCharsets/UTF_8)))
-
 (defn- has-token?
-  "Whether the request carries the token as its bearer token. Both sides
-   are hashed first, so the comparison takes the same time whatever the
-   token's length and wherever the two first differ."
+  "Whether the request carries the token (a secret) as its bearer token,
+   Authorization: Bearer <token>. The token is compared by safe/equal?, in
+   constant time whatever its length and wherever the two first differ."
   [request token]
   (let [given (get-in request [:headers "authorization"])]
     (and (string? given)
-         (MessageDigest/isEqual (hash-text given) (hash-text (str "Bearer " token))))))
+         (str/starts-with? given "Bearer ")
+         (safe/equal? token (subs given (count "Bearer "))))))
 
 (defn- read-since
   "?since=N's N, or nil when it is missing or not a whole number from 0."

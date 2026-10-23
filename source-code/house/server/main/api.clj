@@ -3,7 +3,9 @@
    running app. The browser's start is house.browser.main.
 
      (def app
-       {:settings             settings              ; checked against settings-shape
+       {:settings             (safe/load {:file  \"settings/production.edn\"   ; safe's: #secret and #env filled,
+                                          :shape main/settings-shape          ; checked against settings-shape
+                                          :env   (System/getenv)})
         :browser-entry        'app.browser.main/start!  ; the function the page runs
         :browser-modules      {}                    ; showroom's :modules, loaded on demand: {:admin {:entries [app.admin.page] :depends-on #{:main}}}
         :tables               [shops orders]        ; table maps, with :access and :doorbell
@@ -20,6 +22,12 @@
 
      (def running (main/start-app! app))
      (main/stop-app! running)
+
+   The settings are one EDN file per environment, loaded by safe: every
+   secret in them (the database's password, the :errors and :metrics
+   tokens, the bucket's keys, Postmark's and the webhooks' tokens) is
+   safe's, which prints as its name, revealed only where it is used; text
+   written out where a secret belongs is refused.
 
    start-app! checks the settings (every problem at once), makes the app's
    one wire from the :wire settings (wire.api's make-wire-from-settings)
@@ -123,6 +131,7 @@
    [malli.error :as malli-error]
    [meter.api :as meter]
    [postbox.api :as postbox]
+   [safe.api :as safe]
    [study.api :as study]
    [wire.api :as wire]))
 
@@ -231,14 +240,15 @@
   "The :errors part of the settings, every key required: the errors a
    monitor pulls, and the browser's (house.server.main.errors).
    :path: the GET a monitor asks the kept errors from, \"/house/errors\".
-   :token: the bearer token it must send (Authorization: Bearer …); kept
-   out of the code, as a secret.
+   :token: the bearer token it must send (Authorization: Bearer …), a
+   secret of safe's (#secret :errors/token in the app's settings file);
+   text written out is refused.
    :browser-rate-limit: how many browser errors one asker may send,
    {:max 10 :per-ms 60000}; more are answered \"Too many requests.\" and
    not written."
   [:map {:closed true}
    [:path :string]
-   [:token [:string {:min 1}]]
+   [:token safe/secret]
    [:browser-rate-limit [:map {:closed true}
                          [:max [:int {:min 1}]]
                          [:per-ms [:int {:min 1}]]]]])

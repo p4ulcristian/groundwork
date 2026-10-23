@@ -3,7 +3,7 @@
 An opinionated Clojure framework for web apps on Postgres: the part of
 **manor** that puts its libraries together into one running app. manor is the
 group: house and its cellar, backroom, showroom, mailroom, doorman, doorbell,
-parlor, dictionary, wire, logbook, meter, study, attic and postbox. The spec is [`decisions/`](decisions/README.md).
+parlor, dictionary, wire, logbook, meter, study, attic, postbox and safe. The spec is [`decisions/`](decisions/README.md).
 
 One tree: each library is a folder `source-code/house/<side>/<name>/` with
 its README, its tests in `test-code/house/<side>/<name>/`, its decisions in
@@ -111,6 +111,26 @@ queued in a write's transaction (`queue-email!` on the running app's
 bounces to the app's `:on-delivery-event` by the email's tag and inbound
 email to its `:on-inbound-email` by mailbox
 ([the decision](decisions/2026-10-23-main-makes-one-attic-and-one-postbox.md)).
+And its settings and their secrets:
+[safe](https://github.com/p4ulcristian/safe), one EDN file per environment,
+its `#secret` references read from sops or 1Password, its `#env` from the
+environment, checked against house's `settings-shape` with every problem at
+once. Every secret in the settings (the database's password, the `:errors`
+and `:metrics` tokens, the bucket's keys, Postmark's and the webhooks'
+tokens) is safe's: it prints as its name, is revealed only by the library
+that uses it, and text written out in its place is refused. An app starts:
+
+```clojure
+(main/start-app! {:settings (safe/load {:file  "settings/production.edn"
+                                        :shape main/settings-shape
+                                        :env   (System/getenv)})
+                  …})
+```
+
+The sample app's development settings load the same way
+(`test-code/house_test/sample/settings/development.edn`, its secrets opened
+by a committed, development-only age key)
+([the decision](decisions/2026-10-23-secrets-are-safes-wrapped-secrets.md)).
 A visitor (someone not signed in) gets a session of their own, doorman's,
 from a POST of house's at the `:visitors` path, which the browser's
 `start-visitor-session!` sends the first time the app keeps something for

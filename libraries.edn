@@ -28,6 +28,8 @@
 ;; on either side may use it, through dictionary.api only. So are attic, the
 ;; app's files (github.com/p4ulcristian/attic), and postbox, its email
 ;; (github.com/p4ulcristian/postbox): any server library may use them, through
-;; attic.api and postbox.api only.
+;; attic.api and postbox.api only. So is safe, the settings and their secrets
+;; (github.com/p4ulcristian/safe): the server's only, through safe.api only; an
+;; app loads its settings with it, and house compares a secret token with it.
 {:server  {:main #{}}
  :browser {:main #{}}}

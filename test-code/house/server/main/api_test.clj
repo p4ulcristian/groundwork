@@ -33,6 +33,7 @@
    [meter.api :as meter]
    [nrepl.core :as nrepl]
    [postbox.api :as postbox]
+   [safe.api :as safe]
    [study.api :as study]
    [cognitect.aws.client.api :as aws]
    [cognitect.aws.credentials :as aws-credentials])
@@ -170,10 +171,10 @@
    :logbook           {:lowest-level :debug :format :json :errors-kept 100
                        :write-to     #(swap! lines conj (json/read-value %))}
    :meter             {:jvm-metrics true :most-series-per-metric 10000}
-   :metrics           {:path "/metrics" :token "the-metrics-token"}
+   :metrics           {:path "/metrics" :token (safe/make-secret :meter/token "the-metrics-token")}
    :study             {:mode :development :bind-address "127.0.0.1" :port 0 :middleware [] :port-file nil}
    :visitors          {:path "/house/visitor"}
-   :errors            {:path "/house/errors" :token "the-errors-token" :browser-rate-limit {:max 2 :per-ms 60000}}
+   :errors            {:path "/house/errors" :token (safe/make-secret :errors/token "the-errors-token") :browser-rate-limit {:max 2 :per-ms 60000}}
    :migrate-at-start? false
    :browser-build     :built
    :server            {:ip "127.0.0.1" :port 0 :proxy-protocol :disable :client-address-header nil :server-header nil
@@ -198,8 +199,8 @@
                        :forget-done-every-ms 3600000 :stop-wait-ms 5000
                        :metric-buckets {:job-run-seconds [0.1 1 10]}}
    :attic             {:storage {:endpoint (or s3-endpoint "http://127.0.0.1:1") :bucket "house-test"
-                                 :access-key (or (System/getenv "HOUSE_S3_TEST_ACCESS_KEY") "key")
-                                 :secret-key (or (System/getenv "HOUSE_S3_TEST_SECRET_KEY") "secret")
+                                 :access-key (safe/make-secret :attic/access-key (or (System/getenv "HOUSE_S3_TEST_ACCESS_KEY") "key"))
+                                 :secret-key (safe/make-secret :attic/secret-key (or (System/getenv "HOUSE_S3_TEST_SECRET_KEY") "secret"))
                                  :region "us-east-1" :public-url nil :link-expiry-seconds 300
                                  :connect-timeout-ms 2000 :request-timeout-ms 10000
                                  :retries {:max-retries 1 :first-wait-ms 100 :max-wait-ms 100}}
@@ -208,7 +209,7 @@
    :postbox           {:sending  {:provider {:name :log :level :info} :tags #{:orders/confirmation}
                                   :background-job {:timeout-ms 10000 :attempts 3}}
                        :webhooks {:delivery-path "/postbox/delivery" :inbound-path "/postbox/inbound"
-                                  :token "the-webhook-token-0123" :inbound-domain "in.app.test"}}
+                                  :token (safe/make-secret :postbox/webhook-token "the-webhook-token-0123") :inbound-domain "in.app.test"}}
    :doorbell          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                        :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                    :reconnect-after-ms 1000 :stop-wait-ms 2000}}
@@ -365,6 +366,23 @@
             :postbox {:sending {:tags ["missing required key"]} :webhooks {:token ["missing required key"]}}}
            problems)
         "attic's and postbox's settings, and the routes', have no defaults"))
+  (let [problems (try (main/check-settings (-> (make-settings "x")
+                                               (assoc-in [:errors :token] "the-errors-token")
+                                               (assoc-in [:metrics :token] "the-metrics-token")
+                                               (assoc-in [:database :password] "the-password")
+                                               (assoc-in [:attic :storage :secret-key] "secret")
+                                               (assoc-in [:postbox :webhooks :token] "the-webhook-token-0123")))
+                      (catch clojure.lang.ExceptionInfo e (ex-data e)))
+        refused  "should be a #secret, read from the settings' secrets source"]
+    (is (= {:errors   {:token [refused]}
+            :metrics  {:token [refused]}
+            :database {:password [refused]}
+            :attic    {:storage {:secret-key [refused]}}
+            :postbox  {:webhooks {:token [refused]}}}
+           (:errors problems))
+        "a secret written out as text is refused, each named")
+    (is (not-any? #(str/includes? (pr-str problems) %) ["the-errors-token" "the-metrics-token" "the-password" "the-webhook-token"])
+        "and its text is never said"))
   (is (= {:attic {:upload {:max-file-bytes ["should be below the :server settings' :max-body-bytes, which holds the whole upload"]}}}
          (try (main/check-settings (assoc-in (make-settings "x") [:attic :upload :max-file-bytes] 8388608))
               (catch clojure.lang.ExceptionInfo e (:errors (ex-data e)))))
