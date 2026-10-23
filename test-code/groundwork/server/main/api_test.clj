@@ -49,7 +49,8 @@
 (def ^:private scope-kinds
   (doorman/check-scope-kinds
    {:shop {:table   :shops :parent nil :single? false
-           :actions {:orders/see #{:read} :orders/edit #{:read :insert :update}}
+           :actions {:orders/see #{:read} :orders/edit #{:read :insert :update}
+                     :shop-emails/see #{:read} :shop-emails/mark-bounced #{:read :update}}
            :roles   {"Staff" #{:orders/see :orders/edit}}
            :denies  []}}))
 
@@ -57,6 +58,8 @@
   {:table    :shops
    :columns  [[:shop/id :uuid {:primary-key? true}]]
    :indexes  []
+   :references []
+   :triggers  []
    :access   :public
    :doorbell :tell})
 
@@ -65,8 +68,27 @@
    :columns  [[:order/id :uuid {:primary-key? true :default :random-uuid}]
               [:order/shop-id :uuid {:references :shop/id}]]
    :indexes  []
+   :references []
+   :triggers  []
    :access   [{:allow #{:orders/see :orders/edit} :to [:member :order/shop-id]}]
    :doorbell :tell})
+
+(def ^:private shop-emails
+  "A shop's address, which a bounce marks: postbox's webhook function, run
+   as doorman's system actor :postbox, may, and nothing else of the shop's."
+  {:table    :shop-emails
+   :columns  [[:shop-email/address :string {:primary-key? true}]
+              [:shop-email/shop-id :uuid {:references :shop/id}]
+              [:shop-email/bounced :boolean {:default false}]]
+   :indexes  [[:shop-email/shop-id]]
+   :references []
+   :triggers  []
+   :access   [{:allow :shop-emails/see :to [:member :shop-email/shop-id]}
+              {:allow :shop-emails/mark-bounced :to [:system :postbox]}]
+   :doorbell :tell})
+
+(def ^:private mark-bounced
+  (database/make-query-from-sql-text "a bounce" "UPDATE shop_emails SET shop_email__bounced = true WHERE shop_email__address = :address"))
 
 (def ^:private paul #uuid "00000000-0000-4000-8000-00000000000a")
 (def ^:private anna #uuid "00000000-0000-4000-8000-00000000000b")
@@ -173,7 +195,7 @@
    :meter             {:jvm-metrics true :most-series-per-metric 10000}
    :metrics           {:path "/metrics" :token (safe/make-secret :meter/token "the-metrics-token")}
    :study             {:mode :development :bind-address "127.0.0.1" :port 0 :middleware [] :port-file nil}
-   :visitors          {:path "/groundwork/visitor"}
+   :visitors          {:path "/groundwork/visitor" :rate-limit {:max 5 :per-ms 60000}}
    :errors            {:path "/groundwork/errors" :token (safe/make-secret :errors/token "the-errors-token") :browser-rate-limit {:max 2 :per-ms 60000}}
    :migrate-at-start? false
    :browser-build     :built
@@ -226,10 +248,13 @@
   (atom []))
 
 (defn- make-app [user]
-  {:settings (make-settings user) :tables [shops orders] :changes [] :scope-kinds scope-kinds
+  {:settings (make-settings user) :tables [shops orders shop-emails] :changes [] :scope-kinds scope-kinds
    :may-upload? (fn [{:keys [person-id]}] (= anna person-id))
    :on-delivery-event {:orders/confirmation (fn [event {:keys [transaction]}]
-                                              (swap! delivery-events conj (assoc event :in-transaction? (some? transaction))))}
+                                              (swap! delivery-events conj
+                                                     (assoc event
+                                                            :marked (database/run-statement! transaction mark-bounced {:address (:address event)})
+                                                            :orders-seen (count (database/find-rows transaction find-all-orders {})))))}
    :on-inbound-email {}
    :handlers handlers :pages {:orders/page {:address "/orders/:order-id" :title "Order"}
                               :admin/page  {:address "/admin" :title "Admin" :module "admin"}}
@@ -430,6 +455,7 @@
                                 (main/start-app! (make-app owner)))))
         (with-out-str (main/migrate-app! (make-app owner) (make-database-settings owner) "groundwork_app"))
         (run-sql! owner-pool (str "INSERT INTO shops VALUES ('" shop-7 "'), ('" shop-9 "')"))
+        (run-sql! owner-pool (str "INSERT INTO shop_emails (shop_email__address, shop_email__shop_id) VALUES ('anna@shop.test', '" shop-7 "')"))
         (database/run-in-transaction! owner-pool {:read-only? false}
                                       (fn [transaction]
                                         (doorman/add-scope! transaction scope-kinds :shop shop-7 paul nil)
@@ -781,8 +807,14 @@
                     (is (= 200 (post "the-webhook-token-0123")))
                     (is (= [{:kind :bounce :tag :orders/confirmation :message-id message-id :email-key "order-confirmation/71"
                              :address "anna@shop.test" :bounce-type "HardBounce" :inactive? false :metadata {"order" "71"}
-                             :in-transaction? true}]
-                           @delivery-events))))))
+                             :marked 1 :orders-seen 0}]
+                           @delivery-events)
+                        "run as the system actor :postbox: it marks the shop's address, and sees none of the shop's orders")
+                    (is (= [true] (map :shop-email/bounced (database/find-rows owner-pool (database/make-query-from-sql-text
+                                                                                          "bounced" "SELECT shop_email__bounced FROM shop_emails")
+                                                                               {})))))
+                  (is (= [] (doorman/find-system-leaks (:pool running) [shops orders shop-emails] :postbox {:orders [order-71 order-91]}))
+                      "the system leak test, on the app's own role"))))
             (testing "the metrics: only with their token; every library's on the app's one meter, and groundwork's"
               (let [ask-metrics (fn [token]
                                   (let [response (.send (HttpClient/newHttpClient)
@@ -827,7 +859,10 @@
                 (is (uuid? (parse-uuid (str (get (json/read-value body) "visitor-id")))))
                 (is (str/starts-with? (str set-cookie) "groundwork_session="))
                 (is (= [200 "{\"visitor-id\":null}" nil] (start-visitor "http://app.test" anna-cookie))
-                    "Anna is signed in: no visitor, no new cookie")))
+                    "Anna is signed in: no visitor, no new cookie")
+                (is (= 200 (first (start-visitor "http://app.test" nil))) "the fifth POST of this address, its :max")
+                (is (= [429 "Too many requests." nil] (start-visitor "http://app.test" nil))
+                    "over the :visitors :rate-limit, by address: no session, no cookie")))
             (testing "the REPL: groundwork's tools in study.tools"
               (with-open [connection (nrepl/connect :port (study/find-repl-port (:study running)))]
                 (let [client (nrepl/client connection 10000)

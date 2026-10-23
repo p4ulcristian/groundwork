@@ -1,5 +1,7 @@
 # A visitor's session starts on a POST of house's, never on a page load
 
+> **Changed in part** by [The visitor route is rate-limited by the asker's address, with mailroom's buckets](2026-10-23-the-visitor-route-is-rate-limited-by-address-with-mailrooms-buckets.md) (2026-10-23): the route has its rate limit, `:visitors :rate-limit`.
+
 > The user's decision, 2026-10-23 (doorman v0.7.0's visitor sessions). Takes doorman's [Visitors get sessions of their own, and their rows move to the person at sign-in](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-23-visitors-get-sessions-and-their-rows-move-at-sign-in.md), which leaves "a route (or a page load)" to the app.
 
 **Decision:**

@@ -54,6 +54,8 @@
                [:run-once-key/answer       :string       {:optional? true}]
                [:run-once-key/created-at   :time/instant {:default :now}]]
    :indexes   [[:run-once-key/created-at]]
+   :references []
+   :triggers   []
    :gates     nil
    :on-change nil})
 

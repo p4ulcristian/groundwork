@@ -86,9 +86,10 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [main makes one wire and passes it to every library](2026-10-22-main-makes-one-wire-and-passes-it-to-every-library.md), changed in part by [main makes one logbook and passes its log to every library](2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md)
 - [main makes one logbook and passes its log to every library](2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md)
 - [main makes one meter, hands it to every library, and serves its text](2026-10-23-main-makes-one-meter-and-serves-its-text.md)
-- [main makes one attic and one postbox, and serves the upload route and the provider's webhooks](2026-10-23-main-makes-one-attic-and-one-postbox.md)
+- [main makes one attic and one postbox, and serves the upload route and the provider's webhooks](2026-10-23-main-makes-one-attic-and-one-postbox.md), changed in part by [postbox's webhook functions run as doorman's system actor :postbox](2026-10-23-postboxs-webhook-functions-run-as-doormans-system-actor-postbox.md)
 - [An app's table that writes its own :gates or :on-change is refused](2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md)
 - [The end-to-end test drives a sample app in a headless browser, over the DevTools protocol](2026-10-23-the-end-to-end-test-drives-a-headless-browser-over-devtools.md)
+- [/mcp stays the app's own code, not a groundwork library](2026-10-23-mcp-stays-the-apps-own-code.md)
 - [Groundwork ships these parts](2026-10-18-groundwork-ships-these-parts.md)
 - [Groundwork ships no team endpoints and no eval bridge](2026-10-18-groundwork-ships-no-team-endpoints-and-no-eval-bridge.md)
 - [Groundwork is no longer frozen](2026-10-17-groundwork-is-no-longer-frozen.md)
@@ -143,7 +144,8 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [Groundwork ships no logins](2026-10-12-groundwork-ships-no-logins.md), changed in part by doorman's [doorman ships no logins](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-12-doorman-ships-no-logins.md)
 - [Sessions live in Postgres](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-12-sessions-live-in-postgres.md): moved to doorman with the library, with "The session is the only truth"
 - [Pages for other sites, visitors, and servers](2026-10-12-pages-for-other-sites-visitors-and-servers.md), changed in part by doorman's [Sessions for visitors, and none for servers](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-12-sessions-for-visitors-and-none-for-servers.md) and [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
-- [A visitor's session starts on a POST of house's, never on a page load](2026-10-23-a-visitors-session-starts-on-a-post-of-houses.md)
+- [A visitor's session starts on a POST of house's, never on a page load](2026-10-23-a-visitors-session-starts-on-a-post-of-houses.md), changed in part by [The visitor route is rate-limited by the asker's address, with mailroom's buckets](2026-10-23-the-visitor-route-is-rate-limited-by-address-with-mailrooms-buckets.md)
+- [The visitor route is rate-limited by the asker's address, with mailroom's buckets](2026-10-23-the-visitor-route-is-rate-limited-by-address-with-mailrooms-buckets.md)
 
 ### Permissions and the access language
 
@@ -152,6 +154,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [Access rules are sentences in Groundwork's language](2026-10-17-access-rules-are-sentences-in-groundworks-language.md), changed in part by [A table is one map](2026-10-22-a-table-is-one-map.md) and doorman's [Access rules are sentences in doorman's language](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-17-access-rules-are-sentences-in-doormans-language.md)
 - [Every scoped table names its scope](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-12-every-scoped-table-names-its-scope.md): moved to doorman with the library, with "A record may wait for its scope", "A record can belong to a visitor", "Shared rows may belong to nobody" and "One request may name several scopes"
 - [Money and personal data live in their own tables](2026-10-17-money-and-personal-data-live-in-their-own-tables.md)
+- [postbox's webhook functions run as doorman's system actor :postbox](2026-10-23-postboxs-webhook-functions-run-as-doormans-system-actor-postbox.md)
 
 ### Endpoints, parquery and live updates
 
@@ -181,6 +184,7 @@ Each library keeps its own decisions, in decisions/<side>/<library>/, with its o
 - [The routing extras, each where it belongs: queries, scrolling, the unsaved guard, modules on demand, languages](2026-10-23-routing-extras-each-where-it-belongs.md), added to by [house reads the catalogs at the start](2026-10-23-house-reads-the-catalogs-at-the-start-and-serves-them.md)
 - [house reads the catalogs at the start, serves them to the browser, and holds the server's texts](2026-10-23-house-reads-the-catalogs-at-the-start-and-serves-them.md)
 - [The browser build's npm packages are real dependencies; doorman owns the shape of "what may I do?"](2026-10-23-the-builds-npm-packages-are-real-dependencies-and-doorman-owns-the-my-actions-shape.md)
+- [No pre-rendering of pages for search engines, for now](2026-10-23-no-pre-rendering-of-pages-for-search-engines-for-now.md)
 
 ### Styles
 

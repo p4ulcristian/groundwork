@@ -21,6 +21,8 @@
    :columns  [[:shop/id :uuid {:primary-key? true}]
               [:shop/name :string]]
    :indexes  []
+   :references []
+   :triggers  []
    :access   :public
    :doorbell :tell})
 
@@ -31,6 +33,8 @@
               [:order/note :string]
               [:order/created-at :time/instant {:default :now}]]
    :indexes  [[:order/shop-id :order/created-at]]
+   :references []
+   :triggers  []
    :access   [{:allow #{:orders/see :orders/add} :to [:member :order/shop-id]}]
    :doorbell :tell})
 

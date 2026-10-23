@@ -87,8 +87,9 @@
    too, only with its bearer token (meter's make-metrics-routes).
 
    A visitor's session (doorman's start-visitor-session!) is a POST at the
-   :visitors settings' :path, from the app's own pages only
-   (groundwork.server.main.visitors).
+   :visitors settings' :path, from the app's own pages only, rate-limited
+   by the asker's address (:visitors :rate-limit, 429 over it;
+   groundwork.server.main.visitors).
 
    The REPL (study's start-repl-server!, the :study settings) starts last
    and stops first, with groundwork's tools in study.tools:
@@ -106,9 +107,14 @@
    postbox.emails) are migrated with groundwork's, postbox's background job
    kind runs with the app's. Files are uploaded at the :attic :upload
    :path (groundwork.server.main.files: doorman's session step, then the app's
-   :may-upload?, (fn [asker])); the provider's webhooks are postbox's, at
-   the :postbox :webhooks paths, handing events to the app's
-   :on-delivery-event (by tag) and :on-inbound-email (by mailbox)."
+   :may-upload?, (fn [asker])); the app deletes a file with attic's
+   delete-file! on (:attic running) and (:pool running), after its own
+   rows are kept (only a file no row names through a reference to
+   :file/key goes). The provider's webhooks are postbox's, at the :postbox
+   :webhooks paths, handing events to the app's :on-delivery-event (by
+   tag) and :on-inbound-email (by mailbox), each run as doorman's system
+   actor :postbox, which the app's sentences give what it may do:
+   {:allow :shop-emails/mark-bounced :to [:system :postbox]}."
   (:require
    [clojure.string :as str]
    [attic.api :as attic]
@@ -270,9 +276,15 @@
    doorman's start-visitor-session! (groundwork.server.main.visitors).
    :path: the POST the browser sends the first time the app keeps
    something for a visitor, \"/groundwork/visitor\"; the page carries it to
-   groundwork.browser.main's start-visitor-session!."
+   groundwork.browser.main's start-visitor-session!.
+   :rate-limit: how many times one asker, told apart by their address
+   (the :server settings' :client-address-header behind a proxy), may POST
+   it, {:max 10 :per-ms 60000}; more are answered 429 and make no session."
   [:map {:closed true}
-   [:path [:re #"^/"]]])
+   [:path [:re #"^/"]]
+   [:rate-limit [:map {:closed true}
+                 [:max [:int {:min 1}]]
+                 [:per-ms [:int {:min 1}]]]]])
 
 (def attic-settings-shape
   "The :attic part of the settings, every key required, both attic's:
@@ -515,6 +527,12 @@
     (or (doorman/find-session-key-of-request request (:sessions settings))
         (mailroom/find-client-address request (get-in settings [:server :client-address-header])))))
 
+(def ^:private postbox-system-actor
+  "The system actor postbox's webhook functions run as (doorman's
+   run-as-system!): the app's sentences give it what they may do,
+   {:allow :shop-emails/mark-bounced :to [:system :postbox]}."
+  :postbox)
+
 (defn- make-routes [{:keys [settings pages browser-modules may-upload? on-delivery-event on-inbound-email]}
                     {:keys [wire running-logbook log app-meter pool running-health handlers running-doorbell
                             running-attic running-postbox find-session-step]}]
@@ -525,9 +543,9 @@
         (into (visitors/make-visitor-routes wire pool settings))
         (into (files/make-upload-routes running-attic wire log pool find-session-step may-upload? settings))
         (into (postbox/make-webhook-routes running-postbox (get-in settings [:postbox :webhooks])
-                                           {:pool              pool
-                                            :on-delivery-event on-delivery-event
-                                            :on-inbound-email  on-inbound-email}))
+                                           {:run-in-transaction #(doorman/run-as-system! pool postbox-system-actor {:read-only? false} %)
+                                            :on-delivery-event  on-delivery-event
+                                            :on-inbound-email   on-inbound-email}))
         (into (mailroom/make-routes-for-messages
                handlers
                (:server settings)
@@ -643,7 +661,10 @@
    a bounce or spam complaint by its email's tag, {} for none;
    :on-inbound-email, {mailbox (fn [email {:keys [transaction log]}])}, an
    inbound email by its mailbox, {} for none. postbox checks the two maps'
-   tags and functions."
+   tags and functions. Each runs in a transaction as doorman's system
+   actor :postbox (postbox-system-actor): the gates let it reach what the
+   app's sentences give [:system :postbox], the open rows and the tables
+   without sentences; nothing else."
   [:map
    [:may-upload? fn?]
    [:on-delivery-event map?]

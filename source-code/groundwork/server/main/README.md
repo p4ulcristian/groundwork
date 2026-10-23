@@ -156,9 +156,13 @@ Origin only (else 403), doorman's `start-visitor-session!`, answered
 `{"visitor-id": "…"}` with its Set-Cookie; the page carries the path to the
 browser's `start-visitor-session!`:
 [the decision](../../../../decisions/2026-10-23-a-visitors-session-starts-on-a-post-of-houses.md).
+One address (mailroom's `find-client-address`, the `:server` settings'
+`:client-address-header`) may POST it `:rate-limit` times; more are
+answered 429 and make nothing (mailroom's `make-rate-limited-ring-handler`):
+[the decision](../../../../decisions/2026-10-23-the-visitor-route-is-rate-limited-by-address-with-mailrooms-buckets.md).
 
 ```clojure
-:visitors {:path "/groundwork/visitor"}
+:visitors {:path "/groundwork/visitor" :rate-limit {:max 10 :per-ms 60000}}
 ```
 
 The REPL, study's, by the `:study` settings, started last and stopped
@@ -185,6 +189,12 @@ The provider's webhooks are postbox's, at `:postbox :webhooks`' paths,
 outside sessions, handing bounces to the app map's `:on-delivery-event`
 `{tag f}` and inbound email to `:on-inbound-email` `{mailbox f}`:
 [the decision](../../../../decisions/2026-10-23-main-makes-one-attic-and-one-postbox.md).
+Each function runs in a transaction as doorman's system actor `:postbox`
+(`run-as-system!`), allowed what the app's sentences give `[:system
+:postbox]` and nothing else:
+[the decision](../../../../decisions/2026-10-23-postboxs-webhook-functions-run-as-doormans-system-actor-postbox.md).
+A file is deleted by the app, with attic's `delete-file!` on `(:attic
+running)` and `(:pool running)`, after its own rows are kept.
 
 ```clojure
 :attic   {:storage {…}                                                   ; attic's settings, every key
@@ -200,6 +210,9 @@ An app's table map says `:access` and `:doorbell`, never `:gates` or
 `:on-change` (doorman and doorbell put them): one that writes either is
 refused at the start, named:
 [the decision](../../../../decisions/2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md).
+It writes out cellar's `:references` and `:triggers`, `[]` for none; a
+record under a record says doorman's `:parent`, and doorman adds its link
+and fill to them.
 
 API: `groundwork.server.main.api` (`settings-shape`, `page-settings-shape`,
 `health-settings-shape`, `migration-settings-shape`, `doorbell-settings-shape`,

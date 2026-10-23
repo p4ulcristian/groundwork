@@ -103,7 +103,10 @@ in an S3 bucket (R2, S3), recorded in `attic.files`, read through signed
 links; groundwork makes one attic from the `:attic :storage` settings, held by
 the running app as `:attic`, and serves attic's upload route at `:attic
 :upload :path`, asking doorman's session step, then the app's
-`:may-upload?` `(fn [asker])`, before the body is read.
+`:may-upload?` `(fn [asker])`, before the body is read. The app deletes a
+file with attic's `delete-file!`, after its own rows are kept: a file goes,
+row and object, only when no row names it through a reference to
+`:file/key`.
 And its email, on the server:
 [postbox](https://github.com/p4ulcristian/postbox), an email the app wrote
 queued in a write's transaction (`queue-email!` on the running app's
@@ -111,7 +114,10 @@ queued in a write's transaction (`queue-email!` on the running app's
 (`:postbox :sending`); the provider's webhooks (`:postbox :webhooks`) hand
 bounces to the app's `:on-delivery-event` by the email's tag and inbound
 email to its `:on-inbound-email` by mailbox
-([the decision](decisions/2026-10-23-main-makes-one-attic-and-one-postbox.md)).
+([the decision](decisions/2026-10-23-main-makes-one-attic-and-one-postbox.md)),
+each run as doorman's system actor `:postbox`, which the app's sentences
+give what it may do, `{:allow :shop-emails/mark-bounced :to [:system :postbox]}`,
+and nothing else ([the decision](decisions/2026-10-23-postboxs-webhook-functions-run-as-doormans-system-actor-postbox.md)).
 And its settings and their secrets:
 [safe](https://github.com/p4ulcristian/safe), one EDN file per environment,
 its `#secret` references read from sops or 1Password, its `#env` from the
@@ -135,15 +141,25 @@ by a committed, development-only age key)
 A visitor (someone not signed in) gets a session of their own, doorman's,
 from a POST of groundwork's at the `:visitors` path, which the browser's
 `start-visitor-session!` sends the first time the app keeps something for
-them ([the decision](decisions/2026-10-23-a-visitors-session-starts-on-a-post-of-houses.md)).
+them ([the decision](decisions/2026-10-23-a-visitors-session-starts-on-a-post-of-houses.md)),
+at most `:visitors :rate-limit` times per address, 429 over it
+([the decision](decisions/2026-10-23-the-visitor-route-is-rate-limited-by-address-with-mailrooms-buckets.md)).
 An app's table map says `:access` and `:doorbell`; one that writes its own
 `:gates` or `:on-change`, which groundwork puts on it, is refused at the start
 ([the decision](decisions/2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md)).
+It writes out cellar's `:references` and `:triggers` (`[]` for none); a
+record under a record says doorman's `:parent {:column … :carries {…}}`,
+and doorman adds the link to its parent and the fill of its carried
+columns to them.
+Not in groundwork: pre-rendering pages for search engines, for now
+([the decision](decisions/2026-10-23-no-pre-rendering-of-pages-for-search-engines-for-now.md)),
+and an MCP endpoint, which is the app's own code
+([the decision](decisions/2026-10-23-mcp-stays-the-apps-own-code.md)).
 Every groundwork repository carries the GitHub topic `groundwork`:
 `user:p4ulcristian topic:groundwork` lists them all.
 
-Still to come: a rate limit on the visitor route, clean-ups (ended
-visitors' rows, ended sessions as a background job).
+Still to come: clean-ups (ended visitors' rows, ended sessions as a
+background job).
 
 ```sh
 clojure -X:test                                                    # every test; Postgres ones need

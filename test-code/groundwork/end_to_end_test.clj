@@ -92,7 +92,7 @@
                        :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
    :sessions          {:cookie-name "e2e_session" :session-days 1 :visitor-session-days 1 :renew-after-minutes 60
                        :allowed-origin (str "http://127.0.0.1:" server-port) :secure-cookie? false}
-   :visitors          {:path "/groundwork/visitor"}
+   :visitors          {:path "/groundwork/visitor" :rate-limit {:max 10 :per-ms 60000}}
    :my-actions        {:rate-limit nil}
    :run-once          {:keep-keys-ms 600000
                        :forget-keys  {:cron "0 * * * *" :timeout-ms 10000 :attempts 1}

@@ -1,5 +1,7 @@
 # main makes one attic and one postbox, and serves the upload route and the provider's webhooks
 
+> **Changed in part** by [postbox's webhook functions run as doorman's system actor :postbox](2026-10-23-postboxs-webhook-functions-run-as-doormans-system-actor-postbox.md) (2026-10-23): the webhook functions run as the system actor `:postbox`, not on the app's role with nobody asking.
+
 > The user's decision, 2026-10-23 (attic v0.1.0, postbox v0.1.0, two new manor libraries). Builds on [main makes one meter, hands it to every library, and serves its text](2026-10-23-main-makes-one-meter-and-serves-its-text.md) and [main makes one wire and passes it to every library](2026-10-22-main-makes-one-wire-and-passes-it-to-every-library.md).
 
 **Decision:**
