@@ -15,24 +15,24 @@
   ;; main makes one logbook from the :logbook settings and passes its log to every library
   io.github.p4ulcristian/logbook    {:git/tag "v0.1.1" :git/sha "51a2c93"}
   ;; cellar: Postgres, its own library, github.com/p4ulcristian/cellar
-  io.github.p4ulcristian/cellar     {:git/tag "v0.4.2" :git/sha "03ed01c"}
+  io.github.p4ulcristian/cellar     {:git/tag "v0.4.3" :git/sha "e164607"}
   ;; backroom: background jobs on Postgres, its own library, github.com/p4ulcristian/backroom
-  io.github.p4ulcristian/backroom   {:git/tag "v0.5.2" :git/sha "10f6b65"}
+  io.github.p4ulcristian/backroom   {:git/tag "v0.5.3" :git/sha "55a4cf5"}
   ;; mailroom: named messages over http, sse and ws, a handler's steps, the routes;
   ;; both sides, its own library, github.com/p4ulcristian/mailroom (it brings
   ;; http-kit, reitit-ring and reitit-frontend)
-  io.github.p4ulcristian/mailroom   {:git/tag "v0.7.1" :git/sha "0d67929"}
+  io.github.p4ulcristian/mailroom   {:git/tag "v0.7.2" :git/sha "762e5c0"}
   ;; doorman: who is asking and what may they do, sessions and access, its own
   ;; library, github.com/p4ulcristian/doorman (it brings malli and test.check)
-  io.github.p4ulcristian/doorman    {:git/tag "v0.7.2" :git/sha "960917f"}
+  io.github.p4ulcristian/doorman    {:git/tag "v0.7.3" :git/sha "a48baea"}
   ;; doorbell: a change to a table rings every open screen, which asks again;
   ;; both sides, its own library, github.com/p4ulcristian/doorbell
-  io.github.p4ulcristian/doorbell   {:git/tag "v0.5.2" :git/sha "88ad38f"}
+  io.github.p4ulcristian/doorbell   {:git/tag "v0.5.3" :git/sha "bf53ac3"}
   ;; parlor: the browser's screens over doorbell's question store, in re-frame,
   ;; drawn with Reagent (it brings re-frame and Reagent; react and react-dom
   ;; are package.json's); the browser's side only, its own library,
   ;; github.com/p4ulcristian/parlor
-  io.github.p4ulcristian/parlor     {:git/tag "v0.7.2" :git/sha "aa870e0"}
+  io.github.p4ulcristian/parlor     {:git/tag "v0.7.3" :git/sha "b19a388"}
   ;; dictionary: which language a request, a page and an address are in; both
   ;; sides, its own library, github.com/p4ulcristian/dictionary (parlor brings
   ;; it to the browser too)
@@ -40,15 +40,15 @@
   ;; meter: the app's metrics, its own library, github.com/p4ulcristian/meter;
   ;; main makes one meter from the :meter settings and passes it to every
   ;; library that counts, and serves its text at the :metrics route
-  io.github.p4ulcristian/meter      {:git/tag "v0.1.2" :git/sha "a0a977b"}
+  io.github.p4ulcristian/meter      {:git/tag "v0.1.3" :git/sha "b71484d"}
   ;; attic: the app's files, its own library, github.com/p4ulcristian/attic;
   ;; main makes one attic from the :attic :storage settings, migrates its files
   ;; table and serves its upload route at :attic :upload :path
-  io.github.p4ulcristian/attic     {:git/tag "v0.1.0" :git/sha "dfcbefb"}
+  io.github.p4ulcristian/attic     {:git/tag "v0.1.1" :git/sha "eac6fa1"}
   ;; postbox: the app's email, its own library, github.com/p4ulcristian/postbox;
   ;; main makes one postbox from the :postbox :sending settings, runs its
   ;; background job kind, migrates its emails table and serves its webhooks
-  io.github.p4ulcristian/postbox   {:git/tag "v0.1.0" :git/sha "b2ecdf9"}
+  io.github.p4ulcristian/postbox   {:git/tag "v0.1.1" :git/sha "83f8660"}
   ;; study: the REPL into the running app, by the :study settings, with
   ;; house's tools in study.tools; its own library, github.com/p4ulcristian/study
   io.github.p4ulcristian/study      {:git/tag "v0.1.1" :git/sha "d8ba537"}}
