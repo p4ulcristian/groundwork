@@ -111,12 +111,21 @@ nothing is saved. A write without a key runs as it is:
                                      :max-name-length 50000 :max-document-length nil :max-token-count nil
                                      :max-writing-nesting-depth 1000}}
 :browser-wire    {:most-shapes-kept 1000 :most-keys-kept 10000}          ; the browser's, but :exact-decimals
-:database        {…}                                                     ; cellar's pool settings, all 20 keys
+:database        {…                                                      ; cellar's pool settings, all 21 keys
+                  :metric-buckets {:query-seconds [0.001 0.005 0.025 0.1 0.5 2.5 10]
+                                   :connection-acquire-seconds [0.001 0.01 0.1 1 10]
+                                   :connection-usage-seconds [0.001 0.01 0.1 1 10 60]}}
 :migration       {:instant-part {:statement-timeout-ms 30000 :lock-timeout-ms 5000}
                   :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
 :background-jobs {:workers 4 :poll-ms 1000
                   :retry-first-wait-ms 30000 :retry-wait-factor 2 :retry-max-wait-ms 3600000
-                  :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000 :stop-wait-ms 30000}
+                  :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
+                  :forget-done-every-ms 3600000 :stop-wait-ms 30000
+                  :metric-buckets {:job-run-seconds [0.01 0.1 1 10 60 600]}}
+:server          {…                                                      ; mailroom's settings, every key
+                  :metric-buckets {:answer-seconds [0.005 0.01 0.025 0.05 0.1 0.25 0.5 1 2.5 5 10]}}
+:sessions        {:cookie-name "app_session" :session-days 30 :visitor-session-days 7   ; doorman's
+                  :renew-after-minutes 60 :allowed-origin "https://shop.example" :secure-cookie? true}
 :doorbell        {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
                   :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                               :reconnect-after-ms 1000 :stop-wait-ms 2000}}
@@ -124,9 +133,53 @@ nothing is saved. A write without a key runs as it is:
                                                                          ; but :entry, :files-folder and :log
 ```
 
+One meter, made from the `:meter` settings and handed to cellar's pool,
+mailroom's routes, doorbell's listener and backroom's workers; house's
+own metrics (`house_stage{stage}`, `house_ready_checks_total{outcome}`,
+`house_build_info{version}`) and logbook's counts read when the text is
+written (`logbook_lines_total{level}`, `logbook_write_failures_total`,
+`logbook_errors_kept`); the text at the `:metrics` path, outside sessions,
+access and rate limits, only with its bearer token (else 401).
+`:most-series-per-metric` covers the largest declaration: mailroom's
+`messages_total`, (handlers+1)×24; its `answer_seconds` and cellar's
+`query_seconds`, (names+1)×(buckets+3). `migrate-app!`'s owner pool counts
+on a meter of its own, never served:
+[the decision](../../../../decisions/2026-10-23-main-makes-one-meter-and-serves-its-text.md).
+
+```clojure
+:meter   {:jvm-metrics true :most-series-per-metric 5000}
+:metrics {:path "/metrics" :token "…"}
+```
+
+A visitor's session: a POST at the `:visitors` path, from the app's own
+Origin only (else 403), doorman's `start-visitor-session!`, answered
+`{"visitor-id": "…"}` with its Set-Cookie; the page carries the path to the
+browser's `start-visitor-session!`:
+[the decision](../../../../decisions/2026-10-23-a-visitors-session-starts-on-a-post-of-houses.md).
+
+```clojure
+:visitors {:path "/house/visitor"}
+```
+
+The REPL, study's, by the `:study` settings, started last and stopped
+first, house's tools in `study.tools`: `(ask-as-person message asker)`,
+`(why-refused asker handler-name params)`, `(explain-setting path)`, the
+asker `{:person-id :visitor-id :session-flags}`:
+[the decision](../../../../decisions/2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md).
+
+```clojure
+:study {:mode :development :bind-address "127.0.0.1" :port 7888 :middleware [] :port-file ".nrepl-port"}
+;; stage {:mode :ssh-only …}; production {:mode :off :emergency-switch {…}} or {:mode :off :emergency-switch nil}
+```
+
+An app's table map says `:access` and `:doorbell`, never `:gates` or
+`:on-change` (doorman and doorbell put them): one that writes either is
+refused at the start, named:
+[the decision](../../../../decisions/2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md).
+
 API: `house.server.main.api` (`settings-shape`, `page-settings-shape`,
 `health-settings-shape`, `migration-settings-shape`, `doorbell-settings-shape`,
-`my-actions-settings-shape`, `run-once-settings-shape`,
+`my-actions-settings-shape`, `run-once-settings-shape`, `visitors-settings-shape`,
 `browser-build-settings-shape`, `browser-wire-settings-shape`,
 `check-settings`, `house-tables`, `make-ready-tables`, `migrate-app!`,
 `start-app!`, `stop-app!`). Decisions:
@@ -145,4 +198,6 @@ through doorbell to every open sse line, as only its table, and each person's
 asking again through the gates to only their own shop's orders; then the health checks: live
 and ready without origin or session; ready 503 at its timeout while every
 connection is held, 503 while the app's role can't log in, 200 again after
-each; 503 while stopping.
+each; 503 while stopping; the metrics route, the visitor route and the
+REPL's tools over a real nREPL connection. The end-to-end test
+(`house.end-to-end-test`) drives a sample app in a headless browser.

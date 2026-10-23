@@ -1,5 +1,7 @@
 # REPLs by environment
 
+> **Changed in part** by [The REPL starts last and stops first; house brings its tools](2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md) (2026-10-23): the REPL is study's, started by house from the `:study` settings, and it writes no log file.
+
 > **Changed in part** by [Groundwork ships no team endpoints and no eval bridge](2026-10-18-groundwork-ships-no-team-endpoints-and-no-eval-bridge.md) (2026-10-18): there is no eval bridge, so Groundwork gives previews no REPL.
 
 > Builds on [We try queries in the REPL](2026-10-12-we-try-queries-in-the-repl.md).

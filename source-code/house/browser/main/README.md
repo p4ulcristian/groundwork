@@ -22,7 +22,10 @@ shapes have both shapes for each of its names; house's own are added
 checks the answer by, with the app's wire). The app's `package.json` lists
 big.js, react, react-dom and process as `dependencies`: showroom's release
 stops on one installed only for development. ClojureScript only. API:
-`house.browser.main.api` (`read-settings-from-page`, `start-app!`).
+`house.browser.main.api` (`read-settings-from-page`, `start-app!`,
+`start-visitor-session!`: a session for a visitor, the first time the app
+keeps something for them, a POST to the page's `:visitor-path`; a promise
+of the visitor's id).
 
 ```clojure
 (def app (main/start-app! {:shapes-by-name     shapes-by-name

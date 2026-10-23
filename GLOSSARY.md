@@ -27,3 +27,9 @@ Each word in a manor name means one thing, everywhere. See
 | table map | a table declared as a Clojure map (`{:table :orders :columns [...]}`); [cellar](https://github.com/p4ulcristian/cellar) brings Postgres to what the maps say |
 | browser build | the app's ClojureScript compiled for the browser: watched in development, built once by the deploy, with the stylesheet bundle; [showroom](https://github.com/p4ulcristian/showroom) makes it, never in production |
 | stylesheet | a plain `.css` file next to the namespace that names it with `(def order-card-styles (styles/use-stylesheet "app/orders/order_card.css"))`, as a query names its `.sql` file; [showroom](https://github.com/p4ulcristian/showroom) bundles them |
+| meter | the one object the app makes ([meter](https://github.com/p4ulcristian/meter)) and hands to every library, which declares its metrics on it and counts into them; the app serves its text at `/metrics` |
+| metric | one thing counted, declared as data: a counter, a gauge or a histogram, its labels each with a closed set of values (`mailroom_messages_total{name,pipe,outcome}`) |
+| visitor | someone not signed in for whom the app keeps something (a cart): a session of their own, doorman's, started by house's visitor route; their rows become the person's at sign-in |
+| REPL | a Clojure prompt into the running app, by [study](https://github.com/p4ulcristian/study): open in development, over SSH on stage, off in production but for the emergency switch |
+| tool | a function of house's in `study.tools` while a REPL is open: `ask-as-person`, `why-refused`, `explain-setting` |
+| asker | who a message is asked as: `{:person-id :visitor-id :session-flags}`, the person or the visitor and the session's flags |

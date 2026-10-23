@@ -3,7 +3,7 @@
 An opinionated Clojure framework for web apps on Postgres: the part of
 **manor** that puts its libraries together into one running app. manor is the
 group: house and its cellar, backroom, showroom, mailroom, doorman, doorbell,
-parlor, dictionary, wire and logbook. The spec is [`decisions/`](decisions/README.md).
+parlor, dictionary, wire, logbook, meter and study. The spec is [`decisions/`](decisions/README.md).
 
 One tree: each library is a folder `source-code/house/<side>/<name>/` with
 its README, its tests in `test-code/house/<side>/<name>/`, its decisions in
@@ -80,16 +80,59 @@ emails and PDFs) and served to the browser, where parlor's
 page's shape), scrolling, a question before leaving unsaved changes, and
 modules loaded on demand (the app's `:browser-modules`, showroom's, each
 with its stylesheets): [the decision](decisions/2026-10-23-routing-extras-each-where-it-belongs.md).
+And how much the app does, on the server:
+[meter](https://github.com/p4ulcristian/meter); house makes the app's one
+meter from the `:meter` settings and hands it to cellar's pool, mailroom's
+routes, doorbell's listener and backroom's workers, each declaring its own
+metrics (their histograms' buckets are each library's `:metric-buckets`
+setting), adds its own (the stage, the ready checks, the version) and
+logbook's counts, and serves the text Prometheus pulls at the `:metrics`
+route, beside health and errors, behind its bearer token
+([the decision](decisions/2026-10-23-main-makes-one-meter-and-serves-its-text.md)).
+And a REPL into the running app, on the server:
+[study](https://github.com/p4ulcristian/study), by the `:study` settings
+(`:development`, `:ssh-only`, or `:off` with the emergency switch), every
+evaluation written to the app's log; it starts last and stops first, and
+house's tools are in `study.tools`: `ask-as-person`, `why-refused`
+(doorman's `explain-refusal`) and `explain-setting`
+([the decision](decisions/2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md)).
+A visitor (someone not signed in) gets a session of their own, doorman's,
+from a POST of house's at the `:visitors` path, which the browser's
+`start-visitor-session!` sends the first time the app keeps something for
+them ([the decision](decisions/2026-10-23-a-visitors-session-starts-on-a-post-of-houses.md)).
+An app's table map says `:access` and `:doorbell`; one that writes its own
+`:gates` or `:on-change`, which house puts on it, is refused at the start
+([the decision](decisions/2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md)).
 Every manor repository carries the GitHub topic `manor`:
 `user:p4ulcristian topic:manor` lists them all.
 
-Still to come: the smaller list (visitor sessions, access extras, rate limits, clean-ups).
+Still to come: a rate limit on the visitor route, clean-ups (ended
+visitors' rows, ended sessions as a background job).
 
 ```sh
 clojure -X:test                                                    # every test; Postgres ones need
                                                                    # HOUSE_SQL_TEST_PORT and _USER (Postgres 16+)
 clojure -X:test :dirs '["test-code/house/server/main"]'            # one library
 clj -A:test                                                        # one REPL, every library
+```
+
+The end-to-end test (`test-code/house/end_to_end_test.clj`): a sample app
+(`test-code/house_test/sample/`, shops and orders, Anna and Bob, English and
+German, a module loaded on demand) release-built by showroom, started by
+`start-app!` on a throwaway Postgres and driven by a headless browser over
+the DevTools protocol; no window opens
+([the decision](decisions/2026-10-23-the-end-to-end-test-drives-a-headless-browser-over-devtools.md)).
+It needs node's packages once (`npm install --include=dev`, for the
+release build) and a headless browser binary (Playwright's headless shell,
+`npx playwright install chromium-headless-shell`, or Chrome):
+
+```sh
+initdb -D /tmp/house-pg -A trust -U "$USER"
+pg_ctl -D /tmp/house-pg -o "-p 5499 -k /tmp -c listen_addresses=localhost" -l /tmp/house-pg.log start
+HOUSE_SQL_TEST_PORT=5499 HOUSE_SQL_TEST_USER=$USER \
+HOUSE_E2E_BROWSER=~/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell \
+clojure -X:test :nses '[house.end-to-end-test]'
+pg_ctl -D /tmp/house-pg stop
 ```
 
 An app takes all of house from git.
