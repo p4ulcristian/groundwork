@@ -1,25 +1,26 @@
-# house
+# groundwork
 
-An opinionated Clojure framework for web apps on Postgres: the part of
-**manor** that puts its libraries together into one running app. manor is the
-group: house and its cellar, backroom, showroom, mailroom, doorman, doorbell,
-parlor, dictionary, wire, logbook, meter, study, attic, postbox and safe. The spec is [`decisions/`](decisions/README.md).
+An opinionated Clojure framework for web apps on Postgres: the repository
+that puts the **groundwork** libraries together into one running app.
+groundwork names both the family and this composer: groundwork and its cellar,
+backroom, showroom, mailroom, doorman, doorbell, parlor, dictionary, wire,
+logbook, meter, study, attic, postbox and safe. The spec is [`decisions/`](decisions/README.md).
 
-One tree: each library is a folder `source-code/house/<side>/<name>/` with
-its README, its tests in `test-code/house/<side>/<name>/`, its decisions in
+One tree: each library is a folder `source-code/groundwork/<side>/<name>/` with
+its README, its tests in `test-code/groundwork/<side>/<name>/`, its decisions in
 `decisions/<side>/<name>/`; one `deps.edn` at the root.
 
 | library | namespace | the question it answers |
 |---|---|---|
-| server/main | `house.server.main` | how does the server start? (and the page shell) |
-| browser/main | `house.browser.main` | how does the browser start? |
+| server/main | `groundwork.server.main` | how does the server start? (and the page shell) |
+| browser/main | `groundwork.browser.main` | how does the browser start? |
 
-Every namespace says its side right after `house`; no file is `.cljc`.
+Every namespace says its side right after `groundwork`; no file is `.cljc`.
 Which library may use which is `libraries.edn`, checked by a test.
 
 How data keeps its types (ids, exact decimals, days, moments) is
-[wire](https://github.com/p4ulcristian/wire), a library of its own that house
-takes from git; its decisions live there. house makes the app's one wire on
+[wire](https://github.com/p4ulcristian/wire), a library of its own that groundwork
+takes from git; its decisions live there. groundwork makes the app's one wire on
 each side, from the `:wire` settings on the server and the `:browser-wire`
 settings (in the page) with the browser start's `:exact-decimals`, and
 passes it to every library; none makes its own. So is talking to Postgres and shaping
@@ -53,17 +54,17 @@ And what the browser shows:
 question store, drawn with Reagent: a screen's answers with four statuses,
 the page the address bar leads to (each page declares its questions, the
 browser start's `:questions-of-pages`), writes that ask again what they
-touched, and "can I?" from doorman's `:doorman/my-actions`, a handler house
-adds (its rate limit the `:my-actions` part). house's browser start starts it;
+touched, and "can I?" from doorman's `:doorman/my-actions`, a handler groundwork
+adds (its rate limit the `:my-actions` part). groundwork's browser start starts it;
 the app draws its root with parlor's `mount-root!` into the shell's `#app`.
 Every write runs once: parlor sends each with a one-time key (a random
 UUID, the same on each retry of that send, in the `idempotency-key`
-header), and house claims it in the write's own transaction; a repeat gets
+header), and groundwork claims it in the write's own transaction; a repeat gets
 the first answer and saves nothing (the `:run-once` settings, [the
 decision](decisions/2026-10-23-every-write-runs-once-by-its-one-time-key.md)).
 And what the app says, on the server:
 [logbook](https://github.com/p4ulcristian/logbook), one function
-`(log level event data)`; house makes the app's one logbook from the
+`(log level event data)`; groundwork makes the app's one logbook from the
 `:logbook` settings and passes its log to every library, each message's steps
 get one with its request id (and the person, once doorman finds them), and a
 monitor pulls the kept errors, the browser's among them, from the `:errors`
@@ -81,7 +82,7 @@ page's shape), scrolling, a question before leaving unsaved changes, and
 modules loaded on demand (the app's `:browser-modules`, showroom's, each
 with its stylesheets): [the decision](decisions/2026-10-23-routing-extras-each-where-it-belongs.md).
 And how much the app does, on the server:
-[meter](https://github.com/p4ulcristian/meter); house makes the app's one
+[meter](https://github.com/p4ulcristian/meter); groundwork makes the app's one
 meter from the `:meter` settings and hands it to cellar's pool, mailroom's
 routes, doorbell's listener and backroom's workers, each declaring its own
 metrics (their histograms' buckets are each library's `:metric-buckets`
@@ -93,13 +94,13 @@ And a REPL into the running app, on the server:
 [study](https://github.com/p4ulcristian/study), by the `:study` settings
 (`:development`, `:ssh-only`, or `:off` with the emergency switch), every
 evaluation written to the app's log; it starts last and stops first, and
-house's tools are in `study.tools`: `ask-as-person`, `why-refused`
+groundwork's tools are in `study.tools`: `ask-as-person`, `why-refused`
 (doorman's `explain-refusal`) and `explain-setting`
 ([the decision](decisions/2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md)).
 And the app's files, on the server:
 [attic](https://github.com/p4ulcristian/attic), each named by its content
 in an S3 bucket (R2, S3), recorded in `attic.files`, read through signed
-links; house makes one attic from the `:attic :storage` settings, held by
+links; groundwork makes one attic from the `:attic :storage` settings, held by
 the running app as `:attic`, and serves attic's upload route at `:attic
 :upload :path`, asking doorman's session step, then the app's
 `:may-upload?` `(fn [asker])`, before the body is read.
@@ -114,7 +115,7 @@ email to its `:on-inbound-email` by mailbox
 And its settings and their secrets:
 [safe](https://github.com/p4ulcristian/safe), one EDN file per environment,
 its `#secret` references read from sops or 1Password, its `#env` from the
-environment, checked against house's `settings-shape` with every problem at
+environment, checked against groundwork's `settings-shape` with every problem at
 once. Every secret in the settings (the database's password, the `:errors`
 and `:metrics` tokens, the bucket's keys, Postmark's and the webhooks'
 tokens) is safe's: it prints as its name, is revealed only by the library
@@ -128,31 +129,31 @@ that uses it, and text written out in its place is refused. An app starts:
 ```
 
 The sample app's development settings load the same way
-(`test-code/house_test/sample/settings/development.edn`, its secrets opened
+(`test-code/groundwork_test/sample/settings/development.edn`, its secrets opened
 by a committed, development-only age key)
 ([the decision](decisions/2026-10-23-secrets-are-safes-wrapped-secrets.md)).
 A visitor (someone not signed in) gets a session of their own, doorman's,
-from a POST of house's at the `:visitors` path, which the browser's
+from a POST of groundwork's at the `:visitors` path, which the browser's
 `start-visitor-session!` sends the first time the app keeps something for
 them ([the decision](decisions/2026-10-23-a-visitors-session-starts-on-a-post-of-houses.md)).
 An app's table map says `:access` and `:doorbell`; one that writes its own
-`:gates` or `:on-change`, which house puts on it, is refused at the start
+`:gates` or `:on-change`, which groundwork puts on it, is refused at the start
 ([the decision](decisions/2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md)).
-Every manor repository carries the GitHub topic `manor`:
-`user:p4ulcristian topic:manor` lists them all.
+Every groundwork repository carries the GitHub topic `groundwork`:
+`user:p4ulcristian topic:groundwork` lists them all.
 
 Still to come: a rate limit on the visitor route, clean-ups (ended
 visitors' rows, ended sessions as a background job).
 
 ```sh
 clojure -X:test                                                    # every test; Postgres ones need
-                                                                   # HOUSE_SQL_TEST_PORT and _USER (Postgres 16+)
-clojure -X:test :dirs '["test-code/house/server/main"]'            # one library
+                                                                   # GROUNDWORK_SQL_TEST_PORT and _USER (Postgres 16+)
+clojure -X:test :dirs '["test-code/groundwork/server/main"]'            # one library
 clj -A:test                                                        # one REPL, every library
 ```
 
-The end-to-end test (`test-code/house/end_to_end_test.clj`): a sample app
-(`test-code/house_test/sample/`, shops and orders, Anna and Bob, English and
+The end-to-end test (`test-code/groundwork/end_to_end_test.clj`): a sample app
+(`test-code/groundwork_test/sample/`, shops and orders, Anna and Bob, English and
 German, a module loaded on demand) release-built by showroom, started by
 `start-app!` on a throwaway Postgres and driven by a headless browser over
 the DevTools protocol; no window opens
@@ -162,24 +163,24 @@ release build) and a headless browser binary (Playwright's headless shell,
 `npx playwright install chromium-headless-shell`, or Chrome):
 
 ```sh
-initdb -D /tmp/house-pg -A trust -U "$USER"
-pg_ctl -D /tmp/house-pg -o "-p 5499 -k /tmp -c listen_addresses=localhost" -l /tmp/house-pg.log start
-HOUSE_SQL_TEST_PORT=5499 HOUSE_SQL_TEST_USER=$USER \
-HOUSE_E2E_BROWSER=~/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell \
-clojure -X:test :nses '[house.end-to-end-test]'
-pg_ctl -D /tmp/house-pg stop
+initdb -D /tmp/groundwork-pg -A trust -U "$USER"
+pg_ctl -D /tmp/groundwork-pg -o "-p 5499 -k /tmp -c listen_addresses=localhost" -l /tmp/groundwork-pg.log start
+GROUNDWORK_SQL_TEST_PORT=5499 GROUNDWORK_SQL_TEST_USER=$USER \
+GROUNDWORK_E2E_BROWSER=~/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell \
+clojure -X:test :nses '[groundwork.end-to-end-test]'
+pg_ctl -D /tmp/groundwork-pg stop
 ```
 
 The server test stores an upload in a real S3 API when
-`HOUSE_S3_TEST_ENDPOINT`, `_ACCESS_KEY` and `_SECRET_KEY` are set (SeaweedFS
+`GROUNDWORK_S3_TEST_ENDPOINT`, `_ACCESS_KEY` and `_SECRET_KEY` are set (SeaweedFS
 in a container, as attic's tests run it); without them it checks only who
 may upload.
 
-An app takes all of house from git.
+An app takes all of groundwork from git.
 
 ## Releasing a library
 
 `tools/bump cellar` (or several names) tags the next patch version of each
-named manor library, then pins the new tag in every manor library that uses
-it, releases those the same way, in order, and pins everything in house last.
-No tests are run. The libraries sit beside house, in the manor folder.
+named library, then pins the new tag in every library that uses it, releases
+those the same way, in order, and pins everything in groundwork last. No tests
+are run. The libraries sit beside groundwork, in ~/Work/apps/groundwork.

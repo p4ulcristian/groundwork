@@ -1,7 +1,7 @@
-;; house: one tree. source-code/house/server/<library>/ runs on the server
-;; (house.server.*), source-code/house/browser/<library>/ in the browser
-;; (house.browser.*). Which library may use which is libraries.edn, checked by
-;; test-code/house/libraries_test.clj.
+;; groundwork: one tree. source-code/groundwork/server/<library>/ runs on the server
+;; (groundwork.server.*), source-code/groundwork/browser/<library>/ in the browser
+;; (groundwork.browser.*). Which library may use which is libraries.edn, checked by
+;; test-code/groundwork/libraries_test.clj.
 {:paths ["source-code"]
 
  :deps
@@ -51,15 +51,15 @@
   io.github.p4ulcristian/postbox   {:git/tag "v0.1.1" :git/sha "83f8660"}
   ;; safe: the settings and their secrets, its own library, github.com/p4ulcristian/safe;
   ;; an app loads its settings with safe/load, every secret in them wrapped (it prints
-  ;; as its name); house compares the :errors token with safe/equal?
+  ;; as its name); groundwork compares the :errors token with safe/equal?
   io.github.p4ulcristian/safe       {:git/tag "v0.1.0" :git/sha "b4783eb"}
   ;; study: the REPL into the running app, by the :study settings, with
-  ;; house's tools in study.tools; its own library, github.com/p4ulcristian/study
+  ;; groundwork's tools in study.tools; its own library, github.com/p4ulcristian/study
   io.github.p4ulcristian/study      {:git/tag "v0.1.1" :git/sha "d8ba537"}}
 
  :aliases
  {;; every test:                  clojure -X:test
-  ;; one library's tests:         clojure -X:test :dirs '["test-code/house/server/main"]'
+  ;; one library's tests:         clojure -X:test :dirs '["test-code/groundwork/server/main"]'
   :test {:extra-paths ["test-code"]
          :extra-deps  {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                        ;; the browser build's test compiles every browser library, and the

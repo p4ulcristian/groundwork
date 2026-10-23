@@ -1,5 +1,5 @@
-;; house's libraries, by side, and which others each may use.
-;; test-code/house/libraries_test.clj checks every namespace against it:
+;; groundwork's libraries, by side, and which others each may use.
+;; test-code/groundwork/libraries_test.clj checks every namespace against it:
 ;; a library requires only the libraries it lists, and only their api;
 ;; nobody uses another around a circle. wire is a library of its own
 ;; (github.com/p4ulcristian/wire): any library may use it, through wire.api only.
@@ -30,6 +30,6 @@
 ;; (github.com/p4ulcristian/postbox): any server library may use them, through
 ;; attic.api and postbox.api only. So is safe, the settings and their secrets
 ;; (github.com/p4ulcristian/safe): the server's only, through safe.api only; an
-;; app loads its settings with it, and house compares a secret token with it.
+;; app loads its settings with it, and groundwork compares a secret token with it.
 {:server  {:main #{}}
  :browser {:main #{}}}

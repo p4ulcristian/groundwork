@@ -1,5 +1,7 @@
 # Groundwork is renamed house, and the group of libraries is manor
 
+> **Changed in part** by [The family and its composer are groundwork](2026-10-23-the-family-and-its-composer-are-groundwork.md) (2026-10-23): the family and its composer are both named groundwork again, and the topic is `groundwork`.
+
 > Changes in part [Groundwork's libraries share the GitHub topic groundwork](2026-10-22-groundworks-libraries-share-the-topic-groundwork.md): the topic is `manor`.
 
 **Decision:** two names where Groundwork was one.

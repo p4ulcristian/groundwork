@@ -1,32 +1,32 @@
 #!/usr/bin/env bash
 # bump <library> [<library> ...]
 #
-# Releases the named manor libraries and carries their new tags through
-# everything that uses them, in order, house last:
+# Releases the named groundwork libraries and carries their new tags through
+# everything that uses them, in order, the groundwork composer last:
 #   1. each named library: next patch tag on its main, pushed; README take-line
-#   2. every manor library that names a bumped one in its deps.edn: pinned to
+#   2. every library that names a bumped one in its deps.edn: pinned to
 #      the new tag, committed, pushed, then released the same way (cascade)
-#   3. house: pinned to every new tag, committed and pushed on its branch
-# No tests are run. The libraries sit beside house, in the manor folder.
+#   3. groundwork: pinned to every new tag, committed and pushed on its branch
+# No tests are run. The libraries sit beside the composer, in ~/Work/apps/groundwork.
 set -euo pipefail
-manor="$(cd "$(dirname "$0")/../.." && pwd)"
+family="$(cd "$(dirname "$0")/../.." && pwd)"
 coauthor="Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
 pin() { # pin LIB TAG SHA FILE
   sed -i -E "s|(io\.github\.p4ulcristian/$1 +\{:git/tag \")[^\"]+(\" :git/sha \")[0-9a-f…]+\"|\1$2\2$3\"|g" "$4"
 }
 
-users_of() { # libraries (not house) whose deps.edn names LIB
-  for d in "$manor"/*/; do
+users_of() { # libraries (not the composer) whose deps.edn names LIB
+  for d in "$family"/*/; do
     r=$(basename "$d")
-    [ "$r" = house ] || [ "$r" = "$1" ] && continue
+    [ "$r" = groundwork ] || [ "$r" = "$1" ] && continue
     grep -qE "p4ulcristian/$1 +\{:git/tag" "$d/deps.edn" 2>/dev/null && echo "$r"
   done
 }
 
 declare -A new_tag new_sha
 release() { # release LIB: pull, tag next patch, take-line
-  local r=$1 dir="$manor/$1" old new sha
+  local r=$1 dir="$family/$1" old new sha
   git -C "$dir" pull -q --ff-only
   old=$(git -C "$dir" describe --tags --abbrev=0)
   new=$(echo "$old" | awk -F. '{print $1"."$2"."$3+1}')
@@ -46,7 +46,7 @@ take() { # take DIR: pin every new tag in DIR/deps.edn, commit, push
   git -C "$dir" pull -q --ff-only || { echo "bump: pulling $dir failed" >&2; exit 1; }
   for l in "${!new_tag[@]}"; do pin "$l" "${new_tag[$l]}" "${new_sha[$l]}" "$dir/deps.edn"; done
   if ! git -C "$dir" diff --quiet; then
-    git -C "$dir" commit -qam "Take the newest manor libraries" -m "$coauthor" \
+    git -C "$dir" commit -qam "Take the newest groundwork libraries" -m "$coauthor" \
       || { echo "bump: committing in $dir failed" >&2; exit 1; }
     git -C "$dir" push -q || { echo "bump: pushing $dir failed" >&2; exit 1; }
     return 0
@@ -63,12 +63,12 @@ while [ ${#queue[@]} -gt 0 ]; do
   # a library waits until everything it uses that is still queued is released
   wait=0
   for q in "${queue[@]}"; do
-    grep -qE "p4ulcristian/$q +\{:git/tag" "$manor/$lib/deps.edn" 2>/dev/null && wait=1
+    grep -qE "p4ulcristian/$q +\{:git/tag" "$family/$lib/deps.edn" 2>/dev/null && wait=1
   done
   if [ $wait = 1 ]; then queue+=("$lib"); continue; fi
-  take "$manor/$lib" || true
+  take "$family/$lib" || true
   release "$lib"; done_list+="$lib "
   for u in $(users_of "$lib"); do queue+=("$u"); done
 done
-echo "house:"
-take "$manor/house" && echo "  pinned and pushed ($(git -C "$manor/house" rev-parse --short HEAD))" || echo "  nothing to pin"
+echo "groundwork:"
+take "$family/groundwork" && echo "  pinned and pushed ($(git -C "$family/groundwork" rev-parse --short HEAD))" || echo "  nothing to pin"
