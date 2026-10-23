@@ -4,7 +4,7 @@
 
 > **Changed in part** by [The freeze lifts for the access language](2026-10-17-the-freeze-lifts-for-the-access-language.md) (2026-10-17): the access language was built during the freeze.
 
-> **Changed in part** by [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md) (2026-10-17): the freeze lifted for styles.
+> **Changed in part** by [A namespace names its stylesheets](https://github.com/p4ulcristian/showroom/blob/main/decisions/2026-10-17-a-namespace-names-its-stylesheets.md) (2026-10-17): the freeze lifted for styles.
 
 **Decision:** Groundwork stays as it is. Nothing new is built: no new permission shapes, no more work on bells, no changes to styles. Nothing is deleted. A fix to something that is broken is still allowed.
 

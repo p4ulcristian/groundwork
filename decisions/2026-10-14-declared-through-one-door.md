@@ -1,5 +1,7 @@
 # Declared, through one door
 
+> **Changed in part** by [Groundwork is the default composition](2026-10-22-groundwork-is-the-default-composition.md) (2026-10-22): an app may add its own steps and use the ground-* libraries in them; the start checks the required steps.
+
 **Decision:** this is how Groundwork takes in what apps need and stays able to change its mind:
 
 - **An ability is declared, never automatic.** A route says its code loads on demand; an app lists its languages; a table says how it rings. An app that declares nothing notices nothing.

@@ -1,40 +1,86 @@
-{:paths ["src" "resources"]
+;; groundwork: one tree. source-code/groundwork/server/<library>/ runs on the server
+;; (groundwork.server.*), source-code/groundwork/browser/<library>/ in the browser
+;; (groundwork.browser.*). Which library may use which is libraries.edn, checked by
+;; test-code/groundwork/libraries_test.clj.
+{:paths ["source-code"]
 
  :deps
  {org.clojure/clojure               {:mvn/version "1.12.6"}
-  com.github.seancorfield/next.jdbc {:mvn/version "1.4.70"}
-  org.postgresql/postgresql         {:mvn/version "42.7.14"}
-  com.zaxxer/HikariCP               {:mvn/version "7.1.0"}
-  metosin/jsonista                  {:mvn/version "1.0.2"}
-  integrant/integrant               {:mvn/version "1.0.1"}
-  http-kit/http-kit                 {:mvn/version "2.8.1"}
-  metosin/reitit-ring               {:mvn/version "0.11.0"}
-  ;; loaded by our own code (reitit.core, ring.util.codec), so named here, not
-  ;; left to come in through reitit-ring and ring-core
-  metosin/reitit-core               {:mvn/version "0.11.0"}
-  ring/ring-core                    {:mvn/version "1.15.6"}
-  ring/ring-codec                   {:mvn/version "1.3.0"}
+  ;; wire: its own library, github.com/p4ulcristian/wire; main makes the app's
+  ;; one wire from the :wire settings and passes it to every library
+  io.github.p4ulcristian/wire       {:git/tag "v0.2.0" :git/sha "d66b7cb"}
+  ;; the settings and the browser start's options, checked by their shapes
   metosin/malli                     {:mvn/version "0.20.3"}
-  ;; the browser half (ClojureScript only)
-  re-frame/re-frame                 {:mvn/version "1.4.7"}
-  reagent/reagent                   {:mvn/version "2.0.1"}
-  metosin/reitit-frontend           {:mvn/version "0.11.0"}}
+  ;; logbook: the app's log, its own library, github.com/p4ulcristian/logbook;
+  ;; main makes one logbook from the :logbook settings and passes its log to every library
+  io.github.p4ulcristian/logbook    {:git/tag "v0.1.2" :git/sha "823f8fc"}
+  ;; cellar: Postgres, its own library, github.com/p4ulcristian/cellar
+  io.github.p4ulcristian/cellar     {:git/tag "v0.4.5" :git/sha "801ca83"}
+  ;; backroom: background jobs on Postgres, its own library, github.com/p4ulcristian/backroom
+  io.github.p4ulcristian/backroom   {:git/tag "v0.5.5" :git/sha "68c8fe5"}
+  ;; bridge: named messages over http, sse and ws, a handler's steps, the routes;
+  ;; both sides, its own library, github.com/p4ulcristian/bridge (it brings
+  ;; Jetty 12 through rj9a, reitit-ring and reitit-frontend)
+  io.github.p4ulcristian/bridge   {:git/tag "v0.7.5" :git/sha "35d9351"}
+  ;; doorman: who is asking and what may they do, sessions and access, its own
+  ;; library, github.com/p4ulcristian/doorman (it brings malli and test.check)
+  io.github.p4ulcristian/doorman    {:git/tag "v0.7.6" :git/sha "b9dd5b0"}
+  ;; doorbell: a change to a table rings every open screen, which asks again;
+  ;; both sides, its own library, github.com/p4ulcristian/doorbell
+  io.github.p4ulcristian/doorbell   {:git/tag "v0.5.6" :git/sha "63001f7"}
+  ;; parlor: the browser's screens over doorbell's question store, in re-frame,
+  ;; drawn with Reagent (it brings re-frame and Reagent; react and react-dom
+  ;; are package.json's); the browser's side only, its own library,
+  ;; github.com/p4ulcristian/parlor
+  io.github.p4ulcristian/parlor     {:git/tag "v0.7.6" :git/sha "19e4540"}
+  ;; dictionary: which language a request, a page and an address are in; both
+  ;; sides, its own library, github.com/p4ulcristian/dictionary (parlor brings
+  ;; it to the browser too)
+  io.github.p4ulcristian/dictionary {:git/tag "v0.2.1" :git/sha "bfea9bd"}
+  ;; meter: the app's metrics, its own library, github.com/p4ulcristian/meter;
+  ;; main makes one meter from the :meter settings and passes it to every
+  ;; library that counts, and serves its text at the :metrics route
+  io.github.p4ulcristian/meter      {:git/tag "v0.1.4" :git/sha "bf81c46"}
+  ;; attic: the app's files, its own library, github.com/p4ulcristian/attic;
+  ;; main makes one attic from the :attic :storage settings, migrates its files
+  ;; table and serves its upload route at :attic :upload :path
+  io.github.p4ulcristian/attic     {:git/tag "v0.1.3" :git/sha "15183ab"}
+  ;; postbox: the app's email, its own library, github.com/p4ulcristian/postbox;
+  ;; main makes one postbox from the :postbox :sending settings, runs its
+  ;; background job kind, migrates its emails table and serves its webhooks
+  io.github.p4ulcristian/postbox   {:git/tag "v0.1.3" :git/sha "8eca8bf"}
+  ;; safe: the settings and their secrets, its own library, github.com/p4ulcristian/safe;
+  ;; an app loads its settings with safe/load, every secret in them wrapped (it prints
+  ;; as its name); groundwork compares the :errors token with safe/equal?
+  io.github.p4ulcristian/safe       {:git/tag "v0.1.1" :git/sha "72d0dbb"}
+  ;; study: the REPL into the running app, by the :study settings, with
+  ;; groundwork's tools in study.tools; its own library, github.com/p4ulcristian/study
+  io.github.p4ulcristian/study      {:git/tag "v0.1.2" :git/sha "94df041"}}
 
  :aliases
- {;; npm install && npx shadow-cljs compile test   (the browser half's tests, on node)
-  :cljs {:extra-paths ["test"]
-         :extra-deps  {thheller/shadow-cljs {:mvn/version "3.5.7"}}}
+ {;; every test:                  clojure -X:test
+  ;; one library's tests:         clojure -X:test :dirs '["test-code/groundwork/server/main"]'
+  :test {:extra-paths ["test-code"]
+         :extra-deps  {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}
+                       ;; the browser build's test compiles every browser library, and the
+                       ;; end-to-end test release-builds its sample app
+                       io.github.p4ulcristian/showroom {:git/tag "v0.4.1" :git/sha "ac1139d"}}
+         :exec-fn     cognitect.test-runner.api/test
+         :exec-args   {:dirs ["test-code"]}}
 
-  ;; clojure -X:test   (local database groundwork_test, see test/groundwork/postgres_test.clj)
-  :test {:extra-paths ["test"]
-         :extra-deps  {io.github.cognitect-labs/test-runner
-                       {:git/tag "v0.5.1" :git/sha "dfb30dd"}
-                       ;; HikariCP logs through SLF4J; the app picks a logger, tests pick none
-                       org.slf4j/slf4j-nop {:mvn/version "2.0.20"}
-                       ;; groundwork.permissions.leaks generates params
-                       org.clojure/test.check {:mvn/version "1.1.3"}
-                       ;; groundwork.repl.dev, the development start
-                       nrepl/nrepl {:mvn/version "1.8.0"}
-                       ;; groundwork.build, compiling the example app in build-test
-                       thheller/shadow-cljs {:mvn/version "3.5.7"}}
-         :exec-fn     cognitect.test-runner.api/test}}}
+  ;; the browser build: showroom, its own library, github.com/p4ulcristian/showroom
+  ;; (it brings shadow-cljs). Only to build, never in production: it is in these
+  ;; aliases, not in :deps. Development: add :browser-build to the REPL or the dev start
+  ;; (its watch options are the :browser-build {:watch …} settings).
+  ;; The deploy:  clojure -X:browser-release (an app writes its own :entry and :files-folder)
+  :browser-build   {:extra-deps {io.github.p4ulcristian/showroom {:git/tag "v0.4.1" :git/sha "ac1139d"}}}
+  :browser-release {:extra-deps {io.github.p4ulcristian/showroom {:git/tag "v0.4.1" :git/sha "ac1139d"}}
+                    :exec-fn    showroom.api/build-for-release!
+                    :exec-args  {:entry              app.browser.main/start!
+                                 :modules            {}               ; the app's :browser-modules, loaded on demand
+                                 :files-folder       "target/public"
+                                 :cache-folder       ".shadow-cljs"   ; shadow-cljs's cache
+                                 :compile-threads    4
+                                 :output-feature-set :es2020          ; what the browsers must understand
+                                 :source-maps?       false            ; a .map beside each file, readable by anyone
+                                 :gzip-level         9}}}}            ; the .gz copies, 1 (fast) to 9 (smallest)

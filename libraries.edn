@@ -1,0 +1,35 @@
+;; groundwork's libraries, by side, and which others each may use.
+;; test-code/groundwork/libraries_test.clj checks every namespace against it:
+;; a library requires only the libraries it lists, and only their api;
+;; nobody uses another around a circle. wire is a library of its own
+;; (github.com/p4ulcristian/wire): any library may use it, through wire.api only.
+;; So is cellar, Postgres (github.com/p4ulcristian/cellar): any server library
+;; may use it, through cellar.api only. So is backroom, background jobs
+;; (github.com/p4ulcristian/backroom): any server library may use it, through
+;; backroom.api only. So is showroom, the browser build and the stylesheets it
+;; bundles (github.com/p4ulcristian/showroom): only to build, never in
+;; production, so no server namespace requires it (main loads it only when it
+;; watches, by requiring-resolve); a browser namespace names its stylesheets
+;; through showroom.api only. So is bridge, how the browser and the server
+;; talk, with a handler's steps and the routes (github.com/p4ulcristian/bridge):
+;; any library on either side may use it, through bridge.api only. So is
+;; doorman, who is asking and what they may do, sessions and access
+;; (github.com/p4ulcristian/doorman): any server library may use it, through
+;; doorman.api only; a browser library too, for the shape of "what may I
+;; do?"'s answer, which doorman.api's browser half holds. So is doorbell, a change to a table rings every open
+;; screen, which asks again (github.com/p4ulcristian/doorbell): any library on
+;; either side may use it, through doorbell.api only. So is logbook, the app's
+;; log (github.com/p4ulcristian/logbook): any server library may use it, through
+;; logbook.api only. So is parlor, the browser's screens over doorbell's
+;; question store, in re-frame (github.com/p4ulcristian/parlor): any browser
+;; library may use it, through parlor.api only; re-frame.core beside it, for
+;; its events and subscriptions. So is dictionary, which language a request, a
+;; page and an address are in (github.com/p4ulcristian/dictionary): any library
+;; on either side may use it, through dictionary.api only. So are attic, the
+;; app's files (github.com/p4ulcristian/attic), and postbox, its email
+;; (github.com/p4ulcristian/postbox): any server library may use them, through
+;; attic.api and postbox.api only. So is safe, the settings and their secrets
+;; (github.com/p4ulcristian/safe): the server's only, through safe.api only; an
+;; app loads its settings with it, and groundwork compares a secret token with it.
+{:server  {:main #{}}
+ :browser {:main #{}}}

@@ -1,6 +1,6 @@
 # re-frame and Reagent in the browser
 
-> **Changed in part** by [A namespace names its stylesheets](2026-10-17-a-namespace-names-its-stylesheets.md) (2026-10-17): Groundwork bundles and loads the stylesheets an app's namespaces name, under a `:styles` setting; the CSS itself stays the app's.
+> **Changed in part** by [A namespace names its stylesheets](https://github.com/p4ulcristian/showroom/blob/main/decisions/2026-10-17-a-namespace-names-its-stylesheets.md) (2026-10-17): Groundwork bundles and loads the stylesheets an app's namespaces name, under a `:styles` setting; the CSS itself stays the app's.
 
 **Decision:** Groundwork's browser side is re-frame for state and Reagent for drawing. Groundwork decides the plumbing there: the store of server answers, how a screen says what it needs (entering a route, opening a panel), sending writes, the "can I?" subscription, and browser routing (reitit, as on the server). Its own events and subscriptions are named under `:groundwork/…`.
 

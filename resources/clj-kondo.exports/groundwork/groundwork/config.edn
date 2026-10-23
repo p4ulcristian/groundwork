@@ -1,4 +1,0 @@
-{:lint-as {groundwork.postgres/defsql           clojure.core/declare
-           groundwork.postgres/with-transaction next.jdbc/with-transaction}
- ;; a screen loaded on demand is named by a namespace nothing requires
- :config-in-call {shadow.lazy/loadable {:linters {:unresolved-namespace {:level :off}}}}}

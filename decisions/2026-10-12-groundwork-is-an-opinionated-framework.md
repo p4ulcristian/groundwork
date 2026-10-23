@@ -1,5 +1,7 @@
 # Groundwork is an opinionated framework
 
+> **Changed in part** by [Groundwork is the default composition](2026-10-22-groundwork-is-the-default-composition.md) (2026-10-22): the opinions are the default composition, given as data an app can read and extend.
+
 > Replaces [Groundwork is a flexible framework](2026-10-12-groundwork-is-a-flexible-framework.md).
 
 **Decision:** Groundwork makes the decisions and solves the hard parts. An app only adds what is its own: settings, tables and migrations, queries and endpoints, permissions (actions, scope, roles), its login, and its pages. When an app needs something new, Groundwork changes, behind a setting, and every app gets it. Inside, Groundwork is still built from parts wired by Integrant, but that is its own business: an app's settings don't list or replace parts.

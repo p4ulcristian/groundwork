@@ -1,8 +1,8 @@
 # Shared rows have an owner
 
-> **Replaced** by [Shared rows may belong to nobody](2026-10-16-shared-rows-may-belong-to-nobody.md) (2026-10-16): a row every scope reads may have no owner.
+> **Replaced** by [Shared rows may belong to nobody](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-16-shared-rows-may-belong-to-nobody.md) (2026-10-16): a row every scope reads may have no owner.
 
-> Adds to [A record may wait for its scope](2026-10-13-a-record-may-wait-for-its-scope.md) and [An action can be open](2026-10-13-an-action-can-be-open.md).
+> Adds to [A record may wait for its scope](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-13-a-record-may-wait-for-its-scope.md) and [An action can be open](2026-10-13-an-action-can-be-open.md).
 
 **Decision:** a row that every scope reads belongs to a real scope, the one whose people keep it (the platform's own scope), never to no scope. Others read it through an open action in that scope. An endpoint can name its scope as "the one in the request, and always also this fixed scope", so one read returns a shop's own rows and the shared ones; both scopes are verified, and the watch holds both.
 

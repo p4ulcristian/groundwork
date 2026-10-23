@@ -1,18 +1,18 @@
 {
   "name": "groundwork",
   "private": true,
-  "description": "Groundwork's browser half: its npm dependencies and the ClojureScript test build",
+  "description": "groundwork's npm dependencies (big.js for wire.big's exact decimals, react and react-dom for parlor's Reagent, process for react's code in the browser build, intl-messageformat for dictionary's texts) and the ClojureScript test build",
   "scripts": {
     "test": "shadow-cljs compile test"
   },
   "dependencies": {
     "big.js": "7.0.1",
+    "intl-messageformat": "12.1.3",
+    "process": "0.11.10",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "browserslist": "4.29.4",
-    "lightningcss": "1.33.0",
     "shadow-cljs": "3.5.7"
   }
 }
