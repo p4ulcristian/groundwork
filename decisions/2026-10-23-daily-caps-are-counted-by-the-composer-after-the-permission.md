@@ -1,6 +1,6 @@
 # Daily caps are counted by the composer, in Postgres, after the permission check
 
-> The user's decision, 2026-10-23, from Iron Rainbow's port (GROUNDWORK-GAPS.md, P8: 53 handlers cap a person per day; `:feedback/send-email` has three limits). Built on tidy-up, not released.
+> The user's decision, 2026-10-23, from Iron Rainbow's port (GROUNDWORK-GAPS.md, P8: 53 handlers cap a person per day; `:feedback/send-email` has three limits). Built on tidy-up, not released. The over-cap reason, the pool of its own and the two statements per cap, first settled while building (below), are the Decision by the user's yes, 2026-10-23, in the review of the build.
 
 **What was wrong:** bridge had one `:rate-limit` per handler, a token bucket in this server's memory: a deploy reset it, each server counted on its own, and it was checked before doorman's permission, so people who may not call a handler could spend a cap shared by everyone.
 
@@ -11,16 +11,20 @@
 :daily-caps [{:max 10 :per :asker} {:max 300 :per :everyone}]   ; the composer's: budgets, in Postgres
 ```
 
-- **Counted by the composer**, in its own table (`groundwork.daily_cap_counts`, beside its run-once keys), by a step right after doorman's check and before the handler's steps: one upsert per capped call, in its own statement.
+- **Counted by the composer**, in its own table (`groundwork.daily_cap_counts`, beside its run-once keys), by a step right after doorman's check and before the handler's steps.
+- **On a pool of its own**, `:daily-caps {:pool-size n}`, required: the count commits at once, outside doorman's transaction, and never waits for a second connection of the app's pool while the step holds one.
+- **Two statements per cap**, each cap's row locked, then all counted only when each is below its `:max`: a call refused by one cap spends no other (an asker over their own cap spends nothing of everyone's).
 - **A day is a UTC date.** **Every allowed call counts** (the safe side for mail and money), whether or not the handler's work commits.
-- **Over a cap:** `:bridge/too-many {:retry-after-ms …}`, the time until midnight UTC.
+- **Over a cap:** `:groundwork/daily-cap-reached {:retry-after-ms …}`, the time until midnight UTC: a reason belongs to the library whose step makes it, and the step is the composer's.
 - `:per` is `:asker` (the person, visitor or token's person) or `:everyone`.
 
 **Why:** exact across servers and deploys, and only people allowed to call a handler spend its shared budget. Only the composer knows both who is allowed (doorman) and the database (cellar).
 
-**The price:** one more key on every handler, and one statement per capped call.
+**The price:** one more key on every handler, a small pool of its own, and two statements per cap of a capped call.
 
 **Instead of:**
+- **`:bridge/too-many` over a cap**: bridge's reason, given by bridge's own step; the cap's step is the composer's
+- **one upsert per capped call, on the app's pool**: a call refused by one cap would have spent the others, and the step would ask for a second connection while holding doorman's
 - **bridge's `:rate-limit` as a list with a database hook**: bridge, the transport, would count before the permission
 - **each app counting in its own steps**: written again for every capped handler
 - **doorman counting**: doorman answers "may they", not "how many today"

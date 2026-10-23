@@ -271,6 +271,12 @@ transaction commits (cellar's `run-after-commit!`, which a step may call
 itself for any work that may be lost: a cache, a harmless outside call;
 work that must happen is a background job queued in the same transaction:
 [cellar's decision](https://github.com/p4ulcristian/cellar/blob/tidy-up/decisions/2026-10-23-a-transaction-keeps-work-to-run-after-its-commit.md)).
+Every transaction groundwork opens for app code carries the log of
+whoever asked (cellar's `:log`): doorman's check, the message's, with its
+request id and person; a job's, with its id and kind; a route's
+`run-as-asker!` and `run-as-system!`, the route's; postbox's webhook
+functions, the app's. Work kept after the commit that fails is written
+there, `:error :cellar/after-commit-failed`.
 
 ```clojure
 :attic   {:storage {…}                                                   ; attic's settings, every key
@@ -351,7 +357,7 @@ cookie a request that isn't a GET must come from the app's own pages, a
 request with both a cookie and a token is refused, else 403, its body the
 text of `:doorman/not-allowed` in the request's language. The handler
 gets what doorman found (`asker`), `run-as-asker!` (a transaction as the
-request's asker, held by the gates), `answer-as` (a message answered as
+request's asker, held by the gates, carrying the route's log), `answer-as` (a message answered as
 the request's asker, through every check a browser's message gets and each
 handler's rate limit, counted per token or cookie), `sign-in!` and
 `sign-out!`. A `:provider` route reads no session and no token and

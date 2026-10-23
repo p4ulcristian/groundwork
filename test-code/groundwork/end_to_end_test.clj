@@ -141,6 +141,8 @@
                                                 :resolve            {}
                                                 :closure-defines    {}
                                                 :warnings-as-errors #{}
+                                                :silenced-warnings  #{}
+                                                :css                nil
                                                 :source-maps?       false
                                                 :gzip-level         1}))
     folder))
@@ -170,7 +172,7 @@
   (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'groundwork_e2e_app') THEN CREATE ROLE groundwork_e2e_app LOGIN; END IF; END $$")
   (with-out-str (main/migrate-app! app (make-database-settings owner) "groundwork_e2e_app"))
   (run-sql! owner-pool (str "INSERT INTO shops VALUES ('" annas-shop "', 'Anna''s'), ('" bobs-shop "', 'Bob''s')"))
-  (database/run-in-transaction! owner-pool {:read-only? false}
+  (database/run-in-transaction! owner-pool {:read-only? false :log nil}
                                 (fn [transaction]
                                   (doorman/add-scope! transaction sample/scope-kinds :shop annas-shop anna nil)
                                   (doorman/add-scope! transaction sample/scope-kinds :shop bobs-shop bob nil)))
@@ -286,7 +288,9 @@
                                 (= "text/event-stream" (get-in % [:params :response :mimeType])))
                           (cdp/list-events connection (:session-id anna-1) "Network.responseReceived"))
                     "the browser's sse line, answered as an event stream")
-                (is (= ["a-seed"] (wait-for-notes connection anna-1 ["a-seed"] 5000)) "shop B's b-seed never reaches her"))
+                (is (= ["a-seed"] (wait-for-notes connection anna-1 ["a-seed"] 5000)) "shop B's b-seed never reaches her")
+                (is (= "open" (cdp/wait-for connection anna-1 "document.querySelector('#line')?.dataset.line || null" 5000))
+                    "the app's :on-line-change heard it open"))
               (testing "3. Bob adds in his shop: his screen changes, Anna's doesn't; Anna adds in hers: her other open screen updates, not reloaded"
                 (cdp/go-to! connection bob-1 (str origin "/shops/" bobs-shop "/orders"))
                 (is (= ["b-seed"] (wait-for-notes connection bob-1 ["b-seed"] 10000)))
@@ -388,7 +392,9 @@
                   (Thread/sleep 500)
                   (is (= [503 "{\"status\":\"not-ready\",\"version\":\"e2e-1\",\"reason\":\"the app is stopping\"}"]
                          (get-text (str origin "/health/ready") nil)))
-                  @stopping)))
+                  @stopping
+                  (is (= "broken" (cdp/wait-for connection anna-1 "(l => l === 'broken' ? l : null)(document.querySelector('#line')?.dataset.line)" 10000))
+                      "the open page's :on-line-change heard the line break"))))
             (finally
               (cdp/quit! connection)
               (when-not @stopped? (main/stop-app! running)))))

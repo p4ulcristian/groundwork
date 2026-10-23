@@ -13,6 +13,7 @@
                                 :on-answer-failed   [:shop/answer-failed]  ; or nil: parlor's event for a failed answer
                                 :on-signed-out      [:shop/to-login]       ; or nil: parlor's, once, with the page to return to
                                 :on-move            nil                    ; or an event, given {:from page :to page}
+                                :on-line-change     [:shop/line-changed]   ; or nil: given {:line :open}, :broken or :back
                                 :query-shapes-of-pages {:orders/page nil   ; every page's, parlor's: a malli map, or nil for text
                                                         :about/page  nil}
                                 :placeholder        nil                    ; or (fn [page status]) while a page's :module loads
@@ -38,13 +39,18 @@
    opens the sse line (doorbell's messages, the app's own, and the version:
    a page older than the server reloads; reopened after
    :sse-reconnect-after-ms when the server answered with an error, and
-   every watched question asked again after any break); then starts
+   every watched question asked again after any break; the app's
+   :on-line-change dispatched with {:line :open} when it first opens,
+   {:line :broken} once per break, {:line :back} when it opens again: an
+   offline banner's status); then starts
    parlor, re-frame over the store (dispatch-sync [:parlor/start …]), with
    the store, the app's :query-shapes-of-pages and :placeholder, the
    page's languages and language, browser-build's load-module! with each
-   module's stylesheet bundle from the page, the write's send function (the one-time key parlor makes for
-   each write in the idempotency-key header, groundwork.server.main.run-once on
-   the server), the page's :retry-writes, the page's pages, the app's
+   module's stylesheet bundle from the page, the write's send function (the
+   send's options as parlor's :parlor/send wrote them, {:once-key
+   :keep-alive?}: the one-time key in the idempotency-key header,
+   groundwork.server.main.run-once on the server, and :keep-alive? as
+   bridge's, fetch's keepalive), the page's :retry-writes, the page's pages, the app's
    :questions-of-pages, :on-answer-failed and :on-move, and
    [:doorman/my-actions {}], the server's handler of doorman's, as its
    :actions-question, and the app's :on-signed-out with doorman's
@@ -182,6 +188,10 @@
    after signing in ({:page :params :query}), or nil for none.
    :on-move: parlor's, an event given {:from page :to page} after every
    move, or nil for none.
+   :on-line-change: an event given the sse line's status, {:line :open}
+   when it first opens, {:line :broken} once per break (bridge's
+   :on-break), {:line :back} when it opens again after one; or nil for
+   none.
    :exact-decimals: the browser's wire setting the page can't carry, a
    function: wire.big/big (big.js, in the app's package.json), or nil to
    keep a decimal as its text.
@@ -196,6 +206,7 @@
    [:on-answer-failed [:maybe vector?]]
    [:on-signed-out [:maybe vector?]]
    [:on-move [:maybe vector?]]
+   [:on-line-change [:maybe vector?]]
    [:query-shapes-of-pages [:map-of :qualified-keyword :any]]
    [:placeholder [:maybe fn?]]
    [:exact-decimals [:maybe map?]]])
@@ -242,18 +253,19 @@
    :sse-line}, :wire the app's one wire in the browser, and the error
    sender report-browser-error! takes it for."
   [options]
-  (let [{:keys [shapes-by-name sse-handlers questions-of-pages on-answer-failed on-signed-out on-move exact-decimals
-                query-shapes-of-pages placeholder]}
+  (let [{:keys [shapes-by-name sse-handlers questions-of-pages on-answer-failed on-signed-out on-move on-line-change
+                exact-decimals query-shapes-of-pages placeholder]}
         (check-start-options options)
         {:keys [addresses pages sse-reconnect-after-ms languages language module-stylesheets] store-settings :doorbell :as settings}
         (read-settings-from-page)
         module-stylesheets (update-keys module-stylesheets name)
         wire           (wire/make-wire-from-settings (assoc (:wire settings) :exact-decimals exact-decimals))
         shapes-by-name (make-shapes-by-name shapes-by-name)
-        send!          #(bridge/send-message! (:http addresses) shapes-by-name % {:wire wire :headers {}})
-        send-write!    (fn [message once-key]
+        send!          #(bridge/send-message! (:http addresses) shapes-by-name % {:wire wire :headers {} :keep-alive? false})
+        send-write!    (fn [message {:keys [once-key keep-alive?]}]
                          (bridge/send-message! (:http addresses) shapes-by-name message
-                                                 {:wire wire :headers {write-key-header once-key}}))
+                                                 {:wire wire :headers {write-key-header once-key} :keep-alive? keep-alive?}))
+        tell-line!     #(when on-line-change (rf/dispatch (conj on-line-change {:line %})))
         send-error!    (make-error-sender send! (:version settings))
         _              (send-errors-to-server! send-error!)
         store          (doorbell/make-question-store send! store-settings)
@@ -262,7 +274,10 @@
                                                         (doorbell/make-sse-handlers store)
                                                         {:groundwork/version #(reload-when-older! settings %)})
                                                  {:wire               wire
-                                                  :on-open            (fn [again?] (when again? (doorbell/hear-missed-changes! store)))
+                                                  :on-open            (fn [again?]
+                                                                        (when again? (doorbell/hear-missed-changes! store))
+                                                                        (tell-line! (if again? :back :open)))
+                                                  :on-break           #(tell-line! :broken)
                                                   :reconnect-after-ms sse-reconnect-after-ms})]
     (rf/dispatch-sync [:parlor/start {:store              store
                                       :send-write!        send-write!

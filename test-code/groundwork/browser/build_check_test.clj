@@ -17,7 +17,8 @@
   (let [folder (str (Files/createTempDirectory "groundwork-build" (make-array FileAttribute 0)))]
     (with-out-str (browser-build/build-for-release! {:entry              'groundwork.browser.build-check/start!
                                                 :modules            {:admin {:entries    '[groundwork.browser.build-check-admin]
-                                                                             :depends-on #{:main}}}
+                                                                             :depends-on #{:main}
+                                                                             :start      nil}}
                                                 :files-folder       folder
                                                 :cache-folder       ".shadow-cljs"
                                                 :compile-threads    4
@@ -25,6 +26,8 @@
                                                 :resolve            {}
                                                 :closure-defines    {}
                                                 :warnings-as-errors #{}
+                                                :silenced-warnings  #{}
+                                                :css                nil
                                                 :source-maps?       false
                                                 :gzip-level         9}))
     (let [js-files  (into {} (map (juxt :module-id :output-name)) (edn/read-string (slurp (io/file folder "js" "manifest.edn"))))
@@ -35,9 +38,9 @@
       (is (str/includes? (slurp (io/file folder "js" (:admin js-files))) "build-check-admin") "the module's code in its own file")
       (is (str/includes? (slurp (io/file folder "js" (:main js-files))) (:admin js-files))
           "main knows the module's hashed file, for the loader")
-      (is (= "/* groundwork/browser/build_check.css */\n.build-check { color: rebeccapurple; }\n"
+      (is (= "/*! groundwork/browser/build_check.css */\n.build-check { color: rebeccapurple; }\n"
              (slurp (io/file folder "css" (:main css-files))))
           "main's named stylesheet, whole, as written")
-      (is (= "/* groundwork/browser/build_check_admin.css */\n.build-check-admin { color: tomato; }\n"
+      (is (= "/*! groundwork/browser/build_check_admin.css */\n.build-check-admin { color: tomato; }\n"
              (slurp (io/file folder "css" (:admin css-files))))
           "and the module's, in its own bundle"))))

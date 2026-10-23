@@ -7,7 +7,7 @@
                                           :shape main/settings-shape          ; checked against settings-shape
                                           :env   (System/getenv)})
         :browser-entry        'app.browser.main/start!  ; the function the page runs
-        :browser-modules      {}                    ; browser-build's :modules, loaded on demand: {:admin {:entries [app.admin.page] :depends-on #{:main}}}
+        :browser-modules      {}                    ; browser-build's :modules, loaded on demand: {:admin {:entries [app.admin.page] :depends-on #{:main} :start nil}}
         :tables               [shops orders]        ; table maps, with :access and :doorbell
         :extensions           []                    ; cellar's: the database's extensions
         :functions            []                    ; cellar's: the .sql files of the app's functions
@@ -633,9 +633,11 @@
 
 (defn- run-as-system-actor!
   "backroom's :run-in-transaction-as: a job's one transaction as its
-   kind's :system-actor, doorman's run-as-system!, read and write."
-  [pool system-actor f]
-  (doorman/run-as-system! pool system-actor {:read-only? false} f))
+   kind's :system-actor, doorman's run-as-system!, read and write,
+   carrying the job's log (work kept with run-after-commit! that fails is
+   written there, with the job's id and kind)."
+  [pool system-actor log f]
+  (doorman/run-as-system! pool system-actor {:read-only? false :log log} f))
 
 (def ^:private postbox-system-actor
   "The system actor postbox's webhook functions run as (doorman's
@@ -654,7 +656,7 @@
       (into (visitors/make-visitor-routes wire pool settings))
       (into (files/make-upload-routes running-attic wire log pool find-session-step may-upload? settings))
       (into (postbox/make-webhook-routes running-postbox (get-in settings [:postbox :webhooks])
-                                         {:run-in-transaction #(doorman/run-as-system! pool postbox-system-actor {:read-only? false} %)
+                                         {:run-in-transaction #(doorman/run-as-system! pool postbox-system-actor {:read-only? false :log log} %)
                                           :on-delivery-event  on-delivery-event
                                           :on-inbound-email   on-inbound-email}))
       (into (bridge/make-routes-for-messages

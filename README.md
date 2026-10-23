@@ -102,7 +102,7 @@ or an app's own route is in the request's language; the running app's
 binds the language of its row, `(dictionary/with-language texts "de" …)`. The routing has queries (read by a
 page's shape), scrolling, a question before leaving unsaved changes, and
 modules loaded on demand (the app's `:browser-modules`, browser-build's, each
-with its stylesheets): [the decision](decisions/2026-10-23-routing-extras-each-where-it-belongs.md).
+with its stylesheets and its `:start`, nil for none): [the decision](decisions/2026-10-23-routing-extras-each-where-it-belongs.md).
 And how much the app does, on the server:
 [meter](https://github.com/p4ulcristian/meter); groundwork makes the app's one
 meter from the `:meter` settings and hands it to cellar's pool, bridge's

@@ -237,7 +237,7 @@
                                             (render-page request page
                                                          {:nonce         nonce
                                                           :asker         (asker/read-asker context)
-                                                          :run-as-asker! (asker/make-run-as-asker pool request settings scope-kinds)}))]
+                                                          :run-as-asker! (asker/make-run-as-asker pool request settings scope-kinds (:bridge/log context))}))]
           (if (= :redirect (:answer rendered))
             {:status  (:status rendered)
              :headers {"location" (:location rendered) "cache-control" "no-store"}

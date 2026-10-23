@@ -28,8 +28,9 @@
      {:asker          {:person-id … :visitor-id … :session-flags #{…}}   ; what doorman found, to read
       :log            the app's log, saying who asked
       :run-as-asker!  (fn [{:keys [read-only?]} f]) f in a transaction as the request's asker,
-                      held by the gates (doorman's run-as-asker-of-request!)
-      :run-as-system! (fn [system-name {:keys [read-only?]} f]) doorman's
+                      held by the gates (doorman's run-as-asker-of-request!), carrying
+                      :log (cellar's: work kept with run-after-commit! that fails is written there)
+      :run-as-system! (fn [system-name {:keys [read-only?]} f]) doorman's, carrying :log too
       :answer-as      (fn [message request]) a message answered as the request's asker, through
                       every check (groundwork.server.main.answer-as): a route that speaks
                       another protocol (MCP's JSON-RPC) turns a call into a message
@@ -95,13 +96,21 @@
    :headers {"content-type" "text/plain; charset=utf-8" "cache-control" "no-store"}
    :body    (dictionary/tr reason (or data {}))})
 
+(defn- make-run-as-system
+  "(fn [system-name {:keys [read-only?]} f]): doorman's run-as-system!, its
+   transaction carrying log, the route's (cellar's :log: work kept with
+   run-after-commit! that fails is written there)."
+  [pool log]
+  (fn [system-name {:keys [read-only?]} f]
+    (doorman/run-as-system! pool system-name {:read-only? read-only? :log log} f)))
+
 (defn- make-person-tools
   [request context {:keys [pool scope-kinds tables settings answer-as]}]
   (let [asker (asker/read-asker context)]
     {:asker          asker
      :log            (:bridge/log context)
-     :run-as-asker!  (asker/make-run-as-asker pool request settings scope-kinds)
-     :run-as-system! (fn [system-name options f] (doorman/run-as-system! pool system-name options f))
+     :run-as-asker!  (asker/make-run-as-asker pool request settings scope-kinds (:bridge/log context))
+     :run-as-system! (make-run-as-system pool (:bridge/log context))
      :answer-as      answer-as
      :sign-in!       (fn [person-id session-flags]
                        (doorman/sign-in! pool request person-id {:settings      (:sessions settings)
@@ -119,7 +128,7 @@
 (defn- make-provider-handler [handler {:keys [log pool]}]
   (fn [request]
     (handler request {:log            log
-                      :run-as-system! (fn [system-name options f] (doorman/run-as-system! pool system-name options f))})))
+                      :run-as-system! (make-run-as-system pool log)})))
 
 (defn- add-rate-limit [ring-handler rate-limit find-rate-limit-key {:keys [settings]}]
   (if rate-limit

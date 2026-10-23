@@ -82,7 +82,7 @@
    :reports/page {:address "/reports" :title "Reports" :module "reports"}})
 
 (def browser-modules
-  {:reports {:entries '[groundwork-test.sample.reports] :depends-on #{:main}}})
+  {:reports {:entries '[groundwork-test.sample.reports] :depends-on #{:main} :start nil}})
 
 (defn make-app
   "The app groundwork's start-app! takes, with these settings."

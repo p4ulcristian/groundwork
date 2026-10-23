@@ -7,9 +7,12 @@ from those and its required `:exact-decimals` option (`wire.big/big` or nil),
 passes it to bridge and returns it (`:wire`), makes the question store (doorbell's, with the page's `:doorbell`
 settings), opens the sse line (doorbell's messages, the app's own, and the version: a page older than
 the server reloads, once per version; reopened after the sse delay when the
-server answered with an error), then starts parlor (`[:parlor/start …]`, with
-the store, the write's send function (parlor's one-time key in the
-`idempotency-key` header), the page's `:retry-writes`, the pages, the app's `:questions-of-pages`,
+server answered with an error; the app's `:on-line-change` dispatched with
+`{:line :open}` when it first opens, `{:line :broken}` once per break and
+`{:line :back}` when it opens again, an offline banner's status), then starts parlor (`[:parlor/start …]`, with
+the store, the write's send function (the send's options as `:parlor/send`
+wrote them, `{:once-key :keep-alive?}`: the key in the `idempotency-key`
+header, `:keep-alive?` as bridge's), the page's `:retry-writes`, the pages, the app's `:questions-of-pages`,
 `:on-answer-failed`, `:on-signed-out` (with `:doorman/signed-out` as parlor's
 `:signed-out-reason`, both nil when the app's is), `:on-move`, `:query-shapes-of-pages` and `:placeholder`, the page's
 languages and language, browser-build's `load-module!` with each module's stylesheets, and `[:doorman/my-actions {}]` as its
@@ -44,6 +47,7 @@ of the visitor's id).
                            :on-answer-failed   nil              ; or an event
                            :on-signed-out      [:app/to-login]  ; or nil: once, with the page to return to
                            :on-move            nil              ; or an event
+                           :on-line-change     nil              ; or an event, given {:line :open}, :broken or :back
                            :query-shapes-of-pages {:orders/page nil}   ; every page's: a malli map reads its query, nil text
                            :placeholder        nil              ; or (fn [page status]) while a page's :module loads
                            :exact-decimals     wire.big/big}))  ; or nil: a decimal stays its text

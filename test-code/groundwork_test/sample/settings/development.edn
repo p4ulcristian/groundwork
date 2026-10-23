@@ -34,6 +34,9 @@
                              :resolve                   {}
                              :closure-defines           {}
                              :warnings-as-errors        #{}
+                             :silenced-warnings         #{}
+                             :css                       nil
+                             :preloads                  []
                              :devtools-host             "localhost"
                              :devtools-port             9630
                              :devtools-url              nil

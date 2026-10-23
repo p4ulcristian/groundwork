@@ -1,8 +1,9 @@
 (ns groundwork-test.sample.browser
   "The sample app's browser half, for groundwork's end-to-end test: one page,
    the orders of a shop, with a form that adds one when the person may
-   (parlor's can-i?), holding the page while a note is unsaved; and a link
-   to the reports, whose page is drawn by a module loaded on demand."
+   (parlor's can-i?), holding the page while a note is unsaved; a link to
+   the reports, whose page is drawn by a module loaded on demand; and the
+   sse line's status, over every page."
   (:require
    [groundwork.browser.main.api :as main]
    [groundwork-test.sample.shapes :as shapes]
@@ -30,18 +31,32 @@
 (rf/reg-sub ::last-add
   (fn [db _] (::last-add db)))
 
+(rf/reg-event-db ::line-changed
+  (fn [db [_ {:keys [line]}]] (assoc db ::line line)))
+
+(rf/reg-sub ::line
+  (fn [db _] (::line db)))
+
+(defn- make-draft
+  "A new draft: its note, and the one-time key its Save sends, kept with
+   it, so a Save sent again is the same write."
+  []
+  {:note "" :once-key (parlor/make-once-key)})
+
 (defn- add-form [shop-id]
-  (let [note (reagent/atom "")]
+  (let [draft (reagent/atom (make-draft))]
     (fn [shop-id]
       [:form#add-form {:on-submit (fn [event]
                                     (.preventDefault event)
-                                    (rf/dispatch [:parlor/send [:orders/add {:order/shop-id shop-id :order/note @note}] [::added]])
-                                    (reset! note ""))}
-       [:input#note {:value     @note
+                                    (let [{:keys [note once-key]} @draft]
+                                      (rf/dispatch [:parlor/send [:orders/add {:order/shop-id shop-id :order/note note}] [::added]
+                                                    {:once-key once-key :keep-alive? false}]))
+                                    (reset! draft (make-draft)))}
+       [:input#note {:value     (:note @draft)
                      :on-change (fn [event]
-                                  (reset! note (.. event -target -value))
-                                  ;; the guard holds the text's key; parlor asks it in the language shown then
-                                  (rf/dispatch [:parlor/hold {:text :orders/unsaved :args {}}]))}]
+                                  (swap! draft assoc :note (.. event -target -value))
+                                  ;; the guard holds the text's key; the browser's confirm asks it in the language shown then
+                                  (rf/dispatch [:parlor/hold {:ask-with :browser-confirm :text :orders/unsaved :args {}}]))}]
        [:button#add {:type "submit"} (parlor/tr :orders/add {})]])))
 
 (defn- orders-page [shop-id]
@@ -67,7 +82,9 @@
     [:p#no-page "No such page."]))
 
 (defn- root []
-  [parlor/show-page draw-page])
+  [:<>
+   [:p#line {:data-line (some-> @(rf/subscribe [::line]) name)}]
+   [parlor/show-page draw-page]])
 
 (defn start! []
   (let [app (main/start-app! {:shapes-by-name        shapes/shapes-by-name
@@ -78,6 +95,7 @@
                              :on-answer-failed      nil
                              :on-signed-out         nil
                              :on-move               nil
+                             :on-line-change        [::line-changed]
                              :query-shapes-of-pages {:orders/page nil :reports/page nil}
                              :placeholder           (fn [_page status] [:p#module-loading (str status)])
                              :exact-decimals        nil})]

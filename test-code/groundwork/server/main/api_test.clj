@@ -139,6 +139,7 @@
                          :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                          :steps  [{:name  :remember-after-commit
                                    :enter (fn [context]
+                                            (database/run-after-commit! (:doorman/transaction context) #(throw (ex-info "the cache is gone" {})))
                                             (database/run-after-commit! (:doorman/transaction context) #(swap! after-commit-runs conj :ran))
                                             (bridge/add-answer-to-context context (empty? @after-commit-runs)))}]}
    :orders/count {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :refusals {} :rate-limit {:max 2 :per-ms 60000}
@@ -332,7 +333,7 @@
    :handlers handlers :pages {:orders/page {:address "/orders/:order-id" :title "Order"}
                               :admin/page  {:address "/admin" :title "Admin" :module "admin"}}
    :browser-entry 'app.browser.main/start!
-   :browser-modules {:admin {:entries '[app.browser.admin] :depends-on #{:main}}}
+   :browser-modules {:admin {:entries '[app.browser.admin] :depends-on #{:main} :start nil}}
    :background-job-kinds [] :schedules []})
 
 (defn- run-sql! [pool text] (database/run-statement! pool (database/make-query-from-sql-text "test" text) {}))
@@ -590,7 +591,7 @@
         (with-out-str (main/migrate-app! (make-app owner) (make-database-settings owner) "groundwork_app"))
         (run-sql! owner-pool (str "INSERT INTO shops VALUES ('" shop-7 "'), ('" shop-9 "')"))
         (run-sql! owner-pool (str "INSERT INTO shop_emails (shop_email__address, shop_email__shop_id) VALUES ('anna@shop.test', '" shop-7 "')"))
-        (database/run-in-transaction! owner-pool {:read-only? false}
+        (database/run-in-transaction! owner-pool {:read-only? false :log nil}
                                       (fn [transaction]
                                         (let [roles-of-7 (doorman/add-scope! transaction scope-kinds :shop shop-7 paul nil)]
                                           (doorman/add-scope! transaction scope-kinds :shop shop-9 bob nil)
@@ -809,10 +810,17 @@
                   (is (is-too-many? (get (json/read-value third-body) "orders/count"))))
                 (is (= [200 counted] (send-request server-port "POST" "/groundwork/http" bob-cookie "{\"orders/count\":{}}")))))
             (testing "a step's work kept by cellar's run-after-commit! runs once doorman's transaction commits"
+              (reset! lines [])
               (is (= [200 "{\"orders/after-commit\":true,\"bridge/notes\":{\"orders/after-commit\":{\"tables\":[]}}}"]
                      (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/after-commit\":{}}"))
                   "not yet while the step runs")
-              (is (= [:ran] @after-commit-runs) "run by the time the answer is back"))
+              (is (= [:ran] @after-commit-runs) "run by the time the answer is back, the one after a failed one too")
+              (let [[failed :as all] (find-lines "cellar/after-commit-failed")]
+                (is (= 1 (count all)))
+                (is (seq (get-in failed ["context" "request-id"]))
+                    "the failure is written with the message's request id: the transaction carries the message's log")
+                (is (= (str anna) (get-in failed ["context" "person-id"])) "and who asked")
+                (is (= "error" (get failed "level")))))
             (testing "daily caps: counted after doorman's check, per asker and for everyone, in Postgres"
               (let [ask     #(get (json/read-value (second (send-request server-port "POST" "/groundwork/http" %1
                                                                          (str "{\"orders/capped\":{\"shop/id\":\"" %2 "\"}}"))))
@@ -856,7 +864,7 @@
                   (is (= "{\"doorbell/changed\":{\"table\":\"shops\"}}" (read-next-data anna-line)))
                   (is (= "{\"doorbell/changed\":{\"table\":\"shops\"}}" (read-next-data bob-line))))
                 (testing "one transaction's statements on one table tell it once"
-                  (database/run-in-transaction! owner-pool {:read-only? false}
+                  (database/run-in-transaction! owner-pool {:read-only? false :log nil}
                                                 (fn [transaction]
                                                   (run-sql! transaction "UPDATE shops SET shop__id = shop__id")
                                                   (run-sql! transaction "DELETE FROM shops WHERE shop__id = '10000000-0000-4000-8000-000000000001'")))
@@ -882,7 +890,7 @@
                     (is (= [200 (str "{\"doorman/my-actions\":[]" (notes ""))] (ask-actions nil))
                         "nobody signed in, and this app opens no action to anyone: none, and nothing read")
                     (Thread/sleep 200)
-                    (database/run-in-transaction! owner-pool {:read-only? false}
+                    (database/run-in-transaction! owner-pool {:read-only? false :log nil}
                                                   (fn [transaction]
                                                     (let [staff (some #(when (= "Staff" (:name %)) (:role-id %))
                                                                       (doorman/list-roles transaction scope-kinds [:shop shop-9]))]
@@ -955,7 +963,7 @@
                   (let [kind (run-once/make-forget-keys-kind (get-in running [:settings :run-once]))]
                     (is (= :groundwork-once-keys (:system-actor kind)) "it names its system actor")
                     ;; as backroom runs it: one transaction on the app's pool, as the kind's actor
-                    (doorman/run-as-system! (:pool running) (:system-actor kind) {:read-only? false}
+                    (doorman/run-as-system! (:pool running) (:system-actor kind) {:read-only? false :log nil}
                                             (fn [transaction] ((:run kind) {:transaction transaction} {}))))
                   (is (zero? (kept-keys key-1))))))
             (testing "one message's lines, bridge's, cellar's and the app's own, carry its request id and the person"
@@ -1060,7 +1068,7 @@
                            :from "orders@shop.test" :reply-to nil :subject "Your order" :html nil :text "Thank you."
                            :metadata {"order" "71"} :attachments [] :stream "outbound"}]
                 (reset! lines [])
-                (is (= :queued (database/run-in-transaction! (:pool running) {:read-only? false}
+                (is (= :queued (database/run-in-transaction! (:pool running) {:read-only? false :log nil}
                                  #(postbox/queue-email! (:postbox running) % email))))
                 (loop [n 0]
                   (when (and (< n 100) (not= "sent" (:email/state (postbox/find-email (:pool running) "order-confirmation/71"))))
@@ -1173,7 +1181,7 @@
                      (repeatedly 20 #(ask-health server-port "/health/ready")))))
             (testing "no answer from the database (every connection held): ready answers 503 at its timeout"
               (let [release (promise)
-                    holders (doall (repeatedly 4 #(future (database/run-in-transaction! (:pool running) {:read-only? false} (fn [_] @release)))))]
+                    holders (doall (repeatedly 4 #(future (database/run-in-transaction! (:pool running) {:read-only? false :log nil} (fn [_] @release)))))]
                 (try
                   (Thread/sleep 300)
                   (let [started-at (System/currentTimeMillis)

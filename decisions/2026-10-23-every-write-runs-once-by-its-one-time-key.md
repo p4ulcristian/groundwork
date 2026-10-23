@@ -1,5 +1,7 @@
 # Every write runs once, by its one-time key
 
+> **Changed in part** by [The composer takes the browser builder's changes](2026-10-23-the-composer-takes-the-browser-builders-changes.md) (2026-10-23, built on tidy-up, not released): the key is the caller's, made with `parlor/make-once-key` when a draft starts and passed in `:parlor/send`'s options; parlor no longer makes one per send.
+
 > **Changed in part** by [The composer takes named refusals](2026-10-23-the-composer-takes-named-refusals.md) (2026-10-23, built on tidy-up, not released): the run-once refusals are named reasons, `:groundwork/once-key-not-a-uuid` and `:groundwork/once-key-of-someone-else`, and a write whose answer doesn't fit answers `:bridge/failed`.
 
 > **Changed in part** by [Every background job runs as its kind's system actor](2026-10-23-every-background-job-runs-as-its-kinds-system-actor.md) (2026-10-23, built on tidy-up, not released): the job that forgets old keys runs as `:groundwork-once-keys`.

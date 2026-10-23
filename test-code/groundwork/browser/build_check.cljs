@@ -24,7 +24,8 @@
 (defn- root []
   [:div {:class "build-check"}
    [:a {:href "/admin?tab=people"} "Admin"]
-   [:button {:on-click #(rf/dispatch [:parlor/hold {:text :orders/unsaved :args {}}])} "Edit"]
+   [:button {:on-click #(rf/dispatch [:parlor/hold {:ask-with [:build-check/ask-leave] :text :orders/unsaved :args {}}])} "Edit"]
+   [:button {:on-click #(rf/dispatch [:parlor/go-to :admin/page {} {:tab :people} :push])} "People"]
    [parlor/show-page draw-page]])
 
 (defn start! []
@@ -35,6 +36,7 @@
                     :on-answer-failed   nil
                     :on-signed-out      [:build-check/to-login]
                     :on-move            nil
+                    :on-line-change     nil
                     :query-shapes-of-pages {:orders/page nil
                                             :admin/page  [:map [:tab {:optional true} :keyword]]}
                     :placeholder        (fn [_ status] [:p "Loading… " (name status)])

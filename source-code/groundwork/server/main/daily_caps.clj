@@ -114,7 +114,8 @@
   (let [most-by-counted-for (reduce (fn [most {:keys [max per]}]
                                       (update most (find-counted-for per context client-address-header) (fnil min max) max))
                                     (sorted-map) daily-caps)]
-    (database/run-in-transaction! counting-pool {:read-only? false}
+    ;; groundwork's own, never handed to app code: keeps no work
+    (database/run-in-transaction! counting-pool {:read-only? false :log nil}
       (fn [transaction]
         (let [row-of   (fn [counted-for] {:daily-cap-count/message-name message-name
                                           :daily-cap-count/counted-for  counted-for
