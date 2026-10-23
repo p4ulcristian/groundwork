@@ -8,24 +8,24 @@
  {org.clojure/clojure               {:mvn/version "1.12.6"}
   ;; groundwork-shaped-json: its own library, github.com/p4ulcristian/groundwork-shaped-json; main makes the app's
   ;; one shaper from the :shaped-json settings and passes it to every library
-  io.github.p4ulcristian/groundwork-shaped-json       {:git/tag "v0.2.1" :git/sha "900a84d"}
+  io.github.p4ulcristian/groundwork-shaped-json       {:git/tag "v0.2.2" :git/sha "1c0fcf9"}
   ;; the settings and the browser start's options, checked by their shapes
   metosin/malli                     {:mvn/version "0.20.3"}
   ;; groundwork-logs: the app's log, its own library, github.com/p4ulcristian/groundwork-logs;
   ;; main makes one logger from the :logs settings and passes its log to every library
-  io.github.p4ulcristian/groundwork-logs    {:git/tag "v0.1.2" :git/sha "823f8fc"}
+  io.github.p4ulcristian/groundwork-logs    {:git/tag "v0.1.3" :git/sha "8d1846e"}
   ;; groundwork-postgres: Postgres, its own library, github.com/p4ulcristian/groundwork-postgres
   ;; on its tidy-up branch, not released: a table map writes out :uniques and :checks, a
   ;; reference what it does, an index as a map; migrate! takes {:tables :extensions :functions
   ;; :views}, a function a file or one a library made, and drops a function in the tables'
   ;; folders that nothing declared makes; a column's type changed by a change; run-after-commit!;
   ;; run-in-transaction! takes the caller's :log, where an after-commit failure is written
-  io.github.p4ulcristian/groundwork-postgres     {:git/tag "v0.4.6" :git/sha "4396e6b"}
+  io.github.p4ulcristian/groundwork-postgres     {:git/tag "v0.4.7" :git/sha "d6f226c"}
   ;; groundwork-background-jobs: background jobs on Postgres, its own library, github.com/p4ulcristian/groundwork-background-jobs
   ;; on its tidy-up branch, not released: a job kind names its system actor, and its one
   ;; transaction (the work and the done-mark) runs as it, opened by groundwork-access's run-as-system!,
   ;; carrying the job's log; its tables in groundwork-postgres's tidy-up shapes
-  io.github.p4ulcristian/groundwork-background-jobs   {:git/tag "v0.5.6" :git/sha "43acc7c"}
+  io.github.p4ulcristian/groundwork-background-jobs   {:git/tag "v0.5.7" :git/sha "c19386e"}
   ;; bridge: named messages over http, sse and ws, a handler's steps, the routes;
   ;; both sides, its own library, github.com/p4ulcristian/groundwork-bridge (it brings
   ;; Jetty 12 through rj9a, reitit-ring and reitit-frontend)
@@ -34,7 +34,7 @@
   ;; named reason, declared on its handler; answer-message counts on the app's meter;
   ;; send-message! takes :keep-alive?; an sse line tells its break (:on-break); go-to-page!
   ;; takes :push or :replace; :may-leave? is asked with the move, finish-move! finishes it
-  io.github.p4ulcristian/groundwork-bridge   {:git/tag "v0.7.8" :git/sha "90dd8fa"}
+  io.github.p4ulcristian/groundwork-bridge   {:git/tag "v0.7.9" :git/sha "8967097"}
   ;; groundwork-access: who is asking and what may they do, sessions and access, its own
   ;; library, github.com/p4ulcristian/groundwork-access (it brings malli and test.check)
   ;; on its tidy-up branch, not released: a handler says where it acts; tokens; roles have
@@ -42,12 +42,12 @@
   ;; its tables in groundwork-postgres's tidy-up shapes, its own functions declared by their files, those
   ;; made from the sentences handed to the app (make-access-functions); every transaction it
   ;; opens carries its caller's log (the check's, the message's)
-  io.github.p4ulcristian/groundwork-access    {:git/tag "v0.7.10" :git/sha "8d59580"}
+  io.github.p4ulcristian/groundwork-access    {:git/tag "v0.7.11" :git/sha "fa22575"}
   ;; groundwork-live-updates: a change to a table rings every open screen, which asks again;
   ;; both sides, its own library, github.com/p4ulcristian/groundwork-live-updates
   ;; on its tidy-up branch, not released: an ask with no answer is bridge's :groundwork-bridge/no-answer;
   ;; groundwork_live_updates.tell() declared to groundwork-postgres by its file (function-files)
-  io.github.p4ulcristian/groundwork-live-updates   {:git/tag "v0.5.9" :git/sha "60cab75"}
+  io.github.p4ulcristian/groundwork-live-updates   {:git/tag "v0.5.10" :git/sha "17083cd"}
   ;; groundwork-screens: the browser's screens over groundwork-live-updates's question store, in re-frame,
   ;; drawn with Reagent (it brings re-frame and Reagent; react and react-dom
   ;; are package.json's); the browser's side only, its own library,
@@ -56,36 +56,36 @@
   ;; in views; :on-signed-out with the page; the unsaved-changes guard takes a key and
   ;; :ask-with; every send writes out {:once-key :keep-alive?}; a move writes :push or
   ;; :replace; find-answer reads a held answer in an event handler
-  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.4" :git/sha "3e89966"}
+  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.5" :git/sha "eadc3ed"}
   ;; groundwork-languages: which language a request, a page and an address are in; both
   ;; sides, its own library, github.com/p4ulcristian/groundwork-languages (groundwork-screens brings
   ;; it to the browser too)
   ;; on its tidy-up branch, not released: with-language refuses a nil language or bad texts;
   ;; check-texts-of-reasons; tr is the one text call on the server
-  io.github.p4ulcristian/groundwork-languages {:git/tag "v0.4.2" :git/sha "a3aa64d"}
+  io.github.p4ulcristian/groundwork-languages {:git/tag "v0.4.3" :git/sha "75b7b30"}
   ;; groundwork-metrics: the app's metrics, its own library, github.com/p4ulcristian/groundwork-metrics;
   ;; main makes one meter from the :meter settings and passes it to every
   ;; library that counts, and serves its text at the :metrics route
-  io.github.p4ulcristian/groundwork-metrics      {:git/tag "v0.1.4" :git/sha "bf81c46"}
+  io.github.p4ulcristian/groundwork-metrics      {:git/tag "v0.1.5" :git/sha "1cffe8e"}
   ;; groundwork-file-storage: the app's files, its own library, github.com/p4ulcristian/groundwork-file-storage;
   ;; main makes one file storage from the :file-storage :storage settings, migrates its files
   ;; table and serves its upload route at :file-storage :upload :path
   ;; on its tidy-up branch, not released: its files table in groundwork-postgres's tidy-up shapes;
   ;; delete-file-after-commit!, by groundwork-postgres's run-after-commit!
-  io.github.p4ulcristian/groundwork-file-storage     {:git/tag "v0.1.4" :git/sha "ee84b16"}
+  io.github.p4ulcristian/groundwork-file-storage     {:git/tag "v0.1.5" :git/sha "eb6a725"}
   ;; groundwork-email: the app's email, its own library, github.com/p4ulcristian/groundwork-email;
   ;; main makes one mailer from the :email :sending settings, runs its
   ;; background job kind, migrates its emails table and serves its webhooks
   ;; on its tidy-up branch, not released: the sending job runs as the :system-actor the app names;
   ;; its emails table in groundwork-postgres's tidy-up shapes
-  io.github.p4ulcristian/groundwork-email   {:git/tag "v0.1.4" :git/sha "4a12d5b"}
+  io.github.p4ulcristian/groundwork-email   {:git/tag "v0.1.5" :git/sha "a1d09a8"}
   ;; groundwork-settings: the settings and their secrets, its own library, github.com/p4ulcristian/groundwork-settings;
   ;; an app loads its settings with settings/load, every secret in them wrapped (it prints
   ;; as its name); groundwork compares the :errors token with settings/equal?
-  io.github.p4ulcristian/groundwork-settings       {:git/tag "v0.1.1" :git/sha "72d0dbb"}
+  io.github.p4ulcristian/groundwork-settings       {:git/tag "v0.1.2" :git/sha "25dfbf7"}
   ;; groundwork-live-repl: the REPL into the running app, by the :live-repl settings, with
   ;; groundwork's tools in groundwork-live-repl.tools; its own library, github.com/p4ulcristian/groundwork-live-repl
-  io.github.p4ulcristian/groundwork-live-repl      {:git/tag "v0.1.2" :git/sha "94df041"}}
+  io.github.p4ulcristian/groundwork-live-repl      {:git/tag "v0.1.3" :git/sha "db5bd86"}}
 
  :aliases
  {;; every test:                  clojure -X:test
@@ -94,7 +94,7 @@
          :extra-deps  {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                        ;; the browser build's test compiles every browser library, and the
                        ;; end-to-end test release-builds its sample app
-                       io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.4.4" :git/sha "f69ed00"}}
+                       io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.4.5" :git/sha "268e20f"}}
          :exec-fn     cognitect.test-runner.api/test
          :exec-args   {:dirs ["test-code"]}}
 
@@ -106,8 +106,8 @@
   ;; aliases, not in :deps. Development: add :browser-build to the REPL or the dev start
   ;; (its watch options are the :browser-build {:watch …} settings).
   ;; The deploy:  clojure -X:browser-release (an app writes its own :entry and :files-folder)
-  :browser-build   {:extra-deps {io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.4.4" :git/sha "f69ed00"}}}
-  :browser-release {:extra-deps {io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.4.4" :git/sha "f69ed00"}}
+  :browser-build   {:extra-deps {io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.4.5" :git/sha "268e20f"}}}
+  :browser-release {:extra-deps {io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.4.5" :git/sha "268e20f"}}
                     :exec-fn    groundwork-browser-build.api/build-for-release!
                     :exec-args  {:entry              app.browser.main/start!
                                  :modules            {}               ; the app's :browser-modules, loaded on demand, each with its :start
