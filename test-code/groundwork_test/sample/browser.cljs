@@ -68,7 +68,7 @@
      [:h1#title (screens/tr :orders/title {})]
      (case status
        (:ready :refresh-error) (into [:ul#orders] (for [{:order/keys [id note]} data] ^{:key (str id)} [:li.order {:data-id (str id)} note]))
-       :error                  [:p#refused (screens/tr (:groundwork-bridge/refused error) (:groundwork-bridge/data error))]   ; another's shop: :groundwork-access/not-found
+       :error                  [:p#refused (screens/tr (:groundwork-steps/refused error) (:groundwork-steps/data error))]   ; another's shop: :groundwork-access/not-found
        [:p#loading (name (or status :none))])
      (when can-add? [add-form shop-id])
      [:p#last-add (when last-add (str (name (:status last-add)) " " (some-> last-add :data :order/id str)))]

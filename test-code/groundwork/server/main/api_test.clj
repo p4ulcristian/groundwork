@@ -31,7 +31,7 @@
    [groundwork.server.main.run-once :as run-once]
    [jsonista.core :as json]
    [groundwork-logs.api :as logs]
-   [groundwork-bridge.api :as bridge]
+   [groundwork-steps.api :as steps]
    [groundwork-metrics.api :as metrics]
    [nrepl.core :as nrepl]
    [groundwork-email.api :as email]
@@ -141,35 +141,35 @@
                                    :enter (fn [context]
                                             (postgres/run-after-commit! (:groundwork-access/transaction context) #(throw (ex-info "the cache is gone" {})))
                                             (postgres/run-after-commit! (:groundwork-access/transaction context) #(swap! after-commit-runs conj :ran))
-                                            (bridge/add-answer-to-context context (empty? @after-commit-runs)))}]}
+                                            (steps/add-answer-to-context context (empty? @after-commit-runs)))}]}
    :orders/count {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :refusals {} :rate-limit {:max 2 :per-ms 60000}
                   :run-steps-in nil :daily-caps []
-                  :steps  [{:name :answer-count :enter #(bridge/add-answer-to-context % 0)}]}
+                  :steps  [{:name :answer-count :enter #(steps/add-answer-to-context % 0)}]}
    :orders/all {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape [:vector :uuid] :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                 :steps  [{:name  :answer-all-orders
-                          :enter #(bridge/add-answer-to-context
+                          :enter #(steps/add-answer-to-context
                                    % (mapv :order/id (postgres/find-rows (:groundwork-access/transaction %) find-all-orders {})))}]}
    :orders/add {:action :orders/edit :scope [:shop :order/shop-id] :params-shape [:map [:order/shop-id :uuid] [:test/wait-ms :int]] :answer-shape :uuid
                 :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                 :steps  [{:name  :add-order
-                          :enter (fn [{:groundwork-bridge/keys [message-data] :as context}]
+                          :enter (fn [{:groundwork-steps/keys [message-data] :as context}]
                                    (Thread/sleep (long (:test/wait-ms message-data)))
-                                   (bridge/add-answer-to-context
+                                   (steps/add-answer-to-context
                                     context (:order/id (postgres/find-one-row (:groundwork-access/transaction context) insert-order
                                                                               (select-keys message-data [:order/shop-id])))))}]}
    :orders/add-badly {:action :orders/edit :scope [:shop :order/shop-id] :params-shape [:map [:order/shop-id :uuid]] :answer-shape :uuid
                       :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                       :steps  [{:name  :add-order-and-answer-a-number
-                                :enter (fn [{:groundwork-bridge/keys [message-data] :as context}]
+                                :enter (fn [{:groundwork-steps/keys [message-data] :as context}]
                                          (postgres/find-one-row (:groundwork-access/transaction context) insert-order message-data)
-                                         (bridge/add-answer-to-context context 42))}]}
+                                         (steps/add-answer-to-context context 42))}]}
    :orders/capped {:action :orders/see :scope [:shop :shop/id] :params-shape [:map [:shop/id :uuid]] :answer-shape :boolean
                    :refusals {} :rate-limit nil :run-steps-in nil
                    :daily-caps [{:max 2 :per :asker} {:max 3 :per :everyone}]
-                   :steps  [{:name :answer-true :enter #(bridge/add-answer-to-context % true)}]}
+                   :steps  [{:name :answer-true :enter #(steps/add-answer-to-context % true)}]}
    :orders/broken {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :int :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                    :steps  [{:name  :say-and-ask-untyped
-                             :enter (fn [{:groundwork-bridge/keys [log] :as context}]
+                             :enter (fn [{:groundwork-steps/keys [log] :as context}]
                                       (log :info :test/about-to-break {})
                                       (postgres/find-one-row (:groundwork-access/transaction context) find-untyped {:x "a"})
                                       context)}
@@ -342,21 +342,21 @@
   "A name's refusal as JSON data reads it, without its request id: the
    reason as text, its data."
   [reason data]
-  {"groundwork-bridge/refused" (subs (str reason) 1) "groundwork-bridge/data" data})
+  {"groundwork-steps/refused" (subs (str reason) 1) "groundwork-steps/data" data})
 
 (defn- without-request-ids
   "An answer's JSON data, each name's request id taken out (a new one for
    every message), its notes too."
   [answer]
-  (update-vals (dissoc answer "groundwork-bridge/notes") #(if (map? %) (dissoc % "groundwork-bridge/request-id") %)))
+  (update-vals (dissoc answer "groundwork-steps/notes") #(if (map? %) (dissoc % "groundwork-steps/request-id") %)))
 
 (defn- is-too-many?
-  "Whether a name's JSON answer is bridge's :groundwork-bridge/too-many, with a wait
+  "Whether a name's JSON answer is bridge's :groundwork-steps/too-many, with a wait
    and a request id."
   [answer]
-  (and (= "groundwork-bridge/too-many" (get answer "groundwork-bridge/refused"))
-       (pos-int? (get-in answer ["groundwork-bridge/data" "retry-after-ms"]))
-       (string? (get answer "groundwork-bridge/request-id"))))
+  (and (= "groundwork-steps/too-many" (get answer "groundwork-steps/refused"))
+       (pos-int? (get-in answer ["groundwork-steps/data" "retry-after-ms"]))
+       (string? (get answer "groundwork-steps/request-id"))))
 
 (defn- ask-health
   "A plain GET, no origin, no cookie: [status body cache-control]."
@@ -409,7 +409,7 @@
                           once-key (.header "idempotency-key" (str once-key))
                           true     (-> (.POST (HttpRequest$BodyPublishers/ofString body)) (.build)))
                         (HttpResponse$BodyHandlers/ofString))]
-    [(.statusCode response) (dissoc (json/read-value (.body response)) "groundwork-bridge/notes")]))
+    [(.statusCode response) (dissoc (json/read-value (.body response)) "groundwork-steps/notes")]))
 
 (defn- open-sse [server-port cookie]
   (io/reader (.body (.send (HttpClient/newHttpClient)
@@ -684,7 +684,7 @@
                   (is (= 1 (count (orders-of anna-token))) "Anna: shop 7's order, with no Origin: a token is no browser's")
                   (is (= 1 (count (orders-of bob-token))) "Bob: shop 9's")
                   (is (not= (orders-of anna-token) (orders-of bob-token)))
-                  (is (= (refusal-of :groundwork-access/signed-out nil) (dissoc (orders-of "app_not-a-token") "groundwork-bridge/request-id"))
+                  (is (= (refusal-of :groundwork-access/signed-out nil) (dissoc (orders-of "app_not-a-token") "groundwork-steps/request-id"))
                       "a wrong token is nobody: signed out")
                   (is (= 1 (count (get (json/read-value (second (call "/groundwork/http" anna-token nil "{\"orders/all\":{}}"))) "orders/all")))
                       "the messages' own route takes a token too")
@@ -799,10 +799,10 @@
             (testing "no page, no file: 404"
               (is (= 404 (first (send-request server-port "GET" "/nowhere" nil nil)))))
             (testing "an answer comes with the tables its steps read"
-              (is (= [200 "{\"orders/all\":[],\"groundwork-bridge/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}"]
+              (is (= [200 "{\"orders/all\":[],\"groundwork-steps/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}"]
                      (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/all\":{}}"))))
             (testing "a rate limit: two a minute per session, a third is refused; another session has its own"
-              (let [counted "{\"orders/count\":0,\"groundwork-bridge/notes\":{\"orders/count\":{\"tables\":[]}}}"]
+              (let [counted "{\"orders/count\":0,\"groundwork-steps/notes\":{\"orders/count\":{\"tables\":[]}}}"]
                 (let [[first-send second-send [third-status third-body]]
                       (repeatedly 3 #(send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/count\":{}}"))]
                   (is (= [[200 counted] [200 counted]] [first-send second-send]))
@@ -811,7 +811,7 @@
                 (is (= [200 counted] (send-request server-port "POST" "/groundwork/http" bob-cookie "{\"orders/count\":{}}")))))
             (testing "a step's work kept by groundwork-postgres's run-after-commit! runs once groundwork-access's transaction commits"
               (reset! lines [])
-              (is (= [200 "{\"orders/after-commit\":true,\"groundwork-bridge/notes\":{\"orders/after-commit\":{\"tables\":[]}}}"]
+              (is (= [200 "{\"orders/after-commit\":true,\"groundwork-steps/notes\":{\"orders/after-commit\":{\"tables\":[]}}}"]
                      (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/after-commit\":{}}"))
                   "not yet while the step runs")
               (is (= [:ran] @after-commit-runs) "run by the time the answer is back, the one after a failed one too")
@@ -825,11 +825,11 @@
               (let [ask     #(get (json/read-value (second (send-request server-port "POST" "/groundwork/http" %1
                                                                          (str "{\"orders/capped\":{\"shop/id\":\"" %2 "\"}}"))))
                                   "orders/capped")
-                    reached #(and (= "groundwork/daily-cap-reached" (get % "groundwork-bridge/refused"))
-                                  (< 0 (get-in % ["groundwork-bridge/data" "retry-after-ms"]) (inc 86400000)))]
+                    reached #(and (= "groundwork/daily-cap-reached" (get % "groundwork-steps/refused"))
+                                  (< 0 (get-in % ["groundwork-steps/data" "retry-after-ms"]) (inc 86400000)))]
                 (is (= [true true] [(ask anna-cookie shop-7) (ask anna-cookie shop-7)]))
                 (is (reached (ask anna-cookie shop-7)) "Anna's third today: her cap, until midnight UTC")
-                (is (= "groundwork-access/not-found" (get (ask bob-cookie shop-7) "groundwork-bridge/refused")) "refused by the check: nothing spent")
+                (is (= "groundwork-access/not-found" (get (ask bob-cookie shop-7) "groundwork-steps/refused")) "refused by the check: nothing spent")
                 (is (true? (ask bob-cookie shop-9)) "Bob's first: the third for everyone")
                 (is (reached (ask bob-cookie shop-9)) "everyone's cap spent, though Bob's own isn't")
                 (is (= [{:daily-cap-count/counted-for "everyone" :daily-cap-count/count 3}
@@ -842,7 +842,7 @@
                     bob-line   (open-sse server-port bob-cookie)
                     ask-orders #(send-request server-port "POST" "/groundwork/http" % "{\"orders/all\":{}}")
                     orders-are #(str "{\"orders/all\":[" (str/join "," (map (fn [id] (str "\"" id "\"")) %))
-                                     "],\"groundwork-bridge/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}")]
+                                     "],\"groundwork-steps/notes\":{\"orders/all\":{\"tables\":[\"orders\"]}}}")]
                 (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data anna-line)))
                 (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data bob-line)))
                 (Thread/sleep 200)
@@ -859,6 +859,19 @@
                 (is (= "{\"groundwork-live-updates/changed\":{\"table\":\"orders\"}}" (read-next-data bob-line)))
                 (is (= [200 (orders-are [order-91])] (ask-orders bob-cookie)))
                 (is (= [200 (orders-are [order-71])] (ask-orders anna-cookie)) "shop 9's order never reaches Anna")
+                (testing "the leak test, each message answered by groundwork-bridge's runner, which groundwork plugs in"
+                  (is (= [] (access/find-leaks (select-keys (:handlers running) [:orders/all])
+                                               {:request-method :get :headers {"cookie" anna-cookie}}
+                                               {:orders [order-91]}
+                                               {:answer-message (main/make-leak-test-answerer running)
+                                                :scope-kinds    scope-kinds :seed 7 :size 10})))
+                  (is (= [{:handler :orders/all :gave-back [(str order-91)]}]
+                         (access/find-leaks (select-keys (:handlers running) [:orders/all])
+                                            {:request-method :get :headers {"cookie" bob-cookie}}
+                                            {:orders [order-91]}
+                                            {:answer-message (main/make-leak-test-answerer running)
+                                             :scope-kinds    scope-kinds :seed 7 :size 10}))
+                      "and an id the asker may reach, named as foreign, is found: the runner answers as over http"))
                 (testing "every table that tells, tells every line"
                   (run-sql! owner-pool "INSERT INTO shops VALUES ('10000000-0000-4000-8000-000000000001')")
                   (is (= "{\"groundwork-live-updates/changed\":{\"table\":\"shops\"}}" (read-next-data anna-line)))
@@ -878,7 +891,7 @@
                   (let [anna-line   (open-sse server-port anna-cookie)
                         bob-line    (open-sse server-port bob-cookie)
                         ask-actions #(send-request server-port "POST" "/groundwork/http" % "{\"groundwork-access/my-actions\":{}}")
-                        notes       #(str ",\"groundwork-bridge/notes\":{\"groundwork-access/my-actions\":{\"tables\":[" % "]}}}")
+                        notes       #(str ",\"groundwork-steps/notes\":{\"groundwork-access/my-actions\":{\"tables\":[" % "]}}}")
                         read-tables (str "\"groundwork-access/membership-roles\",\"groundwork-access/memberships\",\"groundwork-access/role-actions\","
                                          "\"groundwork-access/roles\",\"groundwork-access/scopes\"")]
                     (is (= "{\"groundwork/version\":\"test-1\"}" (read-next-data anna-line)))
@@ -941,7 +954,7 @@
                   (is (= (+ 5 before) (count-orders))))
                 (testing "a write whose answer doesn't fit its shape saves nothing"
                   (let [key-3 (random-uuid)]
-                    (is (= [200 {"orders/add-badly" (refusal-of :groundwork-bridge/failed nil)}]
+                    (is (= [200 {"orders/add-badly" (refusal-of :groundwork-steps/failed nil)}]
                            (update (send-write server-port anna-cookie key-3
                                                (str "{\"orders/add-badly\":{\"order/shop-id\":\"" shop-7 "\"}}"))
                                    1 without-request-ids)))
@@ -969,8 +982,8 @@
             (testing "one message's lines, bridge's, groundwork-postgres's and the app's own, carry its request id and the person"
               (reset! lines [])
               (let [[status body] (send-request server-port "POST" "/groundwork/http" anna-cookie "{\"orders/broken\":{}}")]
-                (is (= [200 {"orders/broken" (refusal-of :groundwork-bridge/failed nil)}] [status (without-request-ids (json/read-value body))])
-                    "a crash answers :groundwork-bridge/failed; the request stays 200"))
+                (is (= [200 {"orders/broken" (refusal-of :groundwork-steps/failed nil)}] [status (without-request-ids (json/read-value body))])
+                    "a crash answers :groundwork-steps/failed; the request stays 200"))
               (let [said    (first (find-lines "test/about-to-break"))
                     unknown (first (find-lines "groundwork-postgres/tables-read-unknown"))
                     failed  (first (find-lines "groundwork-bridge/handler-failed"))]

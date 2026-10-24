@@ -70,8 +70,8 @@ bound already), and served where the browser fetches it,
 ([the decision](../../../../decisions/2026-10-23-house-reads-the-catalogs-at-the-start-and-serves-them.md)).
 Every reason a refusal may give has its text in every catalog, or the
 start is refused, `:groundwork-languages/missing-texts`, naming each (groundwork-languages's
-`check-texts-of-reasons`): bridge's own (`:groundwork-bridge/too-many`,
-`:groundwork-bridge/failed`, `:groundwork-bridge/invalid`, `:groundwork-bridge/no-answer`, `:groundwork-bridge/unfit`),
+`check-texts-of-reasons`): groundwork-steps's, which bridge gives (`:groundwork-steps/too-many`,
+`:groundwork-steps/failed`, `:groundwork-steps/invalid`, `:groundwork-steps/no-answer`, `:groundwork-steps/unfit`),
 groundwork-access's (`:groundwork-access/signed-out`, `:groundwork-access/not-found`,
 `:groundwork-access/not-allowed`), groundwork's run-once ones and every handler's
 `:refusals`.
@@ -307,7 +307,9 @@ API: `groundwork.server.main.api` (`settings-shape`, `page-settings-shape`,
 `browser-build-settings-shape`, `browser-shaped-json-settings-shape`,
 `file-storage-settings-shape`, `email-settings-shape`,
 `check-settings`, `groundwork-tables`, `make-ready-tables`, `migrate-app!`,
-`start-app!`, `stop-app!`). Decisions:
+`start-app!`, `stop-app!`, `make-leak-test-answerer`: groundwork-access's leak test's
+`:answer-message`, groundwork-bridge's runner plugged in, as over http, on a meter of its
+own). Decisions:
 [`decisions/server/main`](../../../../decisions/server/main/README.md).
 
 The settings are one EDN file per environment, loaded by
@@ -332,6 +334,11 @@ as its name; text written out where a secret belongs is refused:
                                :may-upload? (fn [{:keys [person-id]}] (some? person-id))
                                :on-delivery-event {} :on-inbound-email {}}))
 (main/stop-app! running)
+
+;; in the app's tests: the leak test, each message answered as over http
+(is (= [] (access/find-leaks (:handlers running) anna-request {:orders [order-in-another-shop]}
+                              {:answer-message (main/make-leak-test-answerer running)
+                               :scope-kinds scope-kinds :seed 7 :size 30})))
 ```
 
 The app's own server routes (`:routes`), for what isn't a message or a

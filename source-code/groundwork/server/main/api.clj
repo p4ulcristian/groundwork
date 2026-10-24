@@ -63,7 +63,7 @@
    handler is in the request's language. Each
    language's catalog is read at the start (a missing one refuses it) and
    served where the browser fetches it, /<catalogs-path>/<language>.json.
-   Every reason a refusal may give (bridge's, groundwork-access's, the run-once
+   Every reason a refusal may give (groundwork-steps's, groundwork-access's, the run-once
    ones, every handler's :refusals) needs its text in every catalog: one
    missing refuses the start (groundwork-languages's check-texts-of-reasons). A page
    may name a :module of :browser-modules, loaded on demand by the browser.
@@ -152,6 +152,7 @@
    [groundwork.server.main.visitors :as visitors]
    [groundwork-logs.api :as logs]
    [groundwork-bridge.api :as bridge]
+   [groundwork-steps.api :as steps]
    [malli.core :as malli]
    [malli.error :as malli-error]
    [groundwork-metrics.api :as groundwork-metrics]
@@ -622,12 +623,13 @@
 
 (defn- check-texts-of-reasons!
   "Every reason a refusal may give has its text in every catalog that
-   shows (groundwork-languages's check-texts-of-reasons): bridge's own, groundwork-access's,
+   shows (groundwork-languages's check-texts-of-reasons): groundwork-steps's (the ones
+   every answer may carry, which groundwork-bridge gives), groundwork-access's,
    groundwork's run-once ones, and every ready handler's :refusals (the
    app's, with groundwork-access's and groundwork's added); the start is refused,
    :groundwork-languages/missing-texts, with every missing one at once."
   [texts ready-handlers]
-  (languages/check-texts-of-reasons texts (apply merge bridge/refusals access/refusals run-once/refusals
+  (languages/check-texts-of-reasons texts (apply merge steps/refusals access/refusals run-once/refusals
                                                   (map :refusals (vals ready-handlers)))))
 
 (defn- run-as-system-actor!
@@ -876,7 +878,12 @@
                                                          :find-session-step find-session-step})
               running-live-updates  (start-part! stoppers
                                              #(live-updates/start-listening! pool (get-in settings [:live-updates :listening])
-                                                                         {:log log :meter app-meter :tables (make-ready-tables app)})
+                                                                         {:log           log
+                                                                          :meter         app-meter
+                                                                          :tables        (make-ready-tables app)
+                                                                          ;; groundwork-live-updates tells bridge's sse lines, by bridge's own send
+                                                                          :push!         (fn [line message] (bridge/send-message-on-sse-line! line message nil))
+                                                                          :find-line-key :groundwork-bridge/channel})
                                              live-updates/stop-listening!)
               workers           (start-part! stoppers
                                              #(background-jobs/start-workers! pool (assoc (:background-jobs settings)
@@ -942,3 +949,32 @@
   (file-storage/stop-file-storage! running-file-storage)
   (postgres/stop-pool! counting-pool)
   (postgres/stop-pool! pool))
+
+(defn make-leak-test-answerer
+  "groundwork-access's leak test's :answer-message for a running app (what
+   start-app! returned): (fn [handlers request message]), each message
+   answered by groundwork-bridge's answer-message as over http, by the
+   app's shaper and log and the :bridge settings' :metric-buckets, with
+   :no-rate-limits (the test asks many times). Its messages are counted on
+   a meter of their own, never served (:jvm-metrics false), one per table
+   of handlers it is handed: the leak test asks with whichever handlers it
+   checks, and the app's meter has bridge's metrics declared for the app's
+   whole table. groundwork-access runs no message itself; groundwork plugs
+   groundwork-bridge's runner in.
+
+     (is (= [] (access/find-leaks (:handlers running) anna-request {:orders [order-in-another-shop]}
+                                   {:answer-message (main/make-leak-test-answerer running)
+                                    :scope-kinds scope-kinds :seed 7 :size 30})))"
+  [{:keys [settings shaper log]}]
+  (let [meters (atom {})
+        meter-of (fn [handlers]
+                   (get (swap! meters #(if (contains? % (set (keys handlers)))
+                                         %
+                                         (assoc % (set (keys handlers))
+                                                (groundwork-metrics/make-meter {:jvm-metrics            false
+                                                                                :most-series-per-metric (get-in settings [:metrics :most-series-per-metric])}
+                                                                               {:log log}))))
+                        (set (keys handlers))))]
+    (fn [handlers request message]
+      (bridge/answer-message handlers :no-rate-limits request message
+                             {:shaper shaper :log log :meter (meter-of handlers) :metric-buckets (get-in settings [:bridge :metric-buckets])}))))

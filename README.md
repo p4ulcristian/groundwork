@@ -3,7 +3,7 @@
 An opinionated Clojure framework for web apps on Postgres: the repository
 that puts the **groundwork** libraries together into one running app.
 groundwork names both the family and this composer: groundwork and its libraries
-groundwork-postgres, groundwork-background-jobs, groundwork-browser-build, groundwork-bridge,
+groundwork-postgres, groundwork-background-jobs, groundwork-browser-build, groundwork-steps, groundwork-bridge,
 groundwork-access, groundwork-live-updates, groundwork-screens, groundwork-languages,
 groundwork-shaped-json, groundwork-logs, groundwork-metrics, groundwork-live-repl,
 groundwork-file-storage, groundwork-email and groundwork-settings. The spec is [`decisions/`](decisions/README.md).
@@ -40,12 +40,23 @@ that actor, which reaches what its sentences give it; its settings are the
 namespace names, bundled; taken only in the build aliases, never in production;
 its watch options are the `:browser-build {:watch …}` setting, its release
 options the `:browser-release` alias's `:exec-args`.
+What the libraries above the wire share, on both sides:
+[groundwork-steps](https://github.com/p4ulcristian/groundwork-steps), a handler's steps over one
+context (`:groundwork-steps/request`, `message-data`, `log`, …), the answer's
+shape and the reasons every answer may carry. groundwork-bridge,
+groundwork-access, groundwork-live-updates and groundwork-screens require it
+and not each other; groundwork is the one place that plugs them together
+([the decision](decisions/2026-10-24-the-composer-plugs-the-libraries-that-share-groundwork-steps.md)):
+groundwork-bridge's runner answers groundwork-access's steps (and its leak
+test, `make-leak-test-answerer`), groundwork-live-updates tells
+groundwork-bridge's sse lines (`:push!`, `:find-line-key`), and
+groundwork-screens sends by groundwork-bridge's `send-message!`.
 And how the browser and the server talk, on both sides:
 [groundwork-bridge](https://github.com/p4ulcristian/groundwork-bridge), named messages over http,
-sse and ws answered by a handler's steps, and the routes; its addresses and
+sse and ws answered by a handler's steps, the lines and the server's routes; its addresses and
 ping are in the `:server` settings, with no defaults. A refusal is a named
 reason with data, declared on its handler (`:refusals`, `{}` for none),
-never English on the groundwork-shaped-json; every reason, the libraries' own (bridge's,
+never English on the groundwork-shaped-json; every reason, the libraries' own (groundwork-steps's,
 groundwork-access's, groundwork's run-once ones) too, needs its text in every
 catalog, or the start is refused, and the browser draws it with
 `(screens/tr reason data)`. Every answered message is counted on the app's

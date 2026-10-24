@@ -14,7 +14,7 @@ Each word in a groundwork name means one thing, everywhere. See
 | errors | a map from each key that doesn't fit to readable messages: `{:order/id ["should be a uuid"]}` |
 | context | the one map that steps pass along |
 | log | the one function `(log level event data)` a library is handed to write a line; [groundwork-logs](https://github.com/p4ulcristian/groundwork-logs) makes it, `with-context` makes one that carries a request's id or a person; a line's context is that, not the steps' context |
-| step | `{:name a-keyword :enter (fn [context] context)}`; a handler's steps are its work, run by [groundwork-bridge](https://github.com/p4ulcristian/groundwork-bridge) |
+| step | `{:name a-keyword :enter (fn [context] context)}`, [groundwork-steps](https://github.com/p4ulcristian/groundwork-steps)'s shape; a handler's steps are its work, run by [groundwork-bridge](https://github.com/p4ulcristian/groundwork-bridge) |
 | background job | one piece of work saved in Postgres to run outside a request, by a worker (never "job" alone: Iron Rainbow's job is a coating job); [groundwork-background-jobs](https://github.com/p4ulcristian/groundwork-background-jobs) queues and runs them |
 | session | who is asking: a row in Postgres, the browser's cookie only random bytes; [groundwork-access](https://github.com/p4ulcristian/groundwork-access) signs in and out and finds it first in every handler |
 | scope | a place data belongs to (a shop): the app's own row, known to [groundwork-access](https://github.com/p4ulcristian/groundwork-access) by its kind and id; a person is in it with one role, a bundle of actions |

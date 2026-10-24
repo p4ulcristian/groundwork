@@ -1,5 +1,7 @@
 # The routing extras, each where it belongs: queries, scrolling, the unsaved guard, modules on demand, languages
 
+> **Changed in part** by [The composer plugs together the libraries that share groundwork-steps](2026-10-24-the-composer-plugs-the-libraries-that-share-groundwork-steps.md) (2026-10-24): the browser's routing (queries, moves, scrolling, the question before leaving) is groundwork-screens's own, no longer groundwork-bridge's.
+
 > **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): dictionary is groundwork-languages now (`groundwork-languages.api`).
 
 > The user's decision, 2026-10-23: as Groundwork v0.5.0 had them (`src/groundwork/browser/routing.cljs`, `browser/loader.cljs`, `browser.cljs`, `web/languages.clj`), and the place of each piece decided in building. Takes dictionary v0.1.0 (new), mailroom v0.6.0, showroom v0.3.0, parlor v0.5.0 and doorbell v0.4.1 (on mailroom v0.6.0). Carries over [A build can have several modules](2026-10-12-a-build-can-have-several-modules.md) and [Routing is Groundwork's, and a route is a record](2026-10-14-routing-is-groundworks-and-a-route-is-a-record.md). Changes in part [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) (`:page :language` is gone, `:languages` is new) and [The browser start starts parlor](2026-10-23-the-browser-start-starts-parlor.md) (two more options).

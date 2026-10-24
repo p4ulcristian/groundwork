@@ -30,7 +30,7 @@ none); groundwork-access's reasons (groundwork-access's `put-refusals-into-shape
 groundwork's run-once ones are added to each, and groundwork's own names
 (`:groundwork-access/my-actions`'s answer shape is groundwork-access's, which groundwork-screens's "can I?"
 checks the answer by, with the app's shaper). A view shows a refusal by
-its reason, `(screens/tr (:groundwork-bridge/refused error) (:groundwork-bridge/data error))`. The app's `package.json` lists
+its reason, `(screens/tr (:groundwork-steps/refused error) (:groundwork-steps/data error))`. The app's `package.json` lists
 big.js, react, react-dom and process as `dependencies`: browser-build's release
 stops on one installed only for development. ClojureScript only. API:
 `groundwork.browser.main.api` (`read-settings-from-page`, `start-app!`,

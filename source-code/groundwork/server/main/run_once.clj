@@ -32,7 +32,7 @@
 
    And every write, keyed or not, commits only when its answer fits its
    :answer-shape: one that doesn't throws inside the transaction, so
-   nothing is saved and the asker is answered :groundwork-bridge/failed (the details
+   nothing is saved and the asker is answered :groundwork-steps/failed (the details
    in the log, under its request id), as when any step throws.
 
    A handler that only reads is left as it is: no key is claimed, whatever
@@ -40,7 +40,7 @@
   (:require
    [groundwork-postgres.api :as postgres]
    [groundwork-access.api :as access]
-   [groundwork-bridge.api :as bridge]
+   [groundwork-steps.api :as steps]
    [groundwork-shaped-json.api :as shaped-json]))
 
 (def key-header
@@ -97,14 +97,14 @@
    so the transaction rolls back. A refusal is kept as its reason's text
    and its data as JSON data by the reason's shape (nil for nil); one
    whose reason the handler doesn't declare is left as it is, for bridge
-   to answer :groundwork-bridge/failed."
+   to answer :groundwork-steps/failed."
   [shaper {:keys [answer-shape refusals]} handler-name answer]
-  (if (bridge/is-error-answer? answer)
-    (let [{reason :groundwork-bridge/refused data :groundwork-bridge/data} answer]
+  (if (steps/is-error-answer? answer)
+    (let [{reason :groundwork-steps/refused data :groundwork-steps/data} answer]
       (if (and (contains? refusals reason) (some? (get refusals reason)))
-        {:groundwork-bridge/refused (subs (str reason) 1)
-         :groundwork-bridge/data    (turn-into-json-data-or-throw shaper (get refusals reason) data handler-name (str reason "'s data"))}
-        {:groundwork-bridge/refused (subs (str reason) 1) :groundwork-bridge/data data}))
+        {:groundwork-steps/refused (subs (str reason) 1)
+         :groundwork-steps/data    (turn-into-json-data-or-throw shaper (get refusals reason) data handler-name (str reason "'s data"))}
+        {:groundwork-steps/refused (subs (str reason) 1) :groundwork-steps/data data}))
     (turn-into-json-data-or-throw shaper answer-shape answer handler-name "answer")))
 
 (defn- turn-kept-text-into-answer
@@ -118,43 +118,43 @@
                      (throw (ex-info (str handler-name "'s kept " what " doesn't fit its shape now")
                                      {:type :groundwork.server.main/kept-answer-doesnt-fit :handler handler-name :errors errors})))
                    shaped-data))]
-    (if (bridge/is-error-answer? data)
-      (let [reason (keyword (:groundwork-bridge/refused data))
+    (if (steps/is-error-answer? data)
+      (let [reason (keyword (:groundwork-steps/refused data))
             shape  (get refusals reason)]
-        {:groundwork-bridge/refused reason
-         :groundwork-bridge/data    (if (some? shape) (shaped shape (:groundwork-bridge/data data) "refusal's data") (:groundwork-bridge/data data))})
+        {:groundwork-steps/refused reason
+         :groundwork-steps/data    (if (some? shape) (shaped shape (:groundwork-steps/data data) "refusal's data") (:groundwork-steps/data data))})
       (shaped answer-shape data "answer"))))
 
 (defn- run-and-check
   "The handler's steps, and its answer checked against its shape: the
    context and the answer as JSON data, nil when no step answered."
   [handler-steps handler handler-name context]
-  (let [context (bridge/run-steps-until-answered handler-steps context)]
-    [context (when (bridge/does-context-have-answer? context)
-               (check-answer-fits! (:groundwork-bridge/shaper context) handler handler-name (:groundwork-bridge/answer context)))]))
+  (let [context (steps/run-steps-until-answered handler-steps context)]
+    [context (when (steps/does-context-have-answer? context)
+               (check-answer-fits! (:groundwork-steps/shaper context) handler handler-name (:groundwork-steps/answer context)))]))
 
 (defn- answer-from-kept-row
   "A repeat: the first answer, when the same person claimed the key."
   [context handler handler-name {:run-once-key/keys [person-id answer]}]
   (cond
-    (not= person-id (:groundwork-access/person-id context)) (bridge/refuse context :groundwork/once-key-of-someone-else nil)
+    (not= person-id (:groundwork-access/person-id context)) (steps/refuse context :groundwork/once-key-of-someone-else nil)
     (nil? answer)                                 context
-    :else (bridge/add-answer-to-context
-           context (turn-kept-text-into-answer (:groundwork-bridge/shaper context) handler handler-name answer))))
+    :else (steps/add-answer-to-context
+           context (turn-kept-text-into-answer (:groundwork-steps/shaper context) handler handler-name answer))))
 
 (defn- run-keyed [handler-steps handler handler-name keep-keys-ms once-key context]
   (let [transaction (:groundwork-access/transaction context)
         row-key     {:run-once-key/key          once-key
-                     :run-once-key/message-name (turn-message-name-into-text (:groundwork-bridge/message-name context))}]
+                     :run-once-key/message-name (turn-message-name-into-text (:groundwork-steps/message-name context))}]
     (if (postgres/find-one-row transaction claim-once-key
                                (assoc row-key
                                       :run-once-key/person-id (:groundwork-access/person-id context)
                                       :keep-keys-ms keep-keys-ms))
       (let [[context json-data] (run-and-check handler-steps handler handler-name context)]
-        (when (bridge/does-context-have-answer? context)
+        (when (steps/does-context-have-answer? context)
           (postgres/run-statement! transaction update-once-key-answer
                                    (assoc row-key :run-once-key/answer
-                                          (shaped-json/turn-data-into-json-text (:groundwork-bridge/shaper context) json-data))))
+                                          (shaped-json/turn-data-into-json-text (:groundwork-steps/shaper context) json-data))))
         context)
       (answer-from-kept-row context handler handler-name
                             (postgres/find-one-row transaction find-once-key row-key)))))
@@ -165,7 +165,7 @@
   [handler-name {handler-steps :steps :as handler} keep-keys-ms]
   {:name  :groundwork/run-once
    :enter (fn [context]
-            (let [header (get-in context [:groundwork-bridge/request :headers key-header])]
+            (let [header (get-in context [:groundwork-steps/request :headers key-header])]
               (cond
                 (nil? header)
                 (first (run-and-check handler-steps handler handler-name context))
@@ -174,7 +174,7 @@
                 (run-keyed handler-steps handler handler-name keep-keys-ms (parse-uuid header) context)
 
                 :else
-                (bridge/refuse context :groundwork/once-key-not-a-uuid nil))))})
+                (steps/refuse context :groundwork/once-key-not-a-uuid nil))))})
 
 (defn- refuse-handlers-declaring-refusals!
   "A handler that declares one of groundwork's reasons itself is refused:

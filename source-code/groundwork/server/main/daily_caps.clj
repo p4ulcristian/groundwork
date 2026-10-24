@@ -27,6 +27,7 @@
    line, deletes the days before today."
   (:require
    [groundwork-bridge.api :as bridge]
+   [groundwork-steps.api :as steps]
    [groundwork-postgres.api :as postgres]
    [malli.core :as malli]
    [malli.error :as malli-error])
@@ -99,7 +100,7 @@
 (defn- find-counted-for
   "Whom a cap counts: everyone, or the asker, the person (a token's
    person too), else the visitor, else the request's address."
-  [per {:groundwork-access/keys [person-id visitor-id] :groundwork-bridge/keys [request]} client-address-header]
+  [per {:groundwork-access/keys [person-id visitor-id] :groundwork-steps/keys [request]} client-address-header]
   (case per
     :everyone "everyone"
     :asker    (cond person-id  (str "person " person-id)
@@ -136,7 +137,7 @@
                 (if (count-call! counting-pool message-name daily-caps context client-address-header
                                  (LocalDate/ofInstant now ZoneOffset/UTC))
                   context
-                  (bridge/refuse context :groundwork/daily-cap-reached {:retry-after-ms (find-time-until-midnight now)}))))}))
+                  (steps/refuse context :groundwork/daily-cap-reached {:retry-after-ms (find-time-until-midnight now)}))))}))
 
 (defn put-daily-caps-into-handlers
   "The app's handlers, every one checked to write out :daily-caps; each

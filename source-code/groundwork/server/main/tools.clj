@@ -6,7 +6,7 @@
 
      (groundwork-live-repl.tools/ask-as-person {:orders/of-shop {:shop/id shop-id}}
                                 {:person-id anna :visitor-id nil :session-flags #{}})
-     ;=> {:orders/of-shop [{:order/id \"…\" …}] :groundwork-bridge/notes {…}}
+     ;=> {:orders/of-shop [{:order/id \"…\" …}] :groundwork-steps/notes {…}}
 
      (groundwork-live-repl.tools/why-refused {:person-id anna :visitor-id nil :session-flags #{}}
                               :orders/add {:order/shop-id bobs-shop :order/note \"x\"})

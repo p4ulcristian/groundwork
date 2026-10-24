@@ -28,7 +28,7 @@
    [clojure.string :as str]
    [groundwork-access.api :as access]
    [groundwork-logs.api :as logs]
-   [groundwork-bridge.api :as bridge]
+   [groundwork-steps.api :as steps]
    [groundwork-settings.api :as settings]
    [groundwork-shaped-json.api :as shaped-json]))
 
@@ -91,13 +91,13 @@
 
 (def ^:private write-browser-error
   {:name  :groundwork/write-browser-error
-   :enter (fn [{:groundwork-bridge/keys [log message-data] :as context}]
+   :enter (fn [{:groundwork-steps/keys [log message-data] :as context}]
             (log :error :browser/error {:browser/kind    (:kind message-data)
                                         :browser/version (:version message-data)
                                         :browser/message (:message message-data)
                                         :browser/stack   (:stack message-data)
                                         :browser/url     (:url message-data)})
-            (bridge/add-answer-to-context context true))})
+            (steps/add-answer-to-context context true))})
 
 (def browser-error-refusals
   "The reasons :groundwork/browser-error may refuse with: groundwork-access's

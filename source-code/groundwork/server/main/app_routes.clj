@@ -47,6 +47,7 @@
    another route has (groundwork's own, or the app's) refuses the start."
   (:require
    [groundwork-bridge.api :as bridge]
+   [groundwork-steps.api :as steps]
    [groundwork-languages.api :as languages]
    [groundwork-access.api :as access]
    [groundwork.server.main.asker :as asker]
@@ -91,7 +92,7 @@
   "groundwork-access's step's refusal (:groundwork-access/not-allowed: another site's request,
    a cookie and a token at once), as a 403, its body the reason's text in
    the request's language (bound around every request)."
-  [{reason :groundwork-bridge/refused data :groundwork-bridge/data}]
+  [{reason :groundwork-steps/refused data :groundwork-steps/data}]
   {:status  403
    :headers {"content-type" "text/plain; charset=utf-8" "cache-control" "no-store"}
    :body    (languages/tr reason (or data {}))})
@@ -108,9 +109,9 @@
   [request context {:keys [pool scope-kinds tables settings answer-as]}]
   (let [asker (asker/read-asker context)]
     {:asker          asker
-     :log            (:groundwork-bridge/log context)
-     :run-as-asker!  (asker/make-run-as-asker pool request settings scope-kinds (:groundwork-bridge/log context))
-     :run-as-system! (make-run-as-system pool (:groundwork-bridge/log context))
+     :log            (:groundwork-steps/log context)
+     :run-as-asker!  (asker/make-run-as-asker pool request settings scope-kinds (:groundwork-steps/log context))
+     :run-as-system! (make-run-as-system pool (:groundwork-steps/log context))
      :answer-as      answer-as
      :sign-in!       (fn [person-id session-flags]
                        (access/sign-in! pool request person-id {:settings      (:access settings)
@@ -120,9 +121,9 @@
 
 (defn- make-person-handler [handler {:keys [log find-session-step] :as parts}]
   (fn [request]
-    (let [context ((:enter find-session-step) {:groundwork-bridge/request request :groundwork-bridge/log log})]
-      (if (bridge/does-context-have-answer? context)
-        (turn-refusal-into-response (:groundwork-bridge/answer context))
+    (let [context ((:enter find-session-step) {:groundwork-steps/request request :groundwork-steps/log log})]
+      (if (steps/does-context-have-answer? context)
+        (turn-refusal-into-response (:groundwork-steps/answer context))
         (handler request (make-person-tools request context parts))))))
 
 (defn- make-provider-handler [handler {:keys [log pool]}]

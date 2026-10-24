@@ -64,7 +64,6 @@
    [clojure.edn :as edn]
    [groundwork-languages.api :as languages]
    [groundwork.server.main.asker :as asker]
-   [groundwork-bridge.api :as bridge]
    [clojure.java.io :as io]
    [clojure.string :as str]
    [malli.core :as malli]
@@ -232,12 +231,12 @@
         {:status 404 :headers {} :body ""}
         (let [page     (find-page-of-request pages request)
               nonce    (when nonce? (make-nonce random))
-              context  ((:enter find-session-step) {:groundwork-bridge/request request :groundwork-bridge/log log})
+              context  ((:enter find-session-step) {:groundwork-steps/request request :groundwork-steps/log log})
               rendered (check-rendered-page (:name page)
                                             (render-page request page
                                                          {:nonce         nonce
                                                           :asker         (asker/read-asker context)
-                                                          :run-as-asker! (asker/make-run-as-asker pool request settings scope-kinds (:groundwork-bridge/log context))}))]
+                                                          :run-as-asker! (asker/make-run-as-asker pool request settings scope-kinds (:groundwork-steps/log context))}))]
           (if (= :redirect (:answer rendered))
             {:status  (:status rendered)
              :headers {"location" (:location rendered) "cache-control" "no-store"}

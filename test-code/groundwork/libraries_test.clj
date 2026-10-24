@@ -58,6 +58,9 @@
            :when    (and (str/starts-with? (str required) "groundwork-browser-build.") (not= 'groundwork-browser-build.api required))]
        (str (second ns-form) " requires " required ": only browser-build's api, groundwork-browser-build.api"))
      (for [required (list-required-namespaces ns-form)
+           :when    (and (str/starts-with? (str required) "groundwork-steps.") (not= 'groundwork-steps.api required))]
+       (str (second ns-form) " requires " required ": only groundwork-steps's api, groundwork-steps.api"))
+     (for [required (list-required-namespaces ns-form)
            :when    (and (str/starts-with? (str required) "groundwork-bridge.") (not= 'groundwork-bridge.api required))]
        (str (second ns-form) " requires " required ": only bridge's api, groundwork-bridge.api"))
      (for [required (list-required-namespaces ns-form)

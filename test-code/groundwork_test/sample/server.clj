@@ -7,7 +7,7 @@
    [groundwork-postgres.api :as postgres]
    [groundwork-access.api :as access]
    [groundwork-test.sample.shapes :as shapes]
-   [groundwork-bridge.api :as bridge]))
+   [groundwork-steps.api :as steps]))
 
 (def scope-kinds
   (access/check-scope-kinds
@@ -61,8 +61,8 @@
                            :daily-caps   []
                            :run-steps-in nil
                            :steps        [{:name  :sample/find-orders-of-shop
-                                           :enter (fn [{:groundwork-bridge/keys [message-data] :as context}]
-                                                    (bridge/add-answer-to-context
+                                           :enter (fn [{:groundwork-steps/keys [message-data] :as context}]
+                                                    (steps/add-answer-to-context
                                                      context (postgres/find-rows (:groundwork-access/transaction context) find-orders-of-shop
                                                                                  (select-keys message-data [:shop/id]))))}]})
    :orders/add     (merge (:orders/add shapes/shapes-by-name)
@@ -72,8 +72,8 @@
                            :daily-caps   [{:max 100 :per :asker} {:max 1000 :per :everyone}]   ; counted in Postgres
                            :run-steps-in nil
                            :steps        [{:name  :sample/add-order
-                                           :enter (fn [{:groundwork-bridge/keys [message-data] :as context}]
-                                                    (bridge/add-answer-to-context
+                                           :enter (fn [{:groundwork-steps/keys [message-data] :as context}]
+                                                    (steps/add-answer-to-context
                                                      context (postgres/find-one-row (:groundwork-access/transaction context) insert-order
                                                                                     (select-keys message-data [:order/shop-id :order/note]))))}]})})
 

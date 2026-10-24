@@ -25,7 +25,7 @@
      @(rf/subscribe [:groundwork-screens/answer [:orders/of-shop {:shop/id shop-id}]])
      @(rf/subscribe [:groundwork-screens/can-i? :orders/move [:shop shop-id]])   ; from :groundwork-access/my-actions
      (screens/tr :orders.cart/add {:count 3})   ; a text in the page's language, in a view
-     (screens/tr (:groundwork-bridge/refused error) (:groundwork-bridge/data error))   ; a refusal's text: its reason is the key
+     (screens/tr (:groundwork-steps/refused error) (:groundwork-steps/data error))   ; a refusal's text: its reason is the key
 
      ;; a ws line, when the app wants one: the address and the delay from the page, the app's shaper
      (let [{:keys [addresses ws-reopen-after-ms]} (:settings app)]

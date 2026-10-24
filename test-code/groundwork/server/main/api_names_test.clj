@@ -25,5 +25,6 @@
            make-ready-tables
            migrate-app!
            start-app!
-           stop-app!}
+           stop-app!
+           make-leak-test-answerer}
          (set (keys (ns-publics 'groundwork.server.main.api))))))
