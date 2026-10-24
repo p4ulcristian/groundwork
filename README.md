@@ -155,7 +155,7 @@ give what it may do, `{:allow :shop-emails/mark-bounced :only :all-of-the-action
 and nothing else ([the decision](decisions/2026-10-23-postboxs-webhook-functions-run-as-doormans-system-actor-postbox.md)).
 And its settings and their secrets:
 [groundwork-settings](https://github.com/p4ulcristian/groundwork-settings), one EDN file per environment,
-its `#secret` references read from sops or 1Password, its `#env` from the
+its `#secret` references read from its sops file, its `#env` from the
 environment, checked against groundwork's `settings-shape` with every problem at
 once. Every secret in the settings (the database's password, the `:errors`
 and `:metrics` tokens, the bucket's keys, Postmark's and the webhooks'

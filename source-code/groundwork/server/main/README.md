@@ -314,7 +314,7 @@ own). Decisions:
 
 The settings are one EDN file per environment, loaded by
 [groundwork-settings](https://github.com/p4ulcristian/groundwork-settings) (`settings/load`): its `#secret`
-references read from sops or 1Password, its `#env` from the environment,
+references read from its sops file, its `#env` from the environment,
 checked against `settings-shape`, every problem at once. Every secret in
 them (`:postgres :password`, `:errors :token`, `:metrics :token`, the
 bucket's keys, Postmark's and the webhooks' tokens) is groundwork-settings's, which prints
