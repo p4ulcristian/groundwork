@@ -36,23 +36,23 @@
   ;; github.com/p4ulcristian/groundwork-bridge (it brings Jetty 12 through rj9a and reitit-ring).
   ;; groundwork plugs it in: its runner answers groundwork-access's steps, its sse lines carry
   ;; groundwork-live-updates's changes, its send-message! is groundwork-screens's send
-  io.github.p4ulcristian/groundwork-bridge   {:git/tag "v0.7.9" :git/sha "8967097"}
+  io.github.p4ulcristian/groundwork-bridge   {:git/tag "v0.7.10" :git/sha "a8acef8"}
   ;; groundwork-access: who is asking and what may they do, sessions and access, its own
   ;; library, github.com/p4ulcristian/groundwork-access (it brings malli and test.check); its
   ;; steps are groundwork-steps's, and its leak test is handed a runner
   ;; (make-leak-test-answerer: groundwork-bridge's answer-message)
-  io.github.p4ulcristian/groundwork-access    {:git/tag "v0.7.11" :git/sha "fa22575"}
+  io.github.p4ulcristian/groundwork-access    {:git/tag "v0.7.12" :git/sha "38c0557"}
   ;; groundwork-live-updates: a change to a table rings every open screen, which asks again;
   ;; both sides, its own library, github.com/p4ulcristian/groundwork-live-updates; it is
   ;; handed how a line is told (:push!, groundwork-bridge's sse send) and told apart
   ;; (:find-line-key, the line's :groundwork-bridge/channel)
-  io.github.p4ulcristian/groundwork-live-updates   {:git/tag "v0.5.10" :git/sha "17083cd"}
+  io.github.p4ulcristian/groundwork-live-updates   {:git/tag "v0.5.11" :git/sha "f315b24"}
   ;; groundwork-screens: the browser's screens over groundwork-live-updates's question store, in re-frame,
   ;; drawn with Reagent in groundwork-screens.views (it brings re-frame, Reagent and reitit-frontend;
   ;; react and react-dom are package.json's), and the address bar it follows; the browser's
   ;; side only, its own library, github.com/p4ulcristian/groundwork-screens; its sends are
   ;; handed in (groundwork-bridge's send-message!)
-  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.5" :git/sha "eadc3ed"}
+  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.6" :git/sha "24bf79b"}
   ;; groundwork-languages: which language a request, a page and an address are in; both
   ;; sides, its own library, github.com/p4ulcristian/groundwork-languages (groundwork-screens brings
   ;; it to the browser too)
