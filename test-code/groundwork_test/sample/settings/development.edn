@@ -12,10 +12,10 @@
 ;; and user from SAMPLE_DATABASE_PORT and SAMPLE_DATABASE_USER. A bucket, if
 ;; one is wanted, is SeaweedFS on localhost:8333 (groundwork-file-storage's README), started
 ;; with the development keys.
-{:secrets           {:from         :sops
-                     :file         "test-code/groundwork_test/sample/secrets/development.sops.yaml"
-                     :age-key-file "test-code/groundwork_test/sample/secrets/development-only.age-key"
-                     :timeout-ms   30000}
+{:secrets           [{:from         :sops
+                      :file         "test-code/groundwork_test/sample/secrets/development.sops.yaml"
+                      :age-key-file "test-code/groundwork_test/sample/secrets/development-only.age-key"
+                      :timeout-ms   30000}]
  :version           "development"
  :shaped-json              {:most-shapes-kept 1000
                      :json-limits      {:max-nesting-depth 1000 :max-number-length 1000 :max-string-length 20000000
