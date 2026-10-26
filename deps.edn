@@ -20,12 +20,12 @@
   ;; :views}, a function a file or one a library made, and drops a function in the tables'
   ;; folders that nothing declared makes; a column's type changed by a change; run-after-commit!;
   ;; run-in-transaction! takes the caller's :log, where an after-commit failure is written
-  io.github.p4ulcristian/groundwork-postgres     {:git/tag "v0.4.9" :git/sha "1cc359d"}
+  io.github.p4ulcristian/groundwork-postgres     {:git/tag "v0.4.10" :git/sha "0956bdc"}
   ;; groundwork-background-jobs: background jobs on Postgres, its own library, github.com/p4ulcristian/groundwork-background-jobs
   ;; on its tidy-up branch, not released: a job kind names its system actor, and its one
   ;; transaction (the work and the done-mark) runs as it, opened by groundwork-access's run-as-system!,
   ;; carrying the job's log; its tables in groundwork-postgres's tidy-up shapes
-  io.github.p4ulcristian/groundwork-background-jobs   {:git/tag "v0.5.9" :git/sha "7b486dc"}
+  io.github.p4ulcristian/groundwork-background-jobs   {:git/tag "v0.5.10" :git/sha "daefd57"}
   ;; groundwork-steps: a handler's steps over one context, and the answer's shape (the
   ;; refusal, the reasons every answer may carry), which groundwork-bridge, groundwork-access,
   ;; groundwork-live-updates and groundwork-screens share instead of requiring each other;
@@ -41,18 +41,18 @@
   ;; library, github.com/p4ulcristian/groundwork-access (it brings malli and test.check); its
   ;; steps are groundwork-steps's, and its leak test is handed a runner
   ;; (make-leak-test-answerer: groundwork-bridge's answer-message)
-  io.github.p4ulcristian/groundwork-access    {:git/tag "v0.7.14" :git/sha "f295cca"}
+  io.github.p4ulcristian/groundwork-access    {:git/tag "v0.7.15" :git/sha "e70edfe"}
   ;; groundwork-live-updates: a change to a table rings every open screen, which asks again;
   ;; both sides, its own library, github.com/p4ulcristian/groundwork-live-updates; it is
   ;; handed how a line is told (:push!, groundwork-bridge's sse send) and told apart
   ;; (:find-line-key, the line's :groundwork-bridge/channel)
-  io.github.p4ulcristian/groundwork-live-updates   {:git/tag "v0.5.13" :git/sha "3d86720"}
+  io.github.p4ulcristian/groundwork-live-updates   {:git/tag "v0.5.14" :git/sha "9c29bbe"}
   ;; groundwork-screens: the browser's screens over groundwork-live-updates's question store, in re-frame,
   ;; drawn with Reagent in groundwork-screens.views (it brings re-frame, Reagent and reitit-frontend;
   ;; react and react-dom are package.json's), and the address bar it follows; the browser's
   ;; side only, its own library, github.com/p4ulcristian/groundwork-screens; its sends are
   ;; handed in (groundwork-bridge's send-message!)
-  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.8" :git/sha "9bbe5cb"}
+  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.9" :git/sha "91a1dbe"}
   ;; groundwork-languages: which language a request, a page and an address are in; both
   ;; sides, its own library, github.com/p4ulcristian/groundwork-languages (groundwork-screens brings
   ;; it to the browser too)
@@ -68,13 +68,13 @@
   ;; table and serves its upload route at :file-storage :upload :path
   ;; on its tidy-up branch, not released: its files table in groundwork-postgres's tidy-up shapes;
   ;; delete-file-after-commit!, by groundwork-postgres's run-after-commit!
-  io.github.p4ulcristian/groundwork-file-storage     {:git/tag "v0.1.7" :git/sha "df52c4b"}
+  io.github.p4ulcristian/groundwork-file-storage     {:git/tag "v0.1.8" :git/sha "79f044a"}
   ;; groundwork-email: the app's email, its own library, github.com/p4ulcristian/groundwork-email;
   ;; main makes one mailer from the :email :sending settings, runs its
   ;; background job kind, migrates its emails table and serves its webhooks
   ;; on its tidy-up branch, not released: the sending job runs as the :system-actor the app names;
   ;; its emails table in groundwork-postgres's tidy-up shapes
-  io.github.p4ulcristian/groundwork-email   {:git/tag "v0.1.7" :git/sha "77c1275"}
+  io.github.p4ulcristian/groundwork-email   {:git/tag "v0.1.8" :git/sha "c30d4d7"}
   ;; groundwork-settings: the settings and their secrets, its own library, github.com/p4ulcristian/groundwork-settings;
   ;; an app loads its settings with settings/load, every secret in them wrapped (it prints
   ;; as its name); groundwork compares the :errors token with settings/equal?
