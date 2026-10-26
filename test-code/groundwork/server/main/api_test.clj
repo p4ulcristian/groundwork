@@ -334,7 +334,7 @@
                               :admin/page  {:address "/admin" :title "Admin" :module "admin"}}
    :browser-entry 'app.browser.main/start!
    :browser-modules {:admin {:entries '[app.browser.admin] :depends-on #{:main} :start nil}}
-   :background-job-kinds [] :schedules []})
+   :background-job-kinds [] :schedules [] :given-to-every-background-job-run {}})
 
 (defn- run-sql! [pool text] (postgres/run-statement! pool (postgres/make-query-from-sql-text "test" text) {}))
 

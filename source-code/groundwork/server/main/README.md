@@ -329,6 +329,7 @@ as its name; text written out where a secret belongs is refused:
                                :changes [] :scope-kinds scope-kinds
                                :handlers handlers :pages pages :browser-modules {}
                                :background-job-kinds [] :schedules []
+                               :given-to-every-background-job-run {}   ; each background job run's :given
                                :routes {}   ; the app's own server routes, records with a kind
                                :render-page render-page   ; each page's title, description, head and body
                                :may-upload? (fn [{:keys [person-id]}] (some? person-id))

@@ -19,6 +19,7 @@
                                :admin/page  {:address \"/admin\" :title \"Admin\" :module \"admin\"}}   ; loaded on the way in
         :background-job-kinds [send-invoice-email]  ; groundwork-background-jobs's kinds, each naming its :system-actor
         :schedules            []
+        :given-to-every-background-job-run {}       ; groundwork-background-jobs's :given-to-every-run: each run's :given
         :may-upload?          (fn [{:keys [person-id]}] (some? person-id))   ; who may upload files, the asker
         :on-delivery-event    {:orders/confirmation mark-address-bounced!} ; groundwork-email's, by the email's tag
         :on-inbound-email     {\"quotes\" add-quote-request!}})           ; groundwork-email's, by the mailbox
@@ -788,7 +789,11 @@
    files; :on-delivery-event, {tag (fn [event {:keys [transaction log]}])},
    a bounce or spam complaint by its email's tag, {} for none;
    :on-inbound-email, {mailbox (fn [email {:keys [transaction log]}])}, an
-   inbound email by its mailbox, {} for none. groundwork-email checks the two maps'
+   inbound email by its mailbox, {} for none;
+   :given-to-every-background-job-run, a map, {} for none: what every run
+   of the app's background job kinds finds in its context as :given
+   (groundwork-background-jobs's :given-to-every-run), the same map each
+   time; groundwork's own kinds read nothing from it. groundwork-email checks the two maps'
    tags and functions. Each runs in a transaction as groundwork-access's system
    actor :email (email-system-actor): the gates let it reach what the
    app's sentences give [:system :email], the open rows and the tables
@@ -798,7 +803,8 @@
    [:render-page fn?]
    [:may-upload? fn?]
    [:on-delivery-event map?]
-   [:on-inbound-email map?]])
+   [:on-inbound-email map?]
+   [:given-to-every-background-job-run map?]])
 
 (defn- check-app-functions [app]
   (when-let [explanation (malli/explain app-functions-shape app)]
@@ -891,6 +897,7 @@
                                                                                    :log log
                                                                                    :meter app-meter
                                                                                    :run-in-transaction-as run-as-system-actor!
+                                                                                   :given-to-every-run (:given-to-every-background-job-run app)
                                                                                    :kinds (conj (vec background-job-kinds)
                                                                                                 (run-once/make-forget-keys-kind (:run-once settings))
                                                                                                 (daily-caps/make-forget-counts-kind (:daily-caps settings))

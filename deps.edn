@@ -25,7 +25,7 @@
   ;; on its tidy-up branch, not released: a job kind names its system actor, and its one
   ;; transaction (the work and the done-mark) runs as it, opened by groundwork-access's run-as-system!,
   ;; carrying the job's log; its tables in groundwork-postgres's tidy-up shapes
-  io.github.p4ulcristian/groundwork-background-jobs   {:git/tag "v0.5.10" :git/sha "daefd57"}
+  io.github.p4ulcristian/groundwork-background-jobs   {:git/tag "v0.6.0" :git/sha "d217858"}
   ;; groundwork-steps: a handler's steps over one context, and the answer's shape (the
   ;; refusal, the reasons every answer may carry), which groundwork-bridge, groundwork-access,
   ;; groundwork-live-updates and groundwork-screens share instead of requiring each other;
@@ -74,7 +74,7 @@
   ;; background job kind, migrates its emails table and serves its webhooks
   ;; on its tidy-up branch, not released: the sending job runs as the :system-actor the app names;
   ;; its emails table in groundwork-postgres's tidy-up shapes
-  io.github.p4ulcristian/groundwork-email   {:git/tag "v0.1.8" :git/sha "c30d4d7"}
+  io.github.p4ulcristian/groundwork-email   {:git/tag "v0.1.9" :git/sha "5ada7cd"}
   ;; groundwork-settings: the settings and their secrets, its own library, github.com/p4ulcristian/groundwork-settings;
   ;; an app loads its settings with settings/load, every secret in them wrapped (it prints
   ;; as its name); groundwork compares the :errors token with settings/equal?

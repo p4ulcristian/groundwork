@@ -100,6 +100,7 @@
    :pages                pages
    :background-job-kinds []
    :schedules            []
+   :given-to-every-background-job-run {}
    :routes               {}
    :render-page          (fn [_request page _tools]
                            (if page
