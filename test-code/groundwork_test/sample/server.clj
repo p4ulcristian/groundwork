@@ -46,12 +46,12 @@
 (def ^:private find-orders-of-shop
   (postgres/make-query-from-sql-text
    "sample: the orders of a shop"
-   "SELECT order__id, order__note FROM orders WHERE order__shop_id = :shop/id ORDER BY order__created_at, order__id"))
+   "SELECT order__id, order__note FROM orders WHERE order__shop_id = param('shop/id') ORDER BY order__created_at, order__id"))
 
 (def ^:private insert-order
   (postgres/make-query-from-sql-text
    "sample: a new order"
-   "INSERT INTO orders (order__shop_id, order__note) VALUES (:order/shop-id, :order/note) RETURNING order__id"))
+   "INSERT INTO orders (order__shop_id, order__note) VALUES (param('order/shop-id'), param('order/note')) RETURNING order__id"))
 
 (def handlers
   {:orders/of-shop (merge (:orders/of-shop shapes/shapes-by-name)

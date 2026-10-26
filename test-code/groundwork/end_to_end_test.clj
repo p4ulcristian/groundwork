@@ -159,7 +159,7 @@
 
 (defn- count-orders-with-note [pool note]
   (:n (postgres/find-one-row pool (postgres/make-query-from-sql-text "e2e: orders with a note"
-                                                                     "SELECT count(*) AS n FROM orders WHERE order__note = :order/note")
+                                                                     "SELECT count(*) AS n FROM orders WHERE order__note = param('order/note')")
                              {:order/note note})))
 
 (defn- make-database-afresh!

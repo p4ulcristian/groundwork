@@ -97,7 +97,7 @@
    :live-updates :tell})
 
 (def ^:private mark-bounced
-  (postgres/make-query-from-sql-text "a bounce" "UPDATE shop_emails SET shop_email__bounced = true WHERE shop_email__address = :address"))
+  (postgres/make-query-from-sql-text "a bounce" "UPDATE shop_emails SET shop_email__bounced = true WHERE shop_email__address = param('address')"))
 
 (def ^:private paul #uuid "00000000-0000-4000-8000-00000000000a")
 (def ^:private anna #uuid "00000000-0000-4000-8000-00000000000b")
@@ -111,17 +111,17 @@
   (postgres/make-query-from-sql-text "all orders, no WHERE" "SELECT order__id FROM orders ORDER BY order__id"))
 
 (def ^:private insert-order
-  (postgres/make-query-from-sql-text "a new order" "INSERT INTO orders (order__shop_id) VALUES (:order/shop-id) RETURNING order__id"))
+  (postgres/make-query-from-sql-text "a new order" "INSERT INTO orders (order__shop_id) VALUES (param('order/shop-id')) RETURNING order__id"))
 
 (def ^:private find-daily-cap-counts
   (postgres/make-query-from-sql-text "daily cap counts"
                                      "SELECT daily_cap_count__counted_for, daily_cap_count__count FROM groundwork.daily_cap_counts ORDER BY 1"))
 
 (def ^:private count-kept-keys
-  (postgres/make-query-from-sql-text "one-time keys kept" "SELECT count(*) AS n FROM groundwork.run_once_keys WHERE run_once_key__key = :run-once-key/key"))
+  (postgres/make-query-from-sql-text "one-time keys kept" "SELECT count(*) AS n FROM groundwork.run_once_keys WHERE run_once_key__key = param('run-once-key/key')"))
 
 (def ^:private find-untyped
-  (postgres/make-query-from-sql-text "a param Postgres can't type" "SELECT :x IS NULL AS b"))
+  (postgres/make-query-from-sql-text "a param Postgres can't type" "SELECT param('x') IS NULL AS b"))
 
 (def ^:private lines
   "The lines the app's logger wrote, as JSON data."

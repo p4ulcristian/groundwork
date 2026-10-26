@@ -4,6 +4,6 @@
 SELECT r.rolsuper OR r.rolbypassrls AS passes_gates,
        EXISTS (SELECT 1 FROM pg_tables t
                WHERE t.tableowner = current_user
-                 AND t.schemaname = ANY (string_to_array(:folders, ','))) AS owns_tables
+                 AND t.schemaname = ANY (string_to_array(param('folders'), ','))) AS owns_tables
 FROM pg_roles r
 WHERE r.rolname = current_user
