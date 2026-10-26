@@ -147,8 +147,8 @@ And its email, on the server:
 queued in a write's transaction (`queue-email!` on the running app's
 `:email`) as a background job, sent once by Postmark or to the log
 (`:email :sending`); the provider's webhooks (`:email :webhooks`) hand
-bounces to the app's `:on-delivery-event` by the email's tag and inbound
-email to its `:on-inbound-email` by mailbox
+bounces to the app's `:on-delivery-event` by the email's tag and every inbound
+email to its one `:on-inbound-email` function, which routes it by its `:mailbox`
 ([the decision](decisions/2026-10-23-main-makes-one-attic-and-one-postbox.md)),
 each run as groundwork-access's system actor `:email`, which the app's sentences
 give what it may do, `{:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :email]}`,

@@ -279,6 +279,10 @@
   "The bounces and complaints groundwork handed to the app's function."
   (atom []))
 
+(def ^:private inbound-emails
+  "The inbound emails groundwork handed to the app's one function."
+  (atom []))
+
 (def ^:private app-routes
   "The app's own routes: a page-like read as the asker, a sign-in, a
    call of another protocol answered as the request's asker (its cookie or
@@ -329,7 +333,8 @@
                                                      (assoc event
                                                             :marked (postgres/run-statement! transaction mark-bounced {:address (:address event)})
                                                             :orders-seen (count (postgres/find-rows transaction find-all-orders {})))))}
-   :on-inbound-email {}
+   :on-inbound-email (fn [email {:keys [transaction]}]
+                       (swap! inbound-emails conj (assoc email :orders-seen (count (postgres/find-rows transaction find-all-orders {})))))
    :handlers handlers :pages {:orders/page {:address "/orders/:order-id" :title "Order"}
                               :admin/page  {:address "/admin" :title "Admin" :module "admin"}}
    :browser-entry 'app.browser.main/start!
@@ -1079,7 +1084,8 @@
             (testing "email: queued in a write's transaction, sent by the workers; its bounce handed to the app by tag"
               (let [email {:key "order-confirmation/71" :tag :orders/confirmation :to ["anna@shop.test"]
                            :from "orders@shop.test" :reply-to nil :subject "Your order" :html nil :text "Thank you."
-                           :metadata {"order" "71"} :attachments [] :stream "outbound"}]
+                           :metadata {"order" "71"} :attachments [] :stream "outbound"
+                           :unsubscribe-url nil}]
                 (reset! lines [])
                 (is (= :queued (postgres/run-in-transaction! (:pool running) {:read-only? false :log nil}
                                  #(email/queue-email! (:mailer running) % email))))
@@ -1110,7 +1116,22 @@
                         "run as the system actor :email: it marks the shop's address, and sees none of the shop's orders")
                     (is (= [true] (map :shop-email/bounced (postgres/find-rows owner-pool (postgres/make-query-from-sql-text
                                                                                           "bounced" "SELECT shop_email__bounced FROM shop_emails")
-                                                                               {})))))
+                                                                               {}))))
+                    (testing "every inbound email goes to the app's one function, which routes by its mailbox"
+                      (reset! inbound-emails [])
+                      (is (= 200 (.statusCode (.send (HttpClient/newHttpClient)
+                                                     (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/email/inbound?token=the-webhook-token-0123")))
+                                                         (.header "content-type" "application/json")
+                                                         (.POST (HttpRequest$BodyPublishers/ofString
+                                                                 (json/write-value-as-string {"MessageID" "inbound-1" "OriginalRecipient" "Quotes@in.app.test"
+                                                                                              "FromFull" {"Email" "bob@example.test" "Name" "Bob"}
+                                                                                              "ToFull" [{"Email" "quotes@in.app.test"}]
+                                                                                              "Subject" "A gate" "TextBody" "Two gates, please."})))
+                                                         (.build))
+                                                     (HttpResponse$BodyHandlers/ofString)))))
+                      (is (= [{:message-id "inbound-1" :mailbox "quotes" :subject "A gate" :orders-seen 0}]
+                             (map #(select-keys % [:message-id :mailbox :subject :orders-seen]) @inbound-emails))
+                          "its mailbox read from the recipient, run as the system actor :email: it sees none of the shop's orders")))
                   (is (= [] (access/find-system-leaks (:pool running) [shops orders shop-emails] :email {:orders [order-71 order-91]}))
                       "the system leak test, on the app's own role"))))
             (testing "the metrics: only with their token; every library's on the app's one meter, and groundwork's"

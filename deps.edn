@@ -74,7 +74,7 @@
   ;; background job kind, migrates its emails table and serves its webhooks
   ;; on its tidy-up branch, not released: the sending job runs as the :system-actor the app names;
   ;; its emails table in groundwork-postgres's tidy-up shapes
-  io.github.p4ulcristian/groundwork-email   {:git/tag "v0.1.9" :git/sha "5ada7cd"}
+  io.github.p4ulcristian/groundwork-email   {:git/tag "v0.2.0" :git/sha "c4f8288"}
   ;; groundwork-settings: the settings and their secrets, its own library, github.com/p4ulcristian/groundwork-settings;
   ;; an app loads its settings with settings/load, every secret in them wrapped (it prints
   ;; as its name); groundwork compares the :errors token with settings/equal?

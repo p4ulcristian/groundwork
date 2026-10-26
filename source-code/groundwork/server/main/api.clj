@@ -22,7 +22,7 @@
         :given-to-every-background-job-run {}       ; groundwork-background-jobs's :given-to-every-run: each run's :given
         :may-upload?          (fn [{:keys [person-id]}] (some? person-id))   ; who may upload files, the asker
         :on-delivery-event    {:orders/confirmation mark-address-bounced!} ; groundwork-email's, by the email's tag
-        :on-inbound-email     {\"quotes\" add-quote-request!}})           ; groundwork-email's, by the mailbox
+        :on-inbound-email     route-inbound-email!})                      ; groundwork-email's, every inbound email, routed by its :mailbox
 
      (def running (main/start-app! app))
      (main/stop-app! running)
@@ -129,7 +129,8 @@
    run-after-commit!) (only a file no row names through a reference to
    :file/key goes). The provider's webhooks are groundwork-email's, at the :email
    :webhooks paths, handing events to the app's :on-delivery-event (by
-   tag) and :on-inbound-email (by mailbox), each run as groundwork-access's system
+   tag) and :on-inbound-email (every inbound email, one function, which
+   routes it by its :mailbox), each run as groundwork-access's system
    actor :email, which the app's sentences give what it may do:
    {:allow :shop-emails/mark-bounced :only :all-of-the-action :to [:system :email]}."
   (:require
@@ -788,13 +789,14 @@
    :may-upload?, (fn [asker] true-or-false), who may upload
    files; :on-delivery-event, {tag (fn [event {:keys [transaction log]}])},
    a bounce or spam complaint by its email's tag, {} for none;
-   :on-inbound-email, {mailbox (fn [email {:keys [transaction log]}])}, an
-   inbound email by its mailbox, {} for none;
+   :on-inbound-email, (fn [email {:keys [transaction log]}]), the one
+   function every inbound email is handed to, which routes it by its
+   :mailbox (one that ignores it for an app that takes none);
    :given-to-every-background-job-run, a map, {} for none: what every run
    of the app's background job kinds finds in its context as :given
    (groundwork-background-jobs's :given-to-every-run), the same map each
-   time; groundwork's own kinds read nothing from it. groundwork-email checks the two maps'
-   tags and functions. Each runs in a transaction as groundwork-access's system
+   time; groundwork's own kinds read nothing from it. groundwork-email checks the
+   delivery map's tags and both functions. Each runs in a transaction as groundwork-access's system
    actor :email (email-system-actor): the gates let it reach what the
    app's sentences give [:system :email], the open rows and the tables
    without sentences; nothing else."
@@ -803,7 +805,7 @@
    [:render-page fn?]
    [:may-upload? fn?]
    [:on-delivery-event map?]
-   [:on-inbound-email map?]
+   [:on-inbound-email fn?]
    [:given-to-every-background-job-run map?]])
 
 (defn- check-app-functions [app]

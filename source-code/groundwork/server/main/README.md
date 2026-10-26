@@ -257,7 +257,8 @@ groundwork-file-storage's handler at `:file-storage :upload :path`, asking groun
 body is read; `:max-file-bytes` must be below `:server :max-body-bytes`.
 The provider's webhooks are groundwork-email's, at `:email :webhooks`' paths,
 outside sessions, handing bounces to the app map's `:on-delivery-event`
-`{tag f}` and inbound email to `:on-inbound-email` `{mailbox f}`:
+`{tag f}` and every inbound email to the one `:on-inbound-email` function,
+`(fn [email context])`, which routes it by its `:mailbox`:
 [the decision](../../../../decisions/2026-10-23-main-makes-one-attic-and-one-postbox.md).
 Each function runs in a transaction as groundwork-access's system actor `:email`
 (`run-as-system!`), allowed what the app's sentences give `[:system
@@ -333,7 +334,7 @@ as its name; text written out where a secret belongs is refused:
                                :routes {}   ; the app's own server routes, records with a kind
                                :render-page render-page   ; each page's title, description, head and body
                                :may-upload? (fn [{:keys [person-id]}] (some? person-id))
-                               :on-delivery-event {} :on-inbound-email {}}))
+                               :on-delivery-event {} :on-inbound-email (fn [_email _context] nil)}))
 (main/stop-app! running)
 
 ;; in the app's tests: the leak test, each message answered as over http

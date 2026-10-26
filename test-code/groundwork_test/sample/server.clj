@@ -108,4 +108,5 @@
                              {:answer :page :status 404 :title "Not found" :description nil :head-html "" :body-html "No such page."}))
    :may-upload?          (fn [{:keys [person-id]}] (some? person-id))
    :on-delivery-event    {}
-   :on-inbound-email     {}})
+   ;; the sample takes no inbound email: every one is ignored
+   :on-inbound-email     (fn [_email _context] nil)})
