@@ -29,7 +29,7 @@
   ;; transaction (the work and the done-mark) runs as it, opened by groundwork-access's run-as-system!,
   ;; carrying the job's log; its tables in groundwork-postgres's tidy-up shapes; a server that runs no
   ;; workers (:background-jobs :run-here? false) declares its metrics with declare-background-job-metrics!
-  io.github.p4ulcristian/groundwork-background-jobs   {:git/tag "v0.6.1" :git/sha "e22d5be"}
+  io.github.p4ulcristian/groundwork-background-jobs   {:git/tag "v0.6.2" :git/sha "7af1215"}
   ;; groundwork-steps: a handler's steps over one context, and the answer's shape (the
   ;; refusal, the reasons every answer may carry), which groundwork-bridge, groundwork-access,
   ;; groundwork-live-updates and groundwork-screens share instead of requiring each other;
@@ -47,7 +47,7 @@
   ;; test.check and nimbus-jose-jwt); its steps are groundwork-steps's, its leak test is
   ;; handed a runner (make-leak-test-answerer: groundwork-bridge's answer-message), and its
   ;; run-as-asker-of-request! hands f the asker it found, which the page shell runs render-page in
-  io.github.p4ulcristian/groundwork-access    {:git/tag "v0.8.2" :git/sha "1c9a6d6"}
+  io.github.p4ulcristian/groundwork-access    {:git/tag "v0.8.3" :git/sha "a953925"}
   ;; groundwork-live-updates: a change to a table rings every open screen, which asks again,
   ;; calmly (on a page someone sees, at most once a window; a writer's own change at once);
   ;; both sides, its own library, github.com/p4ulcristian/groundwork-live-updates; it is
@@ -74,13 +74,13 @@
   ;; main makes one file storage from the :file-storage :storage settings and the app's
   ;; :file-kinds, migrates its files table (the settings' :table) and serves its upload
   ;; route at :file-storage :upload :path
-  io.github.p4ulcristian/groundwork-file-storage     {:git/tag "v0.2.2" :git/sha "0f20384"}
+  io.github.p4ulcristian/groundwork-file-storage     {:git/tag "v0.2.3" :git/sha "d20fc3d"}
   ;; groundwork-email: the app's email, its own library, github.com/p4ulcristian/groundwork-email;
   ;; main makes one mailer from the :email :sending settings, runs its
   ;; background job kind, migrates its emails table and serves its webhooks
   ;; on its tidy-up branch, not released: the sending job runs as the :system-actor the app names;
   ;; its emails table in groundwork-postgres's tidy-up shapes
-  io.github.p4ulcristian/groundwork-email   {:git/tag "v0.2.1" :git/sha "e9cf94b"}
+  io.github.p4ulcristian/groundwork-email   {:git/tag "v0.2.2" :git/sha "b312a48"}
   ;; groundwork-settings: the settings and their secrets, its own library, github.com/p4ulcristian/groundwork-settings;
   ;; an app loads its settings with settings/load, every secret in them wrapped (it prints
   ;; as its name); groundwork compares the :errors token with settings/equal?
@@ -88,7 +88,7 @@
   ;; groundwork-live-repl: the REPL into the running app, by the :live-repl settings (on a TCP
   ;; address or a Unix socket), with
   ;; groundwork's tools in groundwork-live-repl.tools; its own library, github.com/p4ulcristian/groundwork-live-repl
-  io.github.p4ulcristian/groundwork-live-repl      {:git/tag "v0.1.3" :git/sha "db5bd86"}
+  io.github.p4ulcristian/groundwork-live-repl      {:git/tag "v0.1.4" :git/sha "5dfa25e"}
   ;; groundwork-browser-build's page half (its own deps root, malli only, no shadow-cljs):
   ;; the files a page that starts with a module links, read from the build's manifests
   ;; (files-for-page), and every module's bundle for load-module! (stylesheets-for-load-module).
