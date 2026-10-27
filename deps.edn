@@ -45,12 +45,12 @@
   ;; library, github.com/p4ulcristian/groundwork-access (it brings malli and test.check); its
   ;; steps are groundwork-steps's, and its leak test is handed a runner
   ;; (make-leak-test-answerer: groundwork-bridge's answer-message)
-  io.github.p4ulcristian/groundwork-access    {:git/tag "v0.7.15" :git/sha "e70edfe"}
+  io.github.p4ulcristian/groundwork-access    {:git/tag "v0.8.2" :git/sha "1c9a6d61f1343f86fb01bd5c078964d07d8c6de3"}
   ;; groundwork-live-updates: a change to a table rings every open screen, which asks again;
   ;; both sides, its own library, github.com/p4ulcristian/groundwork-live-updates; it is
   ;; handed how a line is told (:push!, groundwork-bridge's sse send) and told apart
   ;; (:find-line-key, the line's :groundwork-bridge/channel)
-  io.github.p4ulcristian/groundwork-live-updates   {:git/tag "v0.5.14" :git/sha "9c29bbe"}
+  io.github.p4ulcristian/groundwork-live-updates   {:git/tag "v0.6.1" :git/sha "dcae08b805c265ca4407ed3ff90c0aef0f1a353f"}
   ;; groundwork-screens: the browser's screens over groundwork-live-updates's question store, in re-frame,
   ;; drawn with Reagent in groundwork-screens.views (it brings re-frame, Reagent and reitit-frontend;
   ;; react and react-dom are package.json's), and the address bar it follows; the browser's
@@ -71,7 +71,7 @@
   ;; main makes one file storage from the :file-storage :storage settings and the app's
   ;; :file-kinds, migrates its files table (the settings' :table) and serves its upload
   ;; route at :file-storage :upload :path
-  io.github.p4ulcristian/groundwork-file-storage     {:git/tag "v0.2.0" :git/sha "955b229"}
+  io.github.p4ulcristian/groundwork-file-storage     {:git/tag "v0.2.2" :git/sha "0f20384ae2f754d9d79c43657060270adf15e449"}
   ;; groundwork-email: the app's email, its own library, github.com/p4ulcristian/groundwork-email;
   ;; main makes one mailer from the :email :sending settings, runs its
   ;; background job kind, migrates its emails table and serves its webhooks
