@@ -80,8 +80,8 @@
 (def pages
   ;; the orders page starts with the root; the reports page with :reports, which the
   ;; orders page loads on demand
-  {:orders/page  {:address "/shops/:shop-id/orders" :title "Orders" :module :main}
-   :reports/page {:address "/reports" :title "Reports" :module :reports}})
+  {:orders/page  {:address "/shops/:shop-id/orders" :title "Orders" :module :main :frame-ancestors :own-site}
+   :reports/page {:address "/reports" :title "Reports" :module :reports :frame-ancestors :no-site}})
 
 (def browser-modules
   {:main    {:entries '[groundwork-test.sample.browser] :depends-on #{} :start 'groundwork-test.sample.browser/start!}
@@ -101,9 +101,10 @@
    :handlers             handlers
    :pages                pages
    :not-found-module     :main
+   :not-found-frame-ancestors :own-site
    :background-job-kinds []
    :schedules            []
-   :given-to-every-background-job-run {}
+   :make-given           (fn [_parts] {})
    :routes               {}
    :render-page          (fn [_request page _tools]
                            (if page

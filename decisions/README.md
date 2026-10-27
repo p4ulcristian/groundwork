@@ -102,6 +102,9 @@ Each library is a repository of its own, named by what it does since [Each libra
 - [The app map's :on-inbound-email is one function](2026-10-26-the-apps-inbound-email-is-one-function.md)
 - [The app map names its own kinds of files; the files table is the store's settings'](2026-10-27-the-app-map-names-its-own-kinds-of-files.md)
 - [Every page names the module it starts with; the not-found page's is the app's :not-found-module](2026-10-27-every-page-names-the-module-it-starts-with.md)
+- [The composer takes the switch's library releases](2026-10-27-the-composer-takes-the-switchs-library-releases.md) (v8.0.0): groundwork-access v0.8, groundwork-live-updates v0.6, groundwork-file-storage v0.2.2
+- [Handlers get the app's things handed in, as background jobs do](2026-10-27-handlers-get-the-apps-things-handed-in.md) (v8.0.0): the app map's `:make-given`
+- [A server may run no background jobs: :run-here? false](2026-10-27-a-server-may-run-no-background-jobs.md) (v8.0.0)
 - [An app's table that writes its own :gates or :on-change is refused](2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md)
 - [The end-to-end test drives a sample app in a headless browser, over the DevTools protocol](2026-10-23-the-end-to-end-test-drives-a-headless-browser-over-devtools.md)
 - [/mcp stays the app's own code, not a groundwork library](2026-10-23-mcp-stays-the-apps-own-code.md)
@@ -202,6 +205,9 @@ Each library is a repository of its own, named by what it does since [Each libra
 - [No pre-rendering of pages for search engines, for now](2026-10-23-no-pre-rendering-of-pages-for-search-engines-for-now.md)
 - [The page shell escapes by OWASP's encoders; its settings are a JSON string](2026-10-27-the-page-shell-escapes-by-owasps-encoders.md) (v7.0.2)
 - [The errors route's ?since= is read by ring.util.codec](2026-10-27-the-errors-routes-since-is-read-by-ring-codec.md) (v7.0.2), changing in part [Browser errors go to the composer's one list](2026-10-23-browser-errors-go-to-the-composers-one-list.md)
+- [Every page says who may frame it](2026-10-27-every-page-says-who-may-frame-it.md) (v8.0.0), changing in part [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) and [Pages for other sites, visitors, and servers](2026-10-12-pages-for-other-sites-visitors-and-servers.md)
+- [A page's asker is found once, in its one transaction](2026-10-27-a-pages-asker-is-found-once-in-its-one-transaction.md) (v8.0.0), changing in part [A page says its own head and body through the app's render-page](2026-10-23-a-page-says-its-own-head-and-body-through-the-apps-render-page.md)
+- [A refused outside token is answered 401; a person route names its challenge](2026-10-27-a-refused-outside-token-is-answered-401.md) (v8.0.0)
 
 ### Styles
 
@@ -211,7 +217,8 @@ Each library is a repository of its own, named by what it does since [Each libra
 
 - [A job can give up for good](https://github.com/p4ulcristian/backroom/blob/main/decisions/2026-10-12-a-job-can-give-up-for-good.md): moved to backroom with the library
 - [REPLs by environment](2026-10-12-repls-by-environment.md), changed in part by [Groundwork ships no team endpoints and no eval bridge](2026-10-18-groundwork-ships-no-team-endpoints-and-no-eval-bridge.md) and [The REPL starts last and stops first; house brings its tools](2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md)
-- [The REPL starts last and stops first; house brings its tools](2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md), changed in part by [A token call arrives where a browser's does](2026-10-23-a-token-call-arrives-where-a-browsers-does.md)
+- [The REPL starts last and stops first; house brings its tools](2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md), changed in part by [A token call arrives where a browser's does](2026-10-23-a-token-call-arrives-where-a-browsers-does.md) and [The REPL may listen on a Unix socket](2026-10-27-the-repl-may-listen-on-a-unix-socket.md)
+- [The REPL may listen on a Unix socket](2026-10-27-the-repl-may-listen-on-a-unix-socket.md) (v8.0.0)
 - [An app's own route is of kind :person or :provider](2026-10-23-route-kinds-are-person-and-provider.md)
 - [Every request is handled with its language bound, for dictionary's tr](2026-10-23-every-request-is-handled-in-its-language.md)
 - [An app's own server routes are records with a kind; the composer does their checks](2026-10-23-an-apps-own-server-routes-are-records-with-a-kind.md), changed in part by [A token call arrives where a browser's does](2026-10-23-a-token-call-arrives-where-a-browsers-does.md), added to by [A token call is answered as its person, from the app's own route](2026-10-23-a-token-call-is-answered-as-its-person-from-the-apps-route.md)

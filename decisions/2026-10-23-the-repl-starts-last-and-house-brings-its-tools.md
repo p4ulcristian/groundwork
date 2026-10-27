@@ -1,5 +1,7 @@
 # The REPL starts last and stops first; house brings its tools
 
+> **Changed in part** by [The REPL may listen on a Unix socket](2026-10-27-the-repl-may-listen-on-a-unix-socket.md) (2026-10-27): the `:live-repl` settings say where it listens in `:address`, a TCP one or a Unix socket.
+
 > **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): study is groundwork-live-repl now (`groundwork-live-repl.api`), its settings `:live-repl`.
 
 > **Changed in part** by [A token call arrives where a browser's does; the composer names no person](2026-10-23-a-token-call-arrives-where-a-browsers-does.md) (2026-10-23, built on tidy-up, not released): `ask-as-person`'s stand-in for the session step is `doorman.repl`'s `make-step-asking-as`, and it answers by `answer-as`'s own path with no request.

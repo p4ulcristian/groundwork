@@ -15,12 +15,19 @@
         :changes              []                    ; groundwork-postgres's changes
         :scope-kinds          scope-kinds           ; groundwork-access's
         :handlers             handlers              ; bridge's table, each with :action, where it acts (:record or :scope), shapes and :daily-caps
-        :pages                {:orders/page {:address \"/orders/:order-id\" :title \"Order\" :module :main}   ; the module the page starts with
-                               :admin/page  {:address \"/admin\" :title \"Admin\" :module :admin}}   ; with :main, which it depends on
+        :pages                {:orders/page    {:address \"/orders/:order-id\" :title \"Order\" :module :main   ; the module the page starts with
+                                                :frame-ancestors :own-site}                              ; who may frame it
+                               :admin/page     {:address \"/admin\" :title \"Admin\" :module :admin       ; with :main, which it depends on
+                                                :frame-ancestors :no-site}
+                               :customize/page {:address \"/customize\" :title \"Customize\" :module :main
+                                                :frame-ancestors :any-site}}                             ; in other sites' frames
         :not-found-module     :main                 ; the module the not-found page starts with
+        :not-found-frame-ancestors :own-site        ; and who may frame it
         :background-job-kinds [send-invoice-email]  ; groundwork-background-jobs's kinds, each naming its :system-actor
         :schedules            []
-        :given-to-every-background-job-run {}       ; groundwork-background-jobs's :given-to-every-run: each run's :given
+        :make-given           (fn [{:keys [pool run-as-system! add-background-job-to-queue! meter]}]   ; the running app's parts
+                                {:pool pool :run-as-system! run-as-system! :meter meter :stripe stripe-client
+                                 :add-job! add-background-job-to-queue!})   ; every handler's :groundwork/given, every job run's :given
         :file-kinds           []                    ; groundwork-file-storage's :kinds, the app's own kinds of files
         :may-upload?          (fn [{:keys [person-id]}] (some? person-id))   ; who may upload files, the asker
         :on-delivery-event    {:orders/confirmation mark-address-bounced!} ; groundwork-email's, by the email's tag
@@ -50,11 +57,16 @@
    pass the gates, then starts the pool, the handlers (groundwork-access's check,
    groundwork's :groundwork-access/my-actions, then groundwork-live-updates's notes; every write keyed
    to run once, groundwork.server.main.run-once; every handler's
-   :daily-caps counted after groundwork-access's check, groundwork.server.main.daily-caps), groundwork-live-updates's listener, the
-   background job workers (groundwork's own that forgets old one-time keys
+   :daily-caps counted after groundwork-access's check, groundwork.server.main.daily-caps;
+   every app handler's steps given the app's :make-given map at
+   :groundwork/given), groundwork-live-updates's listener, the
+   background job workers where the :background-jobs settings say
+   :run-here? true (groundwork's own that forgets old one-time keys
    among them; each job's one transaction is groundwork-access's run-as-system! as
    its kind's :system-actor, so it reaches what that actor's sentences
-   give it), in development the browser
+   give it; every run given the same map at :given; where :run-here? is
+   false, none, and groundwork-background-jobs's metrics declared, so a job queued
+   there is counted), in development the browser
    build's watcher (:browser-build {:watch options}, with the app's
    :browser-modules), and the server (bridge's three addresses, from
    :bridge :addresses, every page answered by the page shell in the
@@ -70,7 +82,9 @@
    ones, every handler's :refusals) needs its text in every catalog: one
    missing refuses the start (groundwork-languages's check-texts-of-reasons).
    Every page names the :module of :browser-modules it starts with (a
-   keyword), and the app the not-found page's, :not-found-module: the shell
+   keyword) and who may frame it, :frame-ancestors (:own-site, :no-site or
+   :any-site), and the app the not-found page's, :not-found-module and
+   :not-found-frame-ancestors: the shell
    links that module's files and those of every module it depends on, read
    from the build's manifests by browser-build's files-for-page, once per
    module (while watching, after the watch's first compile); any other
@@ -114,10 +128,20 @@
    by the asker's address (:visitors :rate-limit, 429 over it;
    groundwork.server.main.visitors).
 
-   The REPL (groundwork-live-repl's start-repl-server!, the :live-repl settings) starts last
+   The REPL (groundwork-live-repl's start-repl-server!, the :live-repl settings, on a
+   TCP address or a Unix socket) starts last
    and stops first, with groundwork's tools in groundwork-live-repl.tools:
    :ask-as-person, :why-refused and :explain-setting
    (groundwork.server.main.tools).
+
+   What the app's own code needs of the running app (the pool, a system
+   actor's transaction, the job queue, the meter, its own clients) it
+   makes once from the running app's parts, its :make-given, (fn [parts]
+   map): parts {:settings :pool :run-as-system! :add-background-job-to-queue!
+   :shaper :meter :texts :file-storage :mailer}, called once at the
+   start, before the handlers are made; the map it returns is in every app
+   handler's steps' context at :groundwork/given and every background job
+   run's at :given, the same map each time.
 
    A table map of the app's says :access and :live-updates, never :gates or
    :on-change, which groundwork-access and groundwork-live-updates put on it: one that writes
@@ -181,8 +205,8 @@
    own, put in place of {nonce} in the policy (which must name it), on the
    shell's scripts, and handed to the app's :render-page.
    :referrer-policy: the header, \"same-origin\".
-   :frame-options: the X-Frame-Options header, \"DENY\" or \"SAMEORIGIN\",
-   or :none when other sites may frame the page.
+   Who may frame a page is the page's own :frame-ancestors, not a setting
+   (groundwork.server.main.page): the policy names no frame-ancestors.
    :files: bridge's files: :folder, where the browser build is (the
    watcher writes it, the release build's manifests are read from it, a
    GET no route matches is answered from it); :hashed-name-min-hex-digits,
@@ -194,9 +218,10 @@
                               [:and
                                [:map {:closed true} [:policy :string] [:nonce? :boolean]]
                                [:fn {:error/message ":policy names {nonce} when :nonce? is true, and only then"}
-                                (fn [{:keys [policy nonce?]}] (= (boolean nonce?) (str/includes? policy "{nonce}")))]]]]
+                                (fn [{:keys [policy nonce?]}] (= (boolean nonce?) (str/includes? policy "{nonce}")))]
+                               [:fn {:error/message ":policy names no frame-ancestors: each page says its own, :frame-ancestors"}
+                                (fn [{:keys [policy]}] (not (str/includes? (str/lower-case policy) "frame-ancestors")))]]]]
    [:referrer-policy :string]
-   [:frame-options [:enum "DENY" "SAMEORIGIN" :none]]
    [:files [:map {:closed true}
             [:folder :string]
             [:hashed-name-min-hex-digits [:int {:min 1}]]
@@ -240,7 +265,8 @@
 (def live-updates-settings-shape
   "The :live-updates part of the settings, every key required, both groundwork-live-updates's:
    :store, the browser's question store's, which the page carries
-   (groundwork-live-updates's store-settings-shape); :listening, the server's listener's
+   (groundwork-live-updates's store-settings-shape: :gather-changes-ms
+   :keep-unwatched-answers-ms :ask-again-at-most-every-ms); :listening, the server's listener's
    (groundwork-live-updates's listening-settings-shape)."
   [:map {:closed true}
    [:store live-updates/store-settings-shape]
@@ -348,6 +374,18 @@
    [:sending email/settings-shape]
    [:webhooks email/webhook-settings-shape]])
 
+(def background-jobs-settings-shape
+  "The :background-jobs part of the settings, every key required:
+   groundwork-background-jobs's settings (its settings-shape: :workers :poll-ms …
+   :metric-buckets) and :run-here?, whether this server runs the background
+   jobs: true, the workers start with those settings; false, none starts
+   (a preview on a copy of the database, whose jobs must not send its
+   emails), the jobs it queues wait for a server that runs them, and
+   groundwork-background-jobs's metrics are declared on the app's meter all the
+   same (its declare-background-job-metrics!), so each is counted. The same
+   part with only :run-here? changed serves both."
+  (into background-jobs/settings-shape [[:run-here? :boolean]]))
+
 (def daily-caps-settings-shape
   "The :daily-caps part of the settings, every key required: the
    handlers' :daily-caps, counted in Postgres (groundwork.server.main.daily-caps).
@@ -438,7 +476,7 @@
    [:run-once run-once-settings-shape]
    [:daily-caps daily-caps-settings-shape]
    [:languages languages/settings-shape]
-   [:background-jobs background-jobs/settings-shape]
+   [:background-jobs background-jobs-settings-shape]
    [:file-storage file-storage-settings-shape]
    [:email email-settings-shape]
    [:live-updates live-updates-settings-shape]
@@ -468,7 +506,7 @@
    one-time keys (groundwork.run_once_keys) and daily caps' counts
    (groundwork.daily_cap_counts), put with the app's. None knows of
    groundwork-live-updates; their live updates are said here: the sessions, the
-   tokens, the background jobs, the files, the emails, the keys and the
+   tokens, the outside issuers' subjects, the background jobs, the files, the emails, the keys and the
    counts silent; groundwork-access's access tables tell, so a screen's
    :groundwork-access/my-actions is asked again when a membership or a role
    changes."
@@ -477,6 +515,7 @@
                 (assoc daily-caps/daily-cap-counts-table :live-updates [:silent "no screen shows the daily caps' counts"])]
                (map #(assoc % :live-updates [:silent "no screen shows sessions"]) [access/sessions-table])
                (map #(assoc % :live-updates [:silent "groundwork-access's list-tokens reads it off a message's transaction: no screen's notes name it"]) [access/tokens-table])
+               (map #(assoc % :live-updates [:silent "no screen shows which person an outside issuer's subject is"]) [access/outside-subjects-table])
                (map #(assoc % :live-updates :tell) access/access-tables)
                (map #(assoc % :live-updates [:silent "no screen shows background jobs"]) background-jobs/background-jobs-tables)
                [(assoc (file-storage/files-table (get-in settings [:file-storage :storage])) :live-updates [:silent "a screen shows the app's rows that name a file, not groundwork-file-storage's"])
@@ -608,8 +647,23 @@
                                            :find-session-step find-session-step
                                            :rate-limit        (get-in settings [:my-actions :rate-limit])})))
 
-(defn- make-ready-handlers [pool counting-pool {:keys [handlers tables scope-kinds settings] :as app} find-session-step]
+(defn- make-give-step
+  "The step first among an app handler's own: the app's given map, made
+   once by its :make-given, at :groundwork/given in the context."
+  [given]
+  {:name  :groundwork/give
+   :enter #(assoc % :groundwork/given given)})
+
+(defn- put-given-into-handlers
+  "The app's handlers, each with the give step first among its own steps,
+   so every step of theirs finds the given map at :groundwork/given; the
+   steps groundwork and groundwork-access put around them come before it."
+  [handlers given]
+  (update-vals handlers #(update % :steps (fn [steps] (into [(make-give-step given)] steps)))))
+
+(defn- make-ready-handlers [pool counting-pool {:keys [handlers tables scope-kinds settings] :as app} given find-session-step]
   (-> handlers
+      (put-given-into-handlers given)
       (daily-caps/put-daily-caps-into-handlers counting-pool (get-in settings [:bridge :client-address-header]))
       (run-once/put-run-once-into-handlers scope-kinds (get-in settings [:run-once :keep-keys-ms]))
       (access/put-access-into-handlers {:pool pool :tables tables :scope-kinds scope-kinds
@@ -618,13 +672,13 @@
       (live-updates/put-table-notes-into-handlers)))
 
 (defn- make-all-ready-handlers
-  "The handlers the server answers: the app's made ready, and
-   :groundwork/browser-error, with find-session-step. The REPL's
-   ask-as-person makes the same names with its own step, so every
-   answered message is counted under one table of names on the app's
-   meter (bridge declares its metrics by the names)."
-  [pool counting-pool {:keys [settings] :as app} find-session-step]
-  (-> (make-ready-handlers pool counting-pool app find-session-step)
+  "The handlers the server answers: the app's made ready, each given the
+   app's given map, and :groundwork/browser-error, with find-session-step.
+   The REPL's ask-as-person makes the same names with its own step, so
+   every answered message is counted under one table of names on the
+   app's meter (bridge declares its metrics by the names)."
+  [pool counting-pool {:keys [settings] :as app} given find-session-step]
+  (-> (make-ready-handlers pool counting-pool app given find-session-step)
       (errors/add-browser-error-handler find-session-step (get-in settings [:errors :browser-rate-limit]))))
 
 (defn- make-rate-limit-key-finder
@@ -733,19 +787,34 @@
     (swap! stoppers conj #(stop part))
     part))
 
-(defn- check-modules-of-pages
+(def ^:private frame-ancestors-values
+  (set (keys page/frame-ancestors)))
+
+(defn- check-pages
   "Every page's :module, and the app's :not-found-module, is one of the
-   app's :browser-modules, a keyword: the module the page starts with;
-   throws with every page that names none or another."
-  [{:keys [pages browser-modules not-found-module]}]
+   app's :browser-modules, a keyword: the module the page starts with; and
+   every page's :frame-ancestors, and the app's :not-found-frame-ancestors,
+   says who may frame it, :own-site, :no-site or :any-site. Throws with
+   every page that names none or another, every problem at once."
+  [{:keys [pages browser-modules not-found-module not-found-frame-ancestors] :as app}]
   (let [known    (set (keys browser-modules))
+        framing  (str/join ", " (sort frame-ancestors-values))
         problems (concat (for [[page-name {:keys [module] :as page}] pages
                                :when (not (contains? known module))]
                            (if (contains? page :module)
                              (str page-name " names the module " (pr-str module) ", which :browser-modules doesn't have")
                              (str page-name " names no :module, the module it starts with")))
+                         (for [[page-name page] pages
+                               :when (not (contains? frame-ancestors-values (:frame-ancestors page)))]
+                           (if (contains? page :frame-ancestors)
+                             (str page-name " names :frame-ancestors " (pr-str (:frame-ancestors page)) ", not one of " framing)
+                             (str page-name " names no :frame-ancestors, who may frame it: one of " framing)))
                          (when-not (contains? known not-found-module)
-                           [(str ":not-found-module is " (pr-str not-found-module) ", which :browser-modules doesn't have")]))]
+                           [(str ":not-found-module is " (pr-str not-found-module) ", which :browser-modules doesn't have")])
+                         (when-not (contains? frame-ancestors-values not-found-frame-ancestors)
+                           [(if (contains? app :not-found-frame-ancestors)
+                              (str ":not-found-frame-ancestors is " (pr-str not-found-frame-ancestors) ", not one of " framing)
+                              (str "the app names no :not-found-frame-ancestors, who may frame the not-found page: one of " framing))]))]
     (when (seq problems)
       (throw (ex-info (str "The pages have problems: " (pr-str (vec problems)))
                       {:type :groundwork.server.main/bad-pages :problems (vec problems)})))))
@@ -772,7 +841,7 @@
    :run-once        #'run-once-settings-shape
    :daily-caps      #'daily-caps-settings-shape
    :languages       #'languages/settings-shape
-   :background-jobs #'background-jobs/settings-shape
+   :background-jobs #'background-jobs-settings-shape
    :file-storage           #'file-storage-settings-shape
    :email         #'email-settings-shape
    :live-updates        #'live-updates-settings-shape
@@ -782,8 +851,8 @@
 (defn- make-live-repl-tools
   "groundwork's tools for the REPL (groundwork.server.main.tools), from the running
    app's parts."
-  [{:keys [handlers tables scope-kinds settings] :as app} shaper log app-meter pool counting-pool]
-  (tools/make-tools {:make-ready-handlers #(make-all-ready-handlers pool counting-pool app %)
+  [{:keys [handlers tables scope-kinds settings] :as app} shaper log app-meter pool counting-pool given]
+  (tools/make-tools {:make-ready-handlers #(make-all-ready-handlers pool counting-pool app given %)
                      :shaper                shaper
                      :log                 log
                      :meter               app-meter
@@ -811,10 +880,13 @@
    :on-inbound-email, (fn [email {:keys [transaction log]}]), the one
    function every inbound email is handed to, which routes it by its
    :mailbox (one that ignores it for an app that takes none);
-   :given-to-every-background-job-run, a map, {} for none: what every run
-   of the app's background job kinds finds in its context as :given
-   (groundwork-background-jobs's :given-to-every-run), the same map each
-   time; groundwork's own kinds read nothing from it. groundwork-email checks the
+   :make-given, (fn [parts] map), what the app's own code is handed, made
+   once at the start from the running app's parts (make-given-parts): the
+   map it returns is in every app handler's steps' context at
+   :groundwork/given and every background job run's at :given
+   (groundwork-background-jobs's :given-to-every-run), the same map each time;
+   groundwork's own handlers and kinds read nothing from it; (fn [_] {})
+   for an app with nothing to give. groundwork-email checks the
    delivery map's tags and both functions. Each runs in a transaction as groundwork-access's system
    actor :email (email-system-actor): the gates let it reach what the
    app's sentences give [:system :email], the open rows and the tables
@@ -826,7 +898,7 @@
    [:file-kinds [:sequential map?]]
    [:on-delivery-event map?]
    [:on-inbound-email fn?]
-   [:given-to-every-background-job-run map?]])
+   [:make-given fn?]])
 
 (defn- check-app-functions [app]
   (when-let [explanation (malli/explain app-functions-shape app)]
@@ -834,9 +906,75 @@
       (throw (ex-info (str "The app has problems: " (pr-str errors))
                       {:type :groundwork.server.main/bad-app :errors errors})))))
 
+(defn- make-given-parts
+  "What the app's :make-given is handed, every key there:
+   :settings the checked settings; :pool the app's pool (its own role,
+   which owns nothing: a statement on it outside a transaction as someone
+   passes no gate); :run-as-system!, (fn [system-actor {:keys [read-only?
+   log]} f]), groundwork-access's run-as-system! on the pool, (f transaction) as
+   the named system actor, carrying log (a step's or a run's own);
+   :add-background-job-to-queue!, (fn [pool-or-transaction kind params
+   {:keys [run-in-ms key]}]), groundwork-background-jobs's, on the app's shaper and
+   meter; :shaper, :meter and :texts the app's; :file-storage and :mailer
+   the app's one file storage and mailer."
+  [settings pool shaper app-meter texts running-file-storage running-mailer]
+  {:settings                     settings
+   :pool                         pool
+   :run-as-system!               (fn [system-actor options f] (access/run-as-system! pool system-actor options f))
+   :add-background-job-to-queue! (fn [pool-or-transaction kind params options]
+                                   (background-jobs/add-background-job-to-queue! pool-or-transaction kind params
+                                                                                 (assoc options :shaper shaper :meter app-meter)))
+   :shaper                       shaper
+   :meter                        app-meter
+   :texts                        texts
+   :file-storage                 running-file-storage
+   :mailer                       running-mailer})
+
+(defn- make-given
+  "The app's given map, its :make-given called once with the running
+   app's parts; anything but a map refuses the start, named."
+  [{:keys [make-given]} parts]
+  (let [given (make-given parts)]
+    (when-not (map? given)
+      (throw (ex-info (str "The app's :make-given answered " (pr-str (type given)) ", not a map: {} for nothing to give")
+                      {:type :groundwork.server.main/bad-app :errors {:make-given ["should answer a map, {} for nothing to give"]}})))
+    given))
+
+(defn- start-background-jobs!
+  "Where the :background-jobs settings say :run-here? true, the workers,
+   running the app's kinds and groundwork's (its two forgetting jobs,
+   groundwork-email's sending), each run given the app's given map; where
+   false, none: groundwork-background-jobs's metrics declared on the app's meter for
+   the same kinds, so a job queued here is counted, and nil."
+  [pool {:keys [settings background-job-kinds schedules]} {:keys [shaper log app-meter given running-mailer]}]
+  (let [job-settings (dissoc (:background-jobs settings) :run-here?)
+        kinds        (conj (vec background-job-kinds)
+                           (run-once/make-forget-keys-kind (:run-once settings))
+                           (daily-caps/make-forget-counts-kind (:daily-caps settings))
+                           (email/make-background-job-kind running-mailer))]
+    (if (get-in settings [:background-jobs :run-here?])
+      (background-jobs/start-workers! pool (assoc job-settings
+                                                  :shaper shaper
+                                                  :log log
+                                                  :meter app-meter
+                                                  :run-in-transaction-as run-as-system-actor!
+                                                  :given-to-every-run given
+                                                  :kinds kinds
+                                                  :schedules (conj (vec schedules)
+                                                                   (run-once/make-forget-keys-schedule (:run-once settings))
+                                                                   (daily-caps/make-forget-counts-schedule (:daily-caps settings)))))
+      (background-jobs/declare-background-job-metrics! app-meter {:kinds kinds :metric-buckets (:metric-buckets job-settings)}))))
+
+(defn- stop-background-jobs!
+  "Stops the workers start-background-jobs! started; nil, none ran."
+  [workers]
+  (when workers (background-jobs/stop-workers! workers)))
+
 (defn start-app!
   "Starts the app (see the namespace). Returns the running app, for stop-app!:
-   {:settings :shaper :logger :log :meter :texts :pool :counting-pool :file-storage :mailer :handlers :live-updates :workers :watching :health :server :live-repl},
+   {:settings :shaper :logger :log :meter :texts :pool :counting-pool :file-storage :mailer :given :handlers :live-updates :workers :watching :health :server :live-repl},
+   :given the app's given map (its :make-given's), :workers nil where
+   the :background-jobs settings say :run-here? false,
    :counting-pool the pool the daily caps are counted on (the :daily-caps settings),
    :file-storage the app's one file storage (groundwork-file-storage.api: store-file!, make-signed-link, …),
    :mailer the app's one mailer (groundwork-email.api: queue-email! in a write's
@@ -853,11 +991,11 @@
    there too: groundwork-background-jobs's add-background-job-to-queue! takes it), :live-repl the
    REPL, started last (groundwork-live-repl's start-repl-server!, the :live-repl settings,
    groundwork's tools in groundwork-live-repl.tools)."
-  [{:keys [settings background-job-kinds schedules tables] :as app}]
+  [{:keys [settings tables] :as app}]
   (check-settings settings)
   (check-app-functions app)
   (check-app-database app)
-  (check-modules-of-pages app)
+  (check-pages app)
   (check-tables-leave-gates-and-on-change-out tables)
   (let [running-logger (logs/make-logger (:logs settings))
         log             (logs/log-function running-logger)]
@@ -886,8 +1024,10 @@
                                              file-storage/stop-file-storage!)
               running-mailer   (email/make-mailer (get-in settings [:email :sending])
                                                       {:log log :meter app-meter :shaper shaper :system-actor email-system-actor})
+              given             (make-given app (make-given-parts settings pool shaper app-meter texts
+                                                                   running-file-storage running-mailer))
               find-session-step (access/make-find-session-step pool (:access settings))
-              handlers          (make-all-ready-handlers pool counting-pool app find-session-step)
+              handlers          (make-all-ready-handlers pool counting-pool app given find-session-step)
               _                 (check-texts-of-reasons! texts handlers)
               answer-as         (answer-as/make-answer-as {:handlers               handlers
                                                            :shaper                   shaper
@@ -900,16 +1040,16 @@
               ;; page handler reads them, once per module, after it
               watching          (when (is-watching? settings)
                                   (start-part! stoppers #(start-watching-browser-build! app log) stop-watching-browser-build!))
-              page-handler      (page/make-page-handler {:shaper              shaper
-                                                         :settings          settings
-                                                         :browser-settings  (page/make-browser-settings settings (:pages app))
-                                                         :pages             (:pages app)
-                                                         :not-found-module  (:not-found-module app)
-                                                         :render-page       (:render-page app)
-                                                         :pool              pool
-                                                         :log               log
-                                                         :scope-kinds       (:scope-kinds app)
-                                                         :find-session-step find-session-step})
+              page-handler      (page/make-page-handler {:shaper                    shaper
+                                                         :settings                  settings
+                                                         :browser-settings          (page/make-browser-settings settings (:pages app))
+                                                         :pages                     (:pages app)
+                                                         :not-found-module          (:not-found-module app)
+                                                         :not-found-frame-ancestors (:not-found-frame-ancestors app)
+                                                         :render-page               (:render-page app)
+                                                         :pool                      pool
+                                                         :log                       log
+                                                         :scope-kinds               (:scope-kinds app)})
               running-live-updates  (start-part! stoppers
                                              #(live-updates/start-listening! pool (get-in settings [:live-updates :listening])
                                                                          {:log           log
@@ -920,20 +1060,9 @@
                                                                           :find-line-key :groundwork-bridge/channel})
                                              live-updates/stop-listening!)
               workers           (start-part! stoppers
-                                             #(background-jobs/start-workers! pool (assoc (:background-jobs settings)
-                                                                                   :shaper shaper
-                                                                                   :log log
-                                                                                   :meter app-meter
-                                                                                   :run-in-transaction-as run-as-system-actor!
-                                                                                   :given-to-every-run (:given-to-every-background-job-run app)
-                                                                                   :kinds (conj (vec background-job-kinds)
-                                                                                                (run-once/make-forget-keys-kind (:run-once settings))
-                                                                                                (daily-caps/make-forget-counts-kind (:daily-caps settings))
-                                                                                                (email/make-background-job-kind running-mailer))
-                                                                                   :schedules (conj (vec schedules)
-                                                                                                    (run-once/make-forget-keys-schedule (:run-once settings))
-                                                                                                    (daily-caps/make-forget-counts-schedule (:daily-caps settings)))))
-                                             background-jobs/stop-workers!)
+                                             #(start-background-jobs! pool app {:shaper shaper :log log :app-meter app-meter :given given
+                                                                                :running-mailer running-mailer})
+                                             stop-background-jobs!)
               running-health    (health/make-health)
               _                 (metrics/declare-groundwork-metrics! app-meter running-logger (:stage running-health) (:version settings))
               server            (start-part! stoppers
@@ -955,10 +1084,10 @@
           (health/mark-stage! running-health :started)
           (log :info :groundwork/started {:groundwork/version (:version settings) :groundwork/port (:port server)})
           (let [repl (live-repl/start-repl-server! (:live-repl settings)
-                                               {:log log :tools (make-live-repl-tools app shaper log app-meter pool counting-pool)})]
+                                               {:log log :tools (make-live-repl-tools app shaper log app-meter pool counting-pool given)})]
             {:settings settings :shaper shaper :logger running-logger :log log :meter app-meter :texts texts :pool pool
              :counting-pool counting-pool
-             :file-storage running-file-storage :mailer running-mailer :handlers handlers :live-updates running-live-updates :workers workers :watching watching :health running-health
+             :file-storage running-file-storage :mailer running-mailer :given given :handlers handlers :live-updates running-live-updates :workers workers :watching watching :health running-health
              :server server :live-repl repl}))
         (catch Throwable e
           (doseq [stop @stoppers] (stop))
@@ -967,7 +1096,7 @@
 (defn stop-app!
   "Closes the REPL first, then answers ready with 503 for the :health
    settings' :not-ready-before-stop-ms, then stops taking requests, stops
-   the watcher, lets running background jobs finish, stops listening,
+   the watcher, lets running background jobs finish (where they ran), stops listening,
    stops the file storage's client, closes the counting pool and the pool."
   [{:keys [settings log pool counting-pool server workers watching] running-live-updates :live-updates running-health :health repl :live-repl
     running-file-storage :file-storage}]
@@ -977,7 +1106,7 @@
   (Thread/sleep (long (get-in settings [:health :not-ready-before-stop-ms])))
   (bridge/stop-server! server)
   (when watching (stop-watching-browser-build! watching))
-  (background-jobs/stop-workers! workers)
+  (stop-background-jobs! workers)
   (live-updates/stop-listening! running-live-updates)
   (file-storage/stop-file-storage! running-file-storage)
   (postgres/stop-pool! counting-pool)

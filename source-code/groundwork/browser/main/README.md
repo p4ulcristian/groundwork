@@ -5,14 +5,17 @@ The browser's one start: reads what the server's page shell put in the page
 browser's groundwork-shaped-json settings, the pages), makes the app's one shaper in the browser
 from those and its required `:exact-decimals` option (`groundwork-shaped-json.big/big` or nil),
 passes it to bridge and returns it (`:shaped-json`), makes the question store (groundwork-live-updates's, with the page's `:live-updates`
-settings), opens the sse line (groundwork-live-updates's messages, the app's own, and the version: a page older than
+settings and the page's document, `{:page js/document}`: a page nobody sees asks again once, when seen), opens the sse line (groundwork-live-updates's messages, the app's own, and the version: a page older than
 the server reloads, once per version; reopened after the sse delay when the
 server answered with an error; the app's `:on-line-change` dispatched with
 `{:line :open}` when it first opens, `{:line :broken}` once per break and
 `{:line :back}` when it opens again, an offline banner's status), then starts groundwork-screens (`[:groundwork-screens/start …]`, with
 the store, the write's send function (the send's options as `:groundwork-screens/send`
 wrote them, `{:once-key :keep-alive?}`: the key in the `idempotency-key`
-header, `:keep-alive?` as bridge's), the page's `:retry-writes`, the pages, the app's `:questions-of-pages`,
+header, `:keep-alive?` as bridge's; each table a good answer's notes name
+told the store as this browser's own change, groundwork-live-updates's
+`hear-own-changed-table!`, so what read it is asked again at once, past
+`:ask-again-at-most-every-ms`), the page's `:retry-writes`, the pages, the app's `:questions-of-pages`,
 `:on-answer-failed`, `:on-signed-out` (with `:groundwork-access/signed-out` as groundwork-screens's
 `:signed-out-reason`, both nil when the app's is), `:on-move`, `:query-shapes-of-pages` and `:placeholder`, the page's
 languages and language, browser-build's `load-module!` with each module's stylesheets, and `[:groundwork-access/my-actions {}]` as its
@@ -26,7 +29,7 @@ boundary caught, `(main/report-browser-error! app {:kind :render :error e})`,
 `app` what `start-app!` returned. `:version` is the page's version. The app's
 shapes have the three for each of its names, `:params-shape`,
 `:answer-shape` and `:refusals` (its handler's own reasons, `{}` for
-none); groundwork-access's reasons (groundwork-access's `put-refusals-into-shapes`) and
+none); groundwork-access's reasons (groundwork-access's `put-refusals-into-shapes`, `:groundwork-access/token-refused` among them) and
 groundwork's run-once ones are added to each, and groundwork's own names
 (`:groundwork-access/my-actions`'s answer shape is groundwork-access's, which groundwork-screens's "can I?"
 checks the answer by, with the app's shaper). A view shows a refusal by

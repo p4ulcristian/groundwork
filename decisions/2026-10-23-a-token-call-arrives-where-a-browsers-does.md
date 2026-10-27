@@ -1,5 +1,7 @@
 # A token call arrives where a browser's does; the composer names no person
 
+> **Changed in part** by [A refused outside token is answered 401](2026-10-27-a-refused-outside-token-is-answered-401.md) (2026-10-27): an outside issuer's token that fails its check is answered 401, not 403, outside a message.
+
 > **Agreed by the user** 2026-10-23, with the kinds renamed by [An app's own route is of kind :person or :provider](2026-10-23-route-kinds-are-person-and-provider.md): read `:browser` as `:person` and `:server-to-server` as `:provider` below.
 
 > Chosen while building, 2026-10-23, **for the user's review**: doorman's [doorman owns a person's tokens, and only sign-in names a person](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-23-doorman-owns-tokens-and-only-sign-in-names-a-person.md) left open "which route kind token calls arrive on". Changes in part [A token call is answered as its person, from the app's own route](2026-10-23-a-token-call-is-answered-as-its-person-from-the-apps-route.md), [An app's own server routes are records with a kind](2026-10-23-an-apps-own-server-routes-are-records-with-a-kind.md), [The REPL starts last and stops first; house brings its tools](2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md) and [A page says its own head and body through the app's render-page](2026-10-23-a-page-says-its-own-head-and-body-through-the-apps-render-page.md). Built on tidy-up, not released (doorman and bridge on their tidy-up commits).

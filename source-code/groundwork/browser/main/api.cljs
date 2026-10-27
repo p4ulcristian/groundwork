@@ -35,7 +35,9 @@
    start-app! makes the app's one shaper in the browser, from the page's groundwork-shaped-json
    settings and the :exact-decimals it is handed (a function, so not in the
    page), and passes it to bridge (no library makes its own); makes the
-   question store (groundwork-live-updates's, with the :live-updates settings from the page);
+   question store (groundwork-live-updates's, with the :live-updates settings from the page,
+   and the page's document, js/document, whose visibility says whether to
+   ask again: a page nobody sees asks again once, when seen);
    opens the sse line (groundwork-live-updates's messages, the app's own, and the version:
    a page older than the server reloads; reopened after
    :sse-reconnect-after-ms when the server answered with an error, and
@@ -50,7 +52,10 @@
    send's options as groundwork-screens's :groundwork-screens/send wrote them, {:once-key
    :keep-alive?}: the one-time key in the idempotency-key header,
    groundwork.server.main.run-once on the server, and :keep-alive? as
-   bridge's, fetch's keepalive), the page's :retry-writes, the page's pages, the app's
+   bridge's, fetch's keepalive; a good answer's notes name the tables the
+   write changed, each told the store as this browser's own change,
+   groundwork-live-updates's hear-own-changed-table!, so what read them is asked
+   again at once, past the calm window), the page's :retry-writes, the page's pages, the app's
    :questions-of-pages, :on-answer-failed and :on-move, and
    [:groundwork-access/my-actions {}], the server's handler of groundwork-access's, as its
    :actions-question, and the app's :on-signed-out with groundwork-access's
@@ -84,6 +89,7 @@
    [groundwork-live-updates.api :as live-updates]
    [groundwork-access.api :as access]
    [groundwork-bridge.api :as bridge]
+   [groundwork-steps.api :as steps]
    [malli.core :as malli]
    [malli.error :as malli-error]
    [groundwork-screens.api] ; registers groundwork-screens's events and subscriptions, which the start dispatches
@@ -93,7 +99,8 @@
 
 (def ^:private groundwork-shapes-by-name
   {:groundwork/version       {:params-shape nil :answer-shape :string :refusals {}}
-   ;; refused only by groundwork-access's find-session step, as on the server (groundwork.server.main.errors)
+   ;; refused only by groundwork-access's find-session step, as on the server (groundwork.server.main.errors):
+   ;; another site's request, a cookie and a token at once, an outside token that failed its check
    :groundwork/browser-error {:params-shape [:map {:closed true}
                                              [:kind [:enum :render :uncaught]]
                                              [:version :string]
@@ -101,7 +108,7 @@
                                              [:stack [:maybe :string]]
                                              [:url :string]]
                               :answer-shape :boolean
-                              :refusals     (select-keys access/refusals [:groundwork-access/not-allowed])}})
+                              :refusals     (select-keys access/refusals [:groundwork-access/not-allowed :groundwork-access/token-refused])}})
 
 (def ^:private my-actions-shapes-by-name
   ;; groundwork-access's, on both sides (groundwork-access.api's browser half); its reasons are groundwork-access's, put in below
@@ -143,6 +150,20 @@
 (def ^:private actions-question
   "groundwork-screens's :actions-question: the server's :groundwork-access/my-actions."
   [:groundwork-access/my-actions {}])
+
+(defn- tell-own-changed-tables!
+  "A write's answer, keyed by its names: for each name answered with data,
+   each table its notes name (:groundwork-steps/notes, by name, :tables)
+   told the store as this browser's own change, so the screens that read
+   it ask again at once. A refusal changed nothing, and notes that say
+   \"any\" or nothing name no table."
+  [store message answer]
+  (doseq [message-name (keys message)
+          :when (not (steps/is-error-answer? (get answer message-name)))
+          :let [tables (get-in answer [:groundwork-steps/notes message-name :tables])]
+          :when (sequential? tables)
+          table tables]
+    (live-updates/hear-own-changed-table! store table)))
 
 (defn read-settings-from-page
   "What the server put in the page: {:version :addresses
@@ -264,13 +285,16 @@
         shaper           (shaped-json/make-shaper-from-settings (assoc (:shaped-json settings) :exact-decimals exact-decimals))
         shapes-by-name (make-shapes-by-name shapes-by-name)
         send!          #(bridge/send-message! (:http addresses) shapes-by-name % {:shaper shaper :headers {} :keep-alive? false})
-        send-write!    (fn [message {:keys [once-key keep-alive?]}]
-                         (bridge/send-message! (:http addresses) shapes-by-name message
-                                                 {:shaper shaper :headers {write-key-header once-key} :keep-alive? keep-alive?}))
         tell-line!     #(when on-line-change (rf/dispatch (conj on-line-change {:line %})))
         send-error!    (make-error-sender send! (:version settings))
         _              (send-errors-to-server! send-error!)
-        store          (live-updates/make-question-store send! store-settings)
+        store          (live-updates/make-question-store send! store-settings {:page js/document})
+        send-write!    (fn [message {:keys [once-key keep-alive?]}]
+                         (-> (bridge/send-message! (:http addresses) shapes-by-name message
+                                                   {:shaper shaper :headers {write-key-header once-key} :keep-alive? keep-alive?})
+                             (.then (fn [answer]
+                                      (tell-own-changed-tables! store message answer)
+                                      answer))))
         sse-line       (bridge/open-sse-line! (:sse addresses) shapes-by-name
                                                  (merge sse-handlers
                                                         (live-updates/make-sse-handlers store)

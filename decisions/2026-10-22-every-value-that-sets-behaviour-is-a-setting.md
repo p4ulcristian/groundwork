@@ -1,3 +1,5 @@
+> **Changed in part** by [Every page says who may frame it](2026-10-27-every-page-says-who-may-frame-it.md) (2026-10-27): the `:page :frame-options` setting is gone; each page's `:frame-ancestors` says it.
+
 > **Changed in part** by [The routing extras, each where it belongs](2026-10-23-routing-extras-each-where-it-belongs.md) (2026-10-23): `:page :language` is gone (the shell's lang is the request's); `:languages`, dictionary's settings, is new.
 
 # Every value that sets behaviour is a setting, in main too

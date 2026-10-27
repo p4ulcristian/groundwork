@@ -8,24 +8,33 @@
      {:stripe/webhook {:address \"/stripe-webhook\" :method :post :kind :provider
                        :rate-limit {:max 30 :per-ms 60000} :handler stripe/process}
       :flex/authorize {:address \"/flex/authorize\" :method :get :kind :person
-                       :rate-limit nil :handler flex-authorize}}
+                       :rate-limit nil :bearer-challenge {} :handler flex-authorize}
+      :app/mcp        {:address \"/mcp\" :method :post :kind :person :rate-limit nil
+                       :bearer-challenge {\"resource_metadata\" \"https://shop.example/.well-known/oauth-protected-resource\"}
+                       :handler mcp/answer}}
 
    :person: a person calls it, from their browser (the session's cookie)
-   or a script (a token groundwork-access made for them, Authorization: Bearer).
+   or a script (a token groundwork-access made for them, or an outside
+   issuer's the :access settings name, Authorization: Bearer).
    groundwork-access's session step runs first and finds who asks: a request that
    changes something by a cookie (or by nothing) must come from the app's
    own pages (its Origin), a request with both a cookie and a token is
    refused, else 403, its body the text of groundwork-access's reason,
-   :groundwork-access/not-allowed, in the request's language; the handler gets the
-   asker. :provider:
-   another server calls it; no session or token is read, and the handler
-   proves the caller itself (a signature, a provider's secret).
+   :groundwork-access/not-allowed, in the request's language; an outside
+   token that failed its check is refused 401, :groundwork-access/token-refused,
+   WWW-Authenticate: Bearer with the route's :bearer-challenge params and
+   error=\"invalid_token\" (RFC 6750; an MCP server names its
+   resource_metadata there), {} for none; the handler gets the asker.
+   :provider: another server calls it; no session or token is read, and
+   the handler proves the caller itself (a signature, a provider's
+   secret).
 
    A handler is (fn [request tools]) and answers a Ring response. Its
    request's body is not read (a webhook checks its signature over the
    raw bytes). tools, for :person:
 
-     {:asker          {:person-id … :visitor-id … :session-flags #{…}}   ; what groundwork-access found, to read
+     {:asker          {:person-id … :visitor-id … :session-flags #{…}    ; what groundwork-access found, to read,
+                       :token-id … :outside-issuer …}                     ; and what they asked by
       :log            the app's log, saying who asked
       :run-as-asker!  (fn [{:keys [read-only?]} f]) f in a transaction as the request's asker,
                       held by the gates (groundwork-access's run-as-asker-of-request!), carrying
@@ -34,8 +43,11 @@
       :answer-as      (fn [message request]) a message answered as the request's asker, through
                       every check (groundwork.server.main.answer-as): a route that speaks
                       another protocol (MCP's JSON-RPC) turns a call into a message
-      :sign-in!       (fn [person-id session-flags]) {:set-cookie …} for the answer, once the
-                      app's own login has proven the person
+      :sign-in!       (fn [person-id {:keys [session-flags session-lasts outside-subjects]}])
+                      {:set-cookie …} for the answer, once the app's own login has proven
+                      the person: groundwork-access's sign-in!, every option written out
+                      (:session-lasts :session-days or {:minutes 60}; :outside-subjects
+                      {issuer-name subject}, {} for none)
       :sign-out!      (fn []) {:set-cookie …}}
 
    for :provider, {:log :run-as-system!}: no asker, so nothing
@@ -48,20 +60,24 @@
   (:require
    [groundwork-bridge.api :as bridge]
    [groundwork-steps.api :as steps]
-   [groundwork-languages.api :as languages]
    [groundwork-access.api :as access]
    [groundwork.server.main.asker :as asker]
    [malli.core :as malli]
    [malli.error :as malli-error]))
 
-(def route-shape
-  "One route, every key required."
-  [:map {:closed true}
-   [:address [:re {:error/message "should be a path, starting with /"} #"^/.*"]]
+(def ^:private route-entries
+  [[:address [:re {:error/message "should be a path, starting with /"} #"^/.*"]]
    [:method [:enum :get :post :put :patch :delete]]
-   [:kind [:enum :person :provider]]
    [:rate-limit [:maybe [:map {:closed true} [:max pos-int?] [:per-ms pos-int?]]]]
    [:handler fn?]])
+
+(def route-shape
+  "One route, by :kind, every key required; a :person route's
+   :bearer-challenge too, the params a refused outside token's 401 carries
+   (asker's bearer-challenge-shape), {} for none."
+  [:multi {:dispatch :kind :error/message "should say its :kind, :person or :provider"}
+   [:person (into [:map {:closed true} [:kind [:= :person]] [:bearer-challenge asker/bearer-challenge-shape]] route-entries)]
+   [:provider (into [:map {:closed true} [:kind [:= :provider]]] route-entries)]])
 
 (def routes-shape
   "The app's routes by name, {} for none."
@@ -88,15 +104,6 @@
                     {:type :groundwork.server.main/bad-routes :errors {:shared shared}})))
   routes)
 
-(defn- turn-refusal-into-response
-  "groundwork-access's step's refusal (:groundwork-access/not-allowed: another site's request,
-   a cookie and a token at once), as a 403, its body the reason's text in
-   the request's language (bound around every request)."
-  [{reason :groundwork-steps/refused data :groundwork-steps/data}]
-  {:status  403
-   :headers {"content-type" "text/plain; charset=utf-8" "cache-control" "no-store"}
-   :body    (languages/tr reason (or data {}))})
-
 (defn- make-run-as-system
   "(fn [system-name {:keys [read-only?]} f]): groundwork-access's run-as-system!, its
    transaction carrying log, the route's (groundwork-postgres's :log: work kept with
@@ -113,17 +120,15 @@
      :run-as-asker!  (asker/make-run-as-asker pool request settings scope-kinds (:groundwork-steps/log context))
      :run-as-system! (make-run-as-system pool (:groundwork-steps/log context))
      :answer-as      answer-as
-     :sign-in!       (fn [person-id session-flags]
-                       (access/sign-in! pool request person-id {:settings      (:access settings)
-                                                                 :tables        tables
-                                                                 :session-flags session-flags}))
+     :sign-in!       (fn [person-id options]
+                       (access/sign-in! pool request person-id (assoc options :settings (:access settings) :tables tables)))
      :sign-out!      (fn [] (access/sign-out! pool request (:access settings)))}))
 
-(defn- make-person-handler [handler {:keys [log find-session-step] :as parts}]
+(defn- make-person-handler [handler bearer-challenge {:keys [log find-session-step] :as parts}]
   (fn [request]
     (let [context ((:enter find-session-step) {:groundwork-steps/request request :groundwork-steps/log log})]
       (if (steps/does-context-have-answer? context)
-        (turn-refusal-into-response (:groundwork-steps/answer context))
+        (asker/answer-refused-request (get-in context [:groundwork-steps/answer :groundwork-steps/refused]) bearer-challenge)
         (handler request (make-person-tools request context parts))))))
 
 (defn- make-provider-handler [handler {:keys [log pool]}]
@@ -147,9 +152,9 @@
   [routes {:keys [settings find-person-rate-limit-key] :as parts}]
   (let [find-address #(bridge/find-client-address % (get-in settings [:bridge :client-address-header]))]
     (->> (check-routes routes)
-         (reduce-kv (fn [by-address _route-name {:keys [address method kind rate-limit handler]}]
+         (reduce-kv (fn [by-address _route-name {:keys [address method kind rate-limit handler bearer-challenge]}]
                       (let [ring-handler (case kind
-                                           :person           (make-person-handler handler parts)
+                                           :person           (make-person-handler handler bearer-challenge parts)
                                            :provider         (make-provider-handler handler parts))
                             limited      (add-rate-limit ring-handler rate-limit
                                                          (case kind :person find-person-rate-limit-key :provider find-address)

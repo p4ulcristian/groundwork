@@ -1,5 +1,7 @@
 # A page says its own head and body through the app's render-page; the composer keeps the shell and makes the nonce
 
+> **Changed in part** by [A page's asker is found once, in its one transaction](2026-10-27-a-pages-asker-is-found-once-in-its-one-transaction.md) (2026-10-27): render-page runs in one read-only transaction as the asker and gets `{:nonce :asker :transaction}`, no `run-as-asker!`.
+
 > **Changed in part** by [render-page answers a page or a redirect](2026-10-23-render-page-answers-a-page-or-a-redirect.md) (2026-10-23, built on tidy-up, not released): every answer writes `:answer`, `:page` or `:redirect`.
 
 > **Changed in part** by [A token call arrives where a browser's does; the composer names no person](2026-10-23-a-token-call-arrives-where-a-browsers-does.md) (2026-10-23, built on tidy-up, not released): `run-as-asker!` runs as the asker doorman finds in the page's request (doorman's `run-as-asker-of-request!`).

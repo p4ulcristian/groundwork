@@ -19,8 +19,9 @@
    and unhandled rejection, and each an app's error boundary reports
    (report-browser-error!), as a message, {:groundwork/browser-error {:kind …
    :version … :message … :stack … :url …}}; its handler finds the session
-   (the Origin checked, the person added to the message's log), then
-   writes it at :error, :browser/error, so it is kept with the server's
+   (the Origin checked, the person added to the message's log; refused
+   :groundwork-access/not-allowed or :groundwork-access/token-refused, it
+   writes nothing), then writes it at :error, :browser/error, so it is kept with the server's
    errors in the one list a monitor reads, with the request's id and the
    person. Its rate limit, per asker, is the :errors
    settings' :browser-rate-limit, so a page failing in a loop can't flood
@@ -106,10 +107,11 @@
 
 (def browser-error-refusals
   "The reasons :groundwork/browser-error may refuse with: groundwork-access's
-   :groundwork-access/not-allowed, its find-session step's (another site's request, a
-   cookie and a token at once). Not put through groundwork-access's access, so it
-   declares it itself; the browser's shape says the same."
-  (select-keys access/refusals [:groundwork-access/not-allowed]))
+   find-session step's, :groundwork-access/not-allowed (another site's request, a
+   cookie and a token at once) and :groundwork-access/token-refused (an outside
+   issuer's token that failed its check). Not put through groundwork-access's
+   access, so it declares them itself; the browser's shape says the same."
+  (select-keys access/refusals [:groundwork-access/not-allowed :groundwork-access/token-refused]))
 
 (defn make-browser-error-handler
   "The :groundwork/browser-error handler: groundwork-access's find-session step, then the

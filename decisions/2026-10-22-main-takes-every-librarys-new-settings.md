@@ -1,5 +1,7 @@
 # main takes every library's new settings: the pool's, a migration's limits, the workers', the listener's, the watcher's
 
+> **Changed in part** by [A server may run no background jobs](2026-10-27-a-server-may-run-no-background-jobs.md) (2026-10-27): the `:background-jobs` part has `:run-here?`.
+
 > **Changed in part** by [main makes one wire and passes it to every library](2026-10-22-main-makes-one-wire-and-passes-it-to-every-library.md) (2026-10-22): house takes wire v0.2.0, mailroom, backroom, doorman and doorbell v0.2.0, and the settings gain `:wire` and `:browser-wire`.
 
 > Changes in part [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md): Groundwork takes the libraries' releases that made their last fixed values settings, and main hands each one on from its settings.

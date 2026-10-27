@@ -10,12 +10,14 @@ one logger from the `:logs` settings and passes its log to every library
 that writes a line (the running app holds both, `:logs` and `:log`;
 [the decision](../../../../decisions/2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md)), migrates in development or refuses an unsafe or old database in
 production, and starts the pool, the handlers (groundwork-access's check, groundwork's
-`:groundwork-access/my-actions`, then groundwork-live-updates's notes),
+`:groundwork-access/my-actions`, then groundwork-live-updates's notes; every app handler's
+steps given the app's map at `:groundwork/given`),
 groundwork-live-updates's listener (the `:live-updates :listening` settings), groundwork-background-jobs's
-background job workers (`:background-jobs`; each job's one transaction is
+background job workers where `:background-jobs :run-here?` is true (each job's one transaction is
 groundwork-access's `run-as-system!` as its kind's `:system-actor`, the app's kinds
 too, so an app writes a system actor, and its sentences on the tables it
-reaches, per kind of background work), in development browser-build's
+reaches, per kind of background work; every run given the same map at `:given`),
+in development browser-build's
 watcher of the browser build (`:browser-build {:watch options}`, checked by
 browser-build before anything starts), and bridge's server (its
 `:server` settings, bridge's, every key required; askers told apart by
@@ -26,8 +28,9 @@ shell answers every page address: the app's scripts and styles, and the
 browser's settings (version, addresses, sse and ws reopen delays, the
 question store's settings, `:live-updates :store`, the browser's groundwork-shaped-json settings,
 `:browser-shaped-json`, the write retries, `:run-once :retry-writes`, pages) as
-JSON in the page; its viewport, referrer policy, frame options and content
-security policy are `:page` settings. What only the app knows is the app
+JSON in the page; its viewport, referrer policy and content security
+policy are `:page` settings, and who may frame it the page's own
+`:frame-ancestors` (below). What only the app knows is the app
 map's `:render-page`, called for every page answer: its title, description,
 head tags and the body inside `#app` (what a crawler reads before the app
 draws), and the not-found page for a GET no route and no file answers
@@ -35,6 +38,16 @@ draws), and the not-found page for a GET no route and no file answers
 'nonce-{nonce}' …" :nonce? true}` each answer gets a nonce of its own, on
 the shell's scripts and handed to `render-page` for the app's
 ([the decision](../../../../decisions/2026-10-23-a-page-says-its-own-head-and-body-through-the-apps-render-page.md)).
+`render-page` runs in one read-only transaction as the request's asker,
+held by the gates (groundwork-access's `run-as-asker-of-request!`, which looks the
+asker up once, its first statement), and gets the asker it found,
+`{:person-id :visitor-id :session-flags :token-id :outside-issuer}`, and that
+`:transaction`; a request groundwork-access refuses runs no `render-page`: an
+outside issuer's token that failed its check is answered 401
+(`WWW-Authenticate: Bearer error="invalid_token"`), a cookie and a token at
+once 403, each with its reason's text
+([the decision](../../../../decisions/2026-10-27-a-pages-asker-is-found-once-in-its-one-transaction.md),
+[the 401](../../../../decisions/2026-10-27-a-refused-outside-token-is-answered-401.md)).
 It answers a page, `:answer :page`, or a redirect, `{:answer :redirect
 :status 303 :location "/login?next=%2Fflex"}` (301, 302, 303, 307 or 308),
 answered with its status and `Location`, never cached, and no shell: a
@@ -42,7 +55,7 @@ signed-out person sent to the login, not a 200 that is a login page
 ([the decision](../../../../decisions/2026-10-23-render-page-answers-a-page-or-a-redirect.md)):
 
 ```clojure
-:render-page (fn [request page {:keys [nonce asker run-as-asker!]}]
+:render-page (fn [request page {:keys [nonce asker transaction]}]
                (cond
                  (nil? page)
                  {:answer :page :status 404 :title "Not found" :description nil :head-html "" :body-html "<main>No such page.</main>"}
@@ -50,7 +63,7 @@ signed-out person sent to the login, not a 200 that is a login page
                  {:answer :redirect :status 303 :location (str "/login?next=" (java.net.URLEncoder/encode (:uri request) "UTF-8"))}
                  :else
                  {:answer :page :status 200 :title (languages/tr :site.home/title {}) :description (languages/tr :site.home/description {})
-                  :head-html (str "<link rel=\"canonical\" href=\"…\">") :body-html (prerender request)}))
+                  :head-html (str "<link rel=\"canonical\" href=\"…\">") :body-html (prerender request transaction)}))
 ``` The shell is in the request's
 language: every request first gets it from groundwork-languages (the `:languages`
 settings: the address's prefix, taken off before routing, the cookie,
@@ -67,13 +80,23 @@ them from the build's manifests, once per module at the start (while watching,
 after the watch's first compile); any other module loads on demand
 ([the decision](../../../../decisions/2026-10-27-every-page-names-the-module-it-starts-with.md),
 [the routing's](../../../../decisions/2026-10-23-routing-extras-each-where-it-belongs.md)).
+Every page says who may frame it, `:frame-ancestors`, required, and the app
+the not-found page's, `:not-found-frame-ancestors`: `:own-site` (only the
+app's own pages: `X-Frame-Options: SAMEORIGIN` and `frame-ancestors 'self'`
+in the content security policy), `:no-site` (`DENY`, `'none'`) or
+`:any-site` (neither: a shop's site embeds it); the `:content-security-policy`
+setting names no frame-ancestors of its own
+([the decision](../../../../decisions/2026-10-27-every-page-says-who-may-frame-it.md)).
 
 ```clojure
 :browser-modules  {:main    {:entries [app.browser.main] :depends-on #{} :start app.browser.main/start!}   ; the root
                    :reports {:entries [app.reports.page] :depends-on #{:main} :start nil}}
-:pages            {:orders/page  {:address "/orders/:order-id" :title "Order" :module :main}
-                   :reports/page {:address "/reports" :title "Reports" :module :reports}}   ; main's files, then reports'
+:pages            {:orders/page    {:address "/orders/:order-id" :title "Order" :module :main :frame-ancestors :own-site}
+                   :reports/page   {:address "/reports" :title "Reports" :module :reports      ; main's files, then reports'
+                                    :frame-ancestors :own-site}
+                   :customize/page {:address "/customize" :title "Customize" :module :main :frame-ancestors :any-site}}
 :not-found-module :main
+:not-found-frame-ancestors :own-site
 ```
 
 Each language's catalog (`<catalogs-path>/<language>.json` on the
@@ -88,7 +111,7 @@ start is refused, `:groundwork-languages/missing-texts`, naming each (groundwork
 `check-texts-of-reasons`): groundwork-steps's, which bridge gives (`:groundwork-steps/too-many`,
 `:groundwork-steps/failed`, `:groundwork-steps/invalid`, `:groundwork-steps/no-answer`, `:groundwork-steps/unfit`),
 groundwork-access's (`:groundwork-access/signed-out`, `:groundwork-access/not-found`,
-`:groundwork-access/not-allowed`), groundwork's run-once ones and every handler's
+`:groundwork-access/not-allowed`, `:groundwork-access/token-refused`), groundwork's run-once ones and every handler's
 `:refusals`.
 
 ```clojure
@@ -119,7 +142,8 @@ token as a bearer token (else 401). The browser's uncaught errors and
 unhandled rejections, and those an app's error boundary reports, come in
 as a message, `:groundwork/browser-error` (`{:kind :render-or-:uncaught
 :version … :message … :stack … :url …}`), a handler of groundwork's own
-(groundwork-access's session step, then `:error :browser/error`, with the kind and
+(groundwork-access's session step, refusing `:groundwork-access/not-allowed` or
+`:groundwork-access/token-refused`, then `:error :browser/error`, with the kind and
 the bundle's version), limited per asker by `:browser-rate-limit`, and are
 kept with the server's: one numbered list, which the app's monitor reads;
 an app keeps none of its own
@@ -198,7 +222,8 @@ actor `:groundwork-daily-caps`, deletes the days before today:
                                    :connection-usage-seconds [0.001 0.01 0.1 1 10 60]}}
 :migration       {:instant-part {:statement-timeout-ms 30000 :lock-timeout-ms 5000}
                   :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
-:background-jobs {:workers 4 :poll-ms 1000
+:background-jobs {:run-here? true                                       ; false: no workers here, what it queues waits
+                  :workers 4 :poll-ms 1000
                   :retry-first-wait-ms 30000 :retry-wait-factor 2 :retry-max-wait-ms 3600000
                   :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
                   :forget-done-every-ms 3600000 :stop-wait-ms 30000
@@ -207,12 +232,45 @@ actor `:groundwork-daily-caps`, deletes the days before today:
                   :metric-buckets {:answer-seconds [0.005 0.01 0.025 0.05 0.1 0.25 0.5 1 2.5 5 10]}}
 :access        {:cookie-name "app_session" :session-days 30 :visitor-session-days 7   ; groundwork-access's
                   :renew-after-minutes 60 :allowed-origin "https://shop.example" :secure-cookie? true
-                  :token-lead "shop_" :token-shown-characters 11 :token-longest-days 365}
-:live-updates        {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
+                  :token-lead "shop_" :token-shown-characters 11 :token-longest-days 365
+                  :outside-issuers []}                                   ; or WorkOS AuthKit's, for /mcp
+:live-updates        {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000
+                              :ask-again-at-most-every-ms 2000}           ; a question asked again at most once in it
                   :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                               :reconnect-after-ms 1000 :stop-wait-ms 2000}}
 :browser-build   :built                                                  ; or {:watch {…}}: browser-build's watch options
                                                                          ; but :modules, :files-folder and :log
+```
+
+`:background-jobs :run-here?` false is a server whose jobs are queued and
+never run there (a preview on a copy of the database): no workers start,
+the jobs it queues wait for a server that runs them, and
+groundwork-background-jobs's metrics are declared all the same
+(`declare-background-job-metrics!`), so each is counted; the running app's
+`:workers` is nil. The rest of the part is written out either way, so a
+preview's part is its quiet place's with one flag changed
+([the decision](../../../../decisions/2026-10-27-a-server-may-run-no-background-jobs.md)).
+
+What the app's own code needs of the running app it makes once, the app
+map's `:make-given`, `(fn [parts] map)`, called at the start before the
+handlers are made, with `{:settings :pool :run-as-system! :add-background-job-to-queue!
+:shaper :meter :texts :file-storage :mailer}` (`run-as-system!` is
+`(fn [system-actor {:keys [read-only? log]} f])`, `add-background-job-to-queue!`
+`(fn [pool-or-transaction kind params {:keys [run-in-ms key]}])` on the app's
+shaper and meter); the map it returns is in every app handler's steps'
+context at `:groundwork/given` and every background job run's at `:given`,
+the same map each time, and held by the running app as `:given`
+([the decision](../../../../decisions/2026-10-27-handlers-get-the-apps-things-handed-in.md)).
+
+```clojure
+:make-given (fn [{:keys [pool run-as-system! add-background-job-to-queue! meter]}]
+              {:pool pool :run-as-system! run-as-system! :meter meter :stripe stripe-client
+               :add-job! add-background-job-to-queue!})
+;; a step
+{:name :orders/confirm
+ :enter (fn [{:groundwork/keys [given] :as context}]
+          ((:add-job! given) (:groundwork-access/transaction context) send-confirmation {:order/id id} {:run-in-ms 0 :key nil})
+          …)}
 ```
 
 One meter, made from the `:meter` settings and handed to groundwork-postgres's pool,
@@ -247,18 +305,21 @@ answered 429 and make nothing (bridge's `make-rate-limited-ring-handler`):
 :visitors {:path "/groundwork/visitor" :rate-limit {:max 10 :per-ms 60000}}
 ```
 
-The REPL, groundwork-live-repl's, by the `:live-repl` settings, started last and stopped
+The REPL, groundwork-live-repl's, by the `:live-repl` settings, on a TCP address or a Unix
+socket (`:address`), started last and stopped
 first, groundwork's tools in `groundwork-live-repl.tools`: `(ask-as-person message asker)`,
 `(why-refused asker handler-name params)`, `(explain-setting path)`, the
 asker `{:person-id :visitor-id :session-flags}`; only the REPL names a
 person (`ask-as-person` makes the handlers ready with groundwork-access.repl's step
 in its session step's place, and answers by `answer-as`'s own path, with
 no request):
-[the decision](../../../../decisions/2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md).
+[the decision](../../../../decisions/2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md),
+[the socket](../../../../decisions/2026-10-27-the-repl-may-listen-on-a-unix-socket.md).
 
 ```clojure
-:live-repl {:mode :development :bind-address "127.0.0.1" :port 7888 :middleware [] :port-file ".nrepl-port"}
-;; stage {:mode :ssh-only …}; production {:mode :off :emergency-switch {…}} or {:mode :off :emergency-switch nil}
+:live-repl {:mode :development :address {:kind :tcp :bind-address "127.0.0.1" :port 7888 :port-file ".nrepl-port"} :middleware []}
+;; stage in a container: {:mode :ssh-only :address {:kind :unix-socket :path "/run/app/repl/live-repl.sock"} :middleware []},
+;; its folder the app's user's, chmod 700; production {:mode :off :emergency-switch {…}} or {:mode :off :emergency-switch nil}
 ```
 
 The app's files and email: one file storage (groundwork-file-storage's `make-file-storage`, the `:file-storage
@@ -269,7 +330,7 @@ held by the running app as `:file-storage` and `:email`; the store's files table
 `groundwork_email.emails` migrated with groundwork's tables; groundwork-email's background job
 kind on the workers. The upload route (`groundwork.server.main.files`) is
 groundwork-file-storage's handler at `:file-storage :upload :path`, asking groundwork-access's session step
-(the Origin, or a token), then the app map's `:may-upload?` `(fn [asker])`, before the
+once (the Origin, or a token; an outside token that fails its check 401), then the app map's `:may-upload?` `(fn [asker])`, before the
 body is read; `:max-file-bytes` must be below `:server :max-body-bytes`.
 The provider's webhooks are groundwork-email's, at `:email :webhooks`' paths,
 outside sessions, handing bounces to the app map's `:on-delivery-event`
@@ -320,6 +381,7 @@ sentences (`make-access-functions`).
 
 API: `groundwork.server.main.api` (`settings-shape`, `page-settings-shape`,
 `health-settings-shape`, `migration-settings-shape`, `live-updates-settings-shape`,
+`background-jobs-settings-shape`,
 `my-actions-settings-shape`, `run-once-settings-shape`, `daily-caps-settings-shape`, `visitors-settings-shape`,
 `browser-build-settings-shape`, `browser-shaped-json-settings-shape`,
 `file-storage-settings-shape`, `email-settings-shape`,
@@ -345,8 +407,9 @@ as its name; text written out where a secret belongs is refused:
                                :tables [shops orders] :extensions [] :functions [] :views []
                                :changes [] :scope-kinds scope-kinds
                                :handlers handlers :pages pages :browser-modules browser-modules :not-found-module :main
+                               :not-found-frame-ancestors :own-site
                                :background-job-kinds [] :schedules []
-                               :given-to-every-background-job-run {}   ; each background job run's :given
+                               :make-given (fn [_parts] {})   ; every handler's :groundwork/given, every job run's :given
                                :routes {}   ; the app's own server routes, records with a kind
                                :render-page render-page   ; each page's title, description, head and body
                                :file-kinds []   ; groundwork-file-storage's :kinds, the app's own kinds of files
@@ -370,22 +433,37 @@ language step
 :routes {:stripe/webhook {:address "/stripe-webhook" :method :post :kind :provider
                           :rate-limit {:max 30 :per-ms 60000}
                           :handler (fn [request {:keys [log run-as-system!]}] …)}   ; the raw body, unread
-         :flex/authorize {:address "/flex/authorize" :method :get :kind :person :rate-limit nil
+         :flex/authorize {:address "/flex/authorize" :method :get :kind :person :rate-limit nil :bearer-challenge {}
                           :handler (fn [request {:keys [asker run-as-asker! sign-in!]}]
                                      {:status 302 :headers {"location" "/flex"
-                                                            "set-cookie" (:set-cookie (sign-in! person-id #{}))}})}}
+                                                            "set-cookie" (:set-cookie (sign-in! person-id {:session-flags #{}
+                                                                                                           :session-lasts :session-days
+                                                                                                           :outside-subjects {:workos workos-user-id}}))}})}
+         :app/mcp        {:address "/mcp" :method :post :kind :person :rate-limit nil
+                          :bearer-challenge {"resource_metadata" "https://shop.example/.well-known/oauth-protected-resource"}
+                          :handler mcp/answer}}
 ```
 
 A `:person` route is a person's, from their browser (the session's
-cookie) or a script (a token groundwork-access made for them, `Authorization:
-Bearer`). It runs groundwork-access's session step first, which finds who asks: by a
+cookie) or a script (a token groundwork-access made for them, or an outside
+issuer's the `:access` settings name, `Authorization: Bearer`). It runs
+groundwork-access's session step first, which finds who asks: by a
 cookie a request that isn't a GET must come from the app's own pages, a
 request with both a cookie and a token is refused, else 403, its body the
-text of `:groundwork-access/not-allowed` in the request's language. The handler
-gets what groundwork-access found (`asker`), `run-as-asker!` (a transaction as the
+text of `:groundwork-access/not-allowed` in the request's language; an outside
+token that fails its check is refused 401, `WWW-Authenticate: Bearer` with
+the route's `:bearer-challenge` params (an MCP server's `resource_metadata`;
+`{}` for none) and `error="invalid_token"`, its body the text of
+`:groundwork-access/token-refused`. The handler
+gets what groundwork-access found (`asker`, with the `:token-id` or
+`:outside-issuer` it came by), `run-as-asker!` (a transaction as the
 request's asker, held by the gates, carrying the route's log), `answer-as` (a message answered as
 the request's asker, through every check a browser's message gets and each
-handler's rate limit, counted per token or cookie), `sign-in!` and
+handler's rate limit, counted per token or cookie), `sign-in!`
+(`(sign-in! person-id {:session-flags :session-lasts :outside-subjects})`,
+groundwork-access's options written out: `:session-lasts :session-days`, or
+`{:minutes 60}` for an impersonated session, never pushed out; the
+person's subject at each outside issuer the login proved) and
 `sign-out!`. A `:provider` route reads no session and no token and
 proves its caller itself; it has no asker. No code names a person: a token
 call goes where a browser's does, the messages' own route or a `:person`
@@ -407,7 +485,12 @@ asking again through the gates to only their own shop's orders; then the health 
 and ready without origin or session; ready 503 at its timeout while every
 connection is held, 503 while the app's role can't log in, 200 again after
 each; 503 while stopping; the metrics route, the visitor route and the
-REPL's tools over a real nREPL connection, an upload (who may, and one
+REPL's tools over a real nREPL connection on a Unix socket, an upload (who may, and one
 stored when a bucket is given), an email queued in a transaction and sent
-by the workers, and its bounce handed to the app by its tag. The end-to-end test
+by the workers, and its bounce handed to the app by its tag; each page's
+framing headers, a page's asker looked up once and its rows read in its
+transaction, an outside token refused 401 (a page, an upload, an app
+route with its challenge) and in a message's answer, the given map in a
+handler's steps and a job's run, and a second server with `:run-here?`
+false that runs no workers and counts the job it queues. The end-to-end test
 (`groundwork.end-to-end-test`) drives a sample app in a headless browser.

@@ -1,5 +1,7 @@
 # Pages for other sites, visitors, and servers
 
+> **Changed in part** by [Every page says who may frame it](2026-10-27-every-page-says-who-may-frame-it.md) (2026-10-27): an embeddable page is a page whose `:frame-ancestors` is `:any-site`.
+
 > **Changed in part** by [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) (2026-10-22): the shell's `X-Frame-Options` is the `:page` setting `:frame-options` (`"DENY"`, `"SAMEORIGIN"` or `:none`), not fixed.
 
 > **Changed in part** by doorman's [Sessions for visitors, and none for servers](https://github.com/p4ulcristian/doorman/blob/main/decisions/2026-10-12-sessions-for-visitors-and-none-for-servers.md) (2026-10-22): visitor sessions, and reading no session and skipping the Origin check for a server-to-server route, moved there whole. What stays here is the routes.

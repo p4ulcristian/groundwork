@@ -34,7 +34,15 @@ later, background jobs on Postgres:
 schedules; each job kind names its `:system-actor`, and its one
 transaction, the work and its done-mark, is groundwork-access's `run-as-system!` as
 that actor, which reaches what its sentences give it; its settings are the
-`:background-jobs` part. And what the browser downloads and how the page looks:
+`:background-jobs` part, with `:run-here?`: false, a server that queues
+jobs and runs none (a preview on a copy of the database), its jobs counted
+all the same ([the decision](decisions/2026-10-27-a-server-may-run-no-background-jobs.md)).
+What the app's own code needs of the running app (the pool, a system
+actor's transaction, the job queue, the meter, its own clients) the app
+map's `:make-given`, `(fn [parts] map)`, makes once at the start from the
+running app's parts; every app handler's steps find the map at
+`:groundwork/given` and every job run at `:given`
+([the decision](decisions/2026-10-27-handlers-get-the-apps-things-handed-in.md)). And what the browser downloads and how the page looks:
 [groundwork-browser-build](https://github.com/p4ulcristian/groundwork-browser-build), the shadow-cljs build
 (watched in development, built once by the deploy) and the stylesheets a
 namespace names, bundled; the build is taken only in the build aliases, never in
@@ -46,6 +54,11 @@ and the page shell links that module's files and those of every module it
 depends on, as browser-build's page half (`groundwork-browser-build.page`, in
 `:deps`, no shadow-cljs) reads them from the build's manifests, once per module
 ([the decision](decisions/2026-10-27-every-page-names-the-module-it-starts-with.md)).
+Every page says who may frame it, `:frame-ancestors` (`:own-site`,
+`:no-site` or `:any-site`, the not-found page's the app map's
+`:not-found-frame-ancestors`), sent as `X-Frame-Options` and the content
+security policy's `frame-ancestors`
+([the decision](decisions/2026-10-27-every-page-says-who-may-frame-it.md)).
 The shell's text and attributes are escaped by OWASP Java Encoder
 (`Encode/forHtml`), and the browser's settings are one JSON string in their
 script element (`Encode/forJson`), which the browser parses twice
@@ -75,14 +88,21 @@ REPL's `ask-as-person`).
 And who is asking and what they may do, at one door:
 [groundwork-access](https://github.com/p4ulcristian/groundwork-access), sessions in Postgres, a
 person's own tokens for scripts (a call by `Authorization: Bearer` is that
-person's) and access (scopes, roles by id, memberships holding a set of
+person's), the outside issuers the app names (WorkOS AuthKit's tokens, for
+an app's `/mcp`, each checked by the issuer's keys, its subject linked to a
+person at sign-in) and access (scopes, roles by id, memberships holding a set of
 roles, the check in front of every handler, which says where it acts, the
 gates, the leak test); its
-settings are the `:access` part, with no defaults.
+settings are the `:access` part, with no defaults. An outside token that
+fails its check is refused `:groundwork-access/token-refused`: in a message's
+answer, and answered 401 (`WWW-Authenticate: Bearer error="invalid_token"`)
+on a page, an upload and an app's `:person` route, whose `:bearer-challenge`
+adds its own params ([the decision](decisions/2026-10-27-a-refused-outside-token-is-answered-401.md)).
 And how screens stay current, on both sides:
 [groundwork-live-updates](https://github.com/p4ulcristian/groundwork-live-updates), a change to a table rings
 every open screen with only the table's name, and the screens that read it ask
-again through the gates; table maps say `:live-updates :tell` or `[:silent "why"]`,
+again through the gates, calmly: only on a page someone sees, each question at
+most once in `:ask-again-at-most-every-ms`, a writer's own change at once; table maps say `:live-updates :tell` or `[:silent "why"]`,
 and the `:live-updates` settings hold the browser's question store's (`:store`) and
 the server's listener's (`:listening`), with no defaults.
 And what the browser shows:
@@ -138,7 +158,8 @@ route, beside health and errors, behind its bearer token
 ([the decision](decisions/2026-10-23-main-makes-one-meter-and-serves-its-text.md)).
 And a REPL into the running app, on the server:
 [groundwork-live-repl](https://github.com/p4ulcristian/groundwork-live-repl), by the `:live-repl` settings
-(`:development`, `:ssh-only`, or `:off` with the emergency switch), every
+(`:development`, `:ssh-only`, or `:off` with the emergency switch; each on a
+TCP `:address` or a Unix socket's, [the decision](decisions/2026-10-27-the-repl-may-listen-on-a-unix-socket.md)), every
 evaluation written to the app's log; it starts last and stops first, and
 groundwork's tools are in `groundwork-live-repl.tools`: `ask-as-person`, `why-refused`
 (groundwork-access's `explain-refusal`) and `explain-setting`
@@ -198,7 +219,9 @@ each with a kind, served beside groundwork's own through the same steps
 ([the decision](decisions/2026-10-23-an-apps-own-server-routes-are-records-with-a-kind.md),
 [the kinds](decisions/2026-10-23-route-kinds-are-person-and-provider.md)):
 a `:person` route's handler gets the asker groundwork-access found, by the session's
-cookie or the person's token, and its tools, among them `:run-as-asker!`
+cookie or the person's token, and its tools, among them `:run-as-asker!`,
+`:sign-in!` (groundwork-access's options written out: the session's lifetime,
+the person's subjects at outside issuers)
 and `:answer-as`, `(answer-as message request)`, a message answered as
 that asker through every check a browser's message gets, each handler's
 rate limit counted on a limiter of its own

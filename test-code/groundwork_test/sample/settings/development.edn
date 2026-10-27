@@ -26,7 +26,9 @@
  :logs           {:lowest-level :debug :format :readable :errors-kept 100 :write-to :stdout}
  :metrics           {:jvm-metrics true :most-series-per-metric 5000
                      :route {:path "/metrics" :token #secret :groundwork-metrics/token}}
- :live-repl             {:mode :development :bind-address "127.0.0.1" :port 7888 :middleware [] :port-file ".nrepl-port"}
+ :live-repl             {:mode       :development
+                     :address    {:kind :tcp :bind-address "127.0.0.1" :port 7888 :port-file ".nrepl-port"}
+                     :middleware []}
  :errors            {:path "/groundwork/errors" :token #secret :errors/token :browser-rate-limit {:max 10 :per-ms 60000}}
  :migrate-at-start? true
  :browser-build     {:watch {:cache-folder              ".shadow-cljs"
@@ -71,7 +73,8 @@
                      :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
  :access          {:cookie-name "sample_session" :session-days 30 :visitor-session-days 7 :renew-after-minutes 60
                      :allowed-origin "http://localhost:8080" :secure-cookie? false
-                     :token-lead "sample_" :token-shown-characters 13 :token-longest-days 365}
+                     :token-lead "sample_" :token-shown-characters 13 :token-longest-days 365
+                     :outside-issuers []}
  :visitors          {:path "/groundwork/visitor" :rate-limit {:max 10 :per-ms 60000}}
  :my-actions        {:rate-limit nil}
  :daily-caps        {:pool-size     2
@@ -79,7 +82,7 @@
  :run-once          {:keep-keys-ms 86400000
                      :forget-keys  {:cron "*/15 * * * *" :timeout-ms 10000 :attempts 1}
                      :retry-writes {:times 2 :wait-ms 1000}}
- :background-jobs   {:workers 1 :poll-ms 1000
+ :background-jobs   {:run-here? true :workers 1 :poll-ms 1000
                      :retry-first-wait-ms 30000 :retry-wait-factor 2 :retry-max-wait-ms 3600000
                      :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
                      :forget-done-every-ms 3600000 :stop-wait-ms 2000
@@ -96,13 +99,13 @@
                                 :background-job {:timeout-ms 10000 :attempts 3}}
                      :webhooks {:delivery-path "/email/delivery" :inbound-path "/email/inbound"
                                 :token #secret :groundwork-email/webhook-token :inbound-domain "in.sample.localhost"}}
- :live-updates          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
+ :live-updates          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000 :ask-again-at-most-every-ms 2000}
                      :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                  :reconnect-after-ms 1000 :stop-wait-ms 2000}}
  :languages         {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}] :default "en" :cookie-name "lang"
                      :preview-languages [] :fallback-language "en" :catalogs-path "groundwork_test/sample/i18n"}
  :page              {:viewport "width=device-width, initial-scale=1"
-                     :content-security-policy :none :referrer-policy "same-origin" :frame-options "DENY"
+                     :content-security-policy :none :referrer-policy "same-origin"
                      :files {:folder "target/sample/public" :hashed-name-min-hex-digits 8 :hashed-file-cache-seconds 31536000}}
  :health            {:live-path "/health/live" :ready-path "/health/ready"
                      :database-timeout-ms 1000 :not-ready-before-stop-ms 0}}

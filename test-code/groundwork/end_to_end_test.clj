@@ -93,14 +93,15 @@
                        :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
    :access          {:cookie-name "e2e_session" :session-days 1 :visitor-session-days 1 :renew-after-minutes 60
                        :allowed-origin (str "http://127.0.0.1:" server-port) :secure-cookie? false
-                       :token-lead "e2e_" :token-shown-characters 10 :token-longest-days 30}
+                       :token-lead "e2e_" :token-shown-characters 10 :token-longest-days 30
+                       :outside-issuers []}
    :visitors          {:path "/groundwork/visitor" :rate-limit {:max 10 :per-ms 60000}}
    :my-actions        {:rate-limit nil}
    :daily-caps        {:pool-size 2 :forget-counts {:cron "15 0 * * *" :timeout-ms 10000 :attempts 1}}
    :run-once          {:keep-keys-ms 600000
                        :forget-keys  {:cron "0 * * * *" :timeout-ms 10000 :attempts 1}
                        :retry-writes {:times 2 :wait-ms 300}}
-   :background-jobs   {:workers 1 :poll-ms 1000
+   :background-jobs   {:run-here? true :workers 1 :poll-ms 1000
                        :retry-first-wait-ms 30000 :retry-wait-factor 2 :retry-max-wait-ms 3600000
                        :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
                        :forget-done-every-ms 3600000 :stop-wait-ms 2000
@@ -117,13 +118,13 @@
                                   :background-job {:timeout-ms 10000 :attempts 1}}
                        :webhooks {:delivery-path "/email/delivery" :inbound-path "/email/inbound"
                                   :token (settings/make-secret :groundwork-email/webhook-token "the-webhook-token-0123") :inbound-domain "in.sample.test"}}
-   :live-updates          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
+   :live-updates          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000 :ask-again-at-most-every-ms 0}
                        :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                    :reconnect-after-ms 1000 :stop-wait-ms 2000}}
    :languages         {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}] :default "en" :cookie-name nil
                        :preview-languages [] :fallback-language "en" :catalogs-path "groundwork_test/sample/i18n"}
    :page              {:viewport "width=device-width, initial-scale=1"
-                       :content-security-policy :none :referrer-policy "same-origin" :frame-options "DENY"
+                       :content-security-policy :none :referrer-policy "same-origin"
                        :files {:folder files-folder :hashed-name-min-hex-digits 8 :hashed-file-cache-seconds 31536000}}
    :health            {:live-path "/health/live" :ready-path "/health/ready"
                        :database-timeout-ms 1000 :not-ready-before-stop-ms 2000}})
@@ -246,7 +247,8 @@
               stopped?   (atom false)
               connection (cdp/launch! browser-binary)
               sign-in    #(:set-cookie (access/sign-in! (:pool running) {:headers {}} %
-                                                         {:settings (:access (:settings app)) :tables (:tables app) :session-flags #{}}))
+                                                         {:settings (:access (:settings app)) :tables (:tables app) :session-flags #{}
+                                                          :session-lasts :session-days :outside-subjects {}}))
               annas      (cdp/make-context! connection)
               bobs       (cdp/make-context! connection)
               dialogs    (atom [])

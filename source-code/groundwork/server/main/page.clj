@@ -8,7 +8,7 @@
         \"addresses\":{\"http\":\"/groundwork/http\",\"sse\":\"/groundwork/sse\",\"ws\":\"/groundwork/ws\"},
         \"sse-reconnect-after-ms\":3000,
         \"ws-reopen-after-ms\":1000,
-        \"groundwork-live-updates\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000},
+        \"groundwork-live-updates\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000,\"ask-again-at-most-every-ms\":2000},
         \"groundwork-shaped-json\":{\"most-shapes-kept\":1000,\"most-keys-kept\":10000},
         \"retry-writes\":{\"times\":2,\"wait-ms\":1000},
         \"visitor-path\":\"/groundwork/visitor\",
@@ -38,7 +38,7 @@
    origin (the :access settings' :allowed-origin).
 
    What only the app knows, per page and per request, is the app's
-   :render-page, (fn [request page {:keys [nonce asker run-as-asker!]}]),
+   :render-page, (fn [request page {:keys [nonce asker transaction]}]),
    which answers a page or a redirect, every key written out:
 
      {:answer      :page
@@ -52,22 +52,38 @@
       :status   303                             ; 301, 302, 303, 307 or 308
       :location \"/login?next=%2Forders\"}        ; the Location header, as it is; no shell, never cached
 
-   page is the page the address names ({:name :address :title :module}),
-   or nil for a GET no route and no file answers (the not-found page).
-   nonce is the request's, nil unless the :content-security-policy says
-   :nonce? true; the shell puts it on its own scripts, the app on the
-   scripts in its head-html. asker is who groundwork-access finds asking (the
-   session's cookie, or a token), and run-as-asker! a transaction as the
-   request's asker, held by the gates, for a body that reads rows
-   (groundwork-access's run-as-asker-of-request!). The app escapes what it puts in head-html and body-html.
+   page is the page the address names ({:name :address :title :module
+   :frame-ancestors}), or nil for a GET no route and no file answers (the
+   not-found page). nonce is the request's, nil unless the
+   :content-security-policy says :nonce? true; the shell puts it on its
+   own scripts, the app on the scripts in its head-html. render-page runs
+   in one read-only transaction as the request's asker, held by the gates
+   (groundwork-access's run-as-asker-of-request!, which looks the asker up
+   once, as its first statement): asker is who it found, {:person-id
+   :visitor-id :session-flags :token-id :outside-issuer} (the session's
+   cookie, or a token), and transaction that transaction, for a body that
+   reads rows. A request groundwork-access refuses runs no render-page: an
+   outside issuer's token that failed its check is answered 401
+   (WWW-Authenticate: Bearer error=\"invalid_token\"), a cookie and a token
+   at once 403, each with its reason's text in the request's language.
+   The app escapes what it puts in head-html and body-html.
+
+   Who may frame a page is the page's :frame-ancestors (the not-found
+   page's the app's :not-found-frame-ancestors), every page writing it out:
+   :own-site, only the app's own pages (X-Frame-Options: SAMEORIGIN and
+   the policy's frame-ancestors 'self'); :no-site, none (DENY, 'none');
+   :any-site, any site's (neither header says a word: a shop's page embeds
+   it). The :content-security-policy setting names no frame-ancestors
+   of its own: the page's are added to it, or sent alone when it is :none.
 
    Fixed, not settings: the shell is never cached (no-store), so a new
    version's scripts are what the next load gets; nosniff, since every
    file goes out with its type; UTF-8; the scripts deferred; the app's
    element is #app. The rest is the :page settings: the viewport, the
-   content security policy (and whether it carries a nonce), the referrer
-   policy and the frame options."
+   content security policy (and whether it carries a nonce) and the
+   referrer policy; and the page's own framing."
   (:require
+   [groundwork-access.api :as access]
    [groundwork-browser-build.page :as browser-page]
    [groundwork-languages.api :as languages]
    [groundwork.server.main.asker :as asker]
@@ -120,7 +136,8 @@
    settings' :path), the languages (groundwork-languages's settings), every
    module's stylesheet bundle, for browser-build's load-module! (its
    stylesheets-for-load-module, read once from the build's manifests), the
-   pages. The request's :language is added per request."
+   pages, without their :frame-ancestors, which only the server's headers
+   say. The request's :language is added per request."
   [{:keys [version live-updates browser-shaped-json run-once languages visitors]
     {:keys [addresses sse-reconnect-after-ms ws-reopen-after-ms]} :bridge
     {{:keys [folder]} :files} :page}
@@ -128,7 +145,8 @@
   {:version version :addresses addresses :sse-reconnect-after-ms sse-reconnect-after-ms
    :ws-reopen-after-ms ws-reopen-after-ms :live-updates (:store live-updates) :shaped-json browser-shaped-json
    :retry-writes (:retry-writes run-once) :visitor-path (:path visitors) :languages languages
-   :module-stylesheets (browser-page/stylesheets-for-load-module {:files-folder folder}) :pages pages})
+   :module-stylesheets (browser-page/stylesheets-for-load-module {:files-folder folder})
+   :pages (update-vals pages #(dissoc % :frame-ancestors))})
 
 (def rendered-page-shape
   "What the app's :render-page answers, every key required: a page
@@ -189,35 +207,80 @@
        (str/join (map #(str "<script src=\"" (escape-html %) "\"" (nonce-attribute nonce) " defer></script>\n") scripts))
        "</head>\n<body>\n<div id=\"app\">" body-html "</div>\n</body>\n</html>\n"))
 
+(def frame-ancestors
+  "Who may frame a page, by its :frame-ancestors: the X-Frame-Options
+   header (nil: none) and the content security policy's frame-ancestors
+   (nil: none), for the browsers that read only the older header and the
+   ones that read the policy."
+  {:own-site {:frame-options "SAMEORIGIN" :policy "frame-ancestors 'self'"}
+   :no-site  {:frame-options "DENY" :policy "frame-ancestors 'none'"}
+   :any-site {:frame-options nil :policy nil}})
+
+(defn- make-policy
+  "The content security policy's text for a page: the settings' (this
+   request's nonce in place of {nonce}) with the page's frame-ancestors
+   added, the settings' alone, the frame-ancestors alone, or nil."
+  [content-security-policy nonce framing-policy]
+  (let [settings-policy (when (map? content-security-policy)
+                          (cond-> (:policy content-security-policy)
+                            nonce (str/replace "{nonce}" nonce)))]
+    (some->> [settings-policy framing-policy] (remove nil?) seq (str/join "; "))))
+
 (defn- make-headers
   "The shell's headers; the content security policy with this request's
-   nonce in place of {nonce} when it carries one."
-  [{{:keys [content-security-policy referrer-policy frame-options]} :page} nonce]
-  (cond-> {"content-type"           "text/html; charset=utf-8"
-           "cache-control"          "no-store"
-           "x-content-type-options" "nosniff"
-           "referrer-policy"        referrer-policy}
-    (map? content-security-policy) (assoc "content-security-policy"
-                                          (cond-> (:policy content-security-policy)
-                                            nonce (str/replace "{nonce}" nonce)))
-    (string? frame-options)        (assoc "x-frame-options" frame-options)))
+   nonce in place of {nonce} when it carries one, and the page's
+   frame-ancestors (the X-Frame-Options header with them)."
+  [{{:keys [content-security-policy referrer-policy]} :page} nonce page-frame-ancestors]
+  (let [{:keys [frame-options policy]} (get frame-ancestors page-frame-ancestors)
+        full-policy                    (make-policy content-security-policy nonce policy)]
+    (cond-> {"content-type"           "text/html; charset=utf-8"
+             "cache-control"          "no-store"
+             "x-content-type-options" "nosniff"
+             "referrer-policy"        referrer-policy}
+      full-policy   (assoc "content-security-policy" full-policy)
+      frame-options (assoc "x-frame-options" frame-options))))
 
 (defn- find-page-of-request [pages request]
   (when-let [page-name (get-in request [:reitit.core/match :data :name])]
     (assoc (get pages page-name) :name page-name)))
 
+(defn- render-as-asker
+  "The app's render-page in one read-only transaction as the request's
+   asker, found once in it (groundwork-access's run-as-asker-of-request!):
+   {:rendered …}, checked; or {:refused reason} for a request
+   groundwork-access refuses, before render-page runs. A refusal render-page
+   itself throws is the app's, thrown on."
+  [{:keys [pool settings scope-kinds log render-page]} request page nonce]
+  (let [rendering? (volatile! false)]
+    (try
+      {:rendered (access/run-as-asker-of-request!
+                  pool request {:settings (:access settings) :read-only? true :scope-kinds scope-kinds :log log}
+                  (fn [transaction asker]
+                    (vreset! rendering? true)
+                    (check-rendered-page (:name page)
+                                         (render-page request page {:nonce nonce :asker asker :transaction transaction}))))}
+      (catch clojure.lang.ExceptionInfo e
+        (if (and (not @rendering?) (= :groundwork-access/refused-request (:type (ex-data e))))
+          {:refused (:reason (ex-data e))}
+          (throw e))))))
+
 (defn make-page-handler
   "A Ring handler answering every page address with the shell, in the
    request's language (put on the request by wrap-languages), its JSON
-   written by the app's shaper, the app's render-page's head and body in it,
-   the files of the page's :module linked and script-tagged (with every
-   module it depends on); a GET of an address no page has (no route, no
-   file) is the not-found page (page nil), which starts with the
-   not-found-module, anything else there 404 with no body. The files it
-   lists are read once per module (find-files-of-page-modules). parts:
-   {:shaper :settings :browser-settings :pages :not-found-module
-   :render-page :pool :log :scope-kinds :find-session-step}."
-  [{:keys [shaper settings browser-settings pages not-found-module render-page pool log scope-kinds find-session-step]}]
+   written by the app's shaper, the app's render-page's head and body in it
+   (run in one read-only transaction as the request's asker, looked up
+   once), the files of the page's :module linked and script-tagged (with
+   every module it depends on), its framing by its :frame-ancestors; a GET
+   of an address no page has (no route, no file) is the not-found page
+   (page nil), which starts with the not-found-module and is framed by
+   not-found-frame-ancestors, anything else there 404 with no body. A
+   request groundwork-access refuses is answered by asker's
+   answer-refused-request (401 for an outside token that failed its check,
+   403 else), no render-page run. The files it lists are read once per
+   module (find-files-of-page-modules). parts: {:shaper :settings
+   :browser-settings :pages :not-found-module :not-found-frame-ancestors
+   :render-page :pool :log :scope-kinds}."
+  [{:keys [shaper settings browser-settings pages not-found-module not-found-frame-ancestors] :as parts}]
   (let [files-of-modules (find-files-of-page-modules settings (conj (mapv :module (vals pages)) not-found-module))
         origin      (get-in settings [:access :allowed-origin])
         nonce?      (true? (get-in settings [:page :content-security-policy :nonce?]))
@@ -225,20 +288,21 @@
     (fn [{:groundwork.server.main/keys [language path] :as request}]
       (if-not (= :get (:request-method request))
         {:status 404 :headers {} :body ""}
-        (let [page     (find-page-of-request pages request)
-              nonce    (when nonce? (make-nonce random))
-              context  ((:enter find-session-step) {:groundwork-steps/request request :groundwork-steps/log log})
-              rendered (check-rendered-page (:name page)
-                                            (render-page request page
-                                                         {:nonce         nonce
-                                                          :asker         (asker/read-asker context)
-                                                          :run-as-asker! (asker/make-run-as-asker pool request settings scope-kinds (:groundwork-steps/log context))}))]
-          (if (= :redirect (:answer rendered))
+        (let [page                       (find-page-of-request pages request)
+              nonce                      (when nonce? (make-nonce random))
+              {:keys [rendered refused]} (render-as-asker parts request page nonce)]
+          (cond
+            refused
+            (asker/answer-refused-request refused {})
+
+            (= :redirect (:answer rendered))
             {:status  (:status rendered)
              :headers {"location" (:location rendered) "cache-control" "no-store"}
              :body    ""}
+
+            :else
             {:status  (:status rendered)
-             :headers (make-headers settings nonce)
+             :headers (make-headers settings nonce (if page (:frame-ancestors page) not-found-frame-ancestors))
              :body    (make-page-html shaper settings (get files-of-modules (if page (:module page) not-found-module))
                                       (assoc browser-settings :language language)
                                       language (languages/make-alternate-links (:languages settings) origin path)

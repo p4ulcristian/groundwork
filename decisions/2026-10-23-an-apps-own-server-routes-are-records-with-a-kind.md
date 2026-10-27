@@ -1,5 +1,7 @@
 # An app's own server routes are records with a kind; the composer does their checks
 
+> **Changed in part** by [A refused outside token is answered 401](2026-10-27-a-refused-outside-token-is-answered-401.md) and [The composer takes the switch's library releases](2026-10-27-the-composer-takes-the-switchs-library-releases.md) (2026-10-27): a `:person` route writes out `:bearer-challenge`; its `:sign-in!` tool takes groundwork-access's options.
+
 > **Added to** by [A token call is answered as its person, from the app's own route](2026-10-23-a-token-call-is-answered-as-its-person-from-the-apps-route.md) (2026-10-23): a `:browser` route's tools gain `answer-as`, written into the handler's tools below.
 
 > **Changed in part** by [An app's own route is of kind :person or :provider](2026-10-23-route-kinds-are-person-and-provider.md) (2026-10-23, built on tidy-up): `:browser` is `:person`, `:server-to-server` is `:provider`.

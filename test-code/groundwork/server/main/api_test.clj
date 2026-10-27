@@ -40,10 +40,11 @@
    [groundwork-settings.api :as settings]
    [groundwork-live-repl.api :as live-repl]
    ;; the test's bucket is made through groundwork-file-storage's own client, as its tests make theirs
-   [groundwork-file-storage.bucket :as file-storage-bucket]
-   [groundwork-file-storage.signing :as file-storage-signing])
+   [groundwork-file-storage.bucket :as file-storage-bucket])
   (:import
    (java.io BufferedReader)
+   (java.nio.file Files)
+   (java.nio.file.attribute FileAttribute PosixFilePermissions)
    (java.net URI)
    (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)))
 
@@ -137,8 +138,24 @@
   "What a step's run-after-commit! work did, once its transaction committed."
   (atom []))
 
+(def ^:private given-runs
+  "What each run of the note-given kind found at :given."
+  (atom []))
+
+(def ^:private note-given
+  "A background job kind whose run notes the given map's version: every
+   run is given the app's :make-given map."
+  {:name :test/note-given :system-actor :test-jobs :params-shape [:map] :timeout-ms 5000 :attempts 1
+   :run  (fn [{:keys [given]} _params] (swap! given-runs conj (:version given)))})
+
 (def ^:private handlers
-  {:orders/after-commit {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :boolean
+  {:orders/queue-given {:action :orders/edit :scope [:shop :shop/id] :params-shape [:map [:shop/id :uuid]] :answer-shape [:tuple :string :boolean]
+                        :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
+                        :steps  [{:name  :queue-with-the-given-map
+                                  :enter (fn [{:groundwork/keys [given] :as context}]
+                                           ((:add-job! given) (:groundwork-access/transaction context) note-given {} {:run-in-ms 0 :key nil})
+                                           (steps/add-answer-to-context context [(:version given) (:all-parts? given)]))}]}
+   :orders/after-commit {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :boolean
                          :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                          :steps  [{:name  :remember-after-commit
                                    :enter (fn [context]
@@ -214,6 +231,13 @@
     (postgres/start-pool! (make-database-settings user)
                           {:log log :meter (metrics/make-meter {:jvm-metrics false :most-series-per-metric 10000} {:log log})})))
 
+(def ^:private repl-socket
+  "The REPL's Unix socket, in a folder only this user may enter, as
+   groundwork-live-repl wants it."
+  (str (io/file (str (Files/createTempDirectory "groundwork-repl" (into-array FileAttribute [(PosixFilePermissions/asFileAttribute
+                                                                                             (PosixFilePermissions/fromString "rwx------"))])))
+                "live-repl.sock")))
+
 (defn- make-settings [user]
   {:version           "test-1"
    :shaped-json              {:most-shapes-kept 1000
@@ -225,7 +249,7 @@
                        :write-to     #(swap! lines conj (json/read-value %))}
    :metrics           {:jvm-metrics true :most-series-per-metric 10000
                        :route {:path "/metrics" :token (settings/make-secret :groundwork-metrics/token "the-metrics-token")}}
-   :live-repl             {:mode :development :bind-address "127.0.0.1" :port 0 :middleware [] :port-file nil}
+   :live-repl             {:mode :ssh-only :address {:kind :unix-socket :path repl-socket} :middleware []}
    :visitors          {:path "/groundwork/visitor" :rate-limit {:max 5 :per-ms 60000}}
    :errors            {:path "/groundwork/errors" :token (settings/make-secret :errors/token "the-errors-token") :browser-rate-limit {:max 2 :per-ms 60000}}
    :migrate-at-start? false
@@ -243,13 +267,18 @@
                        :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
    :access          {:cookie-name "groundwork_session" :session-days 1 :visitor-session-days 1 :renew-after-minutes 60
                        :allowed-origin "http://app.test" :secure-cookie? false
-                       :token-lead "app_" :token-shown-characters 10 :token-longest-days 30}
+                       :token-lead "app_" :token-shown-characters 10 :token-longest-days 30
+                       ;; a stand-in issuer, never reached: the tests' outside tokens fail before their keys are fetched
+                       :outside-issuers [{:name :stand-in :issuer "http://127.0.0.1:1" :keys-at [:jwks "http://127.0.0.1:1/jwks"]
+                                          :audience "http://app.test/app/call" :algorithms #{"RS256"} :subject-claim "sub"
+                                          :clock-skew-seconds 30 :connect-timeout-ms 500 :answer-timeout-ms 500
+                                          :keys-kept-seconds 3600 :fetch-at-most-every-seconds 30}]}
    :my-actions        {:rate-limit {:max 60 :per-ms 60000}}
    :daily-caps        {:pool-size 2 :forget-counts {:cron "15 0 * * *" :timeout-ms 10000 :attempts 1}}
    :run-once          {:keep-keys-ms 1500
                        :forget-keys  {:cron "0 * * * *" :timeout-ms 10000 :attempts 1}
                        :retry-writes {:times 1 :wait-ms 1000}}
-   :background-jobs   {:workers 1 :poll-ms 1000
+   :background-jobs   {:run-here? true :workers 1 :poll-ms 1000
                        :retry-first-wait-ms 30000 :retry-wait-factor 2 :retry-max-wait-ms 3600000
                        :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
                        :forget-done-every-ms 3600000 :stop-wait-ms 5000
@@ -267,14 +296,14 @@
                                   :background-job {:timeout-ms 10000 :attempts 3}}
                        :webhooks {:delivery-path "/email/delivery" :inbound-path "/email/inbound"
                                   :token (settings/make-secret :groundwork-email/webhook-token "the-webhook-token-0123") :inbound-domain "in.app.test"}}
-   :live-updates          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000}
+   :live-updates          {:store     {:gather-changes-ms 50 :keep-unwatched-answers-ms 300000 :ask-again-at-most-every-ms 2000}
                        :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                                    :reconnect-after-ms 1000 :stop-wait-ms 2000}}
    :languages         {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}] :default "en" :cookie-name "lang"
                        :preview-languages [] :fallback-language "en" :catalogs-path "groundwork_test/i18n"}
    :page              {:viewport "width=device-width, initial-scale=1"
                        :content-security-policy {:policy "script-src 'nonce-{nonce}' 'strict-dynamic'; object-src 'none'" :nonce? true}
-                       :referrer-policy "same-origin" :frame-options "DENY"
+                       :referrer-policy "same-origin"
                        :files {:folder files-folder :hashed-name-min-hex-digits 8 :hashed-file-cache-seconds 31536000}}
    :health            {:live-path "/health/live" :ready-path "/health/ready"
                        :database-timeout-ms 500 :not-ready-before-stop-ms 1000}})
@@ -291,15 +320,18 @@
   "The app's own routes: a page-like read as the asker, a sign-in, a
    call of another protocol answered as the request's asker (its cookie or
    its token), a webhook that reads its raw body."
-  {:app/orders  {:address "/app/orders" :method :get :kind :person :rate-limit nil
+  {:app/orders  {:address "/app/orders" :method :get :kind :person :rate-limit nil :bearer-challenge {}
                  :handler (fn [_request {:keys [asker run-as-asker!]}]
                             {:status 200 :headers {"content-type" "text/plain"}
                              :body (str (:person-id asker) " "
                                         (run-as-asker! {:read-only? true} #(count (postgres/find-rows % find-all-orders {}))))})}
-   :app/sign-in {:address "/app/sign-in" :method :post :kind :person :rate-limit nil
+   :app/sign-in {:address "/app/sign-in" :method :post :kind :person :rate-limit nil :bearer-challenge {}
                  :handler (fn [_request {:keys [sign-in!]}]
-                            {:status 200 :headers {"set-cookie" (:set-cookie (sign-in! anna #{}))} :body "signed in"})}
+                            {:status 200 :body "signed in"
+                             :headers {"set-cookie" (:set-cookie (sign-in! anna {:session-flags #{} :session-lasts :session-days
+                                                                                 :outside-subjects {:stand-in "anna-at-the-issuer"}}))}})}
    :app/call    {:address "/app/call" :method :post :kind :person :rate-limit nil
+                 :bearer-challenge {"resource_metadata" "http://app.test/.well-known/oauth-protected-resource"}
                  :handler (fn [request {:keys [answer-as]}]
                             {:status 200 :headers {"content-type" "application/json"}
                              :body (json/write-value-as-string
@@ -311,9 +343,10 @@
 (defn- render-page
   "The test app's pages: its title, a description, a script of its own
    with the request's nonce, a body in the request's language saying who
-   asked; the admin page sends nobody to the login; the not-found page
-   for an address no page has."
-  [_request page {:keys [nonce asker]}]
+   asked; the admin page sends nobody to the login, and counts the orders
+   its transaction as the asker sees; the not-found page for an address
+   no page has."
+  [_request page {:keys [nonce asker transaction]}]
   (cond
     (and (= :admin/page (:name page)) (nil? (:person-id asker)))
     {:answer :redirect :status 303 :location "/login?next=%2Fadmin"}
@@ -323,7 +356,10 @@
      :title       "Shops <test>"
      :description (str "The " (name (:name page)) " page")
      :head-html   (str "<script nonce=\"" nonce "\">window.appStarted = true;</script>\n")
-     :body-html   (str "<main>" (languages/tr :orders/title {}) " for " (or (:person-id asker) "nobody") "</main>")}
+     :body-html   (str "<main>" (languages/tr :orders/title {}) " for " (or (:person-id asker) "nobody")
+                       (when (= :admin/page (:name page))
+                         (str ", " (count (postgres/find-rows transaction find-all-orders {})) " seen"))
+                       "</main>")}
     :else
     {:answer :page :status 404 :title "Not found" :description nil :head-html "" :body-html "<main>No such page</main>"}))
 
@@ -339,13 +375,21 @@
                                                             :orders-seen (count (postgres/find-rows transaction find-all-orders {})))))}
    :on-inbound-email (fn [email {:keys [transaction]}]
                        (swap! inbound-emails conj (assoc email :orders-seen (count (postgres/find-rows transaction find-all-orders {})))))
-   :handlers handlers :pages {:orders/page {:address "/orders/:order-id" :title "Order" :module :main}
-                              :admin/page  {:address "/admin" :title "Admin" :module :admin}}
+   :handlers handlers :pages {:orders/page    {:address "/orders/:order-id" :title "Order" :module :main :frame-ancestors :own-site}
+                              :admin/page     {:address "/admin" :title "Admin" :module :admin :frame-ancestors :no-site}
+                              :customize/page {:address "/customize" :title "Customize" :module :main :frame-ancestors :any-site}}
    :not-found-module :main
+   :not-found-frame-ancestors :own-site
    :browser-modules {:main  {:entries '[app.browser.main] :depends-on #{} :start 'app.browser.main/start!}
                      :admin {:entries '[app.browser.admin] :depends-on #{:main} :start nil}}
    :file-kinds []
-   :background-job-kinds [] :schedules [] :given-to-every-background-job-run {}})
+   :background-job-kinds [note-given] :schedules []
+   :make-given (fn [{:keys [settings pool run-as-system! add-background-job-to-queue! shaper meter texts file-storage mailer] :as parts}]
+                 {:version    (:version settings)
+                  :add-job!   add-background-job-to-queue!
+                  :all-parts? (and (= #{:settings :pool :run-as-system! :add-background-job-to-queue! :shaper :meter :texts :file-storage :mailer}
+                                      (set (keys parts)))
+                                   (every? some? [pool run-as-system! shaper meter texts file-storage mailer]))})})
 
 (defn- run-sql! [pool text] (postgres/run-statement! pool (postgres/make-query-from-sql-text "test" text) {}))
 
@@ -494,8 +538,17 @@
     (is (= 400 (status nil)) "no query")))
 
 (deftest the-apps-routes-are-checked
-  (let [route {:address "/app/x" :method :post :kind :person :rate-limit nil :handler identity}]
+  (let [route {:address "/app/x" :method :post :kind :person :rate-limit nil :bearer-challenge {} :handler identity}]
     (is (= {:app/x route} (app-routes/check-routes {:app/x route})))
+    (is (= {:app/x {:bearer-challenge ["missing required key"]}}
+           (:errors (ex-data (try (app-routes/check-routes {:app/x (dissoc route :bearer-challenge)}) (catch Exception e e)))))
+        "a :person route writes out its 401's challenge, {} for none")
+    (is (= {:app/x {:bearer-challenge {"realm" ["should hold no quote, backslash or control character"]}}}
+           (:errors (ex-data (try (app-routes/check-routes {:app/x (assoc route :bearer-challenge {"realm" "a \"b\""})}) (catch Exception e e)))))
+        "a value written in quotes as it is")
+    (is (= {:app/y {:bearer-challenge ["disallowed key"]}}
+           (:errors (ex-data (try (app-routes/check-routes {:app/y (assoc route :kind :provider :address "/app/y")}) (catch Exception e e)))))
+        "a :provider route reads no token: it has none")
     (is (= :groundwork.server.main/bad-routes
            (:type (ex-data (try (app-routes/check-routes {:app/x (assoc route :kind :public)}) (catch Exception e e))))))
     (is (= {:shared {["/app/x" :post] [:app/x :app/y]}}
@@ -603,6 +656,18 @@
          (try (main/check-settings (assoc-in (make-settings "x") [:file-storage :upload :max-file-bytes] 8388608))
               (catch clojure.lang.ExceptionInfo e (:errors (ex-data e)))))
       "an uploaded file larger than the server takes is refused at the start")
+  (is (= {:page {:content-security-policy [":policy names no frame-ancestors: each page says its own, :frame-ancestors"]}}
+         (try (main/check-settings (assoc-in (make-settings "x") [:page :content-security-policy :policy] "object-src 'none'; frame-ancestors 'self'"))
+              (catch clojure.lang.ExceptionInfo e (:errors (ex-data e)))))
+      "who may frame a page is the page's, never the policy's")
+  (is (= {:page {:frame-options ["disallowed key"]}}
+         (try (main/check-settings (assoc-in (make-settings "x") [:page :frame-options] "DENY"))
+              (catch clojure.lang.ExceptionInfo e (:errors (ex-data e)))))
+      "nor a setting for every page")
+  (is (= {:background-jobs {:run-here? ["missing required key"]}}
+         (try (main/check-settings (update (make-settings "x") :background-jobs dissoc :run-here?))
+              (catch clojure.lang.ExceptionInfo e (:errors (ex-data e)))))
+      "whether this server runs the background jobs is written out")
   (is (thrown? clojure.lang.ExceptionInfo
                (main/check-settings (assoc (make-settings "x") :browser-build {:watch {:modules {}}})))
       "the watch options leave out the modules and the folder: they come from the app and :page")
@@ -641,6 +706,7 @@
         (testing "a page naming a module the app doesn't have, or none, and a not-found module it doesn't have, are refused"
           (is (= [":orders/page names the module :main, which :browser-modules doesn't have"
                   ":admin/page names the module :admin, which :browser-modules doesn't have"
+                  ":customize/page names the module :main, which :browser-modules doesn't have"
                   ":not-found-module is :main, which :browser-modules doesn't have"]
                  (try (main/start-app! (assoc (make-app owner) :browser-modules {}))
                       (catch clojure.lang.ExceptionInfo e (:problems (ex-data e))))))
@@ -650,7 +716,16 @@
                                            (update-in [:pages :orders/page] dissoc :module)
                                            (assoc-in [:pages :admin/page :module] "admin")))
                       (catch clojure.lang.ExceptionInfo e (:problems (ex-data e)))))
-              "every page names its module, a keyword"))
+              "every page names its module, a keyword")
+          (is (= [":orders/page names no :frame-ancestors, who may frame it: one of :any-site, :no-site, :own-site"
+                  ":admin/page names :frame-ancestors \"DENY\", not one of :any-site, :no-site, :own-site"
+                  "the app names no :not-found-frame-ancestors, who may frame the not-found page: one of :any-site, :no-site, :own-site"]
+                 (try (main/start-app! (-> (make-app owner)
+                                           (update-in [:pages :orders/page] dissoc :frame-ancestors)
+                                           (assoc-in [:pages :admin/page :frame-ancestors] "DENY")
+                                           (dissoc :not-found-frame-ancestors)))
+                      (catch clojure.lang.ExceptionInfo e (:problems (ex-data e)))))
+              "and who may frame it, every problem at once"))
         (testing "an owner role, or a database not migrated, is refused"
           (is (thrown-with-msg? clojure.lang.ExceptionInfo #"owns tables or passes the gates"
                                 (main/start-app! (make-app owner)))))
@@ -688,7 +763,8 @@
               server-port (get-in running [:server :port])
               cookie      #(first (str/split (:set-cookie (access/sign-in! (:pool running) {:headers {}} %
                                                                     {:settings (get-in running [:settings :access])
-                                                                     :tables [shops orders] :session-flags #{}})) #";"))
+                                                                     :tables [shops orders] :session-flags #{}
+                                                                     :session-lasts :session-days :outside-subjects {}})) #";"))
               anna-cookie (cookie anna)
               bob-cookie  (cookie bob)]
           (try
@@ -726,7 +802,13 @@
                       new-cookie (first (str/split set-cookie #";"))]
                   (is (= [200 "signed in"] [status body]))
                   (is (= (str anna " 1") (second (send-plain server-port "GET" "/app/orders" nil new-cookie nil)))
-                      "the session it made is Anna's")))
+                      "the session it made is Anna's")
+                  (is (= [{:outside-subject/issuer "stand-in" :outside-subject/subject "anna-at-the-issuer" :outside-subject/person-id anna}]
+                         (postgres/find-rows owner-pool (postgres/make-query-from-sql-text
+                                                         "outside subjects"
+                                                         "SELECT outside_subject__issuer, outside_subject__subject, outside_subject__person_id FROM groundwork_access.outside_subjects")
+                                             {}))
+                      "the sign-in tool links her subject at the outside issuer: groundwork-access's table, migrated with groundwork's")))
               (testing ":provider: no session, the raw body, its rate limit"
                 (is (= [200 "got {\"type\":\"charge\"}"] (take 2 (send-plain server-port "POST" "/app/hook" nil nil "{\"type\":\"charge\"}"))))
                 (is (= 200 (first (send-plain server-port "POST" "/app/hook" nil nil "x"))))
@@ -756,6 +838,19 @@
                       "the messages' own route takes a token too")
                   (is (= [403 "Not allowed."] (call "/app/call" anna-token bob-cookie "{\"orders/all\":{}}"))
                       "a cookie and a token at once: groundwork-access's reason's text, in the request's language")
+                  (testing "an outside issuer's token that fails its check: 401 on a :person route, with the route's challenge"
+                    (let [response (.send (HttpClient/newHttpClient)
+                                          (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/app/call")))
+                                              (.header "authorization" "Bearer not-a-jwt")
+                                              (.POST (HttpRequest$BodyPublishers/ofString "{\"orders/all\":{}}")) (.build))
+                                          (HttpResponse$BodyHandlers/ofString))]
+                      (is (= [401 "The sign-in token was refused: sign in again."
+                              "Bearer resource_metadata=\"http://app.test/.well-known/oauth-protected-resource\", error=\"invalid_token\""]
+                             [(.statusCode response) (.body response) (.orElse (.firstValue (.headers response) "www-authenticate") nil)])))
+                    (is (= {"groundwork-steps/refused" "groundwork-access/token-refused" "groundwork-steps/data" nil}
+                           (dissoc (get (json/read-value (second (call "/groundwork/http" "not-a-jwt" nil "{\"orders/all\":{}}"))) "orders/all")
+                                   "groundwork-steps/request-id"))
+                        "on the messages' route, a refusal in the answer, as every refusal"))
                   (is (= [200 (str anna " 1")] (take 2 (send-plain-with-token server-port "/app/orders" anna-token)))
                       "a :person route's asker, and its run-as-asker!, by the token")
                   (let [[first-answer second-answer third-answer]
@@ -782,7 +877,7 @@
                 (is (str/includes? settings "\"version\":\"test-1\""))
                 (is (str/includes? settings "\"ws-reopen-after-ms\":1000") "the ws reopen delay, from the :bridge settings")
                 (is (str/includes? settings "\"sse-reconnect-after-ms\":3000") "and the sse one")
-                (is (str/includes? settings "\"live-updates\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000}")
+                (is (str/includes? settings "\"live-updates\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000,\"ask-again-at-most-every-ms\":2000}")
                     "the question store's settings")
                 (is (str/includes? settings "\"shaped-json\":{\"most-shapes-kept\":1000,\"most-keys-kept\":10000}")
                     "the browser's groundwork-shaped-json settings, from :browser-shaped-json")
@@ -804,15 +899,26 @@
                     "the stylesheet bundle its manifest lists")
                 (is (not (str/includes? html "\"version\":\"test-1\"")) "the settings' JSON is in the page only as a JSON string")
                 (is (= "test-1" (get (json/read-value settings) "version")) "which reads back as the settings")))
-            (testing "the shell's headers: fixed ones and the :page settings'"
-              (let [headers (.headers (.send (HttpClient/newHttpClient)
-                                             (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/orders/42"))))
-                                             (HttpResponse$BodyHandlers/discarding)))
-                    header  #(.orElse (.firstValue headers %) nil)]
-                (is (= ["no-store" "nosniff" "same-origin" "DENY"]
+            (testing "the shell's headers: fixed ones, the :page settings' and the page's framing"
+              (let [headers-of (fn [path cookie]
+                                 (let [headers (.headers (.send (HttpClient/newHttpClient)
+                                                                (.build (cond-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port path)))
+                                                                          cookie (.header "cookie" cookie)))
+                                                                (HttpResponse$BodyHandlers/discarding)))]
+                                   #(.orElse (.firstValue headers %) nil)))
+                    header     (headers-of "/orders/42" nil)]
+                (is (= ["no-store" "nosniff" "same-origin" "SAMEORIGIN"]
                        (map header ["cache-control" "x-content-type-options" "referrer-policy" "x-frame-options"])))
-                (is (re-matches #"script-src 'nonce-[A-Za-z0-9+/=]{24}' 'strict-dynamic'; object-src 'none'" (header "content-security-policy"))
-                    "the policy, a nonce of this answer's own in place of {nonce}")))
+                (is (re-matches #"script-src 'nonce-[A-Za-z0-9+/=]{24}' 'strict-dynamic'; object-src 'none'; frame-ancestors 'self'"
+                                (header "content-security-policy"))
+                    "the policy, a nonce of this answer's own in place of {nonce}, and the page's frame-ancestors, :own-site")
+                (let [admin (headers-of "/admin" anna-cookie)]
+                  (is (= "DENY" (admin "x-frame-options")) ":no-site")
+                  (is (str/ends-with? (admin "content-security-policy") "; frame-ancestors 'none'")))
+                (let [customize (headers-of "/customize" nil)]
+                  (is (nil? (customize "x-frame-options")) ":any-site: a shop's page may frame it")
+                  (is (not (str/includes? (customize "content-security-policy") "frame-ancestors"))))
+                (is (= "SAMEORIGIN" ((headers-of "/nowhere" nil) "x-frame-options")) "the not-found page's, the app's :not-found-frame-ancestors")))
             (testing "the app's render-page: its title, description, head and body; a nonce per answer"
               (let [page-of   (fn [path cookie]
                                 (let [response (.send (HttpClient/newHttpClient)
@@ -838,6 +944,30 @@
                            [(.statusCode response) (.orElse (.firstValue (.headers response) "location") nil)
                             (.orElse (.firstValue (.headers response) "cache-control") nil) (.body response)])))
                   (is (str/includes? (:html (page-of "/admin" anna-cookie)) "<main>Orders for ") "signed in: the page"))
+                (testing "render-page runs in one read-only transaction as the asker, found once"
+                  (run-sql! owner-pool (str "INSERT INTO orders (order__shop_id) VALUES ('" shop-7 "'), ('" shop-9 "')"))
+                  (let [lookups #(or (some->> (metrics/write-metrics-text (:meter running))
+                                              (re-find #"groundwork_postgres_query_seconds_count\{query=\"groundwork_access/find_session.sql\"\} (\d+)")
+                                              second parse-long)
+                                     0)
+                        before  (lookups)]
+                    (is (str/includes? (:html (page-of "/admin" anna-cookie)) (str "<main>Orders for " anna ", 1 seen</main>"))
+                        "the transaction it was handed is Anna's, held by the gates: shop 7's order, not shop 9's")
+                    (is (= (inc before) (lookups)) "one page, one session lookup"))
+                  (run-sql! owner-pool "DELETE FROM orders"))
+                (testing "a request groundwork-access refuses runs no render-page"
+                  (let [ask (fn [headers]
+                              (let [response (.send (HttpClient/newHttpClient)
+                                                    (.build (reduce (fn [b [k v]] (.header b k v))
+                                                                    (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/de/orders/42")))
+                                                                    headers))
+                                                    (HttpResponse$BodyHandlers/ofString))]
+                                [(.statusCode response) (.body response) (.orElse (.firstValue (.headers response) "www-authenticate") nil)]))]
+                    (is (= [401 "Das Anmeldetoken wurde abgelehnt: bitte erneut anmelden." "Bearer error=\"invalid_token\""]
+                           (ask {"authorization" "Bearer not-a-jwt"}))
+                        "an outside issuer's token that fails its check: 401, its reason's text in the request's language")
+                    (is (= [403 "Nicht erlaubt." nil] (ask {"authorization" "Bearer app_x" "cookie" anna-cookie}))
+                        "a cookie and a token at once: 403")))
                 (testing "a page that starts with a module links its files and its root's, the root first"
                   (let [html (:html (page-of "/admin" anna-cookie))]
                     (is (re-find #"(?s)<link rel=\"stylesheet\" href=\"/css/main.9F8E7D6C5B4A.css\">\n<link rel=\"stylesheet\" href=\"/css/admin.1A2B3C4D5E6F.css\">" html))
@@ -1138,13 +1268,19 @@
                 (is (= [403 {"error" "Not allowed."}] (upload "http://app.test" nil)) "nobody signed in")
                 (is (= [403 {"error" "Not allowed."}] (upload "http://app.test" bob-cookie)) "the app's :may-upload? says no to Bob")
                 (is (= [403 {"error" "Not allowed."}] (upload "https://evil.test" anna-cookie)) "from another site")
+                (let [response (.send (HttpClient/newHttpClient)
+                                      (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/groundwork/files")))
+                                          (.header "authorization" "Bearer not-a-jwt")
+                                          (.header "content-type" "multipart/form-data; boundary=b")
+                                          (.POST (HttpRequest$BodyPublishers/ofByteArray body)) (.build))
+                                      (HttpResponse$BodyHandlers/ofString))]
+                  (is (= [401 "Bearer error=\"invalid_token\""]
+                         [(.statusCode response) (.orElse (.firstValue (.headers response) "www-authenticate") nil)])
+                      "an outside issuer's token that fails its check: 401, before the body is read"))
                 (if-not s3-endpoint
                   (println "groundwork.server.main.api-test: the stored upload skipped, GROUNDWORK_S3_TEST_ENDPOINT is not set")
                   (let [{:keys [client] store-settings :settings} (:file-storage running)
-                        _      (file-storage-bucket/send-to-bucket! client store-settings
-                                                                    {:method "PUT" :path (file-storage-bucket/write-object-path (:bucket store-settings) nil)
-                                                                     :query [] :headers {} :body nil :payload-hash file-storage-signing/empty-payload-hash}
-                                                                    :bytes)
+                        _      (file-storage-bucket/make-bucket! client store-settings)
                         [status {[stored] "stored"}] (upload "http://app.test" anna-cookie)]
                     (is (= 200 status))
                     (is (str/starts-with? (get stored "key") "orders/photos/"))
@@ -1204,6 +1340,32 @@
                           "its mailbox read from the recipient, run as the system actor :email: it sees none of the shop's orders")))
                   (is (= [] (access/find-system-leaks (:pool running) [shops orders shop-emails] :email {:orders [order-71 order-91]}))
                       "the system leak test, on the app's own role"))))
+            (testing "the app's :make-given map: in every handler's steps' context, and every background job run's"
+              (reset! given-runs [])
+              (is (= [200 {"orders/queue-given" ["test-1" true]}]
+                     (update (send-write server-port anna-cookie nil (str "{\"orders/queue-given\":{\"shop/id\":\"" shop-7 "\"}}")) 1 without-request-ids))
+                  "a step reads it at :groundwork/given, made once from every running part, and queues a job with its add-job!")
+              (is (= ["test-1"] (loop [n 0]
+                                  (if (or (seq @given-runs) (< 100 n)) @given-runs (do (Thread/sleep 100) (recur (inc n))))))
+                  "the job ran on the workers, its run given the same map at :given"))
+            (testing "a server whose :background-jobs say :run-here? false runs none, and counts what it queues"
+              (reset! given-runs [])
+              (reset! lines [])
+              (let [quiet (main/start-app! (-> (make-app "groundwork_app")
+                                               (assoc-in [:settings :background-jobs :run-here?] false)
+                                               (assoc-in [:settings :live-repl] {:mode :off :emergency-switch nil})))]
+                (try
+                  (is (nil? (:workers quiet)) "no workers")
+                  ((:add-job! (:given quiet)) (:pool quiet) note-given {} {:run-in-ms 0 :key nil})
+                  (let [text (metrics/write-metrics-text (:meter quiet))]
+                    (is (re-find #"groundwork_background_jobs_jobs_added_total\{kind=\"test/note-given\"\} 1" text)
+                        "groundwork-background-jobs's metrics declared without workers: the job queued is counted")
+                    (is (re-find #"groundwork_background_jobs_dispatcher_failures_total 0" text)))
+                  (is (= [] (find-lines "groundwork-metrics/metric-not-declared")))
+                  (finally (main/stop-app! quiet))))
+              (is (= ["test-1"] (loop [n 0]
+                                  (if (or (seq @given-runs) (< 100 n)) @given-runs (do (Thread/sleep 100) (recur (inc n))))))
+                  "what it queued waits for a server that runs jobs: the first app's workers ran it"))
             (testing "the metrics: only with their token; every library's on the app's one meter, and groundwork's"
               (let [ask-metrics (fn [token]
                                   (let [response (.send (HttpClient/newHttpClient)
@@ -1253,7 +1415,9 @@
                 (is (= [429 "Too many requests." nil] (start-visitor "http://app.test" nil))
                     "over the :visitors :rate-limit, by address: no session, no cookie")))
             (testing "the REPL: groundwork's tools in groundwork-live-repl.tools"
-              (with-open [connection (nrepl/connect :port (live-repl/find-repl-port (:live-repl running)))]
+              (is (= {:kind :unix-socket :path repl-socket} (live-repl/find-repl-address (:live-repl running)))
+                  "on the Unix socket the :live-repl settings name")
+              (with-open [connection (nrepl/connect :socket repl-socket)]
                 (let [client (nrepl/client connection 10000)
                       eval!  #(first (nrepl/response-values (nrepl/message client {:op "eval" :code %})))]
                   (let [count-ok #(or (some->> (metrics/write-metrics-text (:meter running))

@@ -32,6 +32,7 @@ Each word in a groundwork name means one thing, everywhere. See
 | visitor | someone not signed in for whom the app keeps something (a cart): a session of their own, groundwork-access's, started by groundwork's visitor route; their rows become the person's at sign-in |
 | REPL | a Clojure prompt into the running app, by [groundwork-live-repl](https://github.com/p4ulcristian/groundwork-live-repl): open in development, over SSH on stage, off in production but for the emergency switch |
 | tool | a function of groundwork's in `groundwork-live-repl.tools` while a REPL is open: `ask-as-person`, `why-refused`, `explain-setting` |
+| given | the map the app map's `:make-given` makes once at the start from the running app's parts: every app handler's steps find it at `:groundwork/given`, every background job run at `:given` |
 | asker | who a message is asked as: `{:person-id :visitor-id :session-flags}`, the person or the visitor and the session's flags, found by groundwork-access from the request's cookie or token; only the REPL's tools name one |
 | token | a person's own proof for a script or an AI, made by groundwork-access for a signed-in person: a call with `Authorization: Bearer <token>` is that person's, with no session flags |
 | file | bytes the app keeps in its bucket, by [groundwork-file-storage](https://github.com/p4ulcristian/groundwork-file-storage): named by its content (`orders/photos/<sha256 as a uuid>.png`), never written over, a row of `groundwork_file_storage.files`; the app's rows hold its key |
