@@ -102,7 +102,7 @@ Each library is a repository of its own, named by what it does since [Each libra
 - [The app map's :on-inbound-email is one function](2026-10-26-the-apps-inbound-email-is-one-function.md)
 - [The app map names its own kinds of files; the files table is the store's settings'](2026-10-27-the-app-map-names-its-own-kinds-of-files.md)
 - [Every page names the module it starts with; the not-found page's is the app's :not-found-module](2026-10-27-every-page-names-the-module-it-starts-with.md)
-- [The composer takes the switch's library releases](2026-10-27-the-composer-takes-the-switchs-library-releases.md) (v8.0.0): groundwork-access v0.8, groundwork-live-updates v0.6, groundwork-file-storage v0.2.2
+- [The composer takes the switch's library releases](2026-10-27-the-composer-takes-the-switchs-library-releases.md) (v8.0.0): groundwork-access v0.8, groundwork-live-updates v0.6, groundwork-file-storage v0.2.3
 - [Handlers get the app's things handed in, as background jobs do](2026-10-27-handlers-get-the-apps-things-handed-in.md) (v8.0.0): the app map's `:make-given`
 - [A server may run no background jobs: :run-here? false](2026-10-27-a-server-may-run-no-background-jobs.md) (v8.0.0)
 - [An app's table that writes its own :gates or :on-change is refused](2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md)
