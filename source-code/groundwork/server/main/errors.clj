@@ -12,7 +12,8 @@
      Authorization: Bearer …
      200 [{\"seq\":42,\"time\":\"…\",\"level\":\"error\",\"event\":\"…\",\"context\":{…},\"data\":{…},\"error\":{…}}]
 
-   A since that isn't a whole number from 0 is 400. Never cached.
+   A since that isn't a whole number from 0, or is given twice, is 400; the
+   query is read as form text (since=%34%31 is 41). Never cached.
 
    The browser's errors: groundwork's browser start sends each uncaught error
    and unhandled rejection, and each an app's error boundary reports
@@ -30,7 +31,8 @@
    [groundwork-logs.api :as logs]
    [groundwork-steps.api :as steps]
    [groundwork-settings.api :as settings]
-   [groundwork-shaped-json.api :as shaped-json]))
+   [groundwork-shaped-json.api :as shaped-json]
+   [ring.util.codec :as codec]))
 
 ;; -----------------------------------------------------------------------------
 ;; The errors route
@@ -46,11 +48,14 @@
          (settings/equal? token (subs given (count "Bearer "))))))
 
 (defn- read-since
-  "?since=N's N, or nil when it is missing or not a whole number from 0."
+  "?since=N's N, or nil when it is missing, given twice, or not a whole
+   number from 0: the query read as form text by ring.util.codec's
+   form-decode (UTF-8; a pair with a bad %-escape left out)."
   [{:keys [query-string]}]
-  (some->> (when query-string (re-find #"(?:^|&)since=(\d{1,18})(?:&|$)" query-string))
-           second
-           parse-long))
+  (let [params (codec/form-decode (or query-string "") "UTF-8")
+        since  (when (map? params) (get params "since"))]
+    (when (and (string? since) (re-matches #"\d{1,18}" since))
+      (parse-long since))))
 
 (def ^:private not-allowed
   {:status 401 :headers {"content-type" "text/plain" "cache-control" "no-store" "www-authenticate" "Bearer"}

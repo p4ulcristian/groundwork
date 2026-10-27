@@ -46,6 +46,10 @@ and the page shell links that module's files and those of every module it
 depends on, as browser-build's page half (`groundwork-browser-build.page`, in
 `:deps`, no shadow-cljs) reads them from the build's manifests, once per module
 ([the decision](decisions/2026-10-27-every-page-names-the-module-it-starts-with.md)).
+The shell's text and attributes are escaped by OWASP Java Encoder
+(`Encode/forHtml`), and the browser's settings are one JSON string in their
+script element (`Encode/forJson`), which the browser parses twice
+([the decision](decisions/2026-10-27-the-page-shell-escapes-by-owasps-encoders.md)).
 What the libraries above the wire share, on both sides:
 [groundwork-steps](https://github.com/p4ulcristian/groundwork-steps), a handler's steps over one
 context (`:groundwork-steps/request`, `message-data`, `log`, …), the answer's
@@ -105,7 +109,8 @@ And what the app says, on the server:
 `:logs` settings and passes its log to every library, each message's steps
 get one with its request id (and the person, once groundwork-access finds them), and a
 monitor pulls the kept errors, the browser's among them, from the `:errors`
-route.
+route (`?since=N`, read as form text by ring.util.codec;
+[the decision](decisions/2026-10-27-the-errors-routes-since-is-read-by-ring-codec.md)).
 And which language a request, a page and an address are in, on both sides:
 [groundwork-languages](https://github.com/p4ulcristian/groundwork-languages); its settings are
 the `:languages` part. Every request gets its language (the address's

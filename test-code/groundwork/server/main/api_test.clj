@@ -27,10 +27,12 @@
    [groundwork-access.api :as access]
    [groundwork.server.main.api :as main]
    [groundwork.server.main.app-routes :as app-routes]
+   [groundwork.server.main.errors :as errors]
    [groundwork.server.main.page :as page]
    [groundwork.server.main.run-once :as run-once]
    [jsonista.core :as json]
    [groundwork-logs.api :as logs]
+   [groundwork-shaped-json.api :as shaped-json]
    [groundwork-steps.api :as steps]
    [groundwork-metrics.api :as metrics]
    [nrepl.core :as nrepl]
@@ -385,6 +387,13 @@
                         (HttpResponse$BodyHandlers/ofString))]
     [(.statusCode response) (.body response)]))
 
+(defn- read-page-settings-text
+  "The JSON text of the browser's settings in a page: its script element
+   holds it as a JSON string, read once here as the browser's first
+   JSON.parse does."
+  [html]
+  (json/read-value (second (re-find #"<script type=\"application/json\" id=\"groundwork-settings\"[^>]*>([^<]*)</script>" html))))
+
 (defn- send-plain
   "A request with the origin only when given: [status body set-cookie]."
   [server-port method path origin cookie body]
@@ -445,6 +454,44 @@
     (is (= {:uri "/orders" :text "2 Bestellungen"} (handler {:uri "/de/orders" :headers {}})) "the prefix's, bound for tr")
     (is (= "2 Bestellungen" (:text (handler {:uri "/orders" :headers {"cookie" "lang=de"}}))) "the cookie's")
     (is (= "2 orders" (:text (handler {:uri "/orders" :headers {}}))) "the default's")))
+
+(def ^:private test-shaper
+  (shaped-json/make-shaper-from-settings {:most-shapes-kept 1000
+                                          :json-limits      {:max-nesting-depth 1000 :max-number-length 1000 :max-string-length 20000000
+                                                             :max-name-length 50000 :max-document-length nil :max-token-count nil
+                                                             :max-writing-nesting-depth 1000}}))
+
+(deftest the-page-shell-escapes-by-owasps-encoders
+  (let [html     (page/make-page-html test-shaper {:page {:viewport "width=device-width"}} {:stylesheets ["/css/a.css?x=1&y=2"] :scripts []}
+                                      {:note "</script><!-- it's & \"quoted\" \\ \u2028"} "en" []
+                                      {:title "Tom's <b>\"shop\"</b> & co" :description "it's" :head-html "" :body-html ""} "n'once")
+        settings (read-page-settings-text html)]
+    (testing "text and attributes: & < > \" ' each as its entity"
+      (is (str/includes? html "<title>Tom&#39;s &lt;b&gt;&#34;shop&#34;&lt;/b&gt; &amp; co</title>"))
+      (is (str/includes? html "<meta name=\"description\" content=\"it&#39;s\">"))
+      (is (str/includes? html "<link rel=\"stylesheet\" href=\"/css/a.css?x=1&amp;y=2\">"))
+      (is (str/includes? html "nonce=\"n&#39;once\"")))
+    (testing "the settings: a JSON string nothing in which ends the element or opens a comment"
+      (is (= 1 (count (re-seq #"</script>" (subs html (str/index-of html "id=\"groundwork-settings\""))))) "its own end only")
+      (is (not (str/includes? html "<!--")))
+      (is (= {"note" "</script><!-- it's & \"quoted\" \\ \u2028"} (json/read-value settings))
+          "read twice, as the browser does, the settings as they were"))))
+
+(deftest the-errors-route-reads-since-as-form-text
+  (let [logger  (logs/make-logger {:lowest-level :error :format :json :errors-kept 10 :write-to (fn [_])})
+        [[_ {{:keys [handler]} :get}]] (errors/make-errors-routes test-shaper logger {:errors {:path "/groundwork/errors"
+                                                                                             :token (settings/make-secret :errors/token "the-errors-token")}})
+        status  #(:status (handler {:request-method :get :uri "/groundwork/errors" :query-string %
+                                    :headers {"authorization" "Bearer the-errors-token"}}))]
+    (is (= 200 (status "since=0")))
+    (is (= 200 (status "a=1&since=0&b")) "among other params")
+    (is (= 200 (status "since=%30")) "%-escaped: 0")
+    (is (= 200 (status "x=%zz&since=0")) "a pair with a bad escape is left out, the rest read")
+    (is (= 400 (status "since=0%zz")) "a since with a bad escape is none")
+    (is (= 400 (status "since=0&since=1")) "twice")
+    (is (= 400 (status "since=+0")) "a + is a space")
+    (is (= 400 (status "since")) "no value")
+    (is (= 400 (status nil)) "no query")))
 
 (deftest the-apps-routes-are-checked
   (let [route {:address "/app/x" :method :post :kind :person :rate-limit nil :handler identity}]
@@ -658,7 +705,7 @@
                 (let [[status html] (get-page "/de/orders/42" {})]
                   (is (= 200 status) "the prefix is taken off before routing")
                   (is (= "de" (lang-of [status html])))
-                  (is (str/includes? html "\"language\":\"de\"") "the browser is told the page's language")
+                  (is (str/includes? (read-page-settings-text html) "\"language\":\"de\"") "the browser is told the page's language")
                   (is (str/includes? html (str "<link rel=\"alternate\" hreflang=\"en\" href=\"http://app.test/orders/42\">\n"
                                                "<link rel=\"alternate\" hreflang=\"de\" href=\"http://app.test/de/orders/42\">\n"
                                                "<link rel=\"alternate\" hreflang=\"x-default\" href=\"http://app.test/orders/42\">"))
@@ -728,32 +775,35 @@
                 (is (= "3 Bestellungen" (languages/with-language (:texts running) "de" (languages/tr :orders/count {:count 3}))))
                 (is (= "1 order" (languages/with-language (:texts running) "en" (languages/tr :orders/count {:count 1}))))))
             (testing "a page opened fresh: the shell, with the browser's settings in it"
-              (let [[status html] (send-request server-port "GET" "/orders/42" nil nil)]
+              (let [[status html] (send-request server-port "GET" "/orders/42" nil nil)
+                    settings      (read-page-settings-text html)]
                 (is (= 200 status))
                 (is (str/includes? html "<title>Shops &lt;test&gt;</title>"))
-                (is (str/includes? html "\"version\":\"test-1\""))
-                (is (str/includes? html "\"ws-reopen-after-ms\":1000") "the ws reopen delay, from the :bridge settings")
-                (is (str/includes? html "\"sse-reconnect-after-ms\":3000") "and the sse one")
-                (is (str/includes? html "\"live-updates\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000}")
+                (is (str/includes? settings "\"version\":\"test-1\""))
+                (is (str/includes? settings "\"ws-reopen-after-ms\":1000") "the ws reopen delay, from the :bridge settings")
+                (is (str/includes? settings "\"sse-reconnect-after-ms\":3000") "and the sse one")
+                (is (str/includes? settings "\"live-updates\":{\"gather-changes-ms\":50,\"keep-unwatched-answers-ms\":300000}")
                     "the question store's settings")
-                (is (str/includes? html "\"shaped-json\":{\"most-shapes-kept\":1000,\"most-keys-kept\":10000}")
+                (is (str/includes? settings "\"shaped-json\":{\"most-shapes-kept\":1000,\"most-keys-kept\":10000}")
                     "the browser's groundwork-shaped-json settings, from :browser-shaped-json")
-                (is (str/includes? html "\"retry-writes\":{\"times\":1,\"wait-ms\":1000}")
+                (is (str/includes? settings "\"retry-writes\":{\"times\":1,\"wait-ms\":1000}")
                     "how a write that got no answer is retried, from :run-once")
                 (is (str/includes? html "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"))
-                (is (str/includes? html "\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\",\"module\":\"main\"}"))
-                (is (str/includes? html "\"sse\":\"/groundwork/sse\""))
+                (is (str/includes? settings "\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\",\"module\":\"main\"}"))
+                (is (str/includes? settings "\"sse\":\"/groundwork/sse\""))
                 (is (re-find #"<script src=\"/js/main.0A1B2C3D4E5F.js\" nonce=\"[^\"]+\" defer></script>" html)
                     "the script the build's manifest lists")
                 (is (not (str/includes? html "admin.6F5E4D3C2B1A.js")) "the page's module, main, only: admin loads on demand")
-                (is (str/includes? html "\"module-stylesheets\":{\"admin\":\"/css/admin.1A2B3C4D5E6F.css\",\"main\":\"/css/main.9F8E7D6C5B4A.css\"}")
+                (is (str/includes? settings "\"module-stylesheets\":{\"admin\":\"/css/admin.1A2B3C4D5E6F.css\",\"main\":\"/css/main.9F8E7D6C5B4A.css\"}")
                     "each module's stylesheet bundle, for the loader")
-                (is (str/includes? html "\"languages\":{\"languages\":[{\"code\":\"en\",\"name\":\"English\"},{\"code\":\"de\",\"name\":\"Deutsch\"}],\"default\":\"en\",\"cookie-name\":\"lang\",\"preview-languages\":[],\"fallback-language\":\"en\",\"catalogs-path\":\"groundwork_test/i18n\"}")
+                (is (str/includes? settings "\"languages\":{\"languages\":[{\"code\":\"en\",\"name\":\"English\"},{\"code\":\"de\",\"name\":\"Deutsch\"}],\"default\":\"en\",\"cookie-name\":\"lang\",\"preview-languages\":[],\"fallback-language\":\"en\",\"catalogs-path\":\"groundwork_test/i18n\"}")
                     "groundwork-languages's settings")
-                (is (str/includes? html "\"admin/page\":{\"address\":\"/admin\",\"title\":\"Admin\",\"module\":\"admin\"}")
+                (is (str/includes? settings "\"admin/page\":{\"address\":\"/admin\",\"title\":\"Admin\",\"module\":\"admin\"}")
                     "a page names its module")
                 (is (str/includes? html "<link rel=\"stylesheet\" href=\"/css/main.9F8E7D6C5B4A.css\">")
-                    "the stylesheet bundle its manifest lists")))
+                    "the stylesheet bundle its manifest lists")
+                (is (not (str/includes? html "\"version\":\"test-1\"")) "the settings' JSON is in the page only as a JSON string")
+                (is (= "test-1" (get (json/read-value settings) "version")) "which reads back as the settings")))
             (testing "the shell's headers: fixed ones and the :page settings'"
               (let [headers (.headers (.send (HttpClient/newHttpClient)
                                              (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/orders/42"))))
@@ -1030,6 +1080,9 @@
                 (is (= 401 (first (ask-errors "a-wrong-token" "?since=0"))))
                 (is (= 400 (first (ask-errors "the-errors-token" ""))) "since is said")
                 (is (= 400 (first (ask-errors "the-errors-token" "?since=-1"))))
+                (is (= 400 (first (ask-errors "the-errors-token" "?since=0&since=1"))) "since twice")
+                (is (= 400 (first (ask-errors "the-errors-token" "?since"))) "since with no value")
+                (is (= [200 "[]"] (ask-errors "the-errors-token" "?since=%39%39%39%39%39%39%39%39%39")) "read as form text: %39 is 9")
                 (let [[status body] (ask-errors "the-errors-token" "?since=0")
                       errors        (json/read-value body)
                       last-seq      (get (peek errors) "seq")]

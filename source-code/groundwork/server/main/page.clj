@@ -78,15 +78,23 @@
    [groundwork-shaped-json.api :as shaped-json])
   (:import
    (java.security SecureRandom)
-   (java.util Base64)))
+   (java.util Base64)
+   (org.owasp.encoder Encode)))
 
-(defn- escape-html [text]
-  (-> (str text) (str/replace "&" "&amp;") (str/replace "<" "&lt;") (str/replace ">" "&gt;") (str/replace "\"" "&quot;")))
+(defn- escape-html
+  "Text in HTML, an element's or a quoted attribute's, by OWASP's
+   Encode/forHtml: & < > \" ' each as its entity."
+  [text]
+  (Encode/forHtml (str text)))
 
-(defn- escape-json-for-script
-  "JSON inside <script>: a < can't end the tag or open a comment."
+(defn- write-json-as-json-string
+  "JSON text as a JSON string, by OWASP's Encode/forJson, for the settings'
+   <script type=\"application/json\">: its \" and \\ escaped, and < > &
+   as \\u003c \\u003e \\u0026, so nothing in it ends the element or opens a
+   comment. The browser reads it with JSON.parse twice: the string, then
+   the JSON in it."
   [json-text]
-  (str/replace json-text "<" "\\u003c"))
+  (str "\"" (Encode/forJson json-text) "\""))
 
 (defn find-files-of-page-modules
   "The files a page that starts with each module links, {module
@@ -176,7 +184,7 @@
        (str/join (map #(str "<link rel=\"stylesheet\" href=\"" (escape-html %) "\">\n") stylesheets))
        head-html
        "<script type=\"application/json\" id=\"groundwork-settings\"" (nonce-attribute nonce) ">"
-       (escape-json-for-script (shaped-json/turn-data-into-json-text shaper browser-settings))
+       (write-json-as-json-string (shaped-json/turn-data-into-json-text shaper browser-settings))
        "</script>\n"
        (str/join (map #(str "<script src=\"" (escape-html %) "\"" (nonce-attribute nonce) " defer></script>\n") scripts))
        "</head>\n<body>\n<div id=\"app\">" body-html "</div>\n</body>\n</html>\n"))

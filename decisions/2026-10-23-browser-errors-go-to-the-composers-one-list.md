@@ -1,5 +1,7 @@
 # Browser errors go to the composer's one list, which the app's monitor reads
 
+> **Changed in part** by [The errors route's ?since= is read by ring.util.codec](2026-10-27-the-errors-routes-since-is-read-by-ring-codec.md) (2026-10-27): `?since=` is read as form text; given twice, it is none.
+
 > The user's decision, 2026-10-23, from Iron Rainbow's port (GROUNDWORK-GAPS.md, G18: Eye on Rainbow reads IR's own `/internal/errors`). Built on tidy-up, not released.
 
 **Decision:** an app keeps no error list of its own. Server and browser errors are one numbered list, the composer's (`GET /groundwork/errors?since=N`, its token), and the app's monitor reads it. A browser report gains, every key written out:

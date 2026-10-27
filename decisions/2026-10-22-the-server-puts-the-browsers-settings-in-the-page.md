@@ -1,5 +1,7 @@
 # The server puts the browser's settings in the page
 
+> **Changed in part** by [The page shell escapes by OWASP's encoders; its settings are a JSON string](2026-10-27-the-page-shell-escapes-by-owasps-encoders.md) (2026-10-27): the script element holds the settings' JSON as one JSON string (OWASP's Encode/forJson), and the browser parses it twice.
+
 > **Changed in part** by [main makes one wire and passes it to every library](2026-10-22-main-makes-one-wire-and-passes-it-to-every-library.md) (2026-10-22): the page also carries the browser's wire settings (`:browser-wire`, under `"wire"`), and the browser reads it with `JSON.parse`.
 
 > **Changed in part** by [Every value that sets behaviour is a setting, in main too](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) (2026-10-22): the page also carries `:sse-reconnect-after-ms` and `:ws-reopen-after-ms`; the shell's viewport, referrer policy and frame options are `:page` settings.

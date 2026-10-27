@@ -150,10 +150,12 @@
    :retry-writes :visitor-path :languages :language :module-stylesheets :pages}.
    Read by the browser's JSON.parse, keys as keywords with their namespace
    (\"orders/page\" is :orders/page): the shaper is made from what this
-   reads, so there is none yet."
+   reads, so there is none yet. The element holds the JSON as a JSON
+   string (the server's OWASP Encode/forJson), so it is parsed twice: the
+   string, then the JSON in it."
   []
   (if-let [element (js/document.getElementById "groundwork-settings")]
-    (js->clj (js/JSON.parse (.-textContent element)) :keywordize-keys true)
+    (js->clj (js/JSON.parse (js/JSON.parse (.-textContent element))) :keywordize-keys true)
     (throw (ex-info "The page has no groundwork-settings: it didn't come from groundwork.server.main's page shell"
                     {:type :groundwork.browser.main/no-settings}))))
 
