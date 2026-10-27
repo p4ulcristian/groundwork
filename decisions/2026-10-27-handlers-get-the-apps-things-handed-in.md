@@ -7,7 +7,7 @@
 | part | what |
 |---|---|
 | `:settings` | the checked settings |
-| `:pool` | the app's pool, its own role (owns nothing; outside a transaction as someone, no gate lets a row through) |
+| `:pool` | the app's pool, its own role (owns nothing; a statement no transaction says the asker of asks as nobody: the gates give it the open rows and the ungated tables only) |
 | `:run-as-system!` | `(fn [system-actor {:keys [read-only? log]} f])`, groundwork-access's `run-as-system!` on the pool |
 | `:add-background-job-to-queue!` | `(fn [pool-or-transaction kind params {:keys [run-in-ms key]}])`, groundwork-background-jobs's, on the app's shaper and meter |
 | `:shaper` `:meter` `:texts` | the app's one shaper, meter and catalogs |

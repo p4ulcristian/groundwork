@@ -909,8 +909,9 @@
 (defn- make-given-parts
   "What the app's :make-given is handed, every key there:
    :settings the checked settings; :pool the app's pool (its own role,
-   which owns nothing: a statement on it outside a transaction as someone
-   passes no gate); :run-as-system!, (fn [system-actor {:keys [read-only?
+   which owns nothing: a statement on it that no transaction says the
+   asker of asks as nobody, and the gates give it the open rows and the
+   ungated tables only); :run-as-system!, (fn [system-actor {:keys [read-only?
    log]} f]), groundwork-access's run-as-system! on the pool, (f transaction) as
    the named system actor, carrying log (a step's or a run's own);
    :add-background-job-to-queue!, (fn [pool-or-transaction kind params
