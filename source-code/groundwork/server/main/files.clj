@@ -13,8 +13,11 @@
      Cookie: app_session=…
      200 {\"stored\":[{\"field\":\"photo\",\"key\":\"shops/photos/….png\",…}],\"rejected\":[…]}
 
-   The files are groundwork-file-storage's: content-named, recorded in groundwork_file_storage.files; the
-   app keeps a file's key in its own rows by a message, as any write."
+   The files are groundwork-file-storage's: content-named, recorded in the store's files table
+   (groundwork_file_storage.<the :file-storage :storage settings' :table's name>), each
+   told by its bytes, one of groundwork-file-storage's kinds or the app's own (:file-kinds),
+   which :allowed-content-types names; the app keeps a file's key in its own rows by a
+   message, as any write."
   (:require
    [groundwork-file-storage.api :as file-storage]
    [groundwork-steps.api :as steps]

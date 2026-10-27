@@ -21,7 +21,7 @@
            email-settings-shape
            settings-shape
            check-settings
-           groundwork-tables
+           make-groundwork-tables
            make-ready-tables
            migrate-app!
            start-app!

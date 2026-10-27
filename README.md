@@ -37,9 +37,15 @@ that actor, which reaches what its sentences give it; its settings are the
 `:background-jobs` part. And what the browser downloads and how the page looks:
 [groundwork-browser-build](https://github.com/p4ulcristian/groundwork-browser-build), the shadow-cljs build
 (watched in development, built once by the deploy) and the stylesheets a
-namespace names, bundled; taken only in the build aliases, never in production;
-its watch options are the `:browser-build {:watch …}` setting, its release
-options the `:browser-release` alias's `:exec-args`.
+namespace names, bundled; the build is taken only in the build aliases, never in
+production; its watch options are the `:browser-build {:watch …}` setting, its release
+options the `:browser-release` alias's `:exec-args`. The app's `:browser-modules`
+are the build's, one the root; every page names the module it starts with
+(`:module`, a keyword) and the app the not-found page's (`:not-found-module`),
+and the page shell links that module's files and those of every module it
+depends on, as browser-build's page half (`groundwork-browser-build.page`, in
+`:deps`, no shadow-cljs) reads them from the build's manifests, once per module
+([the decision](decisions/2026-10-27-every-page-names-the-module-it-starts-with.md)).
 What the libraries above the wire share, on both sides:
 [groundwork-steps](https://github.com/p4ulcristian/groundwork-steps), a handler's steps over one
 context (`:groundwork-steps/request`, `message-data`, `log`, …), the answer's
@@ -114,8 +120,8 @@ or an app's own route is in the request's language; the running app's
 `:texts` is for what runs outside a request: an email, a PDF or a job
 binds the language of its row, `(languages/with-language texts "de" …)`. The routing has queries (read by a
 page's shape), scrolling, a question before leaving unsaved changes, and
-modules loaded on demand (the app's `:browser-modules`, browser-build's, each
-with its stylesheets and its `:start`, nil for none): [the decision](decisions/2026-10-23-routing-extras-each-where-it-belongs.md).
+modules loaded on demand (the app's `:browser-modules` a page didn't start
+with, browser-build's, each with its stylesheets and its `:start`, nil for none): [the decision](decisions/2026-10-23-routing-extras-each-where-it-belongs.md).
 And how much the app does, on the server:
 [groundwork-metrics](https://github.com/p4ulcristian/groundwork-metrics); groundwork makes the app's one
 meter from the `:meter` settings and hands it to groundwork-postgres's pool, bridge's
@@ -134,14 +140,16 @@ groundwork's tools are in `groundwork-live-repl.tools`: `ask-as-person`, `why-re
 ([the decision](decisions/2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md)).
 And the app's files, on the server:
 [groundwork-file-storage](https://github.com/p4ulcristian/groundwork-file-storage), each named by its content
-in an S3 bucket (R2, S3), recorded in `groundwork_file_storage.files`, read through signed
-links; groundwork makes one file storage from the `:file-storage :storage` settings, held by
+in an S3 bucket (R2, S3), recorded in the store's files table (the `:file-storage :storage`
+settings' `:table`, `groundwork_file_storage.files`), read through signed
+links; groundwork makes one file storage from the `:file-storage :storage` settings and the
+app's own kinds of files (`:file-kinds`, groundwork-file-storage's `:kinds`), held by
 the running app as `:file-storage`, and serves groundwork-file-storage's upload route at `:file-storage
 :upload :path`, asking groundwork-access's session step, then the app's
 `:may-upload?` `(fn [asker])`, before the body is read. The app deletes a
 file with groundwork-file-storage's `delete-file!`, after its own rows are kept: a file goes,
-row and object, only when no row names it through a reference to
-`:file/key`.
+row and object, only when no row names it through a reference to the
+store's key column (`:files/key`).
 And its email, on the server:
 [groundwork-email](https://github.com/p4ulcristian/groundwork-email), an email the app wrote
 queued in a write's transaction (`queue-email!` on the running app's

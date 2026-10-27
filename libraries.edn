@@ -7,10 +7,11 @@
 ;; may use it, through groundwork-postgres.api only. So is groundwork-background-jobs, background jobs
 ;; (github.com/p4ulcristian/groundwork-background-jobs): any server library may use it, through
 ;; groundwork-background-jobs.api only. So is browser-build, the browser build and the stylesheets it
-;; bundles (github.com/p4ulcristian/groundwork-browser-build): only to build, never in
-;; production, so no server namespace requires it (main loads it only when it
-;; watches, by requiring-resolve); a browser namespace names its stylesheets
-;; through groundwork-browser-build.api only. So is groundwork-steps, a handler's steps over one
+;; bundles (github.com/p4ulcristian/groundwork-browser-build): its build only to build, never in
+;; production, so no server namespace requires groundwork-browser-build.api (main loads it
+;; only when it watches, by requiring-resolve); the server's page shell asks its page half,
+;; groundwork-browser-build.page, which files a page links; a browser namespace names its
+;; stylesheets through groundwork-browser-build.api only. So is groundwork-steps, a handler's steps over one
 ;; context and the answer's shape (github.com/p4ulcristian/groundwork-steps), which bridge,
 ;; groundwork-access, groundwork-live-updates and groundwork-screens share instead of requiring
 ;; each other: any library on either side may use it, through groundwork-steps.api only. So is

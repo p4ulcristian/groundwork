@@ -55,8 +55,9 @@
            :when    (and (str/starts-with? (str required) "groundwork-background-jobs.") (not= 'groundwork-background-jobs.api required))]
        (str (second ns-form) " requires " required ": only groundwork-background-jobs's api, groundwork-background-jobs.api"))
      (for [required (list-required-namespaces ns-form)
-           :when    (and (str/starts-with? (str required) "groundwork-browser-build.") (not= 'groundwork-browser-build.api required))]
-       (str (second ns-form) " requires " required ": only browser-build's api, groundwork-browser-build.api"))
+           :when    (and (str/starts-with? (str required) "groundwork-browser-build.")
+                         (not (#{'groundwork-browser-build.api 'groundwork-browser-build.page} required)))]
+       (str (second ns-form) " requires " required ": only browser-build's two halves, groundwork-browser-build.api and groundwork-browser-build.page"))
      (for [required (list-required-namespaces ns-form)
            :when    (and (str/starts-with? (str required) "groundwork-steps.") (not= 'groundwork-steps.api required))]
        (str (second ns-form) " requires " required ": only groundwork-steps's api, groundwork-steps.api"))
@@ -101,8 +102,11 @@
                          (= :server side))]
        (str (second ns-form) " requires " required ": groundwork-screens and re-frame are the browser's"))
      (for [required (list-required-namespaces ns-form)
-           :when    (and (str/starts-with? (str required) "groundwork-browser-build.") (= :server side))]
-       (str (second ns-form) " requires " required ": the server loads browser-build only when it watches (requiring-resolve)"))
+           :when    (and (= 'groundwork-browser-build.api required) (= :server side))]
+       (str (second ns-form) " requires " required ": the server loads browser-build's build only when it watches (requiring-resolve); its page half is groundwork-browser-build.page"))
+     (for [required (list-required-namespaces ns-form)
+           :when    (and (= 'groundwork-browser-build.page required) (= :browser side))]
+       (str (second ns-form) " requires " required ": browser-build's page half is the server's"))
      (for [required (list-required-namespaces ns-form)
            :let     [[required-side required-library] (find-library-of required)]
            :when    (and required-library (not= [side library] [required-side required-library]))

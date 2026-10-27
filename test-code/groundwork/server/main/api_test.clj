@@ -37,8 +37,9 @@
    [groundwork-email.api :as email]
    [groundwork-settings.api :as settings]
    [groundwork-live-repl.api :as live-repl]
-   [cognitect.aws.client.api :as aws]
-   [cognitect.aws.credentials :as aws-credentials])
+   ;; the test's bucket is made through groundwork-file-storage's own client, as its tests make theirs
+   [groundwork-file-storage.bucket :as file-storage-bucket]
+   [groundwork-file-storage.signing :as file-storage-signing])
   (:import
    (java.io BufferedReader)
    (java.net URI)
@@ -179,8 +180,8 @@
   "A release build's folder, as the deploy leaves it: a manifest and one hashed file."
   (let [folder (.toFile (java.nio.file.Files/createTempDirectory "groundwork-files" (make-array java.nio.file.attribute.FileAttribute 0)))]
     (io/make-parents (io/file folder "js" "x"))
-    (spit (io/file folder "js" "manifest.edn") (pr-str [{:module-id :main :output-name "main.0A1B2C3D4E5F.js"}
-                                                        {:module-id :admin :output-name "admin.6F5E4D3C2B1A.js"}]))
+    (spit (io/file folder "js" "manifest.edn") (pr-str [{:module-id :main :output-name "main.0A1B2C3D4E5F.js" :depends-on #{}}
+                                                        {:module-id :admin :output-name "admin.6F5E4D3C2B1A.js" :depends-on #{:main}}]))
     (spit (io/file folder "js" "main.0A1B2C3D4E5F.js") "start();")
     (with-open [out (java.util.zip.GZIPOutputStream. (io/output-stream (io/file folder "js" "main.0A1B2C3D4E5F.js.gz")))]
       (.write out (.getBytes "start();")))
@@ -254,7 +255,8 @@
    :file-storage             {:storage {:endpoint (or s3-endpoint "http://127.0.0.1:1") :bucket "groundwork-test"
                                  :access-key (settings/make-secret :groundwork-file-storage/access-key (or (System/getenv "GROUNDWORK_S3_TEST_ACCESS_KEY") "key"))
                                  :secret-key (settings/make-secret :groundwork-file-storage/secret-key (or (System/getenv "GROUNDWORK_S3_TEST_SECRET_KEY") "secret"))
-                                 :region "us-east-1" :public-url nil :link-expiry-seconds 300
+                                 :region "us-east-1" :table :groundwork-file-storage/files :public-url nil :cache-purge nil
+                                 :longest-link-seconds 300 :head-bytes 4096 :deletes? true
                                  :connect-timeout-ms 2000 :request-timeout-ms 10000
                                  :retries {:max-retries 1 :first-wait-ms 100 :max-wait-ms 100}}
                        :upload  {:path "/groundwork/files" :key-prefix "orders/photos" :allowed-content-types #{"image/png"}
@@ -335,10 +337,12 @@
                                                             :orders-seen (count (postgres/find-rows transaction find-all-orders {})))))}
    :on-inbound-email (fn [email {:keys [transaction]}]
                        (swap! inbound-emails conj (assoc email :orders-seen (count (postgres/find-rows transaction find-all-orders {})))))
-   :handlers handlers :pages {:orders/page {:address "/orders/:order-id" :title "Order"}
-                              :admin/page  {:address "/admin" :title "Admin" :module "admin"}}
-   :browser-entry 'app.browser.main/start!
-   :browser-modules {:admin {:entries '[app.browser.admin] :depends-on #{:main} :start nil}}
+   :handlers handlers :pages {:orders/page {:address "/orders/:order-id" :title "Order" :module :main}
+                              :admin/page  {:address "/admin" :title "Admin" :module :admin}}
+   :not-found-module :main
+   :browser-modules {:main  {:entries '[app.browser.main] :depends-on #{} :start 'app.browser.main/start!}
+                     :admin {:entries '[app.browser.admin] :depends-on #{:main} :start nil}}
+   :file-kinds []
    :background-job-kinds [] :schedules [] :given-to-every-background-job-run {}})
 
 (defn- run-sql! [pool text] (postgres/run-statement! pool (postgres/make-query-from-sql-text "test" text) {}))
@@ -553,15 +557,16 @@
               (catch clojure.lang.ExceptionInfo e (:errors (ex-data e)))))
       "an uploaded file larger than the server takes is refused at the start")
   (is (thrown? clojure.lang.ExceptionInfo
-               (main/check-settings (assoc (make-settings "x") :browser-build {:watch {:entry 'app.browser.main/start!}})))
-      "the watch options leave out the entry and the folder: they come from the app and :page")
+               (main/check-settings (assoc (make-settings "x") :browser-build {:watch {:modules {}}})))
+      "the watch options leave out the modules and the folder: they come from the app and :page")
   (is (thrown? clojure.lang.ExceptionInfo
                (main/check-settings (assoc (make-settings "x") :browser-build {:watch {:log (fn [_ _ _])}})))
       "and the log: groundwork passes its own"))
 
 (deftest a-table-that-writes-what-groundwork-puts-is-refused
   (let [{:keys [type problems]} (try (main/make-ready-tables {:tables      [(assoc shops :on-change nil) (assoc orders :gates nil)]
-                                                              :scope-kinds scope-kinds})
+                                                              :scope-kinds scope-kinds
+                                                              :settings    (make-settings "x")})
                                      (catch clojure.lang.ExceptionInfo e (ex-data e)))]
     (is (= :groundwork.server.main/bad-tables type))
     (is (= [":shops writes its own :on-change, which groundwork puts on it: groundwork-live-updates's, from its :live-updates"
@@ -569,7 +574,7 @@
            problems)
         "each named, not overwritten without a word"))
   (is (= [nil {:function "groundwork_live_updates.tell" :arguments []}]
-         ((juxt :gates :on-change) (first (main/make-ready-tables {:tables [shops] :scope-kinds scope-kinds}))))
+         ((juxt :gates :on-change) (first (main/make-ready-tables {:tables [shops] :scope-kinds scope-kinds :settings (make-settings "x")}))))
       "one that leaves them out gets groundwork-access's and groundwork-live-updates's"))
 
 (deftest the-whole-server
@@ -586,10 +591,19 @@
                                            (assoc-in [:handlers :groundwork-access/my-actions] (:orders/count handlers))))
                       (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))))
         (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork_postgres CASCADE; DROP SCHEMA IF EXISTS groundwork_background_jobs CASCADE; DROP SCHEMA IF EXISTS groundwork_access CASCADE; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS groundwork_file_storage CASCADE; DROP SCHEMA IF EXISTS groundwork_email CASCADE")
-        (testing "a page naming a module the app doesn't have is refused"
-          (is (= :groundwork.server.main/bad-pages
+        (testing "a page naming a module the app doesn't have, or none, and a not-found module it doesn't have, are refused"
+          (is (= [":orders/page names the module :main, which :browser-modules doesn't have"
+                  ":admin/page names the module :admin, which :browser-modules doesn't have"
+                  ":not-found-module is :main, which :browser-modules doesn't have"]
                  (try (main/start-app! (assoc (make-app owner) :browser-modules {}))
-                      (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))))
+                      (catch clojure.lang.ExceptionInfo e (:problems (ex-data e))))))
+          (is (= [":orders/page names no :module, the module it starts with"
+                  ":admin/page names the module \"admin\", which :browser-modules doesn't have"]
+                 (try (main/start-app! (-> (make-app owner)
+                                           (update-in [:pages :orders/page] dissoc :module)
+                                           (assoc-in [:pages :admin/page :module] "admin")))
+                      (catch clojure.lang.ExceptionInfo e (:problems (ex-data e)))))
+              "every page names its module, a keyword"))
         (testing "an owner role, or a database not migrated, is refused"
           (is (thrown-with-msg? clojure.lang.ExceptionInfo #"owns tables or passes the gates"
                                 (main/start-app! (make-app owner)))))
@@ -727,12 +741,12 @@
                 (is (str/includes? html "\"retry-writes\":{\"times\":1,\"wait-ms\":1000}")
                     "how a write that got no answer is retried, from :run-once")
                 (is (str/includes? html "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"))
-                (is (str/includes? html "\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\"}"))
+                (is (str/includes? html "\"orders/page\":{\"address\":\"/orders/:order-id\",\"title\":\"Order\",\"module\":\"main\"}"))
                 (is (str/includes? html "\"sse\":\"/groundwork/sse\""))
                 (is (re-find #"<script src=\"/js/main.0A1B2C3D4E5F.js\" nonce=\"[^\"]+\" defer></script>" html)
                     "the script the build's manifest lists")
-                (is (not (str/includes? html "admin.6F5E4D3C2B1A.js")) "main only: a module loads on demand")
-                (is (str/includes? html "\"module-stylesheets\":{\"admin\":\"/css/admin.1A2B3C4D5E6F.css\"}")
+                (is (not (str/includes? html "admin.6F5E4D3C2B1A.js")) "the page's module, main, only: admin loads on demand")
+                (is (str/includes? html "\"module-stylesheets\":{\"admin\":\"/css/admin.1A2B3C4D5E6F.css\",\"main\":\"/css/main.9F8E7D6C5B4A.css\"}")
                     "each module's stylesheet bundle, for the loader")
                 (is (str/includes? html "\"languages\":{\"languages\":[{\"code\":\"en\",\"name\":\"English\"},{\"code\":\"de\",\"name\":\"Deutsch\"}],\"default\":\"en\",\"cookie-name\":\"lang\",\"preview-languages\":[],\"fallback-language\":\"en\",\"catalogs-path\":\"groundwork_test/i18n\"}")
                     "groundwork-languages's settings")
@@ -773,14 +787,20 @@
                     (is (= [303 "/login?next=%2Fadmin" "no-store" ""]
                            [(.statusCode response) (.orElse (.firstValue (.headers response) "location") nil)
                             (.orElse (.firstValue (.headers response) "cache-control") nil) (.body response)])))
-                  (is (str/includes? (:html (page-of "/admin" anna-cookie)) "<main>Orders for ") "signed in: the page")))
+                  (is (str/includes? (:html (page-of "/admin" anna-cookie)) "<main>Orders for ") "signed in: the page"))
+                (testing "a page that starts with a module links its files and its root's, the root first"
+                  (let [html (:html (page-of "/admin" anna-cookie))]
+                    (is (re-find #"(?s)<link rel=\"stylesheet\" href=\"/css/main.9F8E7D6C5B4A.css\">\n<link rel=\"stylesheet\" href=\"/css/admin.1A2B3C4D5E6F.css\">" html))
+                    (is (re-find #"(?s)<script src=\"/js/main.0A1B2C3D4E5F.js\"[^>]*></script>\n<script src=\"/js/admin.6F5E4D3C2B1A.js\"[^>]*></script>" html)))))
               (testing "an address no page has: the app's not-found page, 404; not a GET: 404, nothing"
                 (let [response (.send (HttpClient/newHttpClient)
                                       (.build (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/nowhere"))))
                                       (HttpResponse$BodyHandlers/ofString))]
                   (is (= 404 (.statusCode response)))
                   (is (str/includes? (.body response) "<title>Not found</title>"))
-                  (is (str/includes? (.body response) "<main>No such page</main>")))
+                  (is (str/includes? (.body response) "<main>No such page</main>"))
+                  (is (str/includes? (.body response) "<script src=\"/js/main.0A1B2C3D4E5F.js\"") "starting with the app's :not-found-module")
+                  (is (not (str/includes? (.body response) "admin.6F5E4D3C2B1A.js"))))
                 (is (= [404 ""] (take 2 (send-plain server-port "POST" "/nowhere" "http://app.test" nil "x"))))))
             (testing "files: a hashed one is kept for a year, any other asked again"
               (let [response (.send (HttpClient/newHttpClient)
@@ -1067,19 +1087,16 @@
                 (is (= [403 {"error" "Not allowed."}] (upload "https://evil.test" anna-cookie)) "from another site")
                 (if-not s3-endpoint
                   (println "groundwork.server.main.api-test: the stored upload skipped, GROUNDWORK_S3_TEST_ENDPOINT is not set")
-                  (let [uri    (URI. s3-endpoint)
-                        client (aws/client {:api :s3 :region "us-east-1"
-                                            :endpoint-override {:protocol (keyword (.getScheme uri)) :hostname (.getHost uri) :port (.getPort uri)}
-                                            :credentials-provider (aws-credentials/basic-credentials-provider
-                                                                   {:access-key-id     (System/getenv "GROUNDWORK_S3_TEST_ACCESS_KEY")
-                                                                    :secret-access-key (System/getenv "GROUNDWORK_S3_TEST_SECRET_KEY")})})
-                        _      (aws/invoke client {:op :CreateBucket :request {:Bucket "groundwork-test"}})
+                  (let [{:keys [client] store-settings :settings} (:file-storage running)
+                        _      (file-storage-bucket/send-to-bucket! client store-settings
+                                                                    {:method "PUT" :path (file-storage-bucket/write-object-path (:bucket store-settings) nil)
+                                                                     :query [] :headers {} :body nil :payload-hash file-storage-signing/empty-payload-hash}
+                                                                    :bytes)
                         [status {[stored] "stored"}] (upload "http://app.test" anna-cookie)]
-                    (aws/stop client)
                     (is (= 200 status))
                     (is (str/starts-with? (get stored "key") "orders/photos/"))
-                    (is (= "image/png" (:file/content-type (file-storage/find-file (:pool running) (get stored "key"))))
-                        "recorded in groundwork_file_storage.files, as the app's role")
+                    (is (= "image/png" (:file/content-type (file-storage/find-file (:file-storage running) (:pool running) (get stored "key"))))
+                        "recorded in the store's files table, groundwork_file_storage.files, as the app's role")
                     (is (= (seq png) (seq (file-storage/read-file-bytes (:file-storage running) (get stored "key")))))))))
             (testing "email: queued in a write's transaction, sent by the workers; its bounce handed to the app by tag"
               (let [email {:key "order-confirmation/71" :tag :orders/confirmation :to ["anna@shop.test"]

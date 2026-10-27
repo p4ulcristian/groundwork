@@ -86,7 +86,8 @@
                      :metric-buckets {:job-run-seconds [0.1 1 10]}}
  :file-storage             {:storage {:endpoint "http://127.0.0.1:8333" :bucket "sample"
                                :access-key #secret :groundwork-file-storage/access-key :secret-key #secret :groundwork-file-storage/secret-key
-                               :region "us-east-1" :public-url nil :link-expiry-seconds 300
+                               :region "us-east-1" :table :groundwork-file-storage/files :public-url nil :cache-purge nil
+                               :longest-link-seconds 300 :head-bytes 4096 :deletes? true
                                :connect-timeout-ms 1000 :request-timeout-ms 10000
                                :retries {:max-retries 1 :first-wait-ms 100 :max-wait-ms 400}}
                      :upload  {:path "/groundwork/files" :key-prefix "sample" :allowed-content-types #{"image/png"}

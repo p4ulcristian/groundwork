@@ -24,6 +24,13 @@
    load-module!) are said once, on the server. The JSON is written by the
    app's shaper.
 
+   A page starts with the module it names (:module, one of the app's
+   :browser-modules; the not-found page with the app's :not-found-module):
+   the shell links its stylesheet bundle and script-tags its code, and
+   those of every module it depends on, root first, as browser-build's
+   files-for-page reads them from the build's manifests, once per module.
+   Any other module is loaded on demand, by browser-build's load-module!.
+
    The page is in the request's language (groundwork-languages's
    find-language-of-request: the address's prefix, the cookie,
    Accept-Language, the default): <html lang>, and with more than one
@@ -61,7 +68,7 @@
    content security policy (and whether it carries a nonce), the referrer
    policy and the frame options."
   (:require
-   [clojure.edn :as edn]
+   [groundwork-browser-build.page :as browser-page]
    [groundwork-languages.api :as languages]
    [groundwork.server.main.asker :as asker]
    [clojure.java.io :as io]
@@ -81,42 +88,19 @@
   [json-text]
   (str/replace json-text "<" "\\u003c"))
 
-(defn- read-built-files
-  "The files a release build's manifest in <files-folder>/<kind> lists,
-   {module-id address}, the names hashed; none throws: build first."
-  [files-folder kind]
-  (let [manifest (io/file files-folder kind "manifest.edn")]
-    (when-not (.exists manifest)
-      (throw (ex-info (str "No browser build in " files-folder ": run the release build first (clojure -X:browser-release)")
-                      {:type :groundwork.server.main/not-built :files-folder files-folder})))
-    (into {} (map (juxt :module-id #(str "/" kind "/" (:output-name %)))) (edn/read-string (slurp manifest)))))
-
-(defn- is-watching? [{:keys [browser-build]}]
-  (map? browser-build))
-
-(defn list-scripts
-  "The page's scripts, the module main's: while watching (:browser-build
-   {:watch …}) /js/main.js, browser-build's watched build; built, the file the
-   release build's manifest lists, its name hashed. The modules loaded on
-   demand come later, by browser-build's loader."
-  [{{{:keys [folder]} :files} :page :as settings}]
-  (if (is-watching? settings) ["/js/main.js"] [(get (read-built-files folder "js") :main)]))
-
-(defn list-stylesheets
-  "The page's stylesheet bundle, main's: while watching /css/main.css;
-   built, the hashed one its manifest lists."
-  [{{{:keys [folder]} :files} :page :as settings}]
-  (if (is-watching? settings) ["/css/main.css"] [(get (read-built-files folder "css") :main)]))
-
-(defn list-module-stylesheets
-  "Each module loaded on demand's stylesheet bundle, by name, for
-   browser-build's load-module!: while watching /css/<module>.css, for each of
-   the app's :browser-modules; built, the hashed ones the manifest lists."
-  [{{{:keys [folder]} :files} :page :as settings} browser-modules]
-  (if (is-watching? settings)
-    (into {} (map (fn [module-id] [(name module-id) (str "/css/" (name module-id) ".css")])) (keys browser-modules))
-    (into {} (keep (fn [[module-id address]] (when-not (= :main module-id) [(name module-id) address])))
-          (read-built-files folder "css"))))
+(defn find-files-of-page-modules
+  "The files a page that starts with each module links, {module
+   {:stylesheets [...] :scripts [...]}}, for every module a page names and
+   the not-found page's, read once from the build's manifests by
+   browser-build's files-for-page (groundwork-browser-build.page, the one
+   reader of them): while watching the plain names, released the hashed
+   ones, each module with every module it depends on, in dependency order.
+   While watching, read after the watch's first compile (start-watching!
+   has returned). No build in the files folder, or a module the build
+   doesn't have, throws, named."
+  [{{{:keys [folder]} :files} :page} modules]
+  (into {} (map (fn [module] [module (browser-page/files-for-page {:files-folder folder :module module})]))
+        (distinct modules)))
 
 (defn make-browser-settings
   "What the browser needs to start, the same for every request: the
@@ -125,17 +109,18 @@
    settings' :store), the browser's groundwork-shaped-json settings (:browser-shaped-json), how a
    write that got no answer is retried (the :run-once settings'
    :retry-writes), where a visitor's session is started (the :visitors
-   settings' :path), the languages (groundwork-languages's settings), each module's
-   stylesheet bundle, the pages. The request's :language is added per
-   request."
+   settings' :path), the languages (groundwork-languages's settings), every
+   module's stylesheet bundle, for browser-build's load-module! (its
+   stylesheets-for-load-module, read once from the build's manifests), the
+   pages. The request's :language is added per request."
   [{:keys [version live-updates browser-shaped-json run-once languages visitors]
     {:keys [addresses sse-reconnect-after-ms ws-reopen-after-ms]} :bridge
-    :as settings}
-   pages browser-modules]
+    {{:keys [folder]} :files} :page}
+   pages]
   {:version version :addresses addresses :sse-reconnect-after-ms sse-reconnect-after-ms
    :ws-reopen-after-ms ws-reopen-after-ms :live-updates (:store live-updates) :shaped-json browser-shaped-json
    :retry-writes (:retry-writes run-once) :visitor-path (:path visitors) :languages languages
-   :module-stylesheets (list-module-stylesheets settings browser-modules) :pages pages})
+   :module-stylesheets (browser-page/stylesheets-for-load-module {:files-folder folder}) :pages pages})
 
 (def rendered-page-shape
   "What the app's :render-page answers, every key required: a page
@@ -174,9 +159,10 @@
 
 (defn make-page-html
   "The shell, in the request's language, with the alternate links
-   (groundwork-languages's, [] with one language) and the app's rendered page: its
+   (groundwork-languages's, [] with one language), the page module's files
+   (files-for-page's {:stylesheets :scripts}) and the app's rendered page: its
    title and description escaped, its head and body HTML as they are."
-  [shaper {{:keys [viewport]} :page} stylesheets scripts browser-settings language alternate-links
+  [shaper {{:keys [viewport]} :page} {:keys [stylesheets scripts]} browser-settings language alternate-links
    {:keys [title description head-html body-html]} nonce]
   (str "<!doctype html>\n"
        "<html lang=\"" (escape-html language) "\">\n<head>\n"
@@ -215,14 +201,16 @@
 (defn make-page-handler
   "A Ring handler answering every page address with the shell, in the
    request's language (put on the request by wrap-languages), its JSON
-   written by the app's shaper, the app's render-page's head and body in it;
-   a GET of an address no page has (no route, no file) is the not-found
-   page (page nil), anything else there 404 with no body. The files it
-   lists are read once. parts: {:shaped-json :settings :browser-settings :pages
+   written by the app's shaper, the app's render-page's head and body in it,
+   the files of the page's :module linked and script-tagged (with every
+   module it depends on); a GET of an address no page has (no route, no
+   file) is the not-found page (page nil), which starts with the
+   not-found-module, anything else there 404 with no body. The files it
+   lists are read once per module (find-files-of-page-modules). parts:
+   {:shaper :settings :browser-settings :pages :not-found-module
    :render-page :pool :log :scope-kinds :find-session-step}."
-  [{:keys [shaper settings browser-settings pages render-page pool log scope-kinds find-session-step]}]
-  (let [stylesheets (list-stylesheets settings)
-        scripts     (list-scripts settings)
+  [{:keys [shaper settings browser-settings pages not-found-module render-page pool log scope-kinds find-session-step]}]
+  (let [files-of-modules (find-files-of-page-modules settings (conj (mapv :module (vals pages)) not-found-module))
         origin      (get-in settings [:access :allowed-origin])
         nonce?      (true? (get-in settings [:page :content-security-policy :nonce?]))
         random      (SecureRandom.)]
@@ -243,7 +231,8 @@
              :body    ""}
             {:status  (:status rendered)
              :headers (make-headers settings nonce)
-             :body    (make-page-html shaper settings stylesheets scripts (assoc browser-settings :language language)
+             :body    (make-page-html shaper settings (get files-of-modules (if page (:module page) not-found-module))
+                                      (assoc browser-settings :language language)
                                       language (languages/make-alternate-links (:languages settings) origin path)
                                       rendered nonce)}))))))
 

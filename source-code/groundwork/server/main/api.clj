@@ -6,8 +6,8 @@
        {:settings             (settings/load {:file  \"settings/production.edn\"   ; groundwork-settings's: #secret and #env filled,
                                           :shape main/settings-shape          ; checked against settings-shape
                                           :env   (System/getenv)})
-        :browser-entry        'app.browser.main/start!  ; the function the page runs
-        :browser-modules      {}                    ; browser-build's :modules, loaded on demand: {:admin {:entries [app.admin.page] :depends-on #{:main} :start nil}}
+        :browser-modules      {:main  {:entries [app.browser.main] :depends-on #{} :start app.browser.main/start!}   ; browser-build's :modules, one the root
+                               :admin {:entries [app.admin.page] :depends-on #{:main} :start nil}}
         :tables               [shops orders]        ; table maps, with :access and :live-updates
         :extensions           []                    ; groundwork-postgres's: the database's extensions
         :functions            []                    ; groundwork-postgres's: the .sql files of the app's functions
@@ -15,11 +15,13 @@
         :changes              []                    ; groundwork-postgres's changes
         :scope-kinds          scope-kinds           ; groundwork-access's
         :handlers             handlers              ; bridge's table, each with :action, where it acts (:record or :scope), shapes and :daily-caps
-        :pages                {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}
-                               :admin/page  {:address \"/admin\" :title \"Admin\" :module \"admin\"}}   ; loaded on the way in
+        :pages                {:orders/page {:address \"/orders/:order-id\" :title \"Order\" :module :main}   ; the module the page starts with
+                               :admin/page  {:address \"/admin\" :title \"Admin\" :module :admin}}   ; with :main, which it depends on
+        :not-found-module     :main                 ; the module the not-found page starts with
         :background-job-kinds [send-invoice-email]  ; groundwork-background-jobs's kinds, each naming its :system-actor
         :schedules            []
         :given-to-every-background-job-run {}       ; groundwork-background-jobs's :given-to-every-run: each run's :given
+        :file-kinds           []                    ; groundwork-file-storage's :kinds, the app's own kinds of files
         :may-upload?          (fn [{:keys [person-id]}] (some? person-id))   ; who may upload files, the asker
         :on-delivery-event    {:orders/confirmation mark-address-bounced!} ; groundwork-email's, by the email's tag
         :on-inbound-email     route-inbound-email!})                      ; groundwork-email's, every inbound email, routed by its :mailbox
@@ -66,14 +68,20 @@
    served where the browser fetches it, /<catalogs-path>/<language>.json.
    Every reason a refusal may give (groundwork-steps's, groundwork-access's, the run-once
    ones, every handler's :refusals) needs its text in every catalog: one
-   missing refuses the start (groundwork-languages's check-texts-of-reasons). A page
-   may name a :module of :browser-modules, loaded on demand by the browser.
+   missing refuses the start (groundwork-languages's check-texts-of-reasons).
+   Every page names the :module of :browser-modules it starts with (a
+   keyword), and the app the not-found page's, :not-found-module: the shell
+   links that module's files and those of every module it depends on, read
+   from the build's manifests by browser-build's files-for-page, once per
+   module (while watching, after the watch's first compile); any other
+   module is loaded on demand by the browser.
 
    In production the deploy runs migrate-app! first, as the role that owns
    the tables (the app's own role owns nothing), and the browser's release
    build (browser-build, its own library), whose files the page lists
-   (:browser-build :built). Production has neither browser-build nor
-   shadow-cljs: browser-build is loaded only when it watches.
+   (:browser-build :built). Production has browser-build's page half only
+   (groundwork-browser-build.page, no shadow-cljs): the build is loaded
+   only when it watches.
 
    Two GETs answer whoever runs the app, outside sessions, access and rate
    limits (groundwork.server.main.health, the :health settings): live, 200
@@ -115,11 +123,11 @@
    :on-change, which groundwork-access and groundwork-live-updates put on it: one that writes
    either is refused at the start, named.
 
-   The app's files (groundwork-file-storage's make-file-storage, the :file-storage :storage settings)
-   and its email (groundwork-email's make-mailer, the :email :sending settings)
+   The app's files (groundwork-file-storage's make-file-storage, the :file-storage :storage settings,
+   the app's own kinds of files, :file-kinds, [] for none) and its email (groundwork-email's make-mailer, the :email :sending settings)
    are made once, on the app's log and meter (and groundwork-shaped-json, groundwork-email's), and
-   held by the running app (:file-storage, :email); their tables (groundwork_file_storage.files,
-   groundwork_email.emails) are migrated with groundwork's, groundwork-email's background job
+   held by the running app (:file-storage, :email); their tables (the file storage's,
+   groundwork_file_storage.<its :table's name>, and groundwork_email.emails) are migrated with groundwork's, groundwork-email's background job
    kind runs with the app's. Files are uploaded at the :file-storage :upload
    :path (groundwork.server.main.files: groundwork-access's session step, then the app's
    :may-upload?, (fn [asker])); the app deletes a file with groundwork-file-storage's
@@ -127,7 +135,7 @@
    rows are kept, or in a handler's step with delete-file-after-commit!
    and the step's :groundwork-access/transaction, run once it commits (groundwork-postgres's
    run-after-commit!) (only a file no row names through a reference to
-   :file/key goes). The provider's webhooks are groundwork-email's, at the :email
+   the store's key column, :files/key, goes). The provider's webhooks are groundwork-email's, at the :email
    :webhooks paths, handing events to the app's :on-delivery-event (by
    tag) and :on-inbound-email (every inbound email, one function, which
    routes it by its :mailbox), each run as groundwork-access's system
@@ -238,24 +246,24 @@
    [:store live-updates/store-settings-shape]
    [:listening live-updates/listening-settings-shape]])
 
-(defn- leaves-entry-folder-and-log-out? [watch-options]
-  (not-any? #(contains? watch-options %) [:entry :modules :files-folder :log]))
+(defn- leaves-modules-folder-and-log-out? [watch-options]
+  (not-any? #(contains? watch-options %) [:modules :files-folder :log]))
 
 (def browser-build-settings-shape
   "The :browser-build setting: :built, the release build's files, listed
    by their manifests; or {:watch options}, development, browser-build's
    watcher started with these options: every one of browser-build's
-   start-watching! options but :entry, :modules, :files-folder and :log,
-   which come from the app's :browser-entry and :browser-modules, the
-   :page :files :folder and the app's log. browser-build checks them, every key required, before the app starts
+   start-watching! options but :modules, :files-folder and :log, which
+   come from the app's :browser-modules, the :page :files :folder and the
+   app's log. browser-build checks them, every key required, before the app starts
    anything."
   [:or
    [:= :built]
    [:map {:closed true}
     [:watch [:and
              [:map-of :keyword :any]
-             [:fn {:error/message ":entry, :modules, :files-folder and :log come from :browser-entry, :browser-modules, :page :files :folder and the app's log"}
-              leaves-entry-folder-and-log-out?]]]]])
+             [:fn {:error/message ":modules, :files-folder and :log come from :browser-modules, :page :files :folder and the app's log"}
+              leaves-modules-folder-and-log-out?]]]]])
 
 (def browser-shaped-json-settings-shape
   "The :browser-shaped-json part of the settings, every key required: the
@@ -316,9 +324,10 @@
 (def file-storage-settings-shape
   "The :file-storage part of the settings, every key required, both groundwork-file-storage's:
    :storage, the bucket's (groundwork-file-storage's settings-shape: :endpoint :bucket
-   :access-key :secret-key :region :public-url :link-expiry-seconds
-   :connect-timeout-ms :request-timeout-ms :retries), which groundwork makes
-   the app's one file storage from; :upload, the upload route's: :path, the POST
+   :access-key :secret-key :region :table :public-url :cache-purge
+   :longest-link-seconds :head-bytes :deletes? :connect-timeout-ms
+   :request-timeout-ms :retries), which groundwork makes the app's one file
+   storage from, its files table named by :table; :upload, the upload route's: :path, the POST
    the browser sends files to, \"/groundwork/files\", and groundwork-file-storage's upload
    settings (groundwork-file-storage's upload-settings-shape: :key-prefix
    :allowed-content-types :max-file-bytes :max-files). :max-file-bytes
@@ -452,22 +461,25 @@
     (throw-bad-settings {:file-storage {:upload {:max-file-bytes ["should be below the :bridge settings' :max-body-bytes, which holds the whole upload"]}}}))
   settings)
 
-(def groundwork-tables
-  "groundwork-access's tables, groundwork-background-jobs's, groundwork-file-storage's and groundwork-email's, each in their own
-   folder, and groundwork's own one-time keys (groundwork.run_once_keys) and
-   daily caps' counts (groundwork.daily_cap_counts), put with the app's. None
-   knows of groundwork-live-updates; their live updates are said here: the sessions, the
+(defn make-groundwork-tables
+  "groundwork-access's tables, groundwork-background-jobs's, groundwork-file-storage's (the
+   store's files table, named by the :file-storage :storage settings' :table)
+   and groundwork-email's, each in their own folder, and groundwork's own
+   one-time keys (groundwork.run_once_keys) and daily caps' counts
+   (groundwork.daily_cap_counts), put with the app's. None knows of
+   groundwork-live-updates; their live updates are said here: the sessions, the
    tokens, the background jobs, the files, the emails, the keys and the
    counts silent; groundwork-access's access tables tell, so a screen's
    :groundwork-access/my-actions is asked again when a membership or a role
    changes."
+  [settings]
   (vec (concat [(assoc run-once/run-once-keys-table :live-updates [:silent "no screen shows one-time keys"])
                 (assoc daily-caps/daily-cap-counts-table :live-updates [:silent "no screen shows the daily caps' counts"])]
                (map #(assoc % :live-updates [:silent "no screen shows sessions"]) [access/sessions-table])
                (map #(assoc % :live-updates [:silent "groundwork-access's list-tokens reads it off a message's transaction: no screen's notes name it"]) [access/tokens-table])
                (map #(assoc % :live-updates :tell) access/access-tables)
                (map #(assoc % :live-updates [:silent "no screen shows background jobs"]) background-jobs/background-jobs-tables)
-               [(assoc file-storage/files-table :live-updates [:silent "a screen shows the app's rows that name a file, not groundwork-file-storage's"])
+               [(assoc (file-storage/files-table (get-in settings [:file-storage :storage])) :live-updates [:silent "a screen shows the app's rows that name a file, not groundwork-file-storage's"])
                 (assoc email/emails-table :live-updates [:silent "no screen shows groundwork-email's emails"])])))
 
 (defn- check-tables-leave-gates-and-on-change-out
@@ -490,8 +502,8 @@
 (defn- list-all-tables
   "The app's tables, each checked to leave :gates and :on-change out, and
    groundwork's."
-  [{:keys [tables]}]
-  (into (vec (check-tables-leave-gates-and-on-change-out tables)) groundwork-tables))
+  [{:keys [tables settings]}]
+  (into (vec (check-tables-leave-gates-and-on-change-out tables)) (make-groundwork-tables settings)))
 
 (defn make-ready-tables
   "The app's tables and groundwork's, with their gates (groundwork-access) and change
@@ -691,10 +703,9 @@
 
 (defn- make-watch-options
   "browser-build's start-watching! options: the :browser-build :watch settings,
-   with the app's entry, the files folder and the app's log."
-  [{:keys [browser-entry browser-modules settings]} log]
+   with the app's modules, the files folder and the app's log."
+  [{:keys [browser-modules settings]} log]
   (assoc (get-in settings [:browser-build :watch])
-         :entry browser-entry
          :modules browser-modules
          :files-folder (get-in settings [:page :files :folder])
          :log log))
@@ -723,13 +734,18 @@
     part))
 
 (defn- check-modules-of-pages
-  "Every page's :module, when it names one, is one of the app's
-   :browser-modules; throws with every page that names another."
-  [{:keys [pages browser-modules]}]
-  (let [known    (set (map name (keys browser-modules)))
-        problems (for [[page-name {:keys [module]}] pages
-                       :when (and (some? module) (not (contains? known module)))]
-                   (str page-name " names the module " (pr-str module) ", which :browser-modules doesn't have"))]
+  "Every page's :module, and the app's :not-found-module, is one of the
+   app's :browser-modules, a keyword: the module the page starts with;
+   throws with every page that names none or another."
+  [{:keys [pages browser-modules not-found-module]}]
+  (let [known    (set (keys browser-modules))
+        problems (concat (for [[page-name {:keys [module] :as page}] pages
+                               :when (not (contains? known module))]
+                           (if (contains? page :module)
+                             (str page-name " names the module " (pr-str module) ", which :browser-modules doesn't have")
+                             (str page-name " names no :module, the module it starts with")))
+                         (when-not (contains? known not-found-module)
+                           [(str ":not-found-module is " (pr-str not-found-module) ", which :browser-modules doesn't have")]))]
     (when (seq problems)
       (throw (ex-info (str "The pages have problems: " (pr-str (vec problems)))
                       {:type :groundwork.server.main/bad-pages :problems (vec problems)})))))
@@ -789,6 +805,9 @@
    :may-upload?, (fn [asker] true-or-false), who may upload
    files; :on-delivery-event, {tag (fn [event {:keys [transaction log]}])},
    a bounce or spam complaint by its email's tag, {} for none;
+   :file-kinds, groundwork-file-storage's :kinds, the app's own kinds of
+   files ({:content-type :extension :recognize :served-as}), [] for none,
+   which groundwork-file-storage checks;
    :on-inbound-email, (fn [email {:keys [transaction log]}]), the one
    function every inbound email is handed to, which routes it by its
    :mailbox (one that ignores it for an app that takes none);
@@ -804,6 +823,7 @@
    [:routes app-routes/routes-shape]
    [:render-page fn?]
    [:may-upload? fn?]
+   [:file-kinds [:sequential map?]]
    [:on-delivery-event map?]
    [:on-inbound-email fn?]
    [:given-to-every-background-job-run map?]])
@@ -861,7 +881,8 @@
                                   @(:slow-part (migrate! pool app log))
                                   (refuse-unsafe-database! pool app))
               running-file-storage     (start-part! stoppers
-                                             #(file-storage/make-file-storage (get-in settings [:file-storage :storage]) {:log log :meter app-meter})
+                                             #(file-storage/make-file-storage (get-in settings [:file-storage :storage])
+                                                                              {:log log :meter app-meter :kinds (:file-kinds app)})
                                              file-storage/stop-file-storage!)
               running-mailer   (email/make-mailer (get-in settings [:email :sending])
                                                       {:log log :meter app-meter :shaper shaper :system-actor email-system-actor})
@@ -875,10 +896,15 @@
                                                            :metric-buckets         (get-in settings [:bridge :metric-buckets])
                                                            :find-rate-limit-key    (make-rate-limit-key-finder settings)
                                                            :buckets-before-cleanup (get-in settings [:bridge :rate-limit-buckets-before-cleanup])})
+              ;; the watch writes the manifests at its first compile, before it returns: the
+              ;; page handler reads them, once per module, after it
+              watching          (when (is-watching? settings)
+                                  (start-part! stoppers #(start-watching-browser-build! app log) stop-watching-browser-build!))
               page-handler      (page/make-page-handler {:shaper              shaper
                                                          :settings          settings
-                                                         :browser-settings  (page/make-browser-settings settings (:pages app) (:browser-modules app))
+                                                         :browser-settings  (page/make-browser-settings settings (:pages app))
                                                          :pages             (:pages app)
+                                                         :not-found-module  (:not-found-module app)
                                                          :render-page       (:render-page app)
                                                          :pool              pool
                                                          :log               log
@@ -908,8 +934,6 @@
                                                                                                     (run-once/make-forget-keys-schedule (:run-once settings))
                                                                                                     (daily-caps/make-forget-counts-schedule (:daily-caps settings)))))
                                              background-jobs/stop-workers!)
-              watching          (when (is-watching? settings)
-                                  (start-part! stoppers #(start-watching-browser-build! app log) stop-watching-browser-build!))
               running-health    (health/make-health)
               _                 (metrics/declare-groundwork-metrics! app-meter running-logger (:stage running-health) (:version settings))
               server            (start-part! stoppers

@@ -78,17 +78,19 @@
                                                                                     (select-keys message-data [:order/shop-id :order/note]))))}]})})
 
 (def pages
-  {:orders/page  {:address "/shops/:shop-id/orders" :title "Orders"}
-   :reports/page {:address "/reports" :title "Reports" :module "reports"}})
+  ;; the orders page starts with the root; the reports page with :reports, which the
+  ;; orders page loads on demand
+  {:orders/page  {:address "/shops/:shop-id/orders" :title "Orders" :module :main}
+   :reports/page {:address "/reports" :title "Reports" :module :reports}})
 
 (def browser-modules
-  {:reports {:entries '[groundwork-test.sample.reports] :depends-on #{:main} :start nil}})
+  {:main    {:entries '[groundwork-test.sample.browser] :depends-on #{} :start 'groundwork-test.sample.browser/start!}
+   :reports {:entries '[groundwork-test.sample.reports] :depends-on #{:main} :start nil}})
 
 (defn make-app
   "The app groundwork's start-app! takes, with these settings."
   [settings]
   {:settings             settings
-   :browser-entry        'groundwork-test.sample.browser/start!
    :browser-modules      browser-modules
    :tables               [shops orders]
    :extensions           []
@@ -98,6 +100,7 @@
    :scope-kinds          scope-kinds
    :handlers             handlers
    :pages                pages
+   :not-found-module     :main
    :background-job-kinds []
    :schedules            []
    :given-to-every-background-job-run {}
@@ -106,6 +109,7 @@
                            (if page
                              {:answer :page :status 200 :title "Sample" :description nil :head-html "" :body-html ""}
                              {:answer :page :status 404 :title "Not found" :description nil :head-html "" :body-html "No such page."}))
+   :file-kinds           []
    :may-upload?          (fn [{:keys [person-id]}] (some? person-id))
    :on-delivery-event    {}
    ;; the sample takes no inbound email: every one is ignored

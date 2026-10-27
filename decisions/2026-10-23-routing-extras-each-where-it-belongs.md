@@ -1,5 +1,7 @@
 # The routing extras, each where it belongs: queries, scrolling, the unsaved guard, modules on demand, languages
 
+> **Changed in part** by [Every page names the module it starts with](2026-10-27-every-page-names-the-module-it-starts-with.md) (2026-10-27): a page's `:module` is the module it starts with, required, a keyword; the shell links its files and those it depends on, not `main`'s only.
+
 > **Changed in part** by [The composer plugs together the libraries that share groundwork-steps](2026-10-24-the-composer-plugs-the-libraries-that-share-groundwork-steps.md) (2026-10-24): the browser's routing (queries, moves, scrolling, the question before leaving) is groundwork-screens's own, no longer groundwork-bridge's.
 
 > **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): dictionary is groundwork-languages now (`groundwork-languages.api`).

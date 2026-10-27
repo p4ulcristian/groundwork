@@ -107,7 +107,8 @@
                        :metric-buckets {:job-run-seconds [0.1 1 10]}}
    :file-storage             {:storage {:endpoint "http://127.0.0.1:1" :bucket "sample" :access-key (settings/make-secret :groundwork-file-storage/access-key "key")
                                  :secret-key (settings/make-secret :groundwork-file-storage/secret-key "secret")
-                                 :region "us-east-1" :public-url nil :link-expiry-seconds 300
+                                 :region "us-east-1" :table :groundwork-file-storage/files :public-url nil :cache-purge nil
+                                 :longest-link-seconds 300 :head-bytes 4096 :deletes? true
                                  :connect-timeout-ms 1000 :request-timeout-ms 1000
                                  :retries {:max-retries 0 :first-wait-ms 0 :max-wait-ms 0}}
                        :upload  {:path "/groundwork/files" :key-prefix "sample" :allowed-content-types #{"image/png"}
@@ -132,8 +133,7 @@
    as the deploy builds it; returns the folder."
   []
   (let [folder (make-temporary-folder "groundwork-e2e-files")]
-    (with-out-str (browser-build/build-for-release! {:entry              'groundwork-test.sample.browser/start!
-                                                :modules            sample/browser-modules
+    (with-out-str (browser-build/build-for-release! {:modules            sample/browser-modules
                                                 :files-folder       folder
                                                 :cache-folder       ".shadow-cljs"
                                                 :compile-threads    4
@@ -386,6 +386,17 @@
                         after   (loop [tries 60] (let [n (open-lines)] (if (or (= n before) (zero? tries)) n (do (Thread/sleep 100) (recur (dec tries))))))]
                     (is (= before after) "the gauge back down")
                     (is (< (- (System/currentTimeMillis) started) 3000) "within a ping or two (:ping-every-ms 1000)"))))
+              (testing "12. a page that starts with its module: opened fresh, the shell links its files and its root's at once"
+                (let [anna-3 (cdp/open-page! connection annas)]
+                  (cdp/go-to! connection anna-3 (str origin "/reports"))
+                  (is (= "Reports" (cdp/wait-for connection anna-3 "document.querySelector('#reports h1')?.textContent || null" 10000)))
+                  (is (re-matches #"/css/main\.[0-9A-F]+\.css /css/reports\.[0-9A-F]+\.css"
+                                  (cdp/evaluate connection anna-3 "[...document.querySelectorAll('head link[rel=stylesheet]')].map(l => new URL(l.href).pathname).join(' ')"))
+                      "the root's bundle, then the module's")
+                  (is (re-matches #"/js/main\.[0-9A-F]+\.js /js/reports\.[0-9A-F]+\.js"
+                                  (cdp/evaluate connection anna-3 "[...document.querySelectorAll('head script[src]')].map(s => new URL(s.src).pathname).join(' ')"))
+                      "and their code, in the shell, the root first")
+                  (cdp/close-page! connection anna-3)))
               (testing "8. ready 200; 503 while stopping"
                 (is (= 200 (first (get-text (str origin "/health/ready") nil))))
                 (let [stopping (future (main/stop-app! running))]

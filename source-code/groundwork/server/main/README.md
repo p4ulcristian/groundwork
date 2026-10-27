@@ -57,9 +57,24 @@ settings: the address's prefix, taken off before routing, the cookie,
 Accept-Language, the default), and the shell's `<html lang>`, its
 alternate links (at the `:access` `:allowed-origin`) and its JSON's
 `:language` follow it; the JSON also carries the languages and each module's
-stylesheet bundle (`:module-stylesheets`), and the shell lists `main`'s
-files only: a page's `:module`, one of the app's `:browser-modules`, loads
-on demand ([the decision](../../../../decisions/2026-10-23-routing-extras-each-where-it-belongs.md)).
+stylesheet bundle (`:module-stylesheets`, browser-build's
+`stylesheets-for-load-module`). Every page names the module it starts with,
+`:module`, a keyword of the app's `:browser-modules` (one the root, `:depends-on
+#{}`), and the app the not-found page's, `:not-found-module`: the shell links
+that module's stylesheet bundle and script-tags its code, and those of every
+module it depends on, root first, as browser-build's `files-for-page` reads
+them from the build's manifests, once per module at the start (while watching,
+after the watch's first compile); any other module loads on demand
+([the decision](../../../../decisions/2026-10-27-every-page-names-the-module-it-starts-with.md),
+[the routing's](../../../../decisions/2026-10-23-routing-extras-each-where-it-belongs.md)).
+
+```clojure
+:browser-modules  {:main    {:entries [app.browser.main] :depends-on #{} :start app.browser.main/start!}   ; the root
+                   :reports {:entries [app.reports.page] :depends-on #{:main} :start nil}}
+:pages            {:orders/page  {:address "/orders/:order-id" :title "Order" :module :main}
+                   :reports/page {:address "/reports" :title "Reports" :module :reports}}   ; main's files, then reports'
+:not-found-module :main
+```
 
 Each language's catalog (`<catalogs-path>/<language>.json` on the
 classpath) is read at the start, held by the running app as `:texts` for
@@ -197,7 +212,7 @@ actor `:groundwork-daily-caps`, deletes the days before today:
                   :listening {:batch-window-ms 50 :check-stopped-every-ms 500
                               :reconnect-after-ms 1000 :stop-wait-ms 2000}}
 :browser-build   :built                                                  ; or {:watch {…}}: browser-build's watch options
-                                                                         ; but :entry, :files-folder and :log
+                                                                         ; but :modules, :files-folder and :log
 ```
 
 One meter, made from the `:meter` settings and handed to groundwork-postgres's pool,
@@ -247,9 +262,10 @@ no request):
 ```
 
 The app's files and email: one file storage (groundwork-file-storage's `make-file-storage`, the `:file-storage
-:storage` settings) and one mailer (groundwork-email's `make-mailer`, the
+:storage` settings and the app map's `:file-kinds`, its own kinds of files, `[]` for none) and one mailer (groundwork-email's `make-mailer`, the
 `:email :sending` settings), on the app's log and meter (and groundwork-shaped-json),
-held by the running app as `:file-storage` and `:email`; `groundwork_file_storage.files` and
+held by the running app as `:file-storage` and `:email`; the store's files table
+(`groundwork_file_storage.<the :storage settings' :table's name>`) and
 `groundwork_email.emails` migrated with groundwork's tables; groundwork-email's background job
 kind on the workers. The upload route (`groundwork.server.main.files`) is
 groundwork-file-storage's handler at `:file-storage :upload :path`, asking groundwork-access's session step
@@ -307,7 +323,7 @@ API: `groundwork.server.main.api` (`settings-shape`, `page-settings-shape`,
 `my-actions-settings-shape`, `run-once-settings-shape`, `daily-caps-settings-shape`, `visitors-settings-shape`,
 `browser-build-settings-shape`, `browser-shaped-json-settings-shape`,
 `file-storage-settings-shape`, `email-settings-shape`,
-`check-settings`, `groundwork-tables`, `make-ready-tables`, `migrate-app!`,
+`check-settings`, `make-groundwork-tables`, `make-ready-tables`, `migrate-app!`,
 `start-app!`, `stop-app!`, `make-leak-test-answerer`: groundwork-access's leak test's
 `:answer-message`, groundwork-bridge's runner plugged in, as over http, on a meter of its
 own). Decisions:
@@ -328,11 +344,12 @@ as its name; text written out where a secret belongs is refused:
                                                      :env   (System/getenv)})
                                :tables [shops orders] :extensions [] :functions [] :views []
                                :changes [] :scope-kinds scope-kinds
-                               :handlers handlers :pages pages :browser-modules {}
+                               :handlers handlers :pages pages :browser-modules browser-modules :not-found-module :main
                                :background-job-kinds [] :schedules []
                                :given-to-every-background-job-run {}   ; each background job run's :given
                                :routes {}   ; the app's own server routes, records with a kind
                                :render-page render-page   ; each page's title, description, head and body
+                               :file-kinds []   ; groundwork-file-storage's :kinds, the app's own kinds of files
                                :may-upload? (fn [{:keys [person-id]}] (some? person-id))
                                :on-delivery-event {} :on-inbound-email (fn [_email _context] nil)}))
 (main/stop-app! running)

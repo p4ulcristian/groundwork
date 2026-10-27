@@ -1,6 +1,6 @@
 (ns groundwork.browser.build-check-test
-  "A release build, by browser-build, of an entry using every browser library,
-   and a module loaded on demand: they all compile, optimized, main into
+  "A release build, by browser-build, of a root module using every browser
+   library, and a module that depends on it: they all compile, optimized, main into
    one file with a hashed name and the module into another, with their
    manifest, and the stylesheets each names become its bundle."
   (:require
@@ -15,8 +15,10 @@
 
 (deftest every-browser-library-compiles-in-a-release-build
   (let [folder (str (Files/createTempDirectory "groundwork-build" (make-array FileAttribute 0)))]
-    (with-out-str (browser-build/build-for-release! {:entry              'groundwork.browser.build-check/start!
-                                                :modules            {:admin {:entries    '[groundwork.browser.build-check-admin]
+    (with-out-str (browser-build/build-for-release! {:modules            {:main  {:entries    '[groundwork.browser.build-check]
+                                                                             :depends-on #{}
+                                                                             :start      'groundwork.browser.build-check/start!}
+                                                                     :admin {:entries    '[groundwork.browser.build-check-admin]
                                                                              :depends-on #{:main}
                                                                              :start      nil}}
                                                 :files-folder       folder
