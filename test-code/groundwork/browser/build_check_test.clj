@@ -32,7 +32,8 @@
                                                 :css                nil
                                                 :lightningcss-download-timeout-ms 60000
                                                 :source-maps?       false
-                                                :gzip-level         9}))
+                                                :gzip-level         9
+                                                :package-installer  :npm}))
     (let [js-files  (into {} (map (juxt :module-id :output-name)) (edn/read-string (slurp (io/file folder "js" "manifest.edn"))))
           css-files (into {} (map (juxt :module-id :output-name)) (edn/read-string (slurp (io/file folder "css" "manifest.edn"))))]
       (is (= #{:main :admin} (set (keys js-files))) "two modules")

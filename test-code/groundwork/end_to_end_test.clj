@@ -145,7 +145,8 @@
                                                 :css                nil
                                                 :lightningcss-download-timeout-ms 60000
                                                 :source-maps?       false
-                                                :gzip-level         1}))
+                                                :gzip-level         1
+                                                :package-installer  :npm}))
     folder))
 
 (defn- start-owner-pool! []

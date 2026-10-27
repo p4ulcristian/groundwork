@@ -120,4 +120,5 @@
                                  :css                nil              ; no CSS step: each bundle as its files are written; or {:targets "chrome >= 119, safari >= 16.4"}
                                  :lightningcss-download-timeout-ms 60000   ; browser-build's pinned lightningcss, downloaded with :css
                                  :source-maps?       false            ; a .map beside each file, readable by anyone
-                                 :gzip-level         9}}}}            ; the .gz copies, 1 (fast) to 9 (smallest)
+                                 :gzip-level         9                ; the .gz copies, 1 (fast) to 9 (smallest)
+                                 :package-installer  :npm}}}}         ; what installed node_modules: :npm or :bun, whose record the npm check reads
