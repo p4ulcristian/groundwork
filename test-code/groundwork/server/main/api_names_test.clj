@@ -17,6 +17,7 @@
            visitors-settings-shape
            run-once-settings-shape
            daily-caps-settings-shape
+           background-jobs-settings-shape
            file-storage-settings-shape
            email-settings-shape
            settings-shape

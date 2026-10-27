@@ -656,8 +656,8 @@
          (try (main/check-settings (assoc-in (make-settings "x") [:file-storage :upload :max-file-bytes] 8388608))
               (catch clojure.lang.ExceptionInfo e (:errors (ex-data e)))))
       "an uploaded file larger than the server takes is refused at the start")
-  (is (= {:page {:content-security-policy [":policy names no frame-ancestors: each page says its own, :frame-ancestors"]}}
-         (try (main/check-settings (assoc-in (make-settings "x") [:page :content-security-policy :policy] "object-src 'none'; frame-ancestors 'self'"))
+  (is (= {:page {:content-security-policy ["should be :none" ":policy names no frame-ancestors: each page says its own, :frame-ancestors"]}}
+         (try (main/check-settings (assoc-in (make-settings "x") [:page :content-security-policy :policy] "script-src 'nonce-{nonce}'; frame-ancestors 'self'"))
               (catch clojure.lang.ExceptionInfo e (:errors (ex-data e)))))
       "who may frame a page is the page's, never the policy's")
   (is (= {:page {:frame-options ["disallowed key"]}}
@@ -1348,24 +1348,6 @@
               (is (= ["test-1"] (loop [n 0]
                                   (if (or (seq @given-runs) (< 100 n)) @given-runs (do (Thread/sleep 100) (recur (inc n))))))
                   "the job ran on the workers, its run given the same map at :given"))
-            (testing "a server whose :background-jobs say :run-here? false runs none, and counts what it queues"
-              (reset! given-runs [])
-              (reset! lines [])
-              (let [quiet (main/start-app! (-> (make-app "groundwork_app")
-                                               (assoc-in [:settings :background-jobs :run-here?] false)
-                                               (assoc-in [:settings :live-repl] {:mode :off :emergency-switch nil})))]
-                (try
-                  (is (nil? (:workers quiet)) "no workers")
-                  ((:add-job! (:given quiet)) (:pool quiet) note-given {} {:run-in-ms 0 :key nil})
-                  (let [text (metrics/write-metrics-text (:meter quiet))]
-                    (is (re-find #"groundwork_background_jobs_jobs_added_total\{kind=\"test/note-given\"\} 1" text)
-                        "groundwork-background-jobs's metrics declared without workers: the job queued is counted")
-                    (is (re-find #"groundwork_background_jobs_dispatcher_failures_total 0" text)))
-                  (is (= [] (find-lines "groundwork-metrics/metric-not-declared")))
-                  (finally (main/stop-app! quiet))))
-              (is (= ["test-1"] (loop [n 0]
-                                  (if (or (seq @given-runs) (< 100 n)) @given-runs (do (Thread/sleep 100) (recur (inc n))))))
-                  "what it queued waits for a server that runs jobs: the first app's workers ran it"))
             (testing "the metrics: only with their token; every library's on the app's one meter, and groundwork's"
               (let [ask-metrics (fn [token]
                                   (let [response (.send (HttpClient/newHttpClient)
@@ -1486,4 +1468,19 @@
                 (is (= 200 (first (ask-health server-port "/health/live"))))
                 @stopping))
             (finally (when-not @stopped? (main/stop-app! running)))))
+        (testing "a server whose :background-jobs say :run-here? false runs none, and counts what it queues"
+          (reset! given-runs [])
+          (reset! lines [])
+          (let [quiet (main/start-app! (assoc-in (make-app "groundwork_app") [:settings :background-jobs :run-here?] false))]
+            (try
+              (is (nil? (:workers quiet)) "no workers")
+              ((:add-job! (:given quiet)) (:pool quiet) note-given {} {:run-in-ms 0 :key nil})
+              (let [text (metrics/write-metrics-text (:meter quiet))]
+                (is (re-find #"groundwork_background_jobs_jobs_added_total\{kind=\"test/note-given\"\} 1" text)
+                    "groundwork-background-jobs's metrics declared without workers: the job queued is counted")
+                (is (re-find #"groundwork_background_jobs_dispatcher_failures_total 0" text)))
+              (is (= [] (find-lines "groundwork-metrics/metric-not-declared")))
+              (Thread/sleep 2500)
+              (is (= [] @given-runs) "nothing runs it here: it waits for a server that runs jobs")
+              (finally (main/stop-app! quiet)))))
         (finally (postgres/stop-pool! owner-pool))))))
