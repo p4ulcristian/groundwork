@@ -23,7 +23,7 @@
   ;; :views}, a function a file or one a library made, and drops a function in the tables'
   ;; folders that nothing declared makes; a column's type changed by a change; run-after-commit!;
   ;; run-in-transaction! takes the caller's :log, where an after-commit failure is written
-  io.github.p4ulcristian/groundwork-postgres     {:git/tag "v0.5.0" :git/sha "bca8150"}
+  io.github.p4ulcristian/groundwork-postgres     {:git/tag "v0.5.1" :git/sha "a762c08"}
   ;; groundwork-background-jobs: background jobs on Postgres, its own library, github.com/p4ulcristian/groundwork-background-jobs
   ;; on its tidy-up branch, not released: a job kind names its system actor, and its one
   ;; transaction (the work and the done-mark) runs as it, opened by groundwork-access's run-as-system!,
@@ -59,7 +59,7 @@
   ;; react and react-dom are package.json's), and the address bar it follows; the browser's
   ;; side only, its own library, github.com/p4ulcristian/groundwork-screens; its sends are
   ;; handed in (groundwork-bridge's send-message!)
-  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.11" :git/sha "e9eb213"}
+  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.12" :git/sha "dae9359"}
   ;; groundwork-languages: which language a request, a page and an address are in; both
   ;; sides, its own library, github.com/p4ulcristian/groundwork-languages (groundwork-screens brings
   ;; it to the browser too)
