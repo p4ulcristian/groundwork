@@ -65,6 +65,17 @@
    :metric-buckets {:query-seconds [0.001 0.01 0.1 1] :connection-acquire-seconds [0.001 0.01 0.1 1]
                     :connection-usage-seconds [0.001 0.01 0.1 1]}})
 
+(defn- make-storage-settings
+  "One storage's groundwork-file-storage settings, recording into this files table;
+   a bucket nothing answers at (the test uploads no file)."
+  [table]
+  {:endpoint "http://127.0.0.1:1" :bucket "sample" :access-key (settings/make-secret :groundwork-file-storage/access-key "key")
+   :secret-key (settings/make-secret :groundwork-file-storage/secret-key "secret")
+   :region "us-east-1" :table table :public-url nil :cache-purge nil
+   :longest-link-seconds 300 :head-bytes 4096 :deletes? true
+   :connect-timeout-ms 1000 :request-timeout-ms 1000
+   :retries {:max-retries 0 :first-wait-ms 0 :max-wait-ms 0}})
+
 (defn- make-settings [user server-port files-folder]
   {:version           "e2e-1"
    :shaped-json              {:most-shapes-kept 1000
@@ -106,14 +117,12 @@
                        :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
                        :forget-done-every-ms 3600000 :stop-wait-ms 2000
                        :metric-buckets {:job-run-seconds [0.1 1 10]}}
-   :file-storage             {:storage {:endpoint "http://127.0.0.1:1" :bucket "sample" :access-key (settings/make-secret :groundwork-file-storage/access-key "key")
-                                 :secret-key (settings/make-secret :groundwork-file-storage/secret-key "secret")
-                                 :region "us-east-1" :table :groundwork-file-storage/files :public-url nil :cache-purge nil
-                                 :longest-link-seconds 300 :head-bytes 4096 :deletes? true
-                                 :connect-timeout-ms 1000 :request-timeout-ms 1000
-                                 :retries {:max-retries 0 :first-wait-ms 0 :max-wait-ms 0}}
-                       :upload  {:path "/groundwork/files" :key-prefix "sample" :allowed-content-types #{"image/png"}
-                                 :max-file-bytes 1000000 :max-files 1}}
+   ;; two storages: the sample's order photos with their upload route, its invoices without one
+   :file-storage      {:storages {:order-photos {:storage (make-storage-settings :groundwork-file-storage/order-photos)
+                                                 :upload  {:path "/groundwork/files/order-photos" :key-prefix "sample/orders"
+                                                           :allowed-content-types #{"image/png"} :max-file-bytes 1000000 :max-files 1}}
+                                  :invoices     {:storage (make-storage-settings :groundwork-file-storage/invoices)
+                                                 :upload  nil}}}
    :email           {:sending  {:provider {:name :log :level :info} :tags #{:sample/none}
                                   :background-job {:timeout-ms 10000 :attempts 1}}
                        :webhooks {:delivery-path "/email/delivery" :inbound-path "/email/inbound"

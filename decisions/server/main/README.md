@@ -13,5 +13,6 @@ The decisions of groundwork.server.main. Decisions about groundwork as a whole a
 - [A visitor's session starts on a POST of house's, never on a page load](../../2026-10-23-a-visitors-session-starts-on-a-post-of-houses.md)
 - [The REPL starts last and stops first; house brings its tools](../../2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md)
 - [An app's table that writes its own :gates or :on-change is refused](../../2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md)
-- [main makes one attic and one postbox, and serves the upload route and the provider's webhooks](../../2026-10-23-main-makes-one-attic-and-one-postbox.md)
+- [main makes one attic and one postbox, and serves the upload route and the provider's webhooks](../../2026-10-23-main-makes-one-attic-and-one-postbox.md), changed in part by [An app has several file storages, each with its own upload route or none](../../2026-10-31-an-app-has-several-file-storages-each-with-its-own-upload.md)
+- [An app has several file storages, each with its own upload route or none](../../2026-10-31-an-app-has-several-file-storages-each-with-its-own-upload.md)
 - [Secrets are safe's wrapped secrets; an app loads its settings with safe](../../2026-10-23-secrets-are-safes-wrapped-secrets.md)

@@ -28,6 +28,7 @@
    [groundwork.server.main.api :as main]
    [groundwork.server.main.app-routes :as app-routes]
    [groundwork.server.main.errors :as errors]
+   [groundwork.server.main.files :as files]
    [groundwork.server.main.page :as page]
    [groundwork.server.main.run-once :as run-once]
    [jsonista.core :as json]
@@ -149,12 +150,16 @@
    :run  (fn [{:keys [given]} _params] (swap! given-runs conj (:version given)))})
 
 (def ^:private handlers
-  {:orders/queue-given {:action :orders/edit :scope [:shop :shop/id] :params-shape [:map [:shop/id :uuid]] :answer-shape [:tuple :string :boolean]
+  {:orders/queue-given {:action :orders/edit :scope [:shop :shop/id] :params-shape [:map [:shop/id :uuid]]
+                        :answer-shape [:tuple :string :boolean :string]
                         :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                         :steps  [{:name  :queue-with-the-given-map
                                   :enter (fn [{:groundwork/keys [given] :as context}]
                                            ((:add-job! given) (:groundwork-access/transaction context) note-given {} {:run-in-ms 0 :key nil})
-                                           (steps/add-answer-to-context context [(:version given) (:all-parts? given)]))}]}
+                                           (steps/add-answer-to-context
+                                            context [(:version given) (:all-parts? given)
+                                                     ;; a storage by its name: the invoices', its files table
+                                                     (name (:table (file-storage/files-table (get-in given [:file-storages :invoices]))))]))}]}
    :orders/after-commit {:action :orders/see :scope :every-scope-holding-the-action :params-shape [:map] :answer-shape :boolean
                          :refusals {} :rate-limit nil :run-steps-in nil :daily-caps []
                          :steps  [{:name  :remember-after-commit
@@ -238,6 +243,18 @@
                                                                                              (PosixFilePermissions/fromString "rwx------"))])))
                 "live-repl.sock")))
 
+(defn- make-storage-settings
+  "One storage's groundwork-file-storage settings, recording into this files table;
+   the bucket a real S3 API's when GROUNDWORK_S3_TEST_ENDPOINT is set."
+  [table]
+  {:endpoint (or s3-endpoint "http://127.0.0.1:1") :bucket "groundwork-test"
+   :access-key (settings/make-secret :groundwork-file-storage/access-key (or (System/getenv "GROUNDWORK_S3_TEST_ACCESS_KEY") "key"))
+   :secret-key (settings/make-secret :groundwork-file-storage/secret-key (or (System/getenv "GROUNDWORK_S3_TEST_SECRET_KEY") "secret"))
+   :region "us-east-1" :table table :public-url nil :cache-purge nil
+   :longest-link-seconds 300 :head-bytes 4096 :deletes? true
+   :connect-timeout-ms 2000 :request-timeout-ms 10000
+   :retries {:max-retries 1 :first-wait-ms 100 :max-wait-ms 100}})
+
 (defn- make-settings [user]
   {:version           "test-1"
    :shaped-json              {:most-shapes-kept 1000
@@ -283,15 +300,16 @@
                        :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
                        :forget-done-every-ms 3600000 :stop-wait-ms 5000
                        :metric-buckets {:job-run-seconds [0.1 1 10]}}
-   :file-storage             {:storage {:endpoint (or s3-endpoint "http://127.0.0.1:1") :bucket "groundwork-test"
-                                 :access-key (settings/make-secret :groundwork-file-storage/access-key (or (System/getenv "GROUNDWORK_S3_TEST_ACCESS_KEY") "key"))
-                                 :secret-key (settings/make-secret :groundwork-file-storage/secret-key (or (System/getenv "GROUNDWORK_S3_TEST_SECRET_KEY") "secret"))
-                                 :region "us-east-1" :table :groundwork-file-storage/files :public-url nil :cache-purge nil
-                                 :longest-link-seconds 300 :head-bytes 4096 :deletes? true
-                                 :connect-timeout-ms 2000 :request-timeout-ms 10000
-                                 :retries {:max-retries 1 :first-wait-ms 100 :max-wait-ms 100}}
-                       :upload  {:path "/groundwork/files" :key-prefix "orders/photos" :allowed-content-types #{"image/png"}
-                                 :max-file-bytes 1000000 :max-files 4}}
+   ;; three storages, one bucket: order photos and shop logos each uploaded at a path of
+   ;; their own, invoices only stored by the app (no upload route)
+   :file-storage             {:storages {:order-photos {:storage (make-storage-settings :groundwork-file-storage/order-photos)
+                                                        :upload  {:path "/groundwork/files/order-photos" :key-prefix "orders/photos"
+                                                                  :allowed-content-types #{"image/png"} :max-file-bytes 1000000 :max-files 4}}
+                                         :shop-logos   {:storage (make-storage-settings :groundwork-file-storage/shop-logos)
+                                                        :upload  {:path "/groundwork/files/shop-logos" :key-prefix "shops/logos"
+                                                                  :allowed-content-types #{"image/png"} :max-file-bytes 1000000 :max-files 4}}
+                                         :invoices     {:storage (make-storage-settings :groundwork-file-storage/invoices)
+                                                        :upload  nil}}}
    :email           {:sending  {:provider {:name :log :level :info} :tags #{:orders/confirmation}
                                   :background-job {:timeout-ms 10000 :attempts 3}}
                        :webhooks {:delivery-path "/email/delivery" :inbound-path "/email/inbound"
@@ -307,6 +325,10 @@
                        :files {:folder files-folder :hashed-name-min-hex-digits 8 :hashed-file-cache-seconds 31536000}}
    :health            {:live-path "/health/live" :ready-path "/health/ready"
                        :database-timeout-ms 500 :not-ready-before-stop-ms 1000}})
+
+(def ^:private upload-asks
+  "The storages' names the app's :may-upload? was asked with, in order."
+  (atom []))
 
 (def ^:private delivery-events
   "The bounces and complaints groundwork handed to the app's function."
@@ -367,7 +389,10 @@
   {:settings (make-settings user) :tables [shops orders shop-emails] :extensions [] :functions [] :views [] :changes [] :scope-kinds scope-kinds
    :routes app-routes
    :render-page render-page
-   :may-upload? (fn [{:keys [person-id]}] (= anna person-id))
+   ;; Anna may upload order photos, Paul shop logos: the app says by the storage's name
+   :may-upload? (fn [{:keys [person-id]} storage-name]
+                  (swap! upload-asks conj storage-name)
+                  (and (some? person-id) (= person-id ({:order-photos anna :shop-logos paul} storage-name))))
    :on-delivery-event {:orders/confirmation (fn [event {:keys [transaction]}]
                                               (swap! delivery-events conj
                                                      (assoc event
@@ -384,12 +409,14 @@
                      :admin {:entries '[app.browser.admin] :depends-on #{:main} :start nil}}
    :file-kinds []
    :background-job-kinds [note-given] :schedules []
-   :make-given (fn [{:keys [settings pool run-as-system! add-background-job-to-queue! shaper meter texts file-storage mailer] :as parts}]
-                 {:version    (:version settings)
-                  :add-job!   add-background-job-to-queue!
-                  :all-parts? (and (= #{:settings :pool :run-as-system! :add-background-job-to-queue! :shaper :meter :texts :file-storage :mailer}
-                                      (set (keys parts)))
-                                   (every? some? [pool run-as-system! shaper meter texts file-storage mailer]))})})
+   :make-given (fn [{:keys [settings pool run-as-system! add-background-job-to-queue! shaper meter texts file-storages mailer] :as parts}]
+                 {:version       (:version settings)
+                  :add-job!      add-background-job-to-queue!
+                  :file-storages file-storages
+                  :all-parts?    (and (= #{:settings :pool :run-as-system! :add-background-job-to-queue! :shaper :meter :texts :file-storages :mailer}
+                                         (set (keys parts)))
+                                      (= #{:order-photos :shop-logos :invoices} (set (keys file-storages)))
+                                      (every? some? (concat [pool run-as-system! shaper meter texts mailer] (vals file-storages))))})})
 
 (defn- run-sql! [pool text] (postgres/run-statement! pool (postgres/make-query-from-sql-text "test" text) {}))
 
@@ -626,36 +653,38 @@
            problems)
         "the groundwork-metrics's, the metrics route's, the REPL's, the visitors', the buckets and the new library settings have no defaults"))
   (let [problems (try (main/check-settings (-> (make-settings "x")
-                                               (update-in [:file-storage :storage] dissoc :region)
-                                               (update-in [:file-storage :upload] dissoc :path)
+                                               (update-in [:file-storage :storages :order-photos :storage] dissoc :region)
+                                               (update-in [:file-storage :storages :order-photos :upload] dissoc :path)
+                                               (update-in [:file-storage :storages :invoices] dissoc :upload)
                                                (update-in [:email :sending] dissoc :tags)
                                                (update-in [:email :webhooks] dissoc :token)))
                       (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
-    (is (= {:file-storage   {:storage {:region ["missing required key"]} :upload {:path ["missing required key"]}}
+    (is (= {:file-storage {:storages {:order-photos {:storage {:region ["missing required key"]} :upload {:path ["missing required key"]}}
+                                      :invoices     {:upload ["missing required key"]}}}
             :email {:sending {:tags ["missing required key"]} :webhooks {:token ["missing required key"]}}}
            problems)
-        "groundwork-file-storage's and groundwork-email's settings, and the routes', have no defaults"))
+        "groundwork-file-storage's and groundwork-email's settings, and the routes', have no defaults: a storage without an upload says :upload nil"))
   (let [problems (try (main/check-settings (-> (make-settings "x")
                                                (assoc-in [:errors :token] "the-errors-token")
                                                (assoc-in [:metrics :route :token] "the-metrics-token")
                                                (assoc-in [:postgres :password] "the-password")
-                                               (assoc-in [:file-storage :storage :secret-key] "secret")
+                                               (assoc-in [:file-storage :storages :shop-logos :storage :secret-key] "secret")
                                                (assoc-in [:email :webhooks :token] "the-webhook-token-0123")))
                       (catch clojure.lang.ExceptionInfo e (ex-data e)))
         refused  "should be a #secret, read from the settings' secrets source"]
     (is (= {:errors   {:token [refused]}
             :metrics  {:route {:token [refused]}}
             :postgres {:password [refused]}
-            :file-storage    {:storage {:secret-key [refused]}}
+            :file-storage    {:storages {:shop-logos {:storage {:secret-key [refused]}}}}
             :email  {:webhooks {:token [refused]}}}
            (:errors problems))
         "a secret written out as text is refused, each named")
     (is (not-any? #(str/includes? (pr-str problems) %) ["the-errors-token" "the-metrics-token" "the-password" "the-webhook-token"])
         "and its text is never said"))
-  (is (= {:file-storage {:upload {:max-file-bytes ["should be below the :bridge settings' :max-body-bytes, which holds the whole upload"]}}}
-         (try (main/check-settings (assoc-in (make-settings "x") [:file-storage :upload :max-file-bytes] 8388608))
+  (is (= {:file-storage {:storages {:shop-logos {:upload {:max-file-bytes ["should be below the :bridge settings' :max-body-bytes, which holds the whole upload"]}}}}}
+         (try (main/check-settings (assoc-in (make-settings "x") [:file-storage :storages :shop-logos :upload :max-file-bytes] 8388608))
               (catch clojure.lang.ExceptionInfo e (:errors (ex-data e)))))
-      "an uploaded file larger than the server takes is refused at the start")
+      "an uploaded file larger than the server takes is refused at the start, each upload's")
   (is (= {:page {:content-security-policy ["should be :none" ":policy names no frame-ancestors: each page says its own, :frame-ancestors"]}}
          (try (main/check-settings (assoc-in (make-settings "x") [:page :content-security-policy :policy] "script-src 'nonce-{nonce}'; frame-ancestors 'self'"))
               (catch clojure.lang.ExceptionInfo e (:errors (ex-data e)))))
@@ -688,6 +717,53 @@
   (is (= [nil {:function "groundwork_live_updates.tell" :arguments []}]
          ((juxt :gates :on-change) (first (main/make-ready-tables {:tables [shops] :scope-kinds scope-kinds :settings (make-settings "x")}))))
       "one that leaves them out gets groundwork-access's and groundwork-live-updates's"))
+
+(deftest an-app-has-several-file-storages
+  (let [settings (make-settings "x")
+        problems #(try (main/check-settings %) nil (catch clojure.lang.ExceptionInfo e (:errors (ex-data e))))]
+    (testing "the settings: at least one storage, each with a files table and an upload path of its own"
+      (is (= settings (main/check-settings settings)) "three storages, :invoices with :upload nil, no route")
+      (is (= {:file-storage {:storages ["should name at least one storage"]}}
+             (problems (assoc-in settings [:file-storage :storages] {}))))
+      (is (= {:file-storage {:storages {:order-photos {:storage {:table ["should be this storage's own files table: :groundwork-file-storage/invoices is :invoices's too"]}}
+                                        :invoices     {:storage {:table ["should be this storage's own files table: :groundwork-file-storage/invoices is :order-photos's too"]}}}}}
+             (problems (assoc-in settings [:file-storage :storages :order-photos :storage :table] :groundwork-file-storage/invoices)))
+          "two storages recording into one files table: refused, both named")
+      (is (= {:file-storage {:storages {:order-photos {:upload {:path ["should be this storage's own upload path: \"/groundwork/files\" is :shop-logos's too"]}}
+                                        :shop-logos   {:upload {:path ["should be this storage's own upload path: \"/groundwork/files\" is :order-photos's too"]}}}}}
+             (problems (-> settings
+                           (assoc-in [:file-storage :storages :order-photos :upload :path] "/groundwork/files")
+                           (assoc-in [:file-storage :storages :shop-logos :upload :path] "/groundwork/files"))))
+          "two uploads at one path: refused, both named")
+      (is (= {:file-storage {:storages {:order-photos {:storage {:table ["should be this storage's own files table: :groundwork-file-storage/shop-logos is :invoices and :shop-logos's too"]}}
+                                        :invoices     {:storage {:table ["should be this storage's own files table: :groundwork-file-storage/shop-logos is :order-photos and :shop-logos's too"]}}
+                                        :shop-logos   {:storage {:table ["should be this storage's own files table: :groundwork-file-storage/shop-logos is :invoices and :order-photos's too"]}
+                                                       :upload  {:max-file-bytes ["should be below the :bridge settings' :max-body-bytes, which holds the whole upload"]}}}}}
+             (problems (-> settings
+                           (assoc-in [:file-storage :storages :order-photos :storage :table] :groundwork-file-storage/shop-logos)
+                           (assoc-in [:file-storage :storages :invoices :storage :table] :groundwork-file-storage/shop-logos)
+                           (assoc-in [:file-storage :storages :shop-logos :upload :max-file-bytes] 8388608))))
+          "every problem across the storages at once"))
+    (testing "groundwork's tables: each storage's files table, by the storages' names"
+      (is (= [:groundwork-file-storage/invoices :groundwork-file-storage/order-photos :groundwork-file-storage/shop-logos]
+             (filterv #(= "groundwork-file-storage" (namespace %)) (map :table (main/make-groundwork-tables settings))))))
+    (testing "the upload routes: one for each storage with an upload, at its path, asking the app's :may-upload? with its name"
+      (let [log      (logs/log-function (logs/make-logger {:lowest-level :error :format :json :errors-kept 10 :write-to (fn [_])}))
+            meter    (metrics/make-meter {:jvm-metrics false :most-series-per-metric 10000} {:log log})
+            storages (update-vals (get-in settings [:file-storage :storages])
+                                  #(file-storage/make-file-storage (:storage %) {:log log :meter meter :kinds []}))
+            asked    (atom [])
+            routes   (files/make-upload-routes storages test-shaper log :the-pool
+                                               {:name :finds-nobody :enter identity}   ; a session step that finds nobody
+                                               (fn [asker storage-name] (swap! asked conj [(:person-id asker) storage-name]) false)
+                                               settings)]
+        (try
+          (is (= ["/groundwork/files/order-photos" "/groundwork/files/shop-logos"] (mapv first routes))
+              "none for :invoices, whose :upload is nil")
+          (is (= [403 403] (map (fn [[_ {{:keys [handler]} :post}]] (:status (handler {:request-method :post :headers {}}))) routes))
+              "the app says no to nobody")
+          (is (= [[nil :order-photos] [nil :shop-logos]] @asked) "each route asks with its own storage's name")
+          (finally (run! file-storage/stop-file-storage! (vals storages))))))))
 
 (deftest the-whole-server
   (if-not port
@@ -730,6 +806,18 @@
           (is (thrown-with-msg? clojure.lang.ExceptionInfo #"owns tables or passes the gates"
                                 (main/start-app! (make-app owner)))))
         (with-out-str (main/migrate-app! (make-app owner) (make-database-settings owner) "groundwork_app"))
+        (testing "every storage's files table is migrated with groundwork's"
+          (is (= ["invoices" "order_photos" "shop_logos"]
+                 (map :table-name (postgres/find-rows owner-pool (postgres/make-query-from-sql-text
+                                                                  "the files tables"
+                                                                  "SELECT table_name FROM information_schema.tables WHERE table_schema = 'groundwork_file_storage' ORDER BY 1")
+                                                      {}))))
+          (is (= :groundwork.server.main/bad-settings
+                 (try (main/migrate-app! (assoc-in (make-app owner) [:settings :file-storage :storages :invoices :storage :table]
+                                                   :groundwork-file-storage/order-photos)
+                                         (make-database-settings owner) "groundwork_app")
+                      (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
+              "two storages naming one files table: the deploy's migrate refuses, before anything runs"))
         (run-sql! owner-pool (str "INSERT INTO shops VALUES ('" shop-7 "'), ('" shop-9 "')"))
         (run-sql! owner-pool (str "INSERT INTO shop_emails (shop_email__address, shop_email__shop_id) VALUES ('anna@shop.test', '" shop-7 "')"))
         (postgres/run-in-transaction! owner-pool {:read-only? false :log nil}
@@ -766,7 +854,8 @@
                                                                      :tables [shops orders] :session-flags #{}
                                                                      :session-lasts :session-days :outside-subjects {}})) #";"))
               anna-cookie (cookie anna)
-              bob-cookie  (cookie bob)]
+              bob-cookie  (cookie bob)
+              paul-cookie (cookie paul)]
           (try
             (testing "a page in the request's language: the address's prefix, else the cookie, Accept-Language, the default"
               (let [lang-of #(second (re-find #"<html lang=\"([^\"]+)\">" (second %)))
@@ -1250,26 +1339,39 @@
                                                    (HttpResponse$BodyHandlers/ofString)))]
                           (is (str/includes? answer "error"))
                           (is (= before (count (find-lines "browser/error")))))))))))
-            (testing "files: an upload asks groundwork-access's session step, then the app's :may-upload?"
+            (testing "files: the app's storages by name, each its own files table, reached on the app's role"
+              (is (= #{:order-photos :shop-logos :invoices} (set (keys (:file-storages running)))))
+              (is (= {:order-photos nil :shop-logos nil :invoices nil}
+                     (update-vals (:file-storages running) #(file-storage/find-file % (:pool running) "orders/photos/none.png")))
+                  "each storage's table granted to the app's role: no such file, no error"))
+            (testing "files: each upload route asks groundwork-access's session step, then the app's :may-upload? with its storage's name"
               (let [png    (byte-array (concat [0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A] (range 32)))
                     body   (byte-array (concat (.getBytes (str "--b\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"door.png\"\r\n"
                                                                "Content-Type: image/png\r\n\r\n"))
                                                png
                                                (.getBytes "\r\n--b--\r\n")))
-                    upload (fn [origin cookie]
-                             (let [response (.send (HttpClient/newHttpClient)
-                                                   (cond-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/groundwork/files")))
-                                                     origin (.header "origin" origin)
-                                                     cookie (.header "cookie" cookie)
-                                                     true   (.header "content-type" "multipart/form-data; boundary=b")
-                                                     true   (-> (.POST (HttpRequest$BodyPublishers/ofByteArray body)) (.build)))
-                                                   (HttpResponse$BodyHandlers/ofString))]
-                               [(.statusCode response) (json/read-value (.body response))]))]
-                (is (= [403 {"error" "Not allowed."}] (upload "http://app.test" nil)) "nobody signed in")
-                (is (= [403 {"error" "Not allowed."}] (upload "http://app.test" bob-cookie)) "the app's :may-upload? says no to Bob")
-                (is (= [403 {"error" "Not allowed."}] (upload "https://evil.test" anna-cookie)) "from another site")
+                    send-upload (fn [path origin cookie]
+                                  (let [response (.send (HttpClient/newHttpClient)
+                                                        (cond-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port path)))
+                                                          origin (.header "origin" origin)
+                                                          cookie (.header "cookie" cookie)
+                                                          true   (.header "content-type" "multipart/form-data; boundary=b")
+                                                          true   (-> (.POST (HttpRequest$BodyPublishers/ofByteArray body)) (.build)))
+                                                        (HttpResponse$BodyHandlers/ofString))]
+                                    [(.statusCode response) (.body response)]))
+                    upload (fn [path origin cookie] (update (send-upload path origin cookie) 1 json/read-value))]
+                (reset! upload-asks [])
+                (is (= [403 {"error" "Not allowed."}] (upload "/groundwork/files/order-photos" "http://app.test" nil)) "nobody signed in")
+                (is (= [403 {"error" "Not allowed."}] (upload "/groundwork/files/order-photos" "http://app.test" bob-cookie)) "the app's :may-upload? says no to Bob")
+                (is (= [403 {"error" "Not allowed."}] (upload "/groundwork/files/shop-logos" "http://app.test" anna-cookie))
+                    "nor to Anna for the shop logos: she may upload order photos only")
+                (is (= [403 {"error" "Not allowed."}] (upload "/groundwork/files/order-photos" "https://evil.test" anna-cookie)) "from another site")
+                (is (= [:order-photos :order-photos :shop-logos] @upload-asks)
+                    "asked with the storage each route stores into; not for a request the session step refused")
+                (is (= 404 (first (send-upload "/groundwork/files/invoices" "http://app.test" anna-cookie)))
+                    "the invoices' :upload is nil: no route")
                 (let [response (.send (HttpClient/newHttpClient)
-                                      (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/groundwork/files")))
+                                      (-> (HttpRequest/newBuilder (URI. (str "http://localhost:" server-port "/groundwork/files/order-photos")))
                                           (.header "authorization" "Bearer not-a-jwt")
                                           (.header "content-type" "multipart/form-data; boundary=b")
                                           (.POST (HttpRequest$BodyPublishers/ofByteArray body)) (.build))
@@ -1279,14 +1381,20 @@
                       "an outside issuer's token that fails its check: 401, before the body is read"))
                 (if-not s3-endpoint
                   (println "groundwork.server.main.api-test: the stored upload skipped, GROUNDWORK_S3_TEST_ENDPOINT is not set")
-                  (let [{:keys [client] store-settings :settings} (:file-storage running)
-                        _      (file-storage-bucket/make-bucket! client store-settings)
-                        [status {[stored] "stored"}] (upload "http://app.test" anna-cookie)]
-                    (is (= 200 status))
-                    (is (str/starts-with? (get stored "key") "orders/photos/"))
-                    (is (= "image/png" (:file/content-type (file-storage/find-file (:file-storage running) (:pool running) (get stored "key"))))
-                        "recorded in the store's files table, groundwork_file_storage.files, as the app's role")
-                    (is (= (seq png) (seq (file-storage/read-file-bytes (:file-storage running) (get stored "key")))))))))
+                  (let [{:keys [order-photos shop-logos]} (:file-storages running)
+                        _ (file-storage-bucket/make-bucket! (:client order-photos) (:settings order-photos))   ; the storages' one bucket
+                        [photo-status {[photo] "stored"}] (upload "/groundwork/files/order-photos" "http://app.test" anna-cookie)
+                        [logo-status {[logo] "stored"}]   (upload "/groundwork/files/shop-logos" "http://app.test" paul-cookie)
+                        find-in (fn [storage stored] (:file/content-type (file-storage/find-file storage (:pool running) (get stored "key"))))]
+                    (is (= [200 200] [photo-status logo-status]))
+                    (is (str/starts-with? (get photo "key") "orders/photos/") "the order photos' upload's :key-prefix")
+                    (is (str/starts-with? (get logo "key") "shops/logos/") "the shop logos'")
+                    (is (= ["image/png" nil] [(find-in order-photos photo) (find-in shop-logos photo)])
+                        "Anna's photo recorded in the order photos' files table, groundwork_file_storage.order_photos, as the app's role; not the logos'")
+                    (is (= [nil "image/png"] [(find-in order-photos logo) (find-in shop-logos logo)])
+                        "Paul's logo in the shop logos' table only")
+                    (is (= (seq png) (seq (file-storage/read-file-bytes order-photos (get photo "key")))))
+                    (is (= (seq png) (seq (file-storage/read-file-bytes shop-logos (get logo "key")))))))))
             (testing "email: queued in a write's transaction, sent by the workers; its bounce handed to the app by tag"
               (let [email {:key "order-confirmation/71" :tag :orders/confirmation :to ["anna@shop.test"]
                            :from "orders@shop.test" :reply-to nil :subject "Your order" :html nil :text "Thank you."
@@ -1342,9 +1450,9 @@
                       "the system leak test, on the app's own role"))))
             (testing "the app's :make-given map: in every handler's steps' context, and every background job run's"
               (reset! given-runs [])
-              (is (= [200 {"orders/queue-given" ["test-1" true]}]
+              (is (= [200 {"orders/queue-given" ["test-1" true "invoices"]}]
                      (update (send-write server-port anna-cookie nil (str "{\"orders/queue-given\":{\"shop/id\":\"" shop-7 "\"}}")) 1 without-request-ids))
-                  "a step reads it at :groundwork/given, made once from every running part, and queues a job with its add-job!")
+                  "a step reads it at :groundwork/given, made once from every running part, the file storages by name among them, and queues a job with its add-job!")
               (is (= ["test-1"] (loop [n 0]
                                   (if (or (seq @given-runs) (< 100 n)) @given-runs (do (Thread/sleep 100) (recur (inc n))))))
                   "the job ran on the workers, its run given the same map at :given"))

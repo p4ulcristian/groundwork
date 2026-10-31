@@ -111,7 +111,8 @@
                              {:answer :page :status 200 :title "Sample" :description nil :head-html "" :body-html ""}
                              {:answer :page :status 404 :title "Not found" :description nil :head-html "" :body-html "No such page."}))
    :file-kinds           []
-   :may-upload?          (fn [{:keys [person-id]}] (some? person-id))
+   ;; a signed-in person may upload order photos; the invoices have no upload route
+   :may-upload?          (fn [{:keys [person-id]} storage-name] (and (some? person-id) (= :order-photos storage-name)))
    :on-delivery-event    {}
    ;; the sample takes no inbound email: every one is ignored
    :on-inbound-email     (fn [_email _context] nil)})

@@ -254,7 +254,7 @@ preview's part is its quiet place's with one flag changed
 What the app's own code needs of the running app it makes once, the app
 map's `:make-given`, `(fn [parts] map)`, called at the start before the
 handlers are made, with `{:settings :pool :run-as-system! :add-background-job-to-queue!
-:shaper :meter :texts :file-storage :mailer}` (`run-as-system!` is
+:shaper :meter :texts :file-storages :mailer}` (`run-as-system!` is
 `(fn [system-actor {:keys [read-only? log]} f])`, `add-background-job-to-queue!`
 `(fn [pool-or-transaction kind params {:keys [run-in-ms key]}])` on the app's
 shaper and meter); the map it returns is in every app handler's steps'
@@ -322,16 +322,24 @@ no request):
 ;; its folder the app's user's, chmod 700; production {:mode :off :emergency-switch {…}} or {:mode :off :emergency-switch nil}
 ```
 
-The app's files and email: one file storage (groundwork-file-storage's `make-file-storage`, the `:file-storage
-:storage` settings and the app map's `:file-kinds`, its own kinds of files, `[]` for none) and one mailer (groundwork-email's `make-mailer`, the
-`:email :sending` settings), on the app's log and meter (and groundwork-shaped-json),
-held by the running app as `:file-storage` and `:email`; the store's files table
-(`groundwork_file_storage.<the :storage settings' :table's name>`) and
-`groundwork_email.emails` migrated with groundwork's tables; groundwork-email's background job
-kind on the workers. The upload route (`groundwork.server.main.files`) is
-groundwork-file-storage's handler at `:file-storage :upload :path`, asking groundwork-access's session step
-once (the Origin, or a token; an outside token that fails its check 401), then the app map's `:may-upload?` `(fn [asker])`, before the
-body is read; `:max-file-bytes` must be below `:server :max-body-bytes`.
+The app's files and email: its file storages, each named by the app in
+`:file-storage :storages` (at least one), each made by groundwork-file-storage's
+`make-file-storage` from its `:storage` settings and the app map's `:file-kinds`
+(its own kinds of files, `[]` for none, the same for every storage), and one
+mailer (groundwork-email's `make-mailer`, the `:email :sending` settings), on the
+app's log and meter (and groundwork-shaped-json), held by the running app as
+`:file-storages` (by name) and `:mailer`; each storage's files table
+(`groundwork_file_storage.<its :storage settings' :table's name>`, no other
+storage's) and `groundwork_email.emails` migrated with groundwork's tables;
+groundwork-email's background job kind on the workers. A storage whose
+`:upload` is a map has an upload route of its own (`groundwork.server.main.files`),
+groundwork-file-storage's handler at its `:path` (no other storage's), storing
+into that storage, asking groundwork-access's session step once (the Origin, or
+a token; an outside token that fails its check 401), then the app map's
+`:may-upload?` `(fn [asker storage-name])`, before the body is read; a storage
+whose `:upload` is nil has no route. Each upload's `:max-file-bytes` must be
+below `:server :max-body-bytes`
+([the decision](../../../../decisions/2026-10-31-an-app-has-several-file-storages-each-with-its-own-upload.md)).
 The provider's webhooks are groundwork-email's, at `:email :webhooks`' paths,
 outside sessions, handing bounces to the app map's `:on-delivery-event`
 `{tag f}` and every inbound email to the one `:on-inbound-email` function,
@@ -341,8 +349,9 @@ Each function runs in a transaction as groundwork-access's system actor `:email`
 (`run-as-system!`), allowed what the app's sentences give `[:system
 :email]` and nothing else:
 [the decision](../../../../decisions/2026-10-23-postboxs-webhook-functions-run-as-doormans-system-actor-postbox.md).
-A file is deleted by the app, with groundwork-file-storage's `delete-file!` on `(:file-storage
-running)` and `(:pool running)`, after its own rows are kept, or, in a
+A file is deleted by the app, with groundwork-file-storage's `delete-file!` on its
+storage, `(get-in running [:file-storages :order-photos])` (or the given map's,
+by name), and `(:pool running)`, after its own rows are kept, or, in a
 handler's step, with groundwork-file-storage's `delete-file-after-commit!` on those and the
 step's `(:groundwork-access/transaction context)`, which runs it once that
 transaction commits (groundwork-postgres's `run-after-commit!`, which a step may call
@@ -357,9 +366,14 @@ functions, the app's. Work kept after the commit that fails is written
 there, `:error :groundwork-postgres/after-commit-failed`.
 
 ```clojure
-:file-storage   {:storage {…}                                                   ; groundwork-file-storage's settings, every key
-          :upload  {:path "/groundwork/files" :key-prefix "uploads" :allowed-content-types #{"image/png" "image/jpeg"}
-                    :max-file-bytes 10000000 :max-files 10}}
+:file-storage {:storages {:order-photos {:storage {… :table :groundwork-file-storage/order-photos}   ; groundwork-file-storage's settings, every key
+                                        :upload  {:path "/groundwork/files/order-photos" :key-prefix "orders/photos"
+                                                  :allowed-content-types #{"image/png" "image/jpeg"}
+                                                  :max-file-bytes 10000000 :max-files 10}}
+                         :invoices     {:storage {… :table :groundwork-file-storage/invoices}
+                                        :upload  nil}}}                           ; no upload route: the app stores them itself
+:may-upload? (fn [{:keys [person-id]} storage-name]                              ; the app map's: who may upload to which
+               (and (some? person-id) (= :order-photos storage-name)))
 :email {:sending  {:provider {:name :log :level :info}                ; or {:name :postmark …}
                      :tags #{:orders/confirmation} :background-job {:timeout-ms 60000 :attempts 8}}
           :webhooks {:delivery-path "/email/delivery" :inbound-path "/email/inbound"
@@ -413,7 +427,7 @@ as its name; text written out where a secret belongs is refused:
                                :routes {}   ; the app's own server routes, records with a kind
                                :render-page render-page   ; each page's title, description, head and body
                                :file-kinds []   ; groundwork-file-storage's :kinds, the app's own kinds of files
-                               :may-upload? (fn [{:keys [person-id]}] (some? person-id))
+                               :may-upload? (fn [{:keys [person-id]} _storage-name] (some? person-id))
                                :on-delivery-event {} :on-inbound-email (fn [_email _context] nil)}))
 (main/stop-app! running)
 
@@ -485,8 +499,10 @@ asking again through the gates to only their own shop's orders; then the health 
 and ready without origin or session; ready 503 at its timeout while every
 connection is held, 503 while the app's role can't log in, 200 again after
 each; 503 while stopping; the metrics route, the visitor route and the
-REPL's tools over a real nREPL connection on a Unix socket, an upload (who may, and one
-stored when a bucket is given), an email queued in a transaction and sent
+REPL's tools over a real nREPL connection on a Unix socket, three file storages
+migrated, each upload route (who may, asked by its storage's name; none for a
+storage without one; a file stored into each storage's own table when a
+bucket is given), an email queued in a transaction and sent
 by the workers, and its bounce handed to the app by its tag; each page's
 framing headers, a page's asker looked up once and its rows read in its
 transaction, an outside token refused 401 (a page, an upload, an app

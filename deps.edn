@@ -71,9 +71,9 @@
   ;; library that counts, and serves its text at the :metrics route
   io.github.p4ulcristian/groundwork-metrics      {:git/tag "v0.1.7" :git/sha "53c7099"}
   ;; groundwork-file-storage: the app's files, its own library, github.com/p4ulcristian/groundwork-file-storage;
-  ;; main makes one file storage from the :file-storage :storage settings and the app's
-  ;; :file-kinds, migrates its files table (the settings' :table) and serves its upload
-  ;; route at :file-storage :upload :path
+  ;; main makes each of the app's file storages (the :file-storage :storages settings, by
+  ;; name) from its :storage settings and the app's :file-kinds, migrates each one's files
+  ;; table (its :table) and serves its upload route at its :upload :path, if it has one
   io.github.p4ulcristian/groundwork-file-storage     {:git/tag "v0.2.3" :git/sha "d20fc3d"}
   ;; groundwork-email: the app's email, its own library, github.com/p4ulcristian/groundwork-email;
   ;; main makes one mailer from the :email :sending settings, runs its

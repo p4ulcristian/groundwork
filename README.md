@@ -166,16 +166,23 @@ groundwork's tools are in `groundwork-live-repl.tools`: `ask-as-person`, `why-re
 ([the decision](decisions/2026-10-23-the-repl-starts-last-and-house-brings-its-tools.md)).
 And the app's files, on the server:
 [groundwork-file-storage](https://github.com/p4ulcristian/groundwork-file-storage), each named by its content
-in an S3 bucket (R2, S3), recorded in the store's files table (the `:file-storage :storage`
-settings' `:table`, `groundwork_file_storage.files`), read through signed
-links; groundwork makes one file storage from the `:file-storage :storage` settings and the
-app's own kinds of files (`:file-kinds`, groundwork-file-storage's `:kinds`), held by
-the running app as `:file-storage`, and serves groundwork-file-storage's upload route at `:file-storage
-:upload :path`, asking groundwork-access's session step, then the app's
-`:may-upload?` `(fn [asker])`, before the body is read. The app deletes a
-file with groundwork-file-storage's `delete-file!`, after its own rows are kept: a file goes,
-row and object, only when no row names it through a reference to the
-store's key column (`:files/key`).
+in an S3 bucket (R2, S3), recorded in its storage's files table, read
+through signed links. An app has several file storages, each named by it in
+`:file-storage :storages` (`:public-files`, `:private-files`, `:catalog-files`):
+groundwork makes each from its `:storage` settings (its files table, the
+`:table`, `groundwork_file_storage.public_files`, no other storage's) and the
+app's own kinds of files (`:file-kinds`, groundwork-file-storage's `:kinds`),
+migrates each table with its own, and holds them in the running app as
+`:file-storages`, by name, handed to the app's `:make-given`. A storage whose
+`:upload` is a map gets groundwork-file-storage's upload route at its
+`:path`, storing into it, asking groundwork-access's session step, then the
+app's `:may-upload?` `(fn [asker storage-name])`, before the body is read; one
+whose `:upload` is nil has none
+([the decision](decisions/2026-10-31-an-app-has-several-file-storages-each-with-its-own-upload.md)).
+The app deletes a file with groundwork-file-storage's `delete-file!` on its
+storage, after its own rows are kept: a file goes, row and object, only when
+no row names it through a reference to its storage's key column
+(`:public-files/key`).
 And its email, on the server:
 [groundwork-email](https://github.com/p4ulcristian/groundwork-email), an email the app wrote
 queued in a write's transaction (`queue-email!` on the running app's
@@ -278,10 +285,10 @@ clojure -X:test :nses '[groundwork.end-to-end-test]'
 pg_ctl -D /tmp/groundwork-pg stop
 ```
 
-The server test stores an upload in a real S3 API when
+The server test stores an upload into each of two storages in a real S3 API when
 `GROUNDWORK_S3_TEST_ENDPOINT`, `_ACCESS_KEY` and `_SECRET_KEY` are set (SeaweedFS
 in a container, as groundwork-file-storage's tests run it); without them it checks only who
-may upload.
+may upload to which.
 
 An app takes all of groundwork from git.
 

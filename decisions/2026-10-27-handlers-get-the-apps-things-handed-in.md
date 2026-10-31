@@ -1,5 +1,7 @@
 # Handlers get the app's things handed in, as background jobs do
 
+> **Changed in part** by [An app has several file storages, each with its own upload route or none](2026-10-31-an-app-has-several-file-storages-each-with-its-own-upload.md) (2026-10-31): the part `:file-storage` is `:file-storages`, the app's storages by name.
+
 > Decided by the agent releasing the composer, 2026-10-27, from the user's brief (the switch's settled H1: a handler's steps get a transaction, the asker and the log, but no pool, no `run-as-system!`, no job queue, no settings, no meter; design it in the composer's style, one required app key, a map the app gives, handed into every handler's context, as background jobs do with `:given-to-every-run`). Since v8.0.0. Replaces the app map's `:given-to-every-background-job-run` (v5.0.0).
 
 **Decision:** the app map has one required key, `:make-given`, `(fn [parts] map)`. The composer calls it once at the start, after the pool, the file storage and the mailer are made and before the handlers are, with the running app's parts, every key there:

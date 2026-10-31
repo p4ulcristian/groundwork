@@ -29,7 +29,8 @@
                                 {:pool pool :run-as-system! run-as-system! :meter meter :stripe stripe-client
                                  :add-job! add-background-job-to-queue!})   ; every handler's :groundwork/given, every job run's :given
         :file-kinds           []                    ; groundwork-file-storage's :kinds, the app's own kinds of files
-        :may-upload?          (fn [{:keys [person-id]}] (some? person-id))   ; who may upload files, the asker
+        :may-upload?          (fn [{:keys [person-id]} storage-name]       ; who may upload files, the asker, to which storage
+                                (and (some? person-id) (= :public-files storage-name)))
         :on-delivery-event    {:orders/confirmation mark-address-bounced!} ; groundwork-email's, by the email's tag
         :on-inbound-email     route-inbound-email!})                      ; groundwork-email's, every inbound email, routed by its :mailbox
 
@@ -138,7 +139,7 @@
    actor's transaction, the job queue, the meter, its own clients) it
    makes once from the running app's parts, its :make-given, (fn [parts]
    map): parts {:settings :pool :run-as-system! :add-background-job-to-queue!
-   :shaper :meter :texts :file-storage :mailer}, called once at the
+   :shaper :meter :texts :file-storages :mailer}, called once at the
    start, before the handlers are made; the map it returns is in every app
    handler's steps' context at :groundwork/given and every background job
    run's at :given, the same map each time.
@@ -147,19 +148,27 @@
    :on-change, which groundwork-access and groundwork-live-updates put on it: one that writes
    either is refused at the start, named.
 
-   The app's files (groundwork-file-storage's make-file-storage, the :file-storage :storage settings,
-   the app's own kinds of files, :file-kinds, [] for none) and its email (groundwork-email's make-mailer, the :email :sending settings)
-   are made once, on the app's log and meter (and groundwork-shaped-json, groundwork-email's), and
-   held by the running app (:file-storage, :email); their tables (the file storage's,
-   groundwork_file_storage.<its :table's name>, and groundwork_email.emails) are migrated with groundwork's, groundwork-email's background job
-   kind runs with the app's. Files are uploaded at the :file-storage :upload
-   :path (groundwork.server.main.files: groundwork-access's session step, then the app's
-   :may-upload?, (fn [asker])); the app deletes a file with groundwork-file-storage's
-   delete-file! on (:file-storage running) and (:pool running), after its own
+   The app's files are its file storages, each named by the app (the
+   :file-storage :storages settings, {:public-files {:storage … :upload …}
+   :private-files {…}}, at least one): each made once by groundwork-file-storage's
+   make-file-storage from its :storage settings and the app's own kinds of files
+   (:file-kinds, [] for none), recording into a files table of its own,
+   groundwork_file_storage.<its :table's name>. Its email (groundwork-email's
+   make-mailer, the :email :sending settings) is made once too, all on the
+   app's log and meter (and groundwork-shaped-json, groundwork-email's), and
+   held by the running app (:file-storages, by name, and :mailer); their tables (each storage's
+   and groundwork_email.emails) are migrated with groundwork's, groundwork-email's background job
+   kind runs with the app's. A storage whose :upload settings are a map is
+   uploaded to at its :path, a route of its own (groundwork.server.main.files:
+   groundwork-access's session step, then the app's :may-upload?, (fn [asker
+   storage-name])); one whose :upload is nil has no route. The app deletes a file with groundwork-file-storage's
+   delete-file! on its storage, (get-in running [:file-storages :public-files]),
+   and (:pool running), after its own
    rows are kept, or in a handler's step with delete-file-after-commit!
    and the step's :groundwork-access/transaction, run once it commits (groundwork-postgres's
    run-after-commit!) (only a file no row names through a reference to
-   the store's key column, :files/key, goes). The provider's webhooks are groundwork-email's, at the :email
+   its storage's key column goes: :public-files/key for the files table
+   :groundwork-file-storage/public-files). The provider's webhooks are groundwork-email's, at the :email
    :webhooks paths, handing events to the app's :on-delivery-event (by
    tag) and :on-inbound-email (every inbound email, one function, which
    routes it by its :mailbox), each run as groundwork-access's system
@@ -347,21 +356,41 @@
                  [:max [:int {:min 1}]]
                  [:per-ms [:int {:min 1}]]]]])
 
+(def ^:private file-storage-upload-settings-shape
+  "One storage's :upload: nil, no upload route; or its route's :path with
+   groundwork-file-storage's upload settings."
+  [:maybe (into [:map {:closed true} [:path [:re #"^/"]]] (drop 2 file-storage/upload-settings-shape))])
+
 (def file-storage-settings-shape
-  "The :file-storage part of the settings, every key required, both groundwork-file-storage's:
+  "The :file-storage part of the settings, every key required: :storages,
+   the app's file storages by name, {:public-files {…} :private-files {…}},
+   at least one, each made by groundwork from its own two parts, every key
+   required, both groundwork-file-storage's:
    :storage, the bucket's (groundwork-file-storage's settings-shape: :endpoint :bucket
    :access-key :secret-key :region :table :public-url :cache-purge
    :longest-link-seconds :head-bytes :deletes? :connect-timeout-ms
-   :request-timeout-ms :retries), which groundwork makes the app's one file
-   storage from, its files table named by :table; :upload, the upload route's: :path, the POST
-   the browser sends files to, \"/groundwork/files\", and groundwork-file-storage's upload
+   :request-timeout-ms :retries), its files table named by :table, no
+   other storage's;
+   :upload, nil for a storage the browser uploads nothing to (it has no
+   route), or its upload route's: :path, the POST the browser sends files
+   to, \"/groundwork/files/public\", no other storage's, and groundwork-file-storage's upload
    settings (groundwork-file-storage's upload-settings-shape: :key-prefix
    :allowed-content-types :max-file-bytes :max-files). :max-file-bytes
    must be below the :bridge settings' :max-body-bytes, which holds the
-   whole upload."
+   whole upload.
+
+     {:storages {:public-files  {:storage {… :table :groundwork-file-storage/public-files}
+                                 :upload  {:path \"/groundwork/files/public\" :key-prefix \"shops/logos\" …}}
+                 :private-files {:storage {… :table :groundwork-file-storage/private-files}
+                                 :upload  {:path \"/groundwork/files/private\" :key-prefix \"orders/photos\" …}}
+                 :catalog-files {:storage {… :table :groundwork-file-storage/catalog-files}
+                                 :upload  nil}}}"
   [:map {:closed true}
-   [:storage file-storage/settings-shape]
-   [:upload (into [:map {:closed true} [:path [:re #"^/"]]] (drop 2 file-storage/upload-settings-shape))]])
+   [:storages [:map-of {:min 1 :error/message "should name at least one storage"}
+               :keyword
+               [:map {:closed true}
+                [:storage file-storage/settings-shape]
+                [:upload file-storage-upload-settings-shape]]]]])
 
 (def email-settings-shape
   "The :email part of the settings, every key required, both groundwork-email's:
@@ -454,8 +483,8 @@
    and its :route, where Prometheus pulls its text (groundwork-metrics.api/routes-settings-shape:
    :path and :token); :live-repl the REPL's (groundwork-live-repl.api/settings-shape:
    :development, :ssh-only or :off with the emergency switch); :visitors
-   where a visitor's session is started; :file-storage the app's files, the
-   bucket and the upload route; :email its email, the provider and the
+   where a visitor's session is started; :file-storage the app's files, its
+   storages by name, each its bucket and its upload route or none; :email its email, the provider and the
    webhooks."
   [:map {:closed true}
    [:version :string]
@@ -487,22 +516,61 @@
   (throw (ex-info (str "The settings have problems: " (pr-str errors))
                   {:type :groundwork.server.main/bad-settings :errors errors})))
 
+(defn- find-shared-values
+  "Each value two storages or more say, read by read-value (nil is none's):
+   {value [storage-name …]}, the names sorted."
+  [storages read-value]
+  (into {}
+        (for [[value named] (group-by first (keep (fn [[storage-name storage]]
+                                                    (some-> (read-value storage) (vector storage-name)))
+                                                  storages))
+              :when (< 1 (count named))]
+          [value (sort (map second named))])))
+
+(defn- say-others
+  "The other storages' names, \":a and :b\"."
+  [storage-name names]
+  (str/join " and " (map pr-str (remove #{storage-name} names))))
+
+(defn- find-file-storage-problems
+  "What no one storage's shape shows, each as [path-under-:storages message]:
+   two storages recording into one files table, two uploads at one path,
+   and an upload whose files the server's body limit can't hold."
+  [storages max-body-bytes]
+  (concat
+   (for [[table names] (find-shared-values storages #(get-in % [:storage :table]))
+         storage-name  names]
+     [[storage-name :storage :table]
+      (str "should be this storage's own files table: " (pr-str table) " is " (say-others storage-name names) "'s too")])
+   (for [[path names]  (find-shared-values storages #(get-in % [:upload :path]))
+         storage-name names]
+     [[storage-name :upload :path]
+      (str "should be this storage's own upload path: " (pr-str path) " is " (say-others storage-name names) "'s too")])
+   (for [[storage-name {:keys [upload]}] storages
+         :when (and upload (>= (:max-file-bytes upload) max-body-bytes))]
+     [[storage-name :upload :max-file-bytes]
+      "should be below the :bridge settings' :max-body-bytes, which holds the whole upload"])))
+
 (defn check-settings
   "Returns the settings; throws with every problem at once. Checked by
    malli itself: the settings are values the app hands in, and the shaper is
-   made from them only once they fit. Then across parts: one uploaded
-   file fits in the server's body limit."
+   made from them only once they fit. Then across parts, every problem at
+   once: each storage records into a files table of its own and is
+   uploaded to at a path of its own, and every upload's file fits in the
+   server's body limit."
   [settings]
   (when-let [explanation (malli/explain settings-shape settings)]
     (throw-bad-settings (malli-error/humanize explanation)))
-  (when (>= (get-in settings [:file-storage :upload :max-file-bytes]) (get-in settings [:bridge :max-body-bytes]))
-    (throw-bad-settings {:file-storage {:upload {:max-file-bytes ["should be below the :bridge settings' :max-body-bytes, which holds the whole upload"]}}}))
+  (when-let [problems (seq (find-file-storage-problems (get-in settings [:file-storage :storages])
+                                                       (get-in settings [:bridge :max-body-bytes])))]
+    (throw-bad-settings {:file-storage {:storages (reduce (fn [errors [path message]] (update-in errors path (fnil conj []) message))
+                                                          {} problems)}}))
   settings)
 
 (defn make-groundwork-tables
-  "groundwork-access's tables, groundwork-background-jobs's, groundwork-file-storage's (the
-   store's files table, named by the :file-storage :storage settings' :table)
-   and groundwork-email's, each in their own folder, and groundwork's own
+  "groundwork-access's tables, groundwork-background-jobs's, groundwork-file-storage's (each
+   storage's files table, named by its :storage settings' :table, by the
+   storages' names in order) and groundwork-email's, each in their own folder, and groundwork's own
    one-time keys (groundwork.run_once_keys) and daily caps' counts
    (groundwork.daily_cap_counts), put with the app's. None knows of
    groundwork-live-updates; their live updates are said here: the sessions, the
@@ -518,8 +586,9 @@
                (map #(assoc % :live-updates [:silent "no screen shows which person an outside issuer's subject is"]) [access/outside-subjects-table])
                (map #(assoc % :live-updates :tell) access/access-tables)
                (map #(assoc % :live-updates [:silent "no screen shows background jobs"]) background-jobs/background-jobs-tables)
-               [(assoc (file-storage/files-table (get-in settings [:file-storage :storage])) :live-updates [:silent "a screen shows the app's rows that name a file, not groundwork-file-storage's"])
-                (assoc email/emails-table :live-updates [:silent "no screen shows groundwork-email's emails"])])))
+               (for [[_ {:keys [storage]}] (sort-by key (get-in settings [:file-storage :storages]))]
+                 (assoc (file-storage/files-table storage) :live-updates [:silent "a screen shows the app's rows that name a file, not groundwork-file-storage's"]))
+               [(assoc email/emails-table :live-updates [:silent "no screen shows groundwork-email's emails"])])))
 
 (defn- check-tables-leave-gates-and-on-change-out
   "The app's table maps say :access and :live-updates, never :gates or
@@ -592,7 +661,9 @@
   (postgres/migrate! pool (make-declared app) (:changes app) (assoc (get-in app [:settings :migration]) :log log)))
 
 (defn migrate-app!
-  "For the deploy, before the app starts: as the role that owns the tables
+  "For the deploy, before the app starts: the settings checked as start-app!
+   checks them (check-settings: two storages naming one files table are
+   refused here, before either is made), then, as the role that owns the tables
    (owner-db-settings), brings Postgres to the tables, the app's extensions,
    functions and views (groundwork-access's and groundwork-live-updates's own functions with them,
    and those groundwork-access makes from the sentences)
@@ -603,6 +674,7 @@
    on a meter of its own, never served (:jvm-metrics false): groundwork-postgres takes
    one meter per pool, and the deploy's run has no /metrics."
   [app owner-db-settings app-role]
+  (check-settings (:settings app))
   (check-app-database app)
   (let [settings (:settings app)
         log      (logs/log-function (logs/make-logger (:logs settings)))
@@ -718,12 +790,12 @@
 
 (defn- make-routes [{:keys [settings pages may-upload? on-delivery-event on-inbound-email routes tables scope-kinds]}
                     {:keys [shaper running-logger log app-meter pool running-health handlers running-live-updates
-                            running-file-storage running-mailer find-session-step answer-as page-handler]}]
+                            running-file-storages running-mailer find-session-step answer-as page-handler]}]
   (-> (health/make-health-routes shaper log app-meter pool running-health settings)
       (into (errors/make-errors-routes shaper running-logger settings))
       (into (groundwork-metrics/make-metrics-routes app-meter (get-in settings [:metrics :route])))
       (into (visitors/make-visitor-routes shaper pool settings))
-      (into (files/make-upload-routes running-file-storage shaper log pool find-session-step may-upload? settings))
+      (into (files/make-upload-routes running-file-storages shaper log pool find-session-step may-upload? settings))
       (into (email/make-webhook-routes running-mailer (get-in settings [:email :webhooks])
                                          {:run-in-transaction #(access/run-as-system! pool email-system-actor {:read-only? false :log log} %)
                                           :on-delivery-event  on-delivery-event
@@ -871,12 +943,13 @@
    :render-page, (fn [request page {:keys [nonce asker run-as-asker!]}]),
    each page's title, description, head and body, and the not-found page
    (page nil), or a redirect (groundwork.server.main.page);
-   :may-upload?, (fn [asker] true-or-false), who may upload
-   files; :on-delivery-event, {tag (fn [event {:keys [transaction log]}])},
+   :may-upload?, (fn [asker storage-name] true-or-false), who may upload
+   files to which storage, by its name in the :file-storage :storages
+   settings (asked only for a storage with an upload route); :on-delivery-event, {tag (fn [event {:keys [transaction log]}])},
    a bounce or spam complaint by its email's tag, {} for none;
    :file-kinds, groundwork-file-storage's :kinds, the app's own kinds of
    files ({:content-type :extension :recognize :served-as}), [] for none,
-   which groundwork-file-storage checks;
+   which groundwork-file-storage checks, the same for every storage;
    :on-inbound-email, (fn [email {:keys [transaction log]}]), the one
    function every inbound email is handed to, which routes it by its
    :mailbox (one that ignores it for an app that takes none);
@@ -916,9 +989,12 @@
    the named system actor, carrying log (a step's or a run's own);
    :add-background-job-to-queue!, (fn [pool-or-transaction kind params
    {:keys [run-in-ms key]}]), groundwork-background-jobs's, on the app's shaper and
-   meter; :shaper, :meter and :texts the app's; :file-storage and :mailer
-   the app's one file storage and mailer."
-  [settings pool shaper app-meter texts running-file-storage running-mailer]
+   meter; :shaper, :meter and :texts the app's; :file-storages the app's
+   file storages by the names the :file-storage :storages settings give
+   them, {:public-files storage …}, each groundwork-file-storage's
+   (store-file!, make-signed-link, delete-file! on (:public-files
+   file-storages)); :mailer its one mailer."
+  [settings pool shaper app-meter texts running-file-storages running-mailer]
   {:settings                     settings
    :pool                         pool
    :run-as-system!               (fn [system-actor options f] (access/run-as-system! pool system-actor options f))
@@ -928,7 +1004,7 @@
    :shaper                       shaper
    :meter                        app-meter
    :texts                        texts
-   :file-storage                 running-file-storage
+   :file-storages                running-file-storages
    :mailer                       running-mailer})
 
 (defn- make-given
@@ -971,13 +1047,28 @@
   [workers]
   (when workers (background-jobs/stop-workers! workers)))
 
+(defn- start-file-storages!
+  "Every storage the :file-storage :storages settings name, each made by
+   groundwork-file-storage's make-file-storage from its :storage settings, on
+   the app's log and meter with the app's own kinds of files, and
+   remembered to stop: {storage-name storage}."
+  [stoppers settings {:keys [file-kinds]} log app-meter]
+  (into {}
+        (map (fn [[storage-name {:keys [storage]}]]
+               [storage-name (start-part! stoppers
+                                          #(file-storage/make-file-storage storage {:log log :meter app-meter :kinds file-kinds})
+                                          file-storage/stop-file-storage!)]))
+        (sort-by key (get-in settings [:file-storage :storages]))))
+
 (defn start-app!
   "Starts the app (see the namespace). Returns the running app, for stop-app!:
-   {:settings :shaper :logger :log :meter :texts :pool :counting-pool :file-storage :mailer :given :handlers :live-updates :workers :watching :health :server :live-repl},
+   {:settings :shaper :logger :log :meter :texts :pool :counting-pool :file-storages :mailer :given :handlers :live-updates :workers :watching :health :server :live-repl},
    :given the app's given map (its :make-given's), :workers nil where
    the :background-jobs settings say :run-here? false,
    :counting-pool the pool the daily caps are counted on (the :daily-caps settings),
-   :file-storage the app's one file storage (groundwork-file-storage.api: store-file!, make-signed-link, …),
+   :file-storages the app's file storages by the names the :file-storage
+   :storages settings give them, {:public-files storage …} (groundwork-file-storage.api:
+   store-file!, make-signed-link, … on (get-in running [:file-storages :public-files])),
    :mailer the app's one mailer (groundwork-email.api: queue-email! in a write's
    transaction),
    :texts every catalog that shows, read once (groundwork-languages's load-texts),
@@ -1019,14 +1110,11 @@
               _                 (if (:migrate-at-start? settings)
                                   @(:slow-part (migrate! pool app log))
                                   (refuse-unsafe-database! pool app))
-              running-file-storage     (start-part! stoppers
-                                             #(file-storage/make-file-storage (get-in settings [:file-storage :storage])
-                                                                              {:log log :meter app-meter :kinds (:file-kinds app)})
-                                             file-storage/stop-file-storage!)
+              running-file-storages (start-file-storages! stoppers settings app log app-meter)
               running-mailer   (email/make-mailer (get-in settings [:email :sending])
                                                       {:log log :meter app-meter :shaper shaper :system-actor email-system-actor})
               given             (make-given app (make-given-parts settings pool shaper app-meter texts
-                                                                   running-file-storage running-mailer))
+                                                                   running-file-storages running-mailer))
               find-session-step (access/make-find-session-step pool (:access settings))
               handlers          (make-all-ready-handlers pool counting-pool app given find-session-step)
               _                 (check-texts-of-reasons! texts handlers)
@@ -1072,7 +1160,7 @@
                                                 (bridge/make-ring-handler-from-routes
                                                  (make-routes app {:shaper shaper :running-logger running-logger :log log :app-meter app-meter
                                                                    :pool pool :running-health running-health :handlers handlers
-                                                                   :running-live-updates running-live-updates :running-file-storage running-file-storage
+                                                                   :running-live-updates running-live-updates :running-file-storages running-file-storages
                                                                    :running-mailer running-mailer :find-session-step find-session-step
                                                                    :answer-as answer-as :page-handler page-handler})
                                                  {:files     (get-in settings [:page :files])
@@ -1088,7 +1176,7 @@
                                                {:log log :tools (make-live-repl-tools app shaper log app-meter pool counting-pool given)})]
             {:settings settings :shaper shaper :logger running-logger :log log :meter app-meter :texts texts :pool pool
              :counting-pool counting-pool
-             :file-storage running-file-storage :mailer running-mailer :given given :handlers handlers :live-updates running-live-updates :workers workers :watching watching :health running-health
+             :file-storages running-file-storages :mailer running-mailer :given given :handlers handlers :live-updates running-live-updates :workers workers :watching watching :health running-health
              :server server :live-repl repl}))
         (catch Throwable e
           (doseq [stop @stoppers] (stop))
@@ -1098,9 +1186,9 @@
   "Closes the REPL first, then answers ready with 503 for the :health
    settings' :not-ready-before-stop-ms, then stops taking requests, stops
    the watcher, lets running background jobs finish (where they ran), stops listening,
-   stops the file storage's client, closes the counting pool and the pool."
+   stops every file storage's clients, closes the counting pool and the pool."
   [{:keys [settings log pool counting-pool server workers watching] running-live-updates :live-updates running-health :health repl :live-repl
-    running-file-storage :file-storage}]
+    running-file-storages :file-storages}]
   (live-repl/stop-repl-server! repl)
   (log :info :groundwork/stopping {:groundwork/version (:version settings)})
   (health/mark-stage! running-health :stopping)
@@ -1109,7 +1197,7 @@
   (when watching (stop-watching-browser-build! watching))
   (stop-background-jobs! workers)
   (live-updates/stop-listening! running-live-updates)
-  (file-storage/stop-file-storage! running-file-storage)
+  (run! file-storage/stop-file-storage! (vals running-file-storages))
   (postgres/stop-pool! counting-pool)
   (postgres/stop-pool! pool))
 

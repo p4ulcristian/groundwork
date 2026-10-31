@@ -87,14 +87,23 @@
                      :stuck-after-time-limit-ms 60000 :forget-done-after-ms 604800000
                      :forget-done-every-ms 3600000 :stop-wait-ms 2000
                      :metric-buckets {:job-run-seconds [0.1 1 10]}}
- :file-storage             {:storage {:endpoint "http://127.0.0.1:8333" :bucket "sample"
-                               :access-key #secret :groundwork-file-storage/access-key :secret-key #secret :groundwork-file-storage/secret-key
-                               :region "us-east-1" :table :groundwork-file-storage/files :public-url nil :cache-purge nil
-                               :longest-link-seconds 300 :head-bytes 4096 :deletes? true
-                               :connect-timeout-ms 1000 :request-timeout-ms 10000
-                               :retries {:max-retries 1 :first-wait-ms 100 :max-wait-ms 400}}
-                     :upload  {:path "/groundwork/files" :key-prefix "sample" :allowed-content-types #{"image/png"}
-                               :max-file-bytes 1000000 :max-files 4}}
+ ;; two storages in one bucket: order photos uploaded at a route of their own, invoices
+ ;; only stored by the app (no upload route)
+ :file-storage      {:storages {:order-photos {:storage {:endpoint "http://127.0.0.1:8333" :bucket "sample"
+                                                         :access-key #secret :groundwork-file-storage/access-key :secret-key #secret :groundwork-file-storage/secret-key
+                                                         :region "us-east-1" :table :groundwork-file-storage/order-photos :public-url nil :cache-purge nil
+                                                         :longest-link-seconds 300 :head-bytes 4096 :deletes? true
+                                                         :connect-timeout-ms 1000 :request-timeout-ms 10000
+                                                         :retries {:max-retries 1 :first-wait-ms 100 :max-wait-ms 400}}
+                                               :upload  {:path "/groundwork/files/order-photos" :key-prefix "sample/orders" :allowed-content-types #{"image/png"}
+                                                         :max-file-bytes 1000000 :max-files 4}}
+                                :invoices     {:storage {:endpoint "http://127.0.0.1:8333" :bucket "sample"
+                                                         :access-key #secret :groundwork-file-storage/access-key :secret-key #secret :groundwork-file-storage/secret-key
+                                                         :region "us-east-1" :table :groundwork-file-storage/invoices :public-url nil :cache-purge nil
+                                                         :longest-link-seconds 300 :head-bytes 4096 :deletes? true
+                                                         :connect-timeout-ms 1000 :request-timeout-ms 10000
+                                                         :retries {:max-retries 1 :first-wait-ms 100 :max-wait-ms 400}}
+                                               :upload  nil}}}
  :email           {:sending  {:provider {:name :log :level :info} :tags #{:sample/none}
                                 :background-job {:timeout-ms 10000 :attempts 3}}
                      :webhooks {:delivery-path "/email/delivery" :inbound-path "/email/inbound"

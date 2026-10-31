@@ -1,5 +1,7 @@
 # main makes one attic and one postbox, and serves the upload route and the provider's webhooks
 
+> **Changed in part** by [An app has several file storages, each with its own upload route or none](2026-10-31-an-app-has-several-file-storages-each-with-its-own-upload.md) (2026-10-31): the app's file storages are named in `:file-storage :storages`, each with its own upload route or none, and `:may-upload?` is `(fn [asker storage-name])`.
+
 > **Changed in part** by [The app map names its own kinds of files](2026-10-27-the-app-map-names-its-own-kinds-of-files.md) (2026-10-27): the app map's `:file-kinds` go to make-file-storage, and the files table is the one the store's settings name.
 
 > **Changed in part** by [Each library's plain name](2026-10-23-each-librarys-plain-name.md) (2026-10-23): attic is groundwork-file-storage and postbox groundwork-email; main makes one file storage and one mailer, from the `:file-storage` and `:email` settings.
