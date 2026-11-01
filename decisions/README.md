@@ -106,6 +106,7 @@ Each library is a repository of its own, named by what it does since [Each libra
 - [Handlers get the app's things handed in, as background jobs do](2026-10-27-handlers-get-the-apps-things-handed-in.md) (v8.0.0): the app map's `:make-given`, changed in part by [An app has several file storages, each with its own upload route or none](2026-10-31-an-app-has-several-file-storages-each-with-its-own-upload.md)
 - [A server may run no background jobs: :run-here? false](2026-10-27-a-server-may-run-no-background-jobs.md) (v8.0.0)
 - [An app has several file storages, each with its own upload route or none](2026-10-31-an-app-has-several-file-storages-each-with-its-own-upload.md): `:file-storage :storages`, by name, each with its own files table and its own upload route or none; `:may-upload?` gets the storage's name
+- [The start and the deploy's migrate refuse a view that reads past the gates](2026-11-01-the-start-and-the-deploys-migrate-refuse-a-view-past-the-gates.md) (v8.0.6): groundwork-access's `check-views`, a view in the tables' folders is `security_invoker`
 - [An app's table that writes its own :gates or :on-change is refused](2026-10-23-an-apps-table-that-writes-what-house-puts-is-refused.md)
 - [The end-to-end test drives a sample app in a headless browser, over the DevTools protocol](2026-10-23-the-end-to-end-test-drives-a-headless-browser-over-devtools.md)
 - [/mcp stays the app's own code, not a groundwork library](2026-10-23-mcp-stays-the-apps-own-code.md)

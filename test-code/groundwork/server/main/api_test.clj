@@ -1592,3 +1592,27 @@
               (is (= [] @given-runs) "nothing runs it here: it waits for a server that runs jobs")
               (finally (main/stop-app! quiet)))))
         (finally (postgres/stop-pool! owner-pool))))))
+
+(deftest a-view-that-reads-past-the-gates-is-refused
+  (if-not port
+    (println "groundwork.server.main.api-test: skipped, GROUNDWORK_SQL_TEST_PORT is not set")
+    (let [owner-pool (start-pool! owner)
+          as-owner   (assoc (make-app owner) :views ["groundwork/server/main/views/shop_emails_as_owner.sql"])
+          refusal    (fn [f] (try (f) nil (catch clojure.lang.ExceptionInfo e (ex-data e))))]
+      (try
+        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork_postgres CASCADE; DROP SCHEMA IF EXISTS groundwork_background_jobs CASCADE; DROP SCHEMA IF EXISTS groundwork_access CASCADE; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS groundwork_file_storage CASCADE; DROP SCHEMA IF EXISTS groundwork_email CASCADE")
+        (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'groundwork_app') THEN CREATE ROLE groundwork_app LOGIN; END IF; END $$")
+        (testing "the development start migrates, then refuses a view that runs as its owner"
+          (is (= {:type :groundwork-access/views-past-the-gates :views [{:name "shop_emails_as_owner" :materialized? false}]}
+                 (refusal #(main/start-app! (assoc-in as-owner [:settings :migrate-at-start?] true))))))
+        (testing "the deploy's migrate refuses it once made, before the start"
+          (is (= :groundwork-access/views-past-the-gates
+                 (:type (refusal #(with-out-str (main/migrate-app! as-owner (make-database-settings owner) "groundwork_app")))))))
+        (testing "the start refuses it on the app's own role, the database current"
+          (is (= :groundwork-access/views-past-the-gates
+                 (:type (refusal #(main/start-app! (assoc (make-app "groundwork_app") :views (:views as-owner))))))))
+        (testing "a view that runs as whoever asks passes the deploy's migrate, the old one dropped"
+          (is (nil? (refusal #(with-out-str (main/migrate-app! (assoc (make-app owner) :views ["groundwork/server/main/views/shop_emails_as_asker.sql"])
+                                                               (make-database-settings owner) "groundwork_app")))))
+          (is (= [] (access/find-views-past-the-gates owner-pool [shops orders shop-emails]))))
+        (finally (postgres/stop-pool! owner-pool))))))

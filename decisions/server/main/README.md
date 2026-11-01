@@ -2,7 +2,7 @@
 
 The decisions of groundwork.server.main. Decisions about groundwork as a whole are in [the top decisions](../../README.md); the rules for these files are there too.
 
-- [One start, and a migrate for the deploy](2026-10-22-one-start-and-a-migrate-for-the-deploy.md), changed in part by [Every value that sets behaviour is a setting, in main too](../../2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
+- [One start, and a migrate for the deploy](2026-10-22-one-start-and-a-migrate-for-the-deploy.md), changed in part by [Every value that sets behaviour is a setting, in main too](../../2026-10-22-every-value-that-sets-behaviour-is-a-setting.md), added to by [The start and the deploy's migrate refuse a view that reads past the gates](../../2026-11-01-the-start-and-the-deploys-migrate-refuse-a-view-past-the-gates.md)
 - [The server puts the browser's settings in the page](../../2026-10-22-the-server-puts-the-browsers-settings-in-the-page.md)
 - [Main answers health checks](2026-10-22-main-answers-health-checks.md), changed in part by [main makes one logbook and passes its log to every library](../../2026-10-22-main-makes-one-logbook-and-passes-its-log-to-every-library.md)
 - [main takes every library's new settings](../../2026-10-22-main-takes-every-librarys-new-settings.md), changed in part by [main makes one wire and passes it to every library](../../2026-10-22-main-makes-one-wire-and-passes-it-to-every-library.md)

@@ -55,7 +55,9 @@
    added once groundwork-access finds them), puts groundwork's own tables with
    the app's, migrates in development (:migrate-at-start?
    true) or else refuses a database that isn't current or a role that could
-   pass the gates, then starts the pool, the handlers (groundwork-access's check,
+   pass the gates, and either way a view in the tables' folders that would
+   read past them (groundwork-access's check-views: a view there is
+   security_invoker), then starts the pool, the handlers (groundwork-access's check,
    groundwork's :groundwork-access/my-actions, then groundwork-live-updates's notes; every write keyed
    to run once, groundwork.server.main.run-once; every handler's
    :daily-caps counted after groundwork-access's check, groundwork.server.main.daily-caps;
@@ -669,7 +671,9 @@
    and those groundwork-access makes from the sentences)
    and changes (waiting for the slow part too), each part under
    the :migration settings' time limits, and lets the app's own role
-   (app-role) use them. Each planned statement is written to a log made
+   (app-role) use them; then refuses, as the start would, a view in the
+   tables' folders that reads past the gates (groundwork-access's check-views),
+   so the deploy stops at its migrate, named. Each planned statement is written to a log made
    from the :logs settings (:groundwork-postgres/planned). The owner's pool counts
    on a meter of its own, never served (:jvm-metrics false): groundwork-postgres takes
    one meter per pool, and the deploy's run has no /metrics."
@@ -685,6 +689,8 @@
     (try
       (deref (:slow-part (migrate! pool app log)))
       (postgres/grant-tables-to-role! pool (make-ready-tables app) app-role)
+      ;; the start refuses the same: the deploy stops here, before the app's start, named
+      (access/check-views pool (make-ready-tables app))
       (finally (postgres/stop-pool! pool)))))
 
 (def ^:private find-powers-of-role
@@ -702,7 +708,8 @@
                       {:type :groundwork.server.main/role-too-strong})))
     (when-not (postgres/does-database-match-tables? pool (make-declared app) (:changes app))
       (throw (ex-info "The database isn't current: run migrate-app! first"
-                      {:type :groundwork.server.main/not-migrated})))))
+                      {:type :groundwork.server.main/not-migrated})))
+    (access/check-views pool tables)))
 
 (defn- add-my-actions-handler
   "The handlers with groundwork's :groundwork-access/my-actions, groundwork-access's
@@ -1108,7 +1115,8 @@
                                                                                               {:log log})})
                                              postgres/stop-pool!)
               _                 (if (:migrate-at-start? settings)
-                                  @(:slow-part (migrate! pool app log))
+                                  (do @(:slow-part (migrate! pool app log))
+                                      (access/check-views pool (make-ready-tables app)))
                                   (refuse-unsafe-database! pool app))
               running-file-storages (start-file-storages! stoppers settings app log app-meter)
               running-mailer   (email/make-mailer (get-in settings [:email :sending])

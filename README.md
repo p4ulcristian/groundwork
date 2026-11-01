@@ -248,7 +248,11 @@ carried columns to them. Beside `:tables` the app writes out groundwork-postgres
 groundwork declares groundwork-access's and groundwork-live-updates's own functions with them, and
 the ones groundwork-access makes from the sentences (`make-access-functions`, groundwork-postgres's
 made functions), and groundwork-postgres drops a function in the tables' folders that
-nothing declared makes.
+nothing declared makes. A view in the tables' folders reads as whoever asks,
+`CREATE VIEW … WITH (security_invoker = true) AS …`: the start (and the
+deploy's `migrate-app!`) refuses one that doesn't, or a materialized view
+there, with groundwork-access's `check-views`
+([the decision](decisions/2026-11-01-the-start-and-the-deploys-migrate-refuse-a-view-past-the-gates.md)).
 Not in groundwork: pre-rendering pages for search engines, for now
 ([the decision](decisions/2026-10-23-no-pre-rendering-of-pages-for-search-engines-for-now.md)),
 and an MCP endpoint, which is the app's own code

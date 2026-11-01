@@ -47,7 +47,7 @@
   ;; test.check and nimbus-jose-jwt); its steps are groundwork-steps's, its leak test is
   ;; handed a runner (make-leak-test-answerer: groundwork-bridge's answer-message), and its
   ;; run-as-asker-of-request! hands f the asker it found, which the page shell runs render-page in
-  io.github.p4ulcristian/groundwork-access    {:git/tag "v0.8.5" :git/sha "325d460"}
+  io.github.p4ulcristian/groundwork-access    {:git/tag "v0.8.6" :git/sha "2187523"}
   ;; groundwork-live-updates: a change to a table rings every open screen, which asks again,
   ;; calmly (on a page someone sees, at most once a window; a writer's own change at once);
   ;; both sides, its own library, github.com/p4ulcristian/groundwork-live-updates; it is
