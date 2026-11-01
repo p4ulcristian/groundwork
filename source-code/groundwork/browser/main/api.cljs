@@ -73,7 +73,10 @@
    too.
 
    It also listens, once for the page, for the uncaught errors and the
-   unhandled promise rejections, and sends each to the server as
+   unhandled promise rejections (an error a library reports with the
+   browser's reportError among them: groundwork-bridge's params that
+   don't fit, groundwork-screens's send that threw), and sends each to
+   the server as
    {:groundwork/browser-error {:kind :uncaught :version … :message … :stack …
    :url …}}, where it is logged at :error with the server's errors, the one
    list the app's monitor reads (its rate limit is the server's :errors

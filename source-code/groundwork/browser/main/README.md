@@ -21,7 +21,11 @@ told the store as this browser's own change, groundwork-live-updates's
 languages and language, browser-build's `load-module!` with each module's stylesheets, and `[:groundwork-access/my-actions {}]` as its
 `:actions-question`), which follows the address bar. The app draws its root
 with groundwork-screens's `mount-root!` into the shell's `#app`. Once for the
-page, it sends every uncaught error and unhandled rejection to the server,
+page, it sends every uncaught error and unhandled rejection to the server
+(and every error a library reports with the browser's `reportError`, which
+the page hears as an uncaught one: groundwork-bridge's params that don't fit
+their shape, answered `:groundwork-steps/invalid`; groundwork-screens's send
+that threw or failed, answered `:groundwork-steps/failed`),
 `{:groundwork/browser-error {:kind :uncaught :version … :message … :stack … :url …}}`,
 where it is logged at `:error` with the server's errors, the one list the
 app's monitor reads; `report-browser-error!` sends one an app's error

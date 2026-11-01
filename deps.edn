@@ -34,14 +34,14 @@
   ;; refusal, the reasons every answer may carry), which groundwork-bridge, groundwork-access,
   ;; groundwork-live-updates and groundwork-screens share instead of requiring each other;
   ;; both sides, its own library, github.com/p4ulcristian/groundwork-steps
-  io.github.p4ulcristian/groundwork-steps    {:git/tag "v0.1.0" :git/sha "ed9458e"}
+  io.github.p4ulcristian/groundwork-steps    {:git/tag "v0.1.1" :git/sha "4a48036"}
   ;; bridge: named messages over http, sse and ws, the lines, the rate limits, the server and
   ;; its routes; it runs a handler's groundwork-steps; both sides, its own library,
   ;; github.com/p4ulcristian/groundwork-bridge (it brings Jetty 12 through rj9a and reitit-ring,
   ;; and with it ring-core, whose ring.util.codec reads the errors route's ?since=).
   ;; groundwork plugs it in: its runner answers groundwork-access's steps, its sse lines carry
   ;; groundwork-live-updates's changes, its send-message! is groundwork-screens's send
-  io.github.p4ulcristian/groundwork-bridge   {:git/tag "v0.7.13" :git/sha "bb3b33f"}
+  io.github.p4ulcristian/groundwork-bridge   {:git/tag "v0.7.14" :git/sha "bb963a8"}
   ;; groundwork-access: who is asking and what may they do, sessions, tokens, outside issuers
   ;; and access, its own library, github.com/p4ulcristian/groundwork-access (it brings malli,
   ;; test.check and nimbus-jose-jwt); its steps are groundwork-steps's, its leak test is
@@ -59,7 +59,7 @@
   ;; react and react-dom are package.json's), and the address bar it follows; the browser's
   ;; side only, its own library, github.com/p4ulcristian/groundwork-screens; its sends are
   ;; handed in (groundwork-bridge's send-message!)
-  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.12" :git/sha "dae9359"}
+  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.13" :git/sha "323d4df"}
   ;; groundwork-languages: which language a request, a page and an address are in; both
   ;; sides, its own library, github.com/p4ulcristian/groundwork-languages (groundwork-screens brings
   ;; it to the browser too)
