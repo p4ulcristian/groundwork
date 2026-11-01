@@ -59,7 +59,7 @@
   ;; react and react-dom are package.json's), and the address bar it follows; the browser's
   ;; side only, its own library, github.com/p4ulcristian/groundwork-screens; its sends are
   ;; handed in (groundwork-bridge's send-message!)
-  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.13" :git/sha "323d4df"}
+  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.14" :git/sha "c88cb16"}
   ;; groundwork-languages: which language a request, a page and an address are in; both
   ;; sides, its own library, github.com/p4ulcristian/groundwork-languages (groundwork-screens brings
   ;; it to the browser too)
