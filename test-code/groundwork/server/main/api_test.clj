@@ -282,6 +282,7 @@
    :postgres          (make-database-settings user)
    :migration         {:instant-part {:statement-timeout-ms 10000 :lock-timeout-ms 5000}
                        :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
+   :provider-extensions []
    :access          {:cookie-name "groundwork_session" :session-days 1 :visitor-session-days 1 :renew-after-minutes 60
                        :allowed-origin "http://app.test" :secure-cookie? false
                        :token-lead "app_" :token-shown-characters 10 :token-longest-days 30
@@ -1591,6 +1592,41 @@
               (Thread/sleep 2500)
               (is (= [] @given-runs) "nothing runs it here: it waits for a server that runs jobs")
               (finally (main/stop-app! quiet)))))
+        (finally (postgres/stop-pool! owner-pool))))))
+
+(deftest a-providers-extension-is-the-places-to-say
+  (if-not port
+    (println "groundwork.server.main.api-test: skipped, GROUNDWORK_SQL_TEST_PORT is not set")
+    (let [owner-pool (start-pool! owner)
+          listing    (fn [app names] (assoc-in app [:settings :provider-extensions] names))
+          refusal    (fn [f] (try (f) nil (catch clojure.lang.ExceptionInfo e (ex-data e))))]
+      (try
+        (run-sql! owner-pool "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS groundwork_postgres CASCADE; DROP SCHEMA IF EXISTS groundwork_background_jobs CASCADE; DROP SCHEMA IF EXISTS groundwork_access CASCADE; DROP SCHEMA IF EXISTS groundwork CASCADE; DROP SCHEMA IF EXISTS groundwork_file_storage CASCADE; DROP SCHEMA IF EXISTS groundwork_email CASCADE")
+        (run-sql! owner-pool "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'groundwork_app') THEN CREATE ROLE groundwork_app LOGIN; END IF; END $$")
+        ;; as a provider puts one in (Neon's pg_session_jwt), before the app's first migrate
+        (run-sql! owner-pool "CREATE EXTENSION hstore")
+        (testing "a place that doesn't list it: the deploy's migrate stops, naming it, and nothing runs"
+          (let [{:keys [type stops]} (refusal #(with-out-str (main/migrate-app! (listing (make-app owner) [])
+                                                                                (make-database-settings owner) "groundwork_app")))]
+            (is (= :groundwork-postgres/stops type))
+            (is (some #(str/starts-with? % "extension hstore is in the database but in no list") stops))))
+        (testing "a place that lists it: the deploy's migrate runs, and the start finds the database current"
+          (is (nil? (refusal #(with-out-str (main/migrate-app! (listing (make-app owner) ["hstore"])
+                                                               (make-database-settings owner) "groundwork_app")))))
+          (let [running (main/start-app! (listing (make-app "groundwork_app") ["hstore"]))]
+            (main/stop-app! running))
+          (is (= [{:extname "hstore"}]
+                 (postgres/find-rows owner-pool (postgres/make-query-from-sql-text
+                                                 "hstore" "SELECT extname::text AS extname FROM pg_extension WHERE extname = 'hstore'")
+                                     {}))
+              "never dropped"))
+        (testing "the start on a place that doesn't list it refuses the database as not current"
+          (is (= :groundwork.server.main/not-migrated
+                 (:type (refusal #(main/start-app! (listing (make-app "groundwork_app") [])))))))
+        (testing "an extension in both lists is refused"
+          (is (= :groundwork-postgres/bad-tables
+                 (:type (refusal #(with-out-str (main/migrate-app! (-> (make-app owner) (listing ["hstore"]) (assoc :extensions ["hstore"]))
+                                                                   (make-database-settings owner) "groundwork_app")))))))
         (finally (postgres/stop-pool! owner-pool))))))
 
 (deftest a-view-that-reads-past-the-gates-is-refused

@@ -222,6 +222,7 @@ actor `:groundwork-daily-caps`, deletes the days before today:
                                    :connection-usage-seconds [0.001 0.01 0.1 1 10 60]}}
 :migration       {:instant-part {:statement-timeout-ms 30000 :lock-timeout-ms 5000}
                   :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
+:provider-extensions ["pg_session_jwt"]                             ; the database's provider's (Neon's): never made or dropped, [] for none
 :background-jobs {:run-here? true                                       ; false: no workers here, what it queues waits
                   :workers 4 :poll-ms 1000
                   :retry-first-wait-ms 30000 :retry-wait-factor 2 :retry-max-wait-ms 3600000
@@ -391,7 +392,9 @@ says groundwork-access's `:parent`, and groundwork-access adds its link and fill
 Beside `:tables` the app writes out groundwork-postgres's `:extensions`, `:functions`
 and `:views` (`.sql` files, `[]` for none), which migrate declares with
 groundwork-access's and groundwork-live-updates's own functions and those groundwork-access makes from the
-sentences (`make-access-functions`).
+sentences (`make-access-functions`). The place's settings say the extensions its database's
+provider keeps, `:provider-extensions` (`[]` for none), which migrate and the
+start's check declare as groundwork-postgres's `:provider-extensions`.
 
 API: `groundwork.server.main.api` (`settings-shape`, `page-settings-shape`,
 `health-settings-shape`, `migration-settings-shape`, `live-updates-settings-shape`,

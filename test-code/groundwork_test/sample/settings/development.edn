@@ -71,6 +71,8 @@
                                       :connection-usage-seconds [0.001 0.01 0.1 1]}}
  :migration         {:instant-part {:statement-timeout-ms 10000 :lock-timeout-ms 5000}
                      :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
+ ;; a development Postgres: its provider put no extension in it
+ :provider-extensions []
  :access          {:cookie-name "sample_session" :session-days 30 :visitor-session-days 7 :renew-after-minutes 60
                      :allowed-origin "http://localhost:8080" :secure-cookie? false
                      :token-lead "sample_" :token-shown-characters 13 :token-longest-days 365

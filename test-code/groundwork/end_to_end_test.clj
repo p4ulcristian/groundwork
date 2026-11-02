@@ -102,6 +102,7 @@
    :postgres          (make-database-settings user)
    :migration         {:instant-part {:statement-timeout-ms 10000 :lock-timeout-ms 5000}
                        :slow-part    {:statement-timeout-ms :none :lock-timeout-ms 5000}}
+   :provider-extensions []
    :access          {:cookie-name "e2e_session" :session-days 1 :visitor-session-days 1 :renew-after-minutes 60
                        :allowed-origin (str "http://127.0.0.1:" server-port) :secure-cookie? false
                        :token-lead "e2e_" :token-shown-characters 10 :token-longest-days 30

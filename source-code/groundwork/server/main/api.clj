@@ -475,6 +475,11 @@
    one-time key is kept, and how often a browser retries a write;
    :daily-caps the pool the handlers' daily caps are counted on, and the
    job that forgets old counts;
+   :provider-extensions the extensions the database's provider put in it
+   and keeps (Neon's \"pg_session_jwt\"), groundwork-postgres's
+   :provider-extensions, which migrate never makes or drops and the start's
+   check lets be, [] where the provider puts none: a fact of the place's
+   database, as :postgres is, so each place says its own;
    :languages the app's languages (groundwork-languages's settings), which a
    request's, and its page's, is picked from; :metrics the app's one
    groundwork-metrics's (groundwork-metrics.api/settings-shape: :jvm-metrics, and
@@ -501,6 +506,7 @@
    [:bridge bridge/settings-shape]
    [:postgres postgres/settings-shape]
    [:migration migration-settings-shape]
+   [:provider-extensions [:sequential :string]]
    [:access access/settings-shape]
    [:visitors visitors-settings-shape]
    [:my-actions my-actions-settings-shape]
@@ -645,19 +651,21 @@
 
 (defn- make-declared
   "What migrate brings Postgres to, as groundwork-postgres takes it: the ready tables,
-   the app's extensions and views, and its functions with groundwork-access's and
+   the app's extensions and views, the place's database's provider's extensions
+   (the :provider-extensions settings), and its functions with groundwork-access's and
    groundwork-live-updates's own (their function-files) and those groundwork-access makes from
    the sentences (make-access-functions), declared to groundwork-postgres as made
    functions, so it makes them before the gates and drops one whose
    sentence is gone."
   [{:keys [scope-kinds] :as app}]
-  {:tables     (make-ready-tables app)
-   :extensions (:extensions app)
-   :functions  (-> (vec access/function-files)
-                   (into (access/make-access-functions (list-all-tables app) scope-kinds))
-                   (into live-updates/function-files)
-                   (into (:functions app)))
-   :views      (:views app)})
+  {:tables              (make-ready-tables app)
+   :extensions          (:extensions app)
+   :provider-extensions (get-in app [:settings :provider-extensions])
+   :functions           (-> (vec access/function-files)
+                            (into (access/make-access-functions (list-all-tables app) scope-kinds))
+                            (into live-updates/function-files)
+                            (into (:functions app)))
+   :views               (:views app)})
 
 (defn- migrate! [pool app log]
   (postgres/migrate! pool (make-declared app) (:changes app) (assoc (get-in app [:settings :migration]) :log log)))
@@ -914,6 +922,7 @@
    :bridge          #'bridge/settings-shape
    :postgres        #'postgres/settings-shape
    :migration       #'migration-settings-shape
+   :provider-extensions #'settings-shape
    :access        #'access/settings-shape
    :visitors        #'visitors-settings-shape
    :my-actions      #'my-actions-settings-shape

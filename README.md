@@ -248,7 +248,11 @@ carried columns to them. Beside `:tables` the app writes out groundwork-postgres
 groundwork declares groundwork-access's and groundwork-live-updates's own functions with them, and
 the ones groundwork-access makes from the sentences (`make-access-functions`, groundwork-postgres's
 made functions), and groundwork-postgres drops a function in the tables' folders that
-nothing declared makes. A view in the tables' folders reads as whoever asks,
+nothing declared makes. The extensions the database's provider put in it and keeps
+(Neon's `pg_session_jwt`) are the place's, not the app's: its settings'
+`:provider-extensions`, `[]` where there are none, which groundwork declares as
+groundwork-postgres's `:provider-extensions`, never made, never dropped, no stop
+([the decision](decisions/2026-11-02-the-providers-extensions-are-the-places-settings.md)). A view in the tables' folders reads as whoever asks,
 `CREATE VIEW … WITH (security_invoker = true) AS …`: the start (and the
 deploy's `migrate-app!`) refuses one that doesn't, or a materialized view
 there, with groundwork-access's `check-views`
