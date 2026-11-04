@@ -326,11 +326,15 @@
   "The Ring handler, each request first given its language and its path
    without the language's prefix (groundwork-languages's find-language-of-request):
    :uri becomes that path, for routing, and the request carries
-   :groundwork.server.main/language and :groundwork.server.main/path. The
-   handler runs with the texts and that language bound (groundwork-languages's
-   with-language), so a (languages/tr key args) in it is in the
-   request's language; work it hands to a thread Clojure didn't start
-   binds its own."
+   :groundwork.server.main/language, :groundwork.server.main/path and
+   :groundwork.server.main/address-language, the language the address's
+   prefix names (nil without one: the language then came from the cookie,
+   the browser or the default). A page every visitor gets alike, which a
+   shared cache may keep, is drawn in the address's language, never the
+   visitor's. The handler runs with the texts and that language bound
+   (groundwork-languages's with-language), so a (languages/tr key args) in
+   it is in the request's language; work it hands to a thread Clojure
+   didn't start binds its own."
   [handler languages texts]
   (fn [request]
     (let [{:keys [language path]} (languages/find-language-of-request languages request)]
@@ -338,4 +342,6 @@
         (handler (assoc request
                         :uri path
                         :groundwork.server.main/language language
-                        :groundwork.server.main/path path))))))
+                        :groundwork.server.main/path path
+                        :groundwork.server.main/address-language
+                        (:language (languages/split-language-from-path languages (:uri request)))))))))
