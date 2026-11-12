@@ -93,7 +93,7 @@
   ;; the files a page that starts with a module links, read from the build's manifests
   ;; (files-for-page), and every module's bundle for load-module! (stylesheets-for-load-module).
   ;; The page shell runs it, watched or released; the whole library is the build aliases'
-  io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.5.2" :git/sha "88e0ee1" :deps/root "page"}}
+  io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.5.3" :git/sha "8a113337a2b89ce1824876be5ca27152d8149dcb" :deps/root "page"}}
 
  :aliases
  {;; every test:                  clojure -X:test
@@ -102,7 +102,7 @@
          :extra-deps  {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                        ;; the browser build's test compiles every browser library, and the
                        ;; end-to-end test release-builds its sample app
-                       io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.5.2" :git/sha "88e0ee1"}}
+                       io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.5.3" :git/sha "8a113337a2b89ce1824876be5ca27152d8149dcb"}}
          :exec-fn     cognitect.test-runner.api/test
          :exec-args   {:dirs ["test-code"]}}
 
@@ -113,8 +113,8 @@
   ;; alias's coordinate replaces the page half of :deps). Development: add :browser-build
   ;; to the REPL or the dev start (its watch options are the :browser-build {:watch …} settings).
   ;; The deploy:  clojure -X:browser-release (an app writes its own :modules and :files-folder)
-  :browser-build   {:extra-deps {io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.5.2" :git/sha "88e0ee1"}}}
-  :browser-release {:extra-deps {io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.5.2" :git/sha "88e0ee1"}}
+  :browser-build   {:extra-deps {io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.5.3" :git/sha "8a113337a2b89ce1824876be5ca27152d8149dcb"}}}
+  :browser-release {:extra-deps {io.github.p4ulcristian/groundwork-browser-build {:git/tag "v0.5.3" :git/sha "8a113337a2b89ce1824876be5ca27152d8149dcb"}}
                     :exec-fn    groundwork-browser-build.api/build-for-release!
                     :exec-args  {:modules            {:main {:entries [app.browser.main] :depends-on #{} :start app.browser.main/start!}}   ; the app's :browser-modules, one the root
                                  :files-folder       "target/public"
