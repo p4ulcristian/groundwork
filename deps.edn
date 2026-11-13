@@ -59,13 +59,13 @@
   ;; react and react-dom are package.json's), and the address bar it follows; the browser's
   ;; side only, its own library, github.com/p4ulcristian/groundwork-screens; its sends are
   ;; handed in (groundwork-bridge's send-message!)
-  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.15" :git/sha "70176dd"}
+  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.16" :git/sha "af1d401"}
   ;; groundwork-languages: which language a request, a page and an address are in; both
   ;; sides, its own library, github.com/p4ulcristian/groundwork-languages (groundwork-screens brings
   ;; it to the browser too)
   ;; on its tidy-up branch, not released: with-language refuses a nil language or bad texts;
   ;; check-texts-of-reasons; tr is the one text call on the server
-  io.github.p4ulcristian/groundwork-languages {:git/tag "v0.4.4" :git/sha "68368a0"}
+  io.github.p4ulcristian/groundwork-languages {:git/tag "v0.4.5" :git/sha "a17e54d"}
   ;; groundwork-metrics: the app's metrics, its own library, github.com/p4ulcristian/groundwork-metrics;
   ;; main makes one meter from the :meter settings and passes it to every
   ;; library that counts, and serves its text at the :metrics route
