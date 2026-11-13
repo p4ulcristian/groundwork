@@ -803,6 +803,9 @@
    reaches groundwork_email.emails, a table without sentences."
   :email)
 
+(defn- is-watching? [settings]
+  (map? (:browser-build settings)))
+
 (defn- make-routes [{:keys [settings pages may-upload? on-delivery-event on-inbound-email routes tables scope-kinds]}
                     {:keys [shaper running-logger log app-meter pool running-health handlers running-live-updates
                             running-file-storages running-mailer find-session-step answer-as page-handler]}]
@@ -836,11 +839,8 @@
                                                 :find-session-step           find-session-step
                                                 :find-person-rate-limit-key (make-rate-limit-key-finder settings)
                                                 :answer-as                   answer-as}))
-      (into (page/make-catalog-routes (:languages settings)))
+      (into (page/make-catalog-routes (:languages settings) (is-watching? settings)))
       (into (bridge/make-server-routes-for-pages pages page-handler))))
-
-(defn- is-watching? [settings]
-  (map? (:browser-build settings)))
 
 (defn- make-watch-options
   "browser-build's start-watching! options: the :browser-build :watch settings,
@@ -1112,7 +1112,8 @@
           app-meter (groundwork-metrics/make-meter (dissoc (:metrics settings) :route) {:log log})
           stoppers (atom ())]
       (try
-        (let [texts             (languages/load-texts (:languages settings))
+        (let [texts-now         (languages/make-texts-reader (:languages settings) (is-watching? settings))
+              texts             (texts-now)
               pool              (start-part! stoppers
                                              #(postgres/start-pool! (:postgres settings) {:log log :meter app-meter})
                                              postgres/stop-pool!)
@@ -1183,7 +1184,7 @@
                                                  {:files     (get-in settings [:page :files])
                                                   :not-found page-handler})
                                                 (:languages settings)
-                                                texts)
+                                                texts-now)
                                                (:bridge settings)
                                                {:log log})
                                              bridge/stop-server!)]

@@ -524,7 +524,7 @@
         handler   (page/wrap-languages (fn [request] {:uri              (:uri request)
                                                   :text             (languages/tr :orders/count {:count 2})
                                                   :address-language (:groundwork.server.main/address-language request)})
-                                       languages (languages/load-texts languages))]
+                                       languages (constantly (languages/load-texts languages)))]
     (is (= {:uri "/orders" :text "2 Bestellungen" :address-language "de"} (handler {:uri "/de/orders" :headers {}}))
         "the prefix's, bound for tr, and the address's")
     (is (= {:uri "/orders" :text "2 Bestellungen" :address-language nil} (handler {:uri "/orders" :headers {"cookie" "lang=de"}}))

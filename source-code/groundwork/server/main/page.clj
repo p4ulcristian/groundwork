@@ -311,16 +311,21 @@
 (defn make-catalog-routes
   "A GET for each language's catalog (groundwork-languages's list-catalog-files), at
    the address the browser fetches it from, answered with the classpath
-   file the server reads, as it is, read once: JSON, asked again each time
-   (no-cache), so a deploy's new texts are what the next fetch gets."
-  [languages]
+   file the server reads, as it is: JSON, asked again each time
+   (no-cache), so a deploy's new texts are what the next fetch gets. Read
+   once, or on every fetch where the place watches its files
+   (`watching?`, development), so an edited catalog is what the next page
+   load gets (groundwork-languages's decision
+   2026-11-13-a-watching-place-reads-edited-catalogs-again)."
+  [languages watching?]
   (vec (for [{:keys [resource address]} (languages/list-catalog-files languages)
-             :let [response {:status  200
-                             :headers {"content-type"           "application/json; charset=utf-8"
-                                       "cache-control"          "no-cache"
-                                       "x-content-type-options" "nosniff"}
-                             :body    (slurp (io/resource resource))}]]
-         [address {:get {:handler (fn [_request] response)}}])))
+             :let [headers {"content-type"           "application/json; charset=utf-8"
+                            "cache-control"          "no-cache"
+                            "x-content-type-options" "nosniff"}
+                   read    #(slurp (io/resource resource))
+                   once    (when-not watching? {:status 200 :headers headers :body (read)})]]
+         [address {:get {:handler (fn [_request]
+                                    (or once {:status 200 :headers headers :body (read)}))}}])))
 
 (defn wrap-languages
   "The Ring handler, each request first given its language and its path
@@ -334,11 +339,14 @@
    visitor's. The handler runs with the texts and that language bound
    (groundwork-languages's with-language), so a (languages/tr key args) in
    it is in the request's language; work it hands to a thread Clojure
-   didn't start binds its own."
-  [handler languages texts]
+   didn't start binds its own. texts-now gives the texts
+   (groundwork-languages's make-texts-reader): the same ones every
+   request, or, where the place watches its files, the catalogs as they
+   are now."
+  [handler languages texts-now]
   (fn [request]
     (let [{:keys [language path]} (languages/find-language-of-request languages request)]
-      (languages/with-language texts language
+      (languages/with-language (texts-now) language
         (handler (assoc request
                         :uri path
                         :groundwork.server.main/language language
