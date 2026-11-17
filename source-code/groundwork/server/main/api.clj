@@ -1078,10 +1078,15 @@
 
 (defn start-app!
   "Starts the app (see the namespace). Returns the running app, for stop-app!:
-   {:settings :shaper :logger :log :meter :texts :pool :counting-pool :file-storages :mailer :given :handlers :live-updates :workers :watching :health :server :live-repl},
+   {:settings :shaper :logger :log :meter :texts :pool :counting-pool :listening-pool :file-storages :mailer :given :handlers :live-updates :workers :watching :health :server :live-repl},
    :given the app's given map (its :make-given's), :workers nil where
    the :background-jobs settings say :run-here? false,
    :counting-pool the pool the daily caps are counted on (the :daily-caps settings),
+   :listening-pool live updates' own pool of one connection, which LISTEN
+   holds for as long as the app runs: made from the :postgres settings,
+   with no leak warning (its one connection is held on purpose), so the
+   pool's warning means a real leak and the pool keeps every connection
+   for requests,
    :file-storages the app's file storages by the names the :file-storage
    :storages settings give them, {:public-files storage …} (groundwork-file-storage.api:
    store-file!, make-signed-link, … on (get-in running [:file-storages :public-files])),
@@ -1124,6 +1129,13 @@
                                                                                                :most-series-per-metric (get-in settings [:metrics :most-series-per-metric])}
                                                                                               {:log log})})
                                              postgres/stop-pool!)
+              listening-pool    (start-part! stoppers
+                                             #(postgres/start-pool! (assoc (:postgres settings) :pool-size 1 :leak-warning-after-ms :none)
+                                                                    {:log   log
+                                                                     :meter (groundwork-metrics/make-meter {:jvm-metrics            false
+                                                                                               :most-series-per-metric (get-in settings [:metrics :most-series-per-metric])}
+                                                                                              {:log log})})
+                                             postgres/stop-pool!)
               _                 (if (:migrate-at-start? settings)
                                   (do @(:slow-part (migrate! pool app log))
                                       (access/check-views pool (make-ready-tables app)))
@@ -1158,7 +1170,7 @@
                                                          :log                       log
                                                          :scope-kinds               (:scope-kinds app)})
               running-live-updates  (start-part! stoppers
-                                             #(live-updates/start-listening! pool (get-in settings [:live-updates :listening])
+                                             #(live-updates/start-listening! listening-pool (get-in settings [:live-updates :listening])
                                                                          {:log           log
                                                                           :meter         app-meter
                                                                           :tables        (make-ready-tables app)
@@ -1193,7 +1205,7 @@
           (let [repl (live-repl/start-repl-server! (:live-repl settings)
                                                {:log log :tools (make-live-repl-tools app shaper log app-meter pool counting-pool given)})]
             {:settings settings :shaper shaper :logger running-logger :log log :meter app-meter :texts texts :pool pool
-             :counting-pool counting-pool
+             :counting-pool counting-pool :listening-pool listening-pool
              :file-storages running-file-storages :mailer running-mailer :given given :handlers handlers :live-updates running-live-updates :workers workers :watching watching :health running-health
              :server server :live-repl repl}))
         (catch Throwable e
@@ -1204,8 +1216,9 @@
   "Closes the REPL first, then answers ready with 503 for the :health
    settings' :not-ready-before-stop-ms, then stops taking requests, stops
    the watcher, lets running background jobs finish (where they ran), stops listening,
-   stops every file storage's clients, closes the counting pool and the pool."
-  [{:keys [settings log pool counting-pool server workers watching] running-live-updates :live-updates running-health :health repl :live-repl
+   stops every file storage's clients, closes the listening pool, the
+   counting pool and the pool."
+  [{:keys [settings log pool counting-pool listening-pool server workers watching] running-live-updates :live-updates running-health :health repl :live-repl
     running-file-storages :file-storages}]
   (live-repl/stop-repl-server! repl)
   (log :info :groundwork/stopping {:groundwork/version (:version settings)})
@@ -1216,6 +1229,7 @@
   (stop-background-jobs! workers)
   (live-updates/stop-listening! running-live-updates)
   (run! file-storage/stop-file-storage! (vals running-file-storages))
+  (postgres/stop-pool! listening-pool)
   (postgres/stop-pool! counting-pool)
   (postgres/stop-pool! pool))
 
