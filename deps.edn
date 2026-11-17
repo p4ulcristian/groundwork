@@ -74,7 +74,7 @@
   ;; main makes each of the app's file storages (the :file-storage :storages settings, by
   ;; name) from its :storage settings and the app's :file-kinds, migrates each one's files
   ;; table (its :table) and serves its upload route at its :upload :path, if it has one
-  io.github.p4ulcristian/groundwork-file-storage     {:git/tag "v0.2.5" :git/sha "cb62348"}
+  io.github.p4ulcristian/groundwork-file-storage     {:git/tag "v0.2.6" :git/sha "0219d1e"}
   ;; groundwork-email: the app's email, its own library, github.com/p4ulcristian/groundwork-email;
   ;; main makes one mailer from the :email :sending settings, runs its
   ;; background job kind, migrates its emails table and serves its webhooks
