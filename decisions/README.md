@@ -40,6 +40,7 @@ Each library is a repository of its own, named by what it does since [Each libra
 - [groundwork-email](https://github.com/p4ulcristian/groundwork-email) (postbox): the app's email, queued in the caller's transaction as a background job, sent once by Postmark or the log, bounces and inbound email handed to the app by tag; groundwork takes it since [main makes one attic and one postbox](2026-10-23-main-makes-one-attic-and-one-postbox.md)
 - [Groundwork's libraries share the GitHub topic groundwork](2026-10-22-groundworks-libraries-share-the-topic-groundwork.md), changed in part by [Groundwork is renamed house, and the group of libraries is manor](2026-10-22-groundwork-is-renamed-house-and-the-group-is-manor.md) and [The family and its composer are groundwork](2026-10-23-the-family-and-its-composer-are-groundwork.md)
 - [server/main](server/main/README.md): the one start, the page shell, the health checks, the errors a monitor pulls, the metrics, a visitor's session, the REPL's tools
+- [groundwork-short-codes](https://github.com/p4ulcristian/groundwork-short-codes): a row's short code, set once on insert by a trigger, and reading a typed or scanned one (both sides); apps take it directly, since [A row can carry a short code, set once on insert](2026-11-19-a-row-can-carry-a-short-code-set-once-on-insert.md)
 
 ### What groundwork is
 
@@ -147,6 +148,7 @@ Each library is a repository of its own, named by what it does since [Each libra
 - [Values come back as real types](2026-10-12-values-come-back-as-real-types.md)
 - [row throws on more than one row](2026-10-12-row-throws-on-more-than-one-row.md)
 - [We try queries in the REPL](2026-10-12-we-try-queries-in-the-repl.md)
+- [A row can carry a short code, set once on insert](2026-11-19-a-row-can-carry-a-short-code-set-once-on-insert.md)
 
 ### Migrations
 
