@@ -76,12 +76,32 @@
    it). The :content-security-policy setting names no frame-ancestors
    of its own: the page's are added to it, or sent alone when it is :none.
 
+   How the scripts load is the :page settings' :script-loading.
+   :deferred-tags writes a <script defer> for each. :fetched-with-progress
+   writes one inline script instead, which knows each file's size in the
+   build (read per request, so a watched build's new sizes count), fetches
+   them all at once and tells the page how far they are, in bytes, as they
+   arrive:
+
+     window.addEventListener('groundwork:script-progress',
+                             e => e.detail)   // {loaded: 412000, total: 1830000}
+
+   then, once they are all in and the page is parsed, adds their <script>
+   tags in order (async false keeps the order), which the browser takes
+   from its cache: one download, the size known before the first byte. A
+   fetch that fails is not counted and its tag still goes in, so the page
+   loads as a plain script tag would. A script tag's own download says
+   nothing to the page, which is why the fetch is there. The tags it adds
+   carry the request's nonce, and the strict-dynamic policies trust them
+   anyway (the nonced script adds them). Nothing may preload the same
+   files as scripts: a preload and a fetch don't share a download.
+
    Fixed, not settings: the shell is never cached (no-store), so a new
    version's scripts are what the next load gets; nosniff, since every
-   file goes out with its type; UTF-8; the scripts deferred; the app's
-   element is #app. The rest is the :page settings: the viewport, the
-   content security policy (and whether it carries a nonce) and the
-   referrer policy; and the page's own framing."
+   file goes out with its type; UTF-8; the app's element is #app. The rest
+   is the :page settings: the viewport, the content security policy (and
+   whether it carries a nonce), the referrer policy and how the scripts
+   load; and the page's own framing."
   (:require
    [groundwork-access.api :as access]
    [groundwork-browser-build.page :as browser-page]
@@ -183,12 +203,77 @@
 (defn- nonce-attribute [nonce]
   (if nonce (str " nonce=\"" (escape-html nonce) "\"") ""))
 
+(def ^:private script-loader
+  "The inline script :fetched-with-progress writes, FILES in place of the
+   files' JSON ([{\"src\": \"/js/base.js\", \"bytes\": 2048}, …]): fetch
+   them all, count the bytes as they arrive, tell the page, then add the
+   tags in order once all are in and the page is parsed."
+  (str "(function () {\n"
+       "  var files = FILES, total = 0, loaded = 0;\n"
+       "  var nonce = document.currentScript && document.currentScript.nonce;\n"
+       "  files.forEach(function (f) { total += f.bytes; });\n"
+       "  function tell() {\n"
+       "    window.dispatchEvent(new CustomEvent('groundwork:script-progress',\n"
+       "                                         {detail: {loaded: Math.min(loaded, total), total: total}}));\n"
+       "  }\n"
+       "  function count(f) {\n"
+       "    return fetch(f.src, {credentials: 'same-origin'}).then(function (r) {\n"
+       "      if (!r.ok || !r.body) return;\n"
+       "      var reader = r.body.getReader();\n"
+       "      function pump() {\n"
+       "        return reader.read().then(function (s) {\n"
+       "          if (s.done) return;\n"
+       "          loaded += s.value.length; tell(); return pump();\n"
+       "        });\n"
+       "      }\n"
+       "      return pump();\n"
+       "    }).catch(function () {});\n"
+       "  }\n"
+       "  var parsed = new Promise(function (done) {\n"
+       "    if (document.readyState !== 'loading') done();\n"
+       "    else document.addEventListener('DOMContentLoaded', done);\n"
+       "  });\n"
+       "  tell();\n"
+       "  Promise.all([Promise.all(files.map(count)), parsed]).then(function () {\n"
+       "    files.forEach(function (f) {\n"
+       "      var s = document.createElement('script');\n"
+       "      s.src = f.src; s.async = false;\n"
+       "      if (nonce) s.nonce = nonce;\n"
+       "      document.head.appendChild(s);\n"
+       "    });\n"
+       "  });\n"
+       "})();\n"))
+
+(defn- size-of-script
+  "The bytes of a served script path (/js/…) in the build's files folder:
+   what a fetch of it counts (the body as decoded, so the file's own
+   size, however it is compressed on the way)."
+  [folder path]
+  (.length (io/file folder (subs path 1))))
+
+(defn make-script-tags
+  "The page module's scripts as the :page settings' :script-loading says:
+   a <script defer> each (:deferred-tags), or the one inline loader with
+   each file's size (:fetched-with-progress), its JSON escaped by OWASP's
+   Encode/forJavaScript (nothing in it ends the element)."
+  [{{:keys [script-loading] {:keys [folder]} :files} :page} scripts nonce]
+  (case script-loading
+    :deferred-tags
+    (str/join (map #(str "<script src=\"" (escape-html %) "\"" (nonce-attribute nonce) " defer></script>\n") scripts))
+    :fetched-with-progress
+    (let [files (str "[" (str/join ", " (map #(str "{\"src\": \"" (Encode/forJavaScript %) "\", \"bytes\": "
+                                                  (size-of-script folder %) "}")
+                                            scripts))
+                     "]")]
+      (str "<script" (nonce-attribute nonce) ">\n" (str/replace script-loader "FILES" files) "</script>\n"))))
+
 (defn make-page-html
   "The shell, in the request's language, with the alternate links
    (groundwork-languages's, [] with one language), the page module's files
-   (files-for-page's {:stylesheets :scripts}) and the app's rendered page: its
-   title and description escaped, its head and body HTML as they are."
-  [shaper {{:keys [viewport]} :page} {:keys [stylesheets scripts]} browser-settings language alternate-links
+   (files-for-page's {:stylesheets :scripts}, the scripts loaded as
+   make-script-tags writes them) and the app's rendered page: its title
+   and description escaped, its head and body HTML as they are."
+  [shaper {{:keys [viewport]} :page :as settings} {:keys [stylesheets scripts]} browser-settings language alternate-links
    {:keys [title description head-html body-html]} nonce]
   (str "<!doctype html>\n"
        "<html lang=\"" (escape-html language) "\">\n<head>\n"
@@ -204,7 +289,7 @@
        "<script type=\"application/json\" id=\"groundwork-settings\"" (nonce-attribute nonce) ">"
        (write-json-as-json-string (shaped-json/turn-data-into-json-text shaper browser-settings))
        "</script>\n"
-       (str/join (map #(str "<script src=\"" (escape-html %) "\"" (nonce-attribute nonce) " defer></script>\n") scripts))
+       (make-script-tags settings scripts nonce)
        "</head>\n<body>\n<div id=\"app\">" body-html "</div>\n</body>\n</html>\n"))
 
 (def frame-ancestors

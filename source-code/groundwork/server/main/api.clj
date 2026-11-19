@@ -216,6 +216,13 @@
    own, put in place of {nonce} in the policy (which must name it), on the
    shell's scripts, and handed to the app's :render-page.
    :referrer-policy: the header, \"same-origin\".
+   :script-loading: how the shell loads the page module's scripts.
+   :deferred-tags, a <script defer> each; :fetched-with-progress, one
+   inline script fetches them, counting the bytes against each file's
+   size in the build, tells the page with a groundwork:script-progress
+   event on window ({:loaded :total}, in bytes) as they arrive, then adds
+   their <script> tags in order, which the browser takes from its cache
+   (groundwork.server.main.page).
    Who may frame a page is the page's own :frame-ancestors, not a setting
    (groundwork.server.main.page): the policy names no frame-ancestors.
    :files: bridge's files: :folder, where the browser build is (the
@@ -233,6 +240,7 @@
                                [:fn {:error/message ":policy names no frame-ancestors: each page says its own, :frame-ancestors"}
                                 (fn [{:keys [policy]}] (not (str/includes? (str/lower-case policy) "frame-ancestors")))]]]]
    [:referrer-policy :string]
+   [:script-loading [:enum :deferred-tags :fetched-with-progress]]
    [:files [:map {:closed true}
             [:folder :string]
             [:hashed-name-min-hex-digits [:int {:min 1}]]

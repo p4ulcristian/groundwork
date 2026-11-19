@@ -116,7 +116,7 @@
  :languages         {:languages [{:code "en" :name "English"} {:code "de" :name "Deutsch"}] :default "en" :cookie-name "lang"
                      :preview-languages [] :fallback-language "en" :catalogs-path "groundwork_test/sample/i18n"}
  :page              {:viewport "width=device-width, initial-scale=1"
-                     :content-security-policy :none :referrer-policy "same-origin"
+                     :content-security-policy :none :referrer-policy "same-origin" :script-loading :deferred-tags
                      :files {:folder "target/sample/public" :hashed-name-min-hex-digits 8 :hashed-file-cache-seconds 31536000}}
  :health            {:live-path "/health/live" :ready-path "/health/ready"
                      :database-timeout-ms 1000 :not-ready-before-stop-ms 0}}

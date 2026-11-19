@@ -323,6 +323,7 @@
    :page              {:viewport "width=device-width, initial-scale=1"
                        :content-security-policy {:policy "script-src 'nonce-{nonce}' 'strict-dynamic'; object-src 'none'" :nonce? true}
                        :referrer-policy "same-origin"
+                       :script-loading :deferred-tags
                        :files {:folder files-folder :hashed-name-min-hex-digits 8 :hashed-file-cache-seconds 31536000}}
    :health            {:live-path "/health/live" :ready-path "/health/ready"
                        :database-timeout-ms 500 :not-ready-before-stop-ms 1000}})
@@ -538,7 +539,7 @@
                                                              :max-writing-nesting-depth 1000}}))
 
 (deftest the-page-shell-escapes-by-owasps-encoders
-  (let [html     (page/make-page-html test-shaper {:page {:viewport "width=device-width"}} {:stylesheets ["/css/a.css?x=1&y=2"] :scripts []}
+  (let [html     (page/make-page-html test-shaper {:page {:viewport "width=device-width" :script-loading :deferred-tags}} {:stylesheets ["/css/a.css?x=1&y=2"] :scripts []}
                                       {:note "</script><!-- it's & \"quoted\" \\ \u2028"} "en" []
                                       {:title "Tom's <b>\"shop\"</b> & co" :description "it's" :head-html "" :body-html ""} "n'once")
         settings (read-page-settings-text html)]
@@ -552,6 +553,25 @@
       (is (not (str/includes? html "<!--")))
       (is (= {"note" "</script><!-- it's & \"quoted\" \\ \u2028"} (json/read-value settings))
           "read twice, as the browser does, the settings as they were"))))
+
+(deftest the-shell-loads-scripts-as-script-loading-says
+  (let [folder (str (java.nio.file.Files/createTempDirectory "gw-scripts" (make-array java.nio.file.attribute.FileAttribute 0)))
+        _      (.mkdirs (java.io.File. folder "js"))
+        _      (spit (java.io.File. folder "js/base.js") (apply str (repeat 300 "a")))
+        _      (spit (java.io.File. folder "js/app.js") (apply str (repeat 1200 "b")))
+        tags   #(page/make-script-tags {:page {:script-loading % :files {:folder folder}}} ["/js/base.js" "/js/app.js"] "n1")]
+    (testing ":deferred-tags: a <script defer> each, in order, with the nonce"
+      (is (= (str "<script src=\"/js/base.js\" nonce=\"n1\" defer></script>\n"
+                  "<script src=\"/js/app.js\" nonce=\"n1\" defer></script>\n")
+             (tags :deferred-tags))))
+    (testing ":fetched-with-progress: one nonced inline loader with each file's size, no script tag of its own"
+      (let [html (tags :fetched-with-progress)]
+        (is (str/starts-with? html "<script nonce=\"n1\">"))
+        ;; the paths as JavaScript strings, by Encode/forJavaScript (\\/js\\/base.j\\x73: the same text)
+        (is (re-find #"var files = \[\{\"src\": \"[^\"]*base[^\"]*\", \"bytes\": 300\}, \{\"src\": \"[^\"]*app[^\"]*\", \"bytes\": 1200\}\]" html))
+        (is (str/includes? html "groundwork:script-progress"))
+        (is (not (str/includes? html "src=\"/js/")))
+        (is (= 1 (count (re-seq #"</script>" html))) "nothing in it ends the element early")))))
 
 (deftest the-errors-route-reads-since-as-form-text
   (let [logger  (logs/make-logger {:lowest-level :error :format :json :errors-kept 10 :write-to (fn [_])})
