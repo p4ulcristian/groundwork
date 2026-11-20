@@ -53,13 +53,13 @@
   ;; both sides, its own library, github.com/p4ulcristian/groundwork-live-updates; it is
   ;; handed how a line is told (:push!, groundwork-bridge's sse send) and told apart
   ;; (:find-line-key, the line's :groundwork-bridge/channel)
-  io.github.p4ulcristian/groundwork-live-updates   {:git/tag "v0.6.4" :git/sha "fe706e9"}
+  io.github.p4ulcristian/groundwork-live-updates   {:git/tag "v0.6.5" :git/sha "efa4257"}
   ;; groundwork-screens: the browser's screens over groundwork-live-updates's question store, in re-frame,
   ;; drawn with Reagent in groundwork-screens.views (it brings re-frame, Reagent and reitit-frontend;
   ;; react and react-dom are package.json's), and the address bar it follows; the browser's
   ;; side only, its own library, github.com/p4ulcristian/groundwork-screens; its sends are
   ;; handed in (groundwork-bridge's send-message!)
-  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.17" :git/sha "7605b6e"}
+  io.github.p4ulcristian/groundwork-screens     {:git/tag "v0.8.18" :git/sha "cefab09"}
   ;; groundwork-languages: which language a request, a page and an address are in; both
   ;; sides, its own library, github.com/p4ulcristian/groundwork-languages (groundwork-screens brings
   ;; it to the browser too)
