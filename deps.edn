@@ -41,7 +41,7 @@
   ;; and with it ring-core, whose ring.util.codec reads the errors route's ?since=).
   ;; groundwork plugs it in: its runner answers groundwork-access's steps, its sse lines carry
   ;; groundwork-live-updates's changes, its send-message! is groundwork-screens's send
-  io.github.p4ulcristian/groundwork-bridge   {:git/tag "v0.7.15" :git/sha "f963cd8"}
+  io.github.p4ulcristian/groundwork-bridge   {:git/tag "v0.7.16" :git/sha "203060f"}
   ;; groundwork-access: who is asking and what may they do, sessions, tokens, outside issuers
   ;; and access, its own library, github.com/p4ulcristian/groundwork-access (it brings malli,
   ;; test.check and nimbus-jose-jwt); its steps are groundwork-steps's, its leak test is
