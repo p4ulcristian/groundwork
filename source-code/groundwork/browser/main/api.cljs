@@ -287,14 +287,15 @@
         module-stylesheets (update-keys module-stylesheets name)
         shaper           (shaped-json/make-shaper-from-settings (assoc (:shaped-json settings) :exact-decimals exact-decimals))
         shapes-by-name (make-shapes-by-name shapes-by-name)
-        send!          #(bridge/send-message! (:http addresses) shapes-by-name % {:shaper shaper :headers {} :keep-alive? false})
+        ;; made once: bridge checks the shapes here, not on every request
+        send-http!     (bridge/make-http-sender (:http addresses) shapes-by-name {:shaper shaper})
+        send!          #(send-http! % {:headers {} :keep-alive? false})
         tell-line!     #(when on-line-change (rf/dispatch (conj on-line-change {:line %})))
         send-error!    (make-error-sender send! (:version settings))
         _              (send-errors-to-server! send-error!)
         store          (live-updates/make-question-store send! store-settings {:page js/document})
         send-write!    (fn [message {:keys [once-key keep-alive?]}]
-                         (-> (bridge/send-message! (:http addresses) shapes-by-name message
-                                                   {:shaper shaper :headers {write-key-header once-key} :keep-alive? keep-alive?})
+                         (-> (send-http! message {:headers {write-key-header once-key} :keep-alive? keep-alive?})
                              (.then (fn [answer]
                                       (tell-own-changed-tables! store message answer)
                                       answer))))
