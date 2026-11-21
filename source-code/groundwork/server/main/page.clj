@@ -96,6 +96,24 @@
    anyway (the nonced script adds them). Nothing may preload the same
    files as scripts: a preload and a fetch don't share a download.
 
+   The same mode keeps the page from starting unstyled. A small inline
+   script before the shell's stylesheet links notes how each stylesheet
+   link's load went, its load or error event (a 404, a dropped
+   connection, a reset stream: the event is the one sign every browser
+   gives; Chrome and WebKit hand a failed link an empty sheet, and WebKit
+   fires the event only after the page is parsed). The loader waits for
+   each of the shell's own to be told of (the page's load event at the
+   latest), links the ones that failed again, once, and the scripts go
+   in only once that second try has loaded or failed too, telling the
+   page either way:
+
+     window.addEventListener('groundwork:stylesheet-retry',
+                             e => e.detail)   // {href: '/css/app.1F2A….css', ok: true}
+
+   A browser retries no stylesheet by itself, and a hashed bundle a
+   first visit lost is otherwise gone until the next load. :deferred-tags
+   writes no inline script and retries nothing.
+
    Fixed, not settings: the shell is never cached (no-store), so a new
    version's scripts are what the next load gets; nosniff, since every
    file goes out with its type; UTF-8; the app's element is #app. The rest
@@ -203,15 +221,72 @@
 (defn- nonce-attribute [nonce]
   (if nonce (str " nonce=\"" (escape-html nonce) "\"") ""))
 
-(def ^:private script-loader
-  "The inline script :fetched-with-progress writes, FILES in place of the
-   files' JSON ([{\"src\": \"/js/base.js\", \"bytes\": 2048}, …]): fetch
-   them all, count the bytes as they arrive, tell the page, then add the
-   tags in order once all are in and the page is parsed."
+(def ^:private stylesheet-watch
+  "The inline script :fetched-with-progress writes before the shell's
+   stylesheet links: how each stylesheet link's load went, by href as
+   written, on window.groundworkStylesheets ({'/css/base.css': 'load',
+   '/css/app.css': 'error'}), for the loader. The events don't bubble; a
+   capturing listener on window sees them."
   (str "(function () {\n"
-       "  var files = FILES, total = 0, loaded = 0;\n"
+       "  var seen = window.groundworkStylesheets = {};\n"
+       "  function note(e) {\n"
+       "    var t = e.target;\n"
+       "    if (t && t.tagName === 'LINK' && t.rel === 'stylesheet') seen[t.getAttribute('href')] = e.type;\n"
+       "  }\n"
+       "  window.addEventListener('load', note, true);\n"
+       "  window.addEventListener('error', note, true);\n"
+       "})();\n"))
+
+(def ^:private script-loader
+  "The inline script :fetched-with-progress writes after the links, FILES
+   in place of the files' JSON ([{\"src\": \"/js/base.js\", \"bytes\": 2048}, …])
+   and SHEETS in place of the shell's stylesheet links' hrefs
+   ([\"/css/base.css\", …]): fetch the files, count the bytes as they
+   arrive, tell the page; wait for each of the shell's stylesheets to say
+   how its load went (stylesheet-watch's note, or its event when it
+   comes: it can still be on its way when this script runs; the page's
+   load event at the latest, for a browser that says nothing), link the
+   ones that failed again, once, after their old link, telling the page
+   how that went; then add the script tags in order once all are in, the
+   retries are settled and the page is parsed."
+  (str "(function () {\n"
+       "  var files = FILES, sheets = SHEETS, total = 0, loaded = 0;\n"
        "  var nonce = document.currentScript && document.currentScript.nonce;\n"
+       "  var seen = window.groundworkStylesheets || {};\n"
        "  files.forEach(function (f) { total += f.bytes; });\n"
+       "  function tellSheet(href, ok) {\n"
+       "    window.dispatchEvent(new CustomEvent('groundwork:stylesheet-retry', {detail: {href: href, ok: ok}}));\n"
+       "  }\n"
+       "  function settled(href) {\n"
+       "    return new Promise(function (done) {\n"
+       "      if (seen[href] || document.readyState === 'complete') return done(seen[href] || 'load');\n"
+       "      function finish(how) {\n"
+       "        window.removeEventListener('load', on, true); window.removeEventListener('error', on, true);\n"
+       "        window.removeEventListener('load', atLoad); done(how);\n"
+       "      }\n"
+       "      function on(e) { var t = e.target; if (t && t.tagName === 'LINK' && t.getAttribute('href') === href) finish(e.type); }\n"
+       "      function atLoad() { finish(seen[href] || 'load'); }\n"
+       "      window.addEventListener('load', on, true); window.addEventListener('error', on, true);\n"
+       "      window.addEventListener('load', atLoad);\n"
+       "    });\n"
+       "  }\n"
+       "  function relink(href) {\n"
+       "    return settled(href).then(function (how) {\n"
+       "      if (how !== 'error') return;\n"
+       "      var links = document.querySelectorAll('link[rel=\"stylesheet\"]'), old = null;\n"
+       "      for (var i = 0; i < links.length; i++) {\n"
+       "        if (links[i].getAttribute('href') === href) old = links[i];\n"
+       "      }\n"
+       "      return new Promise(function (done) {\n"
+       "        var l = document.createElement('link');\n"
+       "        l.rel = 'stylesheet'; l.href = href;\n"
+       "        l.onload = function () { tellSheet(href, true); done(); };\n"
+       "        l.onerror = function () { tellSheet(href, false); done(); };\n"
+       "        if (old) old.parentNode.insertBefore(l, old.nextSibling);\n"
+       "        else document.head.appendChild(l);\n"
+       "      });\n"
+       "    });\n"
+       "  }\n"
        "  function tell() {\n"
        "    window.dispatchEvent(new CustomEvent('groundwork:script-progress',\n"
        "                                         {detail: {loaded: Math.min(loaded, total), total: total}}));\n"
@@ -234,7 +309,7 @@
        "    else document.addEventListener('DOMContentLoaded', done);\n"
        "  });\n"
        "  tell();\n"
-       "  Promise.all([Promise.all(files.map(count)), parsed]).then(function () {\n"
+       "  Promise.all([Promise.all(files.map(count)), Promise.all(sheets.map(relink)), parsed]).then(function () {\n"
        "    files.forEach(function (f) {\n"
        "      var s = document.createElement('script');\n"
        "      s.src = f.src; s.async = false;\n"
@@ -251,29 +326,44 @@
   [folder path]
   (.length (io/file folder (subs path 1))))
 
+(defn make-stylesheet-watch
+  "What goes before the shell's stylesheet links, as the :page settings'
+   :script-loading says: nothing (:deferred-tags), or the nonced inline
+   script that notes the links that fail (:fetched-with-progress)."
+  [{{:keys [script-loading]} :page} nonce]
+  (case script-loading
+    :deferred-tags         ""
+    :fetched-with-progress (str "<script" (nonce-attribute nonce) ">\n" stylesheet-watch "</script>\n")))
+
 (defn make-script-tags
   "The page module's scripts as the :page settings' :script-loading says:
    a <script defer> each (:deferred-tags), or the one inline loader with
-   each file's size (:fetched-with-progress), its JSON escaped by OWASP's
+   each file's size and the shell's stylesheet hrefs, the ones it links
+   again when make-stylesheet-watch's script noted them lost
+   (:fetched-with-progress), its JSON escaped by OWASP's
    Encode/forJavaScript (nothing in it ends the element)."
-  [{{:keys [script-loading] {:keys [folder]} :files} :page} scripts nonce]
+  [{{:keys [script-loading] {:keys [folder]} :files} :page} {:keys [stylesheets scripts]} nonce]
   (case script-loading
     :deferred-tags
     (str/join (map #(str "<script src=\"" (escape-html %) "\"" (nonce-attribute nonce) " defer></script>\n") scripts))
     :fetched-with-progress
-    (let [files (str "[" (str/join ", " (map #(str "{\"src\": \"" (Encode/forJavaScript %) "\", \"bytes\": "
-                                                  (size-of-script folder %) "}")
-                                            scripts))
-                     "]")]
-      (str "<script" (nonce-attribute nonce) ">\n" (str/replace script-loader "FILES" files) "</script>\n"))))
+    (let [files  (str "[" (str/join ", " (map #(str "{\"src\": \"" (Encode/forJavaScript %) "\", \"bytes\": "
+                                                   (size-of-script folder %) "}")
+                                             scripts))
+                      "]")
+          sheets (str "[" (str/join ", " (map #(str "\"" (Encode/forJavaScript %) "\"") stylesheets)) "]")]
+      (str "<script" (nonce-attribute nonce) ">\n"
+           (-> script-loader (str/replace "FILES" files) (str/replace "SHEETS" sheets))
+           "</script>\n"))))
 
 (defn make-page-html
   "The shell, in the request's language, with the alternate links
    (groundwork-languages's, [] with one language), the page module's files
-   (files-for-page's {:stylesheets :scripts}, the scripts loaded as
+   (files-for-page's {:stylesheets :scripts}, the stylesheets watched as
+   make-stylesheet-watch writes it, the scripts loaded as
    make-script-tags writes them) and the app's rendered page: its title
    and description escaped, its head and body HTML as they are."
-  [shaper {{:keys [viewport]} :page :as settings} {:keys [stylesheets scripts]} browser-settings language alternate-links
+  [shaper {{:keys [viewport]} :page :as settings} {:keys [stylesheets] :as files} browser-settings language alternate-links
    {:keys [title description head-html body-html]} nonce]
   (str "<!doctype html>\n"
        "<html lang=\"" (escape-html language) "\">\n<head>\n"
@@ -284,12 +374,13 @@
        (str/join (map #(str "<link rel=\"alternate\" hreflang=\"" (escape-html (:hreflang %))
                             "\" href=\"" (escape-html (:href %)) "\">\n")
                       alternate-links))
+       (make-stylesheet-watch settings nonce)
        (str/join (map #(str "<link rel=\"stylesheet\" href=\"" (escape-html %) "\">\n") stylesheets))
        head-html
        "<script type=\"application/json\" id=\"groundwork-settings\"" (nonce-attribute nonce) ">"
        (write-json-as-json-string (shaped-json/turn-data-into-json-text shaper browser-settings))
        "</script>\n"
-       (make-script-tags settings scripts nonce)
+       (make-script-tags settings files nonce)
        "</head>\n<body>\n<div id=\"app\">" body-html "</div>\n</body>\n</html>\n"))
 
 (def frame-ancestors

@@ -559,17 +559,27 @@
         _      (.mkdirs (java.io.File. folder "js"))
         _      (spit (java.io.File. folder "js/base.js") (apply str (repeat 300 "a")))
         _      (spit (java.io.File. folder "js/app.js") (apply str (repeat 1200 "b")))
-        tags   #(page/make-script-tags {:page {:script-loading % :files {:folder folder}}} ["/js/base.js" "/js/app.js"] "n1")]
-    (testing ":deferred-tags: a <script defer> each, in order, with the nonce"
+        tags   #(page/make-script-tags {:page {:script-loading % :files {:folder folder}}}
+                                       {:stylesheets ["/css/base.css" "/css/app.css"] :scripts ["/js/base.js" "/js/app.js"]} "n1")]
+    (testing ":deferred-tags: a <script defer> each, in order, with the nonce; nothing before the stylesheets"
       (is (= (str "<script src=\"/js/base.js\" nonce=\"n1\" defer></script>\n"
                   "<script src=\"/js/app.js\" nonce=\"n1\" defer></script>\n")
-             (tags :deferred-tags))))
+             (tags :deferred-tags)))
+      (is (= "" (page/make-stylesheet-watch {:page {:script-loading :deferred-tags}} "n1"))))
+    (testing ":fetched-with-progress: a nonced inline script before the stylesheets notes the links that fail"
+      (let [html (page/make-stylesheet-watch {:page {:script-loading :fetched-with-progress}} "n1")]
+        (is (str/starts-with? html "<script nonce=\"n1\">"))
+        (is (str/includes? html "window.groundworkStylesheets = {}"))
+        (is (= 1 (count (re-seq #"</script>" html))))))
     (testing ":fetched-with-progress: one nonced inline loader with each file's size, no script tag of its own"
       (let [html (tags :fetched-with-progress)]
         (is (str/starts-with? html "<script nonce=\"n1\">"))
         ;; the paths as JavaScript strings, by Encode/forJavaScript (\\/js\\/base.j\\x73: the same text)
         (is (re-find #"var files = \[\{\"src\": \"[^\"]*base[^\"]*\", \"bytes\": 300\}, \{\"src\": \"[^\"]*app[^\"]*\", \"bytes\": 1200\}\]" html))
         (is (str/includes? html "groundwork:script-progress"))
+        ;; the stylesheets it links again when lost, the same way
+        (is (re-find #"sheets = \[\"[^\"]*base[^\"]*\", \"[^\"]*app[^\"]*\"\]" html))
+        (is (str/includes? html "groundwork:stylesheet-retry"))
         (is (not (str/includes? html "src=\"/js/")))
         (is (= 1 (count (re-seq #"</script>" html))) "nothing in it ends the element early")))))
 
